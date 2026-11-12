@@ -120,4 +120,6 @@ for (const table of ['parts_submissions', 'training_requests']) {
   addColumn(table, 'cancelled_at', 'TEXT');
 }
 
+addColumn('parts_catalog', 'category', 'TEXT');
+
 module.exports = db;

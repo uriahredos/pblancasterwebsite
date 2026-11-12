@@ -511,16 +511,17 @@ test('usage summary adds up takes and returns and leaves cancelled entries out',
 test('parts catalog: import ignores prices, re-import updates, suggestions work', async () => {
   const admin = await loggedIn('admin');
   const page = '/admin/catalog';
-  const csv = 'Part Code,Description,Manufacturer,Cost,Sales Price\r\nSIGA-CT2,"Dual input module, Class B",Edwards,41.17,88.50\r\nSIGA-UM,Universal module,Edwards,55.25,120.00\r\n,No part number,,1,2\r\nBAT-12V7,12V 7Ah SLA battery,Duracell,9.99,24.00\r\n';
+  const csv = 'Category,Part Code,Description,Manufacturer,Cost/Price\r\nAlarm,SIGA-CT2,"Dual input module, Class B",Edwards,41.17\r\nAlarm,SIGA-UM,Universal module,Edwards,55.25\r\nAlarm,,No part number,,1\r\nBATTERY,BAT-12V7,12V 7Ah SLA battery,Duracell,9.99\r\n';
   const up = (text, name = 'sedona.csv') => admin.post('/admin/catalog/import', [['file', new File([text], name, { type: 'text/csv' })]], { multipart: true, page });
   assert.equal((await up(csv)).status, 302);
   assert.match((await admin.get(page)).text, /3 added, 0 updated, 0 unchanged, 1 rows skipped/);
 
   const cols = db.prepare("SELECT name FROM pragma_table_info('parts_catalog')").all().map((c) => c.name).sort();
-  assert.deepEqual(cols, ['active', 'created_at', 'description', 'id', 'manufacturer', 'part_number']);
+  assert.deepEqual(cols, ['active', 'category', 'created_at', 'description', 'id', 'manufacturer', 'part_number']);
   const stored = JSON.stringify(db.prepare('SELECT * FROM parts_catalog').all());
-  for (const price of ['41.17', '88.50', '55.25', '120.00', '9.99', '24.00']) assert.ok(!stored.includes(price), price);
+  for (const price of ['41.17', '55.25', '9.99']) assert.ok(!stored.includes(price), price);
   assert.equal(db.prepare("SELECT description FROM parts_catalog WHERE part_number = 'siga-ct2'").get().description, 'Dual input module, Class B');
+  assert.equal(db.prepare("SELECT category FROM parts_catalog WHERE part_number = 'BAT-12V7'").get().category, 'BATTERY');
 
   await up('part number\tdescription\nSIGA-UM\tUniversal class A/B module\nNEW-1\tNew thing\n');
   assert.match((await admin.get(page)).text, /1 added, 1 updated/);

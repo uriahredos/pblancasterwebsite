@@ -130,8 +130,8 @@ router.get('/parts/suggest', requireLogin, (req, res) => {
   const rows = db.prepare(
     `SELECT part_number AS n, description AS d FROM parts_catalog
      WHERE active = 1 AND (part_number LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\')
-     ORDER BY (part_number LIKE ? ESCAPE '\\') DESC, part_number LIMIT 8`
-  ).all(`%${esc}%`, `%${esc}%`, `${esc}%`);
+     ORDER BY (part_number = ?) DESC, (part_number LIKE ? ESCAPE '\\') DESC, (part_number LIKE ? ESCAPE '\\') DESC, part_number LIMIT 8`
+  ).all(`%${esc}%`, `%${esc}%`, q, `${esc}%`, `%${esc}%`);
   if (rows.length < 8) {
     const seen = new Set(rows.map((r) => r.n.toUpperCase()));
     const used = db.prepare(
