@@ -1,0 +1,23 @@
+<%- include('partials/header') %>
+<h1>Training request</h1>
+<p class="lede">Submitting as <strong><%= user.display_name %></strong>.</p>
+<%- include('partials/errors') %>
+<form method="post" action="/training" class="card stack">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Training description
+    <span class="hint">What would you like training on? Panels, devices, procedures, anything.</span>
+    <textarea name="description" rows="6" maxlength="4000" required><%= values.description || '' %></textarea>
+  </label>
+  <fieldset>
+    <legend>Do you wish to be contacted regarding this request?</legend>
+    <label class="choice"><input type="radio" name="wants_contact" value="yes" <%= values.wants_contact === 'yes' ? 'checked' : '' %> required> Yes</label>
+    <label class="choice"><input type="radio" name="wants_contact" value="no" <%= values.wants_contact === 'no' ? 'checked' : '' %>> No</label>
+  </fieldset>
+  <fieldset>
+    <legend>Should we keep this private?</legend>
+    <label class="choice"><input type="radio" name="is_private" value="yes" <%= values.is_private === 'yes' ? 'checked' : '' %> required> Yes</label>
+    <label class="choice"><input type="radio" name="is_private" value="no" <%= values.is_private === 'no' ? 'checked' : '' %>> No</label>
+  </fieldset>
+  <button class="btn primary" type="submit">Send request</button>
+</form>
+<%- include('partials/footer') %>

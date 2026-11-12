@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title><%= title %> · Pye-Barker Lancaster Branch</title>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <a class="brand" href="/">Pye-Barker Lancaster</a>
+    <% if (user && !user.must_change_password) { %>
+    <nav class="nav" aria-label="Main">
+      <a href="/parts" <%- path === '/parts' ? 'aria-current="page"' : '' %>>Parts</a>
+      <a href="/training" <%- path === '/training' ? 'aria-current="page"' : '' %>>Training</a>
+      <a href="/complaint" <%- path.startsWith('/complaint') ? 'aria-current="page"' : '' %>>Complaint</a>
+      <a href="/my" <%- path === '/my' ? 'aria-current="page"' : '' %>>My submissions</a>
+      <% if (user.role === 'admin') { %>
+      <span class="nav-sep" aria-hidden="true"></span>
+      <a href="/admin/parts" <%- path.startsWith('/admin/parts') ? 'aria-current="page"' : '' %>>Parts log</a>
+      <a href="/admin/training" <%- path.startsWith('/admin/training') ? 'aria-current="page"' : '' %>>Training log</a>
+      <a href="/admin/users" <%- path.startsWith('/admin/users') ? 'aria-current="page"' : '' %>>Users</a>
+      <% } %>
+      <% if (user.can_review_complaints) { %>
+      <a href="/admin/complaints" <%- path.startsWith('/admin/complaints') ? 'aria-current="page"' : '' %>>Complaints</a>
+      <% } %>
+    </nav>
+    <% } %>
+    <% if (user) { %>
+    <div class="who">
+      <a href="/account/password" title="Change password"><%= user.display_name %></a>
+      <form method="post" action="/logout"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Sign out</button></form>
+    </div>
+    <% } %>
+  </div>
+</header>
+<main class="<%= typeof wide !== 'undefined' && wide ? 'wide' : '' %>">
+<% if (flash) { %><p class="flash <%= flash.type %>" role="status"><%= flash.text %></p><% } %>

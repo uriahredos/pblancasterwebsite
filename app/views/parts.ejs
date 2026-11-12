@@ -1,0 +1,58 @@
+<%- include('partials/header') %>
+<h1>Parts</h1>
+<p class="lede">Submitting as <strong><%= user.display_name %></strong>.</p>
+<%- include('partials/errors') %>
+<% var rows = values.items && values.items.length ? values.items : [{ part_name: '', quantity: '' }]; %>
+<form method="post" action="/parts" enctype="multipart/form-data" class="card stack" id="parts-form">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <fieldset>
+    <legend>What would you like to do?</legend>
+    <div class="segmented">
+      <% ['take', 'return', 'request'].forEach(function (a) { %>
+      <label><input type="radio" name="action" value="<%= a %>" <%= values.action === a ? 'checked' : '' %> required><span><%= labels.action[a] %></span></label>
+      <% }) %>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Parts</legend>
+    <div id="items">
+      <% rows.forEach(function (it, i) { %>
+      <div class="item-row">
+        <label class="grow"><span class="<%= i ? 'sr' : 'mini' %>">Part name or number</span>
+          <input name="part_name" value="<%= it.part_name %>" maxlength="200" placeholder="e.g. SIGA-CT2" autocapitalize="characters" autocomplete="off"></label>
+        <label class="qty"><span class="<%= i ? 'sr' : 'mini' %>">Qty</span>
+          <input name="quantity" value="<%= it.quantity %>" inputmode="numeric" pattern="[0-9]*" maxlength="5" placeholder="1" autocomplete="off"></label>
+        <button type="button" class="icon remove-row" aria-label="Remove this part" hidden>&times;</button>
+      </div>
+      <% }) %>
+    </div>
+    <button type="button" class="btn small" id="add-row" hidden>+ Add another part</button>
+    <noscript><p class="hint">To enter more than one part, send the form once per part.</p></noscript>
+  </fieldset>
+
+  <fieldset>
+    <legend>Van stock or job?</legend>
+    <label class="choice"><input type="radio" name="source" value="van" <%= values.source === 'van' ? 'checked' : '' %> required> Van stock</label>
+    <label class="choice"><input type="radio" name="source" value="job" <%= values.source === 'job' ? 'checked' : '' %>> Job</label>
+    <label data-show-source="job">Job number
+      <input name="job_number" value="<%= values.job_number || '' %>" maxlength="60" inputmode="text" autocomplete="off" placeholder="e.g. 49020597">
+    </label>
+  </fieldset>
+
+  <label data-show-action="request">Needed by
+    <input type="date" name="needed_by" value="<%= values.needed_by || '' %>">
+  </label>
+
+  <label data-show-action="return">Photo of the returned parts <span class="hint">Optional. JPEG or PNG, up to 10 MB.</span>
+    <input type="file" name="photo" accept="image/jpeg,image/png,image/webp,image/gif">
+  </label>
+
+  <label>Note <span class="hint">Optional. Truck number, where it was left, anything useful.</span>
+    <textarea name="note" rows="2" maxlength="1000"><%= values.note || '' %></textarea>
+  </label>
+
+  <button class="btn primary" type="submit">Submit</button>
+</form>
+<script src="/parts-form.js" defer></script>
+<%- include('partials/footer') %>

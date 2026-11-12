@@ -1,0 +1,27 @@
+<%- include('partials/header') %>
+<h1>Anonymous complaint</h1>
+<div class="notice">
+  <p><strong>Your name is not attached to this.</strong> You sign in only so that people outside the branch cannot use this form. When you send it, the site saves the category, your words and today's date. It does not save your account, your device or the time of day.</p>
+  <p>The people who read complaints only see what you type. If you want to stay anonymous, leave out details that point to you.</p>
+</div>
+<%- include('partials/errors') %>
+<form method="post" action="/complaint" class="card stack">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Category
+    <select name="category" required>
+      <option value="">Choose one</option>
+      <% Object.keys(labels.complaintCategory).forEach(function (k) { %>
+      <option value="<%= k %>" <%= values.category === k ? 'selected' : '' %>><%= labels.complaintCategory[k] %></option>
+      <% }) %>
+    </select>
+  </label>
+  <label>What happened?
+    <textarea name="description" rows="8" maxlength="6000" required><%= values.description || '' %></textarea>
+  </label>
+  <label>When and where? <span class="hint">Optional</span>
+    <input name="occurred_text" value="<%= values.occurred_text || '' %>" maxlength="300" autocomplete="off">
+  </label>
+  <button class="btn primary" type="submit">Send anonymously</button>
+</form>
+<p class="hint">Already sent one? <a href="/complaint/status">Check its status with your tracking code</a>.</p>
+<%- include('partials/footer') %>

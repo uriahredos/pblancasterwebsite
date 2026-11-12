@@ -1,0 +1,29 @@
+<%- include('partials/header', { wide: true }) %>
+<h1>Complaints</h1>
+<p class="lede">These are anonymous. The site does not record who wrote them or at what time.</p>
+<form method="get" class="filters card">
+  <label>Status
+    <select name="status"><option value="">Any</option>
+      <% Object.keys(labels.complaintStatus).forEach(function (k) { %><option value="<%= k %>" <%= k === status ? 'selected' : '' %>><%= labels.complaintStatus[k] %></option><% }) %>
+    </select>
+  </label>
+  <div class="filter-actions"><button class="btn primary small" type="submit">Filter</button></div>
+</form>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Date</th><th>Category</th><th>Complaint</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+  <% rows.forEach(function (c) { %>
+  <tr>
+    <td class="nowrap"><%= fmtDate(c.created_date) %></td>
+    <td><%= labels.complaintCategory[c.category] %></td>
+    <td class="items clamp"><%= c.description %></td>
+    <td><span class="status s-<%= c.status %>"><%= labels.complaintStatus[c.status] %></span></td>
+    <td><a href="/admin/complaints/<%= c.id %>">Open</a></td>
+  </tr>
+  <% }) %>
+  <% if (!rows.length) { %><tr><td colspan="5" class="empty">No complaints.</td></tr><% } %>
+  </tbody>
+</table>
+</div>
+<%- include('partials/footer') %>

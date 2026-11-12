@@ -1,0 +1,22 @@
+<%- include('partials/header') %>
+<p><a href="/admin/complaints">&larr; Complaints</a></p>
+<h1>Complaint · <%= labels.complaintCategory[c.category] %></h1>
+<div class="card stack">
+  <dl class="facts">
+    <dt>Date</dt><dd><%= fmtDate(c.created_date) %></dd>
+    <% if (c.occurred_text) { %><dt>When / where</dt><dd><%= c.occurred_text %></dd><% } %>
+  </dl>
+  <p class="pre"><%= c.description %></p>
+</div>
+<h2>Status and reply</h2>
+<form method="post" action="/admin/complaints/<%= c.id %>" class="card stack">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Status
+    <select name="status"><% Object.keys(labels.complaintStatus).forEach(function (k) { %><option value="<%= k %>" <%= k === c.status ? 'selected' : '' %>><%= labels.complaintStatus[k] %></option><% }) %></select>
+  </label>
+  <label>Reply <span class="hint">Optional. Only someone holding the tracking code can read it.</span>
+    <textarea name="reviewer_reply" rows="4" maxlength="4000"><%= c.reviewer_reply || '' %></textarea>
+  </label>
+  <button class="btn primary" type="submit">Save</button>
+</form>
+<%- include('partials/footer') %>

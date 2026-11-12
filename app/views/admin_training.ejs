@@ -1,0 +1,24 @@
+<%- include('partials/header', { wide: true }) %>
+<h1>Training requests</h1>
+<%- include('partials/filters', { base: '/admin/training', statuses: labels.trainingStatus, searchHint: 'Topic or name' }) %>
+<p class="count"><%= rows.length %> <%= rows.length === 1 ? 'request' : 'requests' %><% if (more) { %> shown (newest 500).<% } %></p>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Submitted</th><th>Name</th><th>Training description</th><th>Contact?</th><th>Private?</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+  <% rows.forEach(function (t) { %>
+  <tr>
+    <td class="nowrap"><%= fmtDateTime(t.created_at) %></td>
+    <td><%= t.display_name %></td>
+    <td class="items clamp"><%= t.description %></td>
+    <td><%= t.wants_contact ? 'Yes' : 'No' %></td>
+    <td><% if (t.is_private) { %><span class="tag private">Private</span><% } else { %>No<% } %></td>
+    <td><span class="status s-<%= t.status %>"><%= labels.trainingStatus[t.status] %></span></td>
+    <td><a href="/admin/training/<%= t.id %>">Open</a></td>
+  </tr>
+  <% }) %>
+  <% if (!rows.length) { %><tr><td colspan="7" class="empty">No requests match.</td></tr><% } %>
+  </tbody>
+</table>
+</div>
+<%- include('partials/footer') %>

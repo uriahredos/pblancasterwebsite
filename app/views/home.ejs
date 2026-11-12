@@ -1,0 +1,12 @@
+<%- include('partials/header') %>
+<h1>Hi, <%= user.display_name %></h1>
+<p class="lede">What do you need to do?</p>
+<div class="tiles">
+  <a class="tile" href="/parts?action=take"><strong>Take parts</strong><span>Sign out parts for a job or van stock</span></a>
+  <a class="tile" href="/parts?action=return"><strong>Return parts</strong><span>Bring parts back, with an optional photo</span></a>
+  <a class="tile" href="/parts?action=request"><strong>Request parts</strong><span>Ask for parts to be ordered</span></a>
+  <a class="tile" href="/training"><strong>Training request</strong><span>Ask for training on a topic</span></a>
+  <a class="tile quiet" href="/complaint"><strong>Anonymous complaint</strong><span>Your name is not recorded</span></a>
+  <a class="tile quiet" href="/my"><strong>My submissions</strong><span>See what you sent and its status</span></a>
+</div>
+<%- include('partials/footer') %>

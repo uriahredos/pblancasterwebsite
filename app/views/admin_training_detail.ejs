@@ -1,0 +1,23 @@
+<%- include('partials/header') %>
+<p><a href="/admin/training">&larr; Training requests</a></p>
+<h1>Training request · <%= t.display_name %></h1>
+<div class="card stack">
+  <dl class="facts">
+    <dt>Submitted</dt><dd><%= fmtDateTime(t.created_at) %></dd>
+    <dt>Wants contact</dt><dd><%= t.wants_contact ? 'Yes' : 'No' %><% if (t.wants_contact && t.email) { %> · <%= t.email %><% } %></dd>
+    <dt>Keep private</dt><dd><%= t.is_private ? 'Yes. Do not share who asked.' : 'No' %></dd>
+  </dl>
+  <p class="pre"><%= t.description %></p>
+</div>
+<h2>Status</h2>
+<form method="post" action="/admin/training/<%= t.id %>/status" class="card stack">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Status
+    <select name="status"><% Object.keys(labels.trainingStatus).forEach(function (k) { %><option value="<%= k %>" <%= k === t.status ? 'selected' : '' %>><%= labels.trainingStatus[k] %></option><% }) %></select>
+  </label>
+  <label>Reply to <%= t.display_name %> <span class="hint">Optional. They see it under My submissions.</span>
+    <textarea name="admin_note" rows="3" maxlength="1000"><%= t.admin_note || '' %></textarea>
+  </label>
+  <button class="btn primary" type="submit">Save</button>
+</form>
+<%- include('partials/footer') %>

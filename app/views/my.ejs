@@ -1,0 +1,38 @@
+<%- include('partials/header') %>
+<h1>My submissions</h1>
+
+<h2>Parts</h2>
+<% if (!parts.length) { %><p class="empty">Nothing yet. <a href="/parts">Open the parts form</a>.</p><% } %>
+<ul class="records">
+<% parts.forEach(function (s) { %>
+  <li class="card">
+    <div class="rec-head">
+      <span class="tag <%= s.action %>"><%= labels.action[s.action] %></span>
+      <% if (s.status) { %><span class="status s-<%= s.status %>"><%= labels.partsStatus[s.status] %></span><% } %>
+      <time><%= fmtDateTime(s.created_at) %></time>
+    </div>
+    <p class="items"><%= s.items %></p>
+    <p class="meta"><%= s.source === 'job' ? 'Job ' + s.job_number : 'Van stock' %><% if (s.needed_by) { %> · Needed by <%= fmtDate(s.needed_by) %><% } %><% if (s.photo_path) { %> · <a href="/parts/photo/<%= s.id %>">Photo</a><% } %></p>
+    <% if (s.note) { %><p class="meta">Note: <%= s.note %></p><% } %>
+    <% if (s.admin_note) { %><p class="reply"><strong>Reply:</strong> <%= s.admin_note %></p><% } %>
+  </li>
+<% }) %>
+</ul>
+
+<h2>Training requests</h2>
+<% if (!training.length) { %><p class="empty">Nothing yet. <a href="/training">Open the training form</a>.</p><% } %>
+<ul class="records">
+<% training.forEach(function (t) { %>
+  <li class="card">
+    <div class="rec-head">
+      <span class="status s-<%= t.status %>"><%= labels.trainingStatus[t.status] %></span>
+      <% if (t.is_private) { %><span class="tag private">Private</span><% } %>
+      <time><%= fmtDateTime(t.created_at) %></time>
+    </div>
+    <p class="items"><%= t.description %></p>
+    <% if (t.admin_note) { %><p class="reply"><strong>Reply:</strong> <%= t.admin_note %></p><% } %>
+  </li>
+<% }) %>
+</ul>
+<p class="hint">Anonymous complaints never appear here. Use your tracking code on the <a href="/complaint/status">complaint status page</a>.</p>
+<%- include('partials/footer') %>

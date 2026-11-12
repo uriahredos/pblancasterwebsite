@@ -1,0 +1,48 @@
+<%- include('partials/header', { wide: true }) %>
+<h1>Users</h1>
+<% if (created) { %>
+<div class="card code-card">
+  <p>Account <strong><%= created.username %></strong> <%= created.what === 'reset' ? 'has a new temporary password' : 'was created' %>.</p>
+  <p class="mini">Temporary password</p>
+  <p class="code"><%= created.password %></p>
+  <p>Give this to the person now. It is shown only once, and they will be asked to choose their own password when they sign in.</p>
+</div>
+<% } %>
+<%- include('partials/errors') %>
+<h2>Add a person</h2>
+<form method="post" action="/admin/users" class="filters card">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Username <input name="username" value="<%= values.username || '' %>" required maxlength="40" autocapitalize="none" autocomplete="off" placeholder="jsmith"></label>
+  <label>Full name <input name="display_name" value="<%= values.display_name || '' %>" required maxlength="80" autocomplete="off" placeholder="John Smith"></label>
+  <label>Email <span class="hint">Optional</span> <input name="email" type="email" value="<%= values.email || '' %>" maxlength="120" autocomplete="off"></label>
+  <label>Access
+    <select name="role"><option value="user">Regular user</option><option value="admin" <%= values.role === 'admin' ? 'selected' : '' %>>Admin</option></select>
+  </label>
+  <label class="choice"><input type="checkbox" name="reviewer" value="1" <%= values.reviewer ? 'checked' : '' %>> Can read complaints</label>
+  <div class="filter-actions"><button class="btn primary small" type="submit">Add person</button></div>
+</form>
+<p class="hint">A temporary password is generated for you and shown once after you add the person.</p>
+
+<h2>Everyone</h2>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Name</th><th>Username</th><th>Access</th><th>Complaints</th><th>Account</th><th>Actions</th></tr></thead>
+  <tbody>
+  <% users.forEach(function (u) { %>
+  <tr class="<%= u.active ? '' : 'off' %>">
+    <td><%= u.display_name %><% if (u.id === user.id) { %> <span class="hint">(you)</span><% } %></td>
+    <td><%= u.username %></td>
+    <td><%= u.role === 'admin' ? 'Admin' : 'User' %></td>
+    <td><%= u.can_review_complaints ? 'Can read' : 'No' %></td>
+    <td><%= !u.active ? 'Disabled' : u.must_change_password ? 'Temporary password' : 'Active' %></td>
+    <td class="row-actions">
+      <% [['reset-password', 'Reset password'], ['toggle-admin', u.role === 'admin' ? 'Remove admin' : 'Make admin'], ['toggle-reviewer', u.can_review_complaints ? 'Remove complaints access' : 'Allow complaints'], ['toggle-active', u.active ? 'Disable' : 'Enable']].forEach(function (op) { %>
+      <form method="post" action="/admin/users/<%= u.id %>/<%= op[0] %>"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit"><%= op[1] %></button></form>
+      <% }) %>
+    </td>
+  </tr>
+  <% }) %>
+  </tbody>
+</table>
+</div>
+<%- include('partials/footer') %>

@@ -1,0 +1,25 @@
+<%- include('partials/header', { wide: true }) %>
+<h1>Parts log</h1>
+<%- include('partials/filters', { base: '/admin/parts', statuses: labels.partsStatus, showAction: true, searchHint: 'Part, job number, name' }) %>
+<p class="count"><%= rows.length %> <%= rows.length === 1 ? 'entry' : 'entries' %><% if (more) { %> shown (newest 500). Narrow the filter or download the CSV for everything.<% } %></p>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Submitted</th><th>Name</th><th>Action</th><th>Parts</th><th>For</th><th>Needed by</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+  <% rows.forEach(function (s) { %>
+  <tr>
+    <td class="nowrap"><%= fmtDateTime(s.created_at) %></td>
+    <td><%= s.display_name %></td>
+    <td><span class="tag <%= s.action %>"><%= labels.action[s.action] %></span></td>
+    <td class="items"><%= s.items %></td>
+    <td><%= s.source === 'job' ? 'Job ' + s.job_number : 'Van stock' %></td>
+    <td class="nowrap"><%= fmtDate(s.needed_by) %></td>
+    <td><% if (s.status) { %><span class="status s-<%= s.status %>"><%= labels.partsStatus[s.status] %></span><% } %></td>
+    <td class="nowrap"><a href="/admin/parts/<%= s.id %>">Open</a><% if (s.photo_path) { %> · <a href="/parts/photo/<%= s.id %>">Photo</a><% } %></td>
+  </tr>
+  <% }) %>
+  <% if (!rows.length) { %><tr><td colspan="8" class="empty">No entries match.</td></tr><% } %>
+  </tbody>
+</table>
+</div>
+<%- include('partials/footer') %>

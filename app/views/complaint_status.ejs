@@ -1,0 +1,28 @@
+<%- include('partials/header') %>
+<div class="narrow">
+<h1>Check a complaint</h1>
+<% if (error) { %><p class="flash err" role="alert"><%= error %></p><% } %>
+<% if (complaint) { %>
+<div class="card stack">
+  <div class="rec-head">
+    <span class="status s-<%= complaint.status %>"><%= labels.complaintStatus[complaint.status] %></span>
+    <time>Sent <%= fmtDate(complaint.created_date) %></time>
+  </div>
+  <p class="meta">Category: <%= labels.complaintCategory[complaint.category] %></p>
+  <% if (complaint.reviewer_reply) { %>
+  <p class="reply"><strong>Reply:</strong> <%= complaint.reviewer_reply %></p>
+  <% } else { %>
+  <p class="meta">No reply yet.</p>
+  <% } %>
+</div>
+<% } %>
+<form method="post" action="/complaint/status" class="card stack">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Tracking code
+    <input name="code" class="code-input" placeholder="XXXX-XXXX-XXXX" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" required>
+  </label>
+  <button class="btn primary" type="submit">Check status</button>
+</form>
+<p class="hint">Looking up a code does not record who looked.</p>
+</div>
+<%- include('partials/footer') %>

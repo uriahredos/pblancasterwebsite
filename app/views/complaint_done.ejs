@@ -1,0 +1,10 @@
+<%- include('partials/header') %>
+<h1>Complaint sent</h1>
+<p>Thank you. It has been passed on without your name.</p>
+<div class="card code-card">
+  <p class="mini">Your tracking code</p>
+  <p class="code" id="code"><%= code %></p>
+  <p><strong>Write this down or take a screenshot now.</strong> It is shown only this once and cannot be recovered. With it you can check the status and read any reply on the <a href="/complaint/status">complaint status page</a>.</p>
+</div>
+<p><a class="btn" href="/">Back to home</a></p>
+<%- include('partials/footer') %>

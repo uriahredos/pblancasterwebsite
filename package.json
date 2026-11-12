@@ -1,0 +1,27 @@
+{
+  "name": "branch-portal",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pye-Barker Lancaster Branch portal: parts sign-out, training requests and anonymous complaints",
+  "main": "app/server.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node app/server.js",
+    "dev": "node --watch app/server.js",
+    "test": "node --test",
+    "create-admin": "node scripts/create-admin.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^13.1.1",
+    "ejs": "^7.0.2",
+    "express": "^4.22.3",
+    "express-rate-limit": "^8.7.4",
+    "express-session": "^1.19.0",
+    "helmet": "^8.3.0",
+    "multer": "^2.5.0",
+    "nodemailer": "^10.5.0"
+  }
+}

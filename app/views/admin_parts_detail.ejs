@@ -1,0 +1,30 @@
+<%- include('partials/header') %>
+<p><a href="/admin/parts">&larr; Parts log</a></p>
+<h1><%= labels.action[s.action] %> · <%= s.display_name %></h1>
+<div class="card stack">
+  <dl class="facts">
+    <dt>Submitted</dt><dd><%= fmtDateTime(s.created_at) %></dd>
+    <dt>For</dt><dd><%= s.source === 'job' ? 'Job ' + s.job_number : 'Van stock' %></dd>
+    <% if (s.needed_by) { %><dt>Needed by</dt><dd><%= fmtDate(s.needed_by) %></dd><% } %>
+    <% if (s.note) { %><dt>Note</dt><dd class="pre"><%= s.note %></dd><% } %>
+  </dl>
+  <table class="plain">
+    <thead><tr><th>Part</th><th class="num">Qty</th></tr></thead>
+    <tbody><% items.forEach(function (i) { %><tr><td><%= i.part_name %></td><td class="num"><%= i.quantity %></td></tr><% }) %></tbody>
+  </table>
+  <% if (s.photo_path) { %><a href="/parts/photo/<%= s.id %>"><img class="photo" src="/parts/photo/<%= s.id %>" alt="Photo of returned parts"></a><% } %>
+</div>
+<% if (s.action === 'request') { %>
+<h2>Status</h2>
+<form method="post" action="/admin/parts/<%= s.id %>/status" class="card stack">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Status
+    <select name="status"><% Object.keys(labels.partsStatus).forEach(function (k) { %><option value="<%= k %>" <%= k === s.status ? 'selected' : '' %>><%= labels.partsStatus[k] %></option><% }) %></select>
+  </label>
+  <label>Reply to <%= s.display_name %> <span class="hint">Optional. They see it under My submissions.</span>
+    <textarea name="admin_note" rows="3" maxlength="1000"><%= s.admin_note || '' %></textarea>
+  </label>
+  <button class="btn primary" type="submit">Save</button>
+</form>
+<% } %>
+<%- include('partials/footer') %>

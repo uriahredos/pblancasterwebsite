@@ -1,0 +1,27 @@
+<form method="get" class="filters card">
+  <label>From <input type="date" name="from" value="<%= f.from %>"></label>
+  <label>To <input type="date" name="to" value="<%= f.to %>"></label>
+  <label>Person
+    <select name="user"><option value="">Everyone</option>
+      <% users.forEach(function (u) { %><option value="<%= u.id %>" <%= String(u.id) === f.user ? 'selected' : '' %>><%= u.display_name %></option><% }) %>
+    </select>
+  </label>
+  <% if (typeof showAction !== 'undefined' && showAction) { %>
+  <label>Action
+    <select name="action"><option value="">All</option>
+      <% Object.keys(labels.action).forEach(function (k) { %><option value="<%= k %>" <%= k === f.action ? 'selected' : '' %>><%= labels.action[k] %></option><% }) %>
+    </select>
+  </label>
+  <% } %>
+  <label>Status
+    <select name="status"><option value="">Any</option>
+      <% Object.keys(statuses).forEach(function (k) { %><option value="<%= k %>" <%= k === f.status ? 'selected' : '' %>><%= statuses[k] %></option><% }) %>
+    </select>
+  </label>
+  <label class="grow">Search <input type="search" name="q" value="<%= f.q %>" placeholder="<%= searchHint %>"></label>
+  <div class="filter-actions">
+    <button class="btn primary small" type="submit">Filter</button>
+    <a class="btn small" href="<%= base %>">Clear</a>
+    <a class="btn small" href="<%= base %>.csv<%= qs ? '?' + qs : '' %>">Download CSV</a>
+  </div>
+</form>
