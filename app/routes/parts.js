@@ -9,6 +9,7 @@ const config = require('../config');
 const mail = require('../mail');
 const { requireLogin, verifyCsrf, forbidden, flash } = require('../auth');
 const { clean, localDate, isYmd } = require('../util');
+const { canChange, logChange } = require('../changes');
 
 const router = express.Router();
 const uploadDir = path.join(config.dataDir, 'uploads');
@@ -80,7 +81,7 @@ function readForm(body) {
 
 router.get('/parts', requireLogin, (req, res) => {
   const action = ['take', 'return', 'request'].includes(req.query.action) ? req.query.action : '';
-  res.render('parts', { title: 'Parts', values: { action, items: [] }, errors: [] });
+  res.render('parts', { title: 'Parts', values: { action, items: [] }, errors: [], editing: null });
 });
 
 router.post('/parts', requireLogin, parseUpload, verifyCsrf, (req, res) => {
@@ -92,7 +93,7 @@ router.post('/parts', requireLogin, parseUpload, verifyCsrf, (req, res) => {
 
   if (errors.length) {
     removeFile(photo);
-    return res.status(400).render('parts', { title: 'Parts', values, errors });
+    return res.status(400).render('parts', { title: 'Parts', values, errors, editing: null });
   }
 
   const now = new Date();
@@ -118,7 +119,101 @@ router.post('/parts', requireLogin, parseUpload, verifyCsrf, (req, res) => {
   }
   const done = { take: 'Parts signed out.', return: 'Return recorded.', request: 'Parts request sent.' };
   flash(req, 'ok', `${done[values.action]} Thank you.`);
-  res.redirect('/my');
+  res.redirect('/my?sent=parts');
+});
+
+// Suggestions while typing a part: the catalog first, then names people have used before.
+router.get('/parts/suggest', requireLogin, (req, res) => {
+  const q = clean(req.query.q, 60);
+  if (q.length < 2) return res.json([]);
+  const esc = q.replace(/[\\%_]/g, '\\$&');
+  const rows = db.prepare(
+    `SELECT part_number AS n, description AS d FROM parts_catalog
+     WHERE active = 1 AND (part_number LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\')
+     ORDER BY (part_number LIKE ? ESCAPE '\\') DESC, part_number LIMIT 8`
+  ).all(`%${esc}%`, `%${esc}%`, `${esc}%`);
+  if (rows.length < 8) {
+    const seen = new Set(rows.map((r) => r.n.toUpperCase()));
+    const used = db.prepare(
+      `SELECT MIN(part_name) AS n, COUNT(*) AS c FROM parts_items WHERE part_name LIKE ? ESCAPE '\\'
+         AND NOT EXISTS (SELECT 1 FROM parts_catalog c WHERE c.part_number = TRIM(part_name) AND c.active = 0)
+       GROUP BY UPPER(TRIM(part_name)) ORDER BY c DESC LIMIT 8`).all(`%${esc}%`);
+    for (const u of used) {
+      if (rows.length >= 8) break;
+      if (!seen.has(u.n.trim().toUpperCase())) rows.push({ n: u.n.trim(), d: '' });
+    }
+  }
+  res.json(rows);
+});
+
+// ---- Edit or cancel an entry ----------------------------------------------
+
+const getEntry = (id) => db.prepare('SELECT * FROM parts_submissions WHERE id = ?').get(id);
+const getItems = (id) => db.prepare('SELECT part_name, quantity FROM parts_items WHERE submission_id = ? ORDER BY id').all(id);
+const backTo = (user, row) => (user.id === row.user_id ? '/my' : `/admin/parts/${row.id}`);
+
+function loadChangeable(req, res) {
+  const row = /^\d+$/.test(req.params.id) ? getEntry(req.params.id) : null;
+  if (!row) { res.status(404).render('error', { title: 'Page not found', message: 'That entry does not exist.' }); return null; }
+  if (row.user_id !== req.user.id && req.user.role !== 'admin') { forbidden(res); return null; }
+  if (!canChange(row, req.user)) {
+    res.status(403).render('error', {
+      title: 'This entry can no longer be changed',
+      message: `Entries can be changed for ${config.editWindowHours} hours, and only until someone has acted on them. Ask an admin to correct it.`,
+    });
+    return null;
+  }
+  return row;
+}
+
+router.get('/parts/:id/edit', requireLogin, (req, res) => {
+  const row = loadChangeable(req, res);
+  if (!row) return;
+  const items = getItems(row.id).map((i) => ({ part_name: i.part_name, quantity: String(i.quantity) }));
+  res.render('parts', { title: 'Edit parts entry', values: { ...row, items }, errors: [], editing: row });
+});
+
+router.post('/parts/:id/edit', requireLogin, parseUpload, verifyCsrf, (req, res) => {
+  const row = loadChangeable(req, res);
+  if (!row) return removeFile(req.file);
+  // What was done (take / return / request) is fixed; to change that, cancel and send a new one.
+  const { values, errors } = readForm({ ...req.body, action: row.action });
+  let photo = req.file || null;
+  if (req.photoError) errors.push(req.photoError);
+  if (photo && row.action !== 'return') { removeFile(photo); photo = null; }
+  if (photo && !looksLikeImage(photo.path)) errors.push('The photo must be a JPEG, PNG, WebP or GIF image.');
+  if (errors.length) {
+    removeFile(photo);
+    return res.status(400).render('parts', { title: 'Edit parts entry', values: { ...values, photo_path: row.photo_path }, errors, editing: row });
+  }
+
+  db.transaction(() => {
+    logChange('parts', row.id, req.user.id, 'edited', {
+      items: getItems(row.id), source: row.source, job_number: row.job_number, note: row.note, needed_by: row.needed_by,
+    });
+    db.prepare(
+      `UPDATE parts_submissions SET source = ?, job_number = ?, note = ?, needed_by = ?, photo_path = ?, edited_at = ? WHERE id = ?`
+    ).run(values.source, values.source === 'job' ? values.job_number : null, values.note || null,
+      row.action === 'request' ? values.needed_by : null, photo ? photo.filename : row.photo_path,
+      new Date().toISOString(), row.id);
+    db.prepare('DELETE FROM parts_items WHERE submission_id = ?').run(row.id);
+    const add = db.prepare('INSERT INTO parts_items (submission_id, part_name, quantity) VALUES (?, ?, ?)');
+    for (const it of values.items) add.run(row.id, it.part_name, Number(it.quantity));
+  })();
+  if (photo && row.photo_path) fs.rm(path.join(uploadDir, path.basename(row.photo_path)), { force: true }, () => {});
+  flash(req, 'ok', 'Entry updated.');
+  res.redirect(backTo(req.user, row));
+});
+
+router.post('/parts/:id/cancel', requireLogin, (req, res) => {
+  const row = loadChangeable(req, res);
+  if (!row) return;
+  db.transaction(() => {
+    logChange('parts', row.id, req.user.id, 'cancelled', null);
+    db.prepare('UPDATE parts_submissions SET cancelled_at = ? WHERE id = ?').run(new Date().toISOString(), row.id);
+  })();
+  flash(req, 'ok', 'Entry cancelled.');
+  res.redirect(backTo(req.user, row));
 });
 
 // Photos are only shown to the person who uploaded them and to admins.

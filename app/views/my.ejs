@@ -5,16 +5,23 @@
 <% if (!parts.length) { %><p class="empty">Nothing yet. <a href="/parts">Open the parts form</a>.</p><% } %>
 <ul class="records">
 <% parts.forEach(function (s) { %>
-  <li class="card">
+  <li class="card <%= s.cancelled_at ? 'cancelled' : '' %>">
     <div class="rec-head">
       <span class="tag <%= s.action %>"><%= labels.action[s.action] %></span>
-      <% if (s.status) { %><span class="status s-<%= s.status %>"><%= labels.partsStatus[s.status] %></span><% } %>
+      <% if (s.cancelled_at) { %><span class="tag off">Cancelled</span><% } else if (s.status) { %><span class="status s-<%= s.status %>"><%= labels.partsStatus[s.status] %></span><% } %>
       <time><%= fmtDateTime(s.created_at) %></time>
     </div>
     <p class="items"><%= s.items %></p>
     <p class="meta"><%= s.source === 'job' ? 'Job ' + s.job_number : 'Van stock' %><% if (s.needed_by) { %> · Needed by <%= fmtDate(s.needed_by) %><% } %><% if (s.photo_path) { %> · <a href="/parts/photo/<%= s.id %>">Photo</a><% } %></p>
     <% if (s.note) { %><p class="meta">Note: <%= s.note %></p><% } %>
     <% if (s.admin_note) { %><p class="reply"><strong>Reply:</strong> <%= s.admin_note %></p><% } %>
+    <% if (s.edited_at && !s.cancelled_at) { %><p class="meta">Edited <%= fmtDateTime(s.edited_at) %></p><% } %>
+    <% if (s.can_change) { %>
+    <div class="rec-actions">
+      <a href="/parts/<%= s.id %>/edit">Edit</a>
+      <form method="post" action="/parts/<%= s.id %>/cancel" data-confirm="Cancel this entry?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Cancel entry</button></form>
+    </div>
+    <% } %>
   </li>
 <% }) %>
 </ul>
@@ -23,16 +30,23 @@
 <% if (!training.length) { %><p class="empty">Nothing yet. <a href="/training">Open the training form</a>.</p><% } %>
 <ul class="records">
 <% training.forEach(function (t) { %>
-  <li class="card">
+  <li class="card <%= t.cancelled_at ? 'cancelled' : '' %>">
     <div class="rec-head">
-      <span class="status s-<%= t.status %>"><%= labels.trainingStatus[t.status] %></span>
+      <% if (t.cancelled_at) { %><span class="tag off">Cancelled</span><% } else { %><span class="status s-<%= t.status %>"><%= labels.trainingStatus[t.status] %></span><% } %>
       <% if (t.is_private) { %><span class="tag private">Private</span><% } %>
       <time><%= fmtDateTime(t.created_at) %></time>
     </div>
     <p class="items"><%= t.description %></p>
     <% if (t.admin_note) { %><p class="reply"><strong>Reply:</strong> <%= t.admin_note %></p><% } %>
+    <% if (t.edited_at && !t.cancelled_at) { %><p class="meta">Edited <%= fmtDateTime(t.edited_at) %></p><% } %>
+    <% if (t.can_change) { %>
+    <div class="rec-actions">
+      <a href="/training/<%= t.id %>/edit">Edit</a>
+      <form method="post" action="/training/<%= t.id %>/cancel" data-confirm="Cancel this request?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Cancel request</button></form>
+    </div>
+    <% } %>
   </li>
 <% }) %>
 </ul>
-<p class="hint">Anonymous complaints never appear here. Use your tracking code on the <a href="/complaint/status">complaint status page</a>.</p>
+<p class="hint">You can edit or cancel a submission for <%= editWindowHours %> hours after sending it, until someone has acted on it. Anonymous complaints never appear here. Use your tracking code on the <a href="/complaint/status">complaint status page</a>.</p>
 <%- include('partials/footer') %>

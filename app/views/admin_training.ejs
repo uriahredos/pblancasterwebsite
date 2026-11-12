@@ -7,13 +7,13 @@
   <thead><tr><th>Submitted</th><th>Name</th><th>Training description</th><th>Contact?</th><th>Private?</th><th>Status</th><th></th></tr></thead>
   <tbody>
   <% rows.forEach(function (t) { %>
-  <tr>
+  <tr class="<%= t.cancelled_at ? 'off' : '' %>">
     <td class="nowrap"><%= fmtDateTime(t.created_at) %></td>
     <td><%= t.display_name %></td>
     <td class="items clamp"><%= t.description %></td>
     <td><%= t.wants_contact ? 'Yes' : 'No' %></td>
     <td><% if (t.is_private) { %><span class="tag private">Private</span><% } else { %>No<% } %></td>
-    <td><span class="status s-<%= t.status %>"><%= labels.trainingStatus[t.status] %></span></td>
+    <td><% if (t.cancelled_at) { %><span class="tag off">Cancelled</span><% } else { %><span class="status s-<%= t.status %>"><%= labels.trainingStatus[t.status] %></span><% } %></td>
     <td><a href="/admin/training/<%= t.id %>">Open</a></td>
   </tr>
   <% }) %>

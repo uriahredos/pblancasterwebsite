@@ -45,4 +45,5 @@
   </tbody>
 </table>
 </div>
+<% if (user.can_review_complaints) { %><p class="hint spaced"><a href="/admin/backups">Backups</a>: download a copy of the site's data.</p><% } %>
 <%- include('partials/footer') %>

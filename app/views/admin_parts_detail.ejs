@@ -1,6 +1,6 @@
 <%- include('partials/header') %>
 <p><a href="/admin/parts">&larr; Parts log</a></p>
-<h1><%= labels.action[s.action] %> · <%= s.display_name %></h1>
+<h1><%= labels.action[s.action] %> · <%= s.display_name %><% if (s.cancelled_at) { %> <span class="tag off">Cancelled</span><% } %></h1>
 <div class="card stack">
   <dl class="facts">
     <dt>Submitted</dt><dd><%= fmtDateTime(s.created_at) %></dd>
@@ -14,7 +14,25 @@
   </table>
   <% if (s.photo_path) { %><a href="/parts/photo/<%= s.id %>"><img class="photo" src="/parts/photo/<%= s.id %>" alt="Photo of returned parts"></a><% } %>
 </div>
-<% if (s.action === 'request') { %>
+
+<% if (history.length) { %>
+<h2>Changes</h2>
+<ul class="records">
+  <% history.forEach(function (h) { %>
+  <li class="card">
+    <p><strong><%= h.change === 'cancelled' ? 'Cancelled' : 'Edited' %></strong> by <%= h.display_name %>, <%= fmtDateTime(h.changed_at) %></p>
+    <% if (h.before) { %><p class="meta pre">Before: <%= h.before.items.map(function (i) { return i.quantity + ' × ' + i.part_name; }).join(', ') %> · <%= h.before.source === 'job' ? 'Job ' + h.before.job_number : 'Van stock' %><% if (h.before.needed_by) { %> · needed by <%= fmtDate(h.before.needed_by) %><% } %><% if (h.before.note) { %> · note: <%= h.before.note %><% } %></p><% } %>
+  </li>
+  <% }) %>
+</ul>
+<% } %>
+<% if (!s.cancelled_at) { %>
+<div class="rec-actions spaced">
+  <a class="btn small" href="/parts/<%= s.id %>/edit">Edit</a>
+  <form method="post" action="/parts/<%= s.id %>/cancel" data-confirm="Cancel this?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn small" type="submit">Cancel it</button></form>
+</div>
+<% } %>
+<% if (s.action === 'request' && !s.cancelled_at) { %>
 <h2>Status</h2>
 <form method="post" action="/admin/parts/<%= s.id %>/status" class="card stack">
   <input type="hidden" name="_csrf" value="<%= csrf %>">

@@ -34,11 +34,6 @@ p { margin: 0 0 .75rem; }
 .nav a:hover { background: rgba(255,255,255,.08); color: #fff; }
 .nav a[aria-current] { background: rgba(255,255,255,.16); color: #fff; font-weight: 600; }
 .nav-sep { width: 1px; background: rgba(255,255,255,.25); margin: .4rem .35rem; flex: none; }
-@media (min-width: 900px) {
-  .nav { order: 0; flex-basis: auto; flex: 1; margin: 0; padding: 0; }
-  .brand { margin-right: 1rem; }
-}
-
 main { max-width: 720px; margin: 0 auto; padding: 1.5rem 16px 4rem; }
 main.wide { max-width: 1200px; }
 .narrow { max-width: 420px; margin: 0 auto; }
@@ -151,3 +146,22 @@ table.plain { border: 1px solid var(--line); border-radius: 8px; }
 .code { font: 700 1.5rem/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .06em; margin: 0 0 .75rem; user-select: all; overflow-wrap: anywhere; }
 .code-input { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .06em; text-transform: uppercase; }
 .records + .hint, .filters + .hint { margin-top: .75rem; }
+
+/* Edit / cancel */
+.rec-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1.25rem; margin-top: .6rem; }
+.spaced { margin: 1rem 0; }
+.card.cancelled .items, tr.off .items { text-decoration: line-through; }
+.card.cancelled { opacity: .75; }
+.tag.off { background: var(--bg); color: var(--muted); }
+.segmented.single { grid-template-columns: 1fr; }
+.title-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; margin-bottom: .75rem; }
+.title-row h1 { margin: 0; }
+
+/* Part suggestions */
+.suggest-wrap { position: relative; }
+.suggest { position: absolute; z-index: 5; left: 0; right: 0; top: 100%; margin: 2px 0 0; padding: 0; list-style: none; background: var(--surface); border: 1px solid #9aa3af; border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.18); max-height: 16rem; overflow-y: auto; font-weight: 400; }
+.suggest li { padding: .6rem .75rem; cursor: pointer; border-bottom: 1px solid var(--line); }
+.suggest li:last-child { border-bottom: 0; }
+.suggest li:hover { background: var(--accent-soft); }
+.suggest strong { display: block; }
+.suggest span { color: var(--muted); font-size: .875rem; }

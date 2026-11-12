@@ -1,14 +1,18 @@
 <%- include('partials/header') %>
-<h1>Parts</h1>
+<h1><%= editing ? 'Edit parts entry' : 'Parts' %></h1>
+<% if (editing) { %>
+<p class="lede"><%= labels.action[editing.action] %>, sent <%= fmtDateTime(editing.created_at) %>. The change is recorded.</p>
+<% } else { %>
 <p class="lede">Submitting as <strong><%= user.display_name %></strong>.</p>
+<% } %>
 <%- include('partials/errors') %>
 <% var rows = values.items && values.items.length ? values.items : [{ part_name: '', quantity: '' }]; %>
-<form method="post" action="/parts" enctype="multipart/form-data" class="card stack" id="parts-form">
+<form method="post" action="<%= editing ? '/parts/' + editing.id + '/edit' : '/parts' %>" enctype="multipart/form-data" class="card stack" id="parts-form" <%- editing ? '' : 'data-draft="parts:' + user.id + '"' %> <%- !editing && !errors.length ? 'data-draft-restore' : '' %> data-offline-guard>
   <input type="hidden" name="_csrf" value="<%= csrf %>">
   <fieldset>
     <legend>What would you like to do?</legend>
-    <div class="segmented">
-      <% ['take', 'return', 'request'].forEach(function (a) { %>
+    <div class="segmented <%= editing ? 'single' : '' %>">
+      <% (editing ? [editing.action] : ['take', 'return', 'request']).forEach(function (a) { %>
       <label><input type="radio" name="action" value="<%= a %>" <%= values.action === a ? 'checked' : '' %> required><span><%= labels.action[a] %></span></label>
       <% }) %>
     </div>
@@ -19,7 +23,7 @@
     <div id="items">
       <% rows.forEach(function (it, i) { %>
       <div class="item-row">
-        <label class="grow"><span class="<%= i ? 'sr' : 'mini' %>">Part name or number</span>
+        <label class="grow suggest-wrap"><span class="<%= i ? 'sr' : 'mini' %>">Part name or number</span>
           <input name="part_name" value="<%= it.part_name %>" maxlength="200" placeholder="e.g. SIGA-CT2" autocapitalize="characters" autocomplete="off"></label>
         <label class="qty"><span class="<%= i ? 'sr' : 'mini' %>">Qty</span>
           <input name="quantity" value="<%= it.quantity %>" inputmode="numeric" pattern="[0-9]*" maxlength="5" placeholder="1" autocomplete="off"></label>
@@ -44,7 +48,7 @@
     <input type="date" name="needed_by" value="<%= values.needed_by || '' %>">
   </label>
 
-  <label data-show-action="return">Photo of the returned parts <span class="hint">Optional. JPEG or PNG, up to 10 MB.</span>
+  <label data-show-action="return">Photo of the returned parts <span class="hint">Optional. JPEG or PNG, up to 10 MB.<% if (editing && values.photo_path) { %> A photo is already attached; choosing a new one replaces it.<% } %></span>
     <input type="file" name="photo" accept="image/jpeg,image/png,image/webp,image/gif">
   </label>
 
@@ -52,7 +56,8 @@
     <textarea name="note" rows="2" maxlength="1000"><%= values.note || '' %></textarea>
   </label>
 
-  <button class="btn primary" type="submit">Submit</button>
+  <p class="flash err" id="offline-msg" role="alert" hidden>No connection right now, so this was not sent. What you typed is saved on this phone. Try again when you have signal.</p>
+  <button class="btn primary" type="submit"><%= editing ? 'Save changes' : 'Submit' %></button>
 </form>
 <script src="/parts-form.js" defer></script>
 <%- include('partials/footer') %>

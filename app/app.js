@@ -9,6 +9,7 @@ const SqliteStore = require('./sessionStore');
 const auth = require('./auth');
 const util = require('./util');
 
+const MULTIPART_PATHS = /^\/(parts|parts\/\d+\/edit|admin\/catalog\/import)$/;
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000; // stay signed in on a phone for 30 days
 
 const app = express();
@@ -19,7 +20,7 @@ if (config.production) app.set('trust proxy', 1);
 
 Object.assign(app.locals, {
   labels: util.labels, fmtDateTime: util.fmtDateTime, fmtDate: util.fmtDate,
-  minPasswordLength: config.minPasswordLength,
+  minPasswordLength: config.minPasswordLength, editWindowHours: config.editWindowHours,
 });
 
 app.use(helmet({
@@ -65,8 +66,8 @@ app.use((req, res, next) => {
   res.locals.path = req.path;
   res.setHeader('Cache-Control', 'no-store');
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
-  // The parts form is multipart (photo); its route checks the token after the upload is parsed.
-  if (req.path === '/parts' && req.is('multipart/form-data')) return next();
+  // These forms carry a file; their routes check the token after the upload is parsed.
+  if (MULTIPART_PATHS.test(req.path) && req.is('multipart/form-data')) return next();
   auth.verifyCsrf(req, res, next);
 });
 
@@ -75,6 +76,8 @@ app.use(require('./routes/home'));
 app.use(require('./routes/training'));
 app.use(require('./routes/parts'));
 app.use(require('./routes/complaints'));
+app.use(require('./routes/catalog'));
+app.use(require('./routes/backups'));
 app.use(require('./routes/admin'));
 
 app.use((req, res) => {

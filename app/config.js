@@ -31,6 +31,11 @@ module.exports = {
   complaintNotifyTo: list(env.COMPLAINT_NOTIFY_TO),
   complaintDigestHour: env.COMPLAINT_DIGEST_HOUR === undefined ? 17 : Number(env.COMPLAINT_DIGEST_HOUR),
   complaintDailyLimit: 5,
+  // How long someone may edit or cancel their own submission.
+  editWindowHours: env.EDIT_WINDOW_HOURS === undefined ? 24 : Number(env.EDIT_WINDOW_HOURS),
+  backupHour: env.BACKUP_HOUR === undefined ? 2 : Number(env.BACKUP_HOUR),
+  backupKeep: Number(env.BACKUP_KEEP) || 14,
+  backupEmailTo: list(env.BACKUP_EMAIL_TO),
   maxPhotoBytes: 10 * 1024 * 1024,
   minPasswordLength: 10,
 };

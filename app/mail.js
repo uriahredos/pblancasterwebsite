@@ -18,14 +18,14 @@ if (config.smtp.host) {
 function setTransport(t) { transport = t; }
 
 /** Never throws: a mail problem must not break a form submission. */
-async function send(to, subject, text) {
+async function send(to, subject, text, attachments) {
   if (!to || to.length === 0) return false;
   if (!transport) {
     console.log(`[mail] not configured, skipped: ${subject}`);
     return false;
   }
   try {
-    await transport.sendMail({ from: config.mailFrom, to: to.join(', '), subject, text });
+    await transport.sendMail({ from: config.mailFrom, to: to.join(', '), subject, text, attachments });
     return true;
   } catch (err) {
     console.error(`[mail] failed: ${subject}: ${err.message}`);

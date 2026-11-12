@@ -38,3 +38,5 @@ services:
         sync: false
       - key: COMPLAINT_NOTIFY_TO
         sync: false
+      - key: BACKUP_EMAIL_TO
+        sync: false

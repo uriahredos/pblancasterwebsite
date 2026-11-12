@@ -82,10 +82,42 @@ CREATE TABLE IF NOT EXISTS sessions (
   data TEXT NOT NULL
 );
 
+-- The parts list (from Sedona). Part numbers and descriptions only: no prices.
+CREATE TABLE IF NOT EXISTS parts_catalog (
+  id INTEGER PRIMARY KEY,
+  part_number TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  description TEXT NOT NULL DEFAULT '',
+  manufacturer TEXT,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL
+);
+
+-- Who edited or cancelled a parts entry or training request, and what it said before.
+CREATE TABLE IF NOT EXISTS change_log (
+  id INTEGER PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('parts','training')),
+  record_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  changed_at TEXT NOT NULL,
+  change TEXT NOT NULL CHECK (change IN ('edited','cancelled')),
+  before_json TEXT
+);
+CREATE INDEX IF NOT EXISTS change_log_record ON change_log(kind, record_id);
+
 CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY,
   value TEXT
 );
 `);
+
+// Columns added after the first release. Safe to run on every start.
+function addColumn(table, column, type) {
+  const has = db.prepare(`SELECT 1 FROM pragma_table_info('${table}') WHERE name = ?`).get(column);
+  if (!has) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+}
+for (const table of ['parts_submissions', 'training_requests']) {
+  addColumn(table, 'edited_at', 'TEXT');
+  addColumn(table, 'cancelled_at', 'TEXT');
+}
 
 module.exports = db;

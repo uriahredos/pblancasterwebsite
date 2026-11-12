@@ -12,6 +12,9 @@ A small website for the Pye-Barker Lancaster Branch: parts sign-out (take / retu
 | `/complaint/status` | Check a complaint with its tracking code |
 | `/my` | A person's own parts and training submissions, with status |
 | `/admin/parts`, `/admin/training`, `/admin/users` | Admins only |
+| `/admin/parts/summary` | Parts usage totals (admins) |
+| `/admin/catalog` | Parts catalog (admins) |
+| `/admin/backups` | Backups (admins who can also read complaints) |
 | `/admin/complaints` | Complaint reviewers only |
 
 Someone who opens a link while signed out is sent to the sign-in page and then straight back to that form.
@@ -54,7 +57,48 @@ The app needs a disk that survives restarts (for the database and photos), so it
 
 The same `Dockerfile` works on Railway, Fly.io or any server with Docker. Mount a volume at `/data` and set the variables listed in `.env.example`.
 
-**Back up `/data/portal.db` and `/data/uploads`.** That is all the data there is.
+All the data is `/data/portal.db` and `/data/uploads`. See Backups below.
+
+## Put it on a phone's home screen
+
+The site can be installed like an app, with its own icon.
+
+- **iPhone (Safari):** open the site, tap the Share button, then **Add to Home Screen**.
+- **Android (Chrome):** open the site, tap the three-dot menu, then **Add to Home screen** or **Install app**.
+
+What it does with no signal:
+
+- The parts and training forms save what is typed on the phone as it is typed. If the page is closed or the signal drops, it is put back the next time the form is opened, and it is cleared once the form is sent. Photos are not saved.
+- Pressing Submit with no signal shows "not sent" instead of losing the form. Nothing is sent later automatically; the person presses Submit again when they have signal.
+- Complaint text is never saved on the phone.
+
+## Parts catalog (`/admin/catalog`)
+
+A list of part numbers and descriptions. When someone types on the parts form, matching catalog parts are suggested; they can still type a part that is not listed. Parts that are not in the catalog but have been typed before are suggested too.
+
+- **Import**: upload a CSV file. It needs a part number column (for example "Part Code", "Part Number" or "Item"); "Description" and "Manufacturer" are used if present. **Prices, costs and every other column are ignored and not stored.** There is no price field in the database.
+- From Excel: File > Save As > CSV, then upload that.
+- Importing again adds new parts and updates descriptions. It never removes parts.
+- **Hide** stops a part being suggested without deleting it.
+
+## Parts usage summary (`/admin/parts/summary`)
+
+Reached from the **Usage summary** button on the parts log. For a date range (and optionally one person or a search), it shows totals by part (taken, returned, net used, requested), by person and by job, with a CSV download. Part names are matched ignoring upper/lower case and stray spaces. Cancelled entries are not counted.
+
+## Editing and cancelling
+
+- A person can edit or cancel their own parts entry or training request from **My submissions** for 24 hours (`EDIT_WINDOW_HOURS`), as long as nobody has acted on it (a request that is no longer "New" is locked).
+- Admins can edit or cancel any entry at any time from its detail page.
+- Take / Return / Request cannot be switched by an edit; cancel and send a new one.
+- Nothing is deleted. A cancelled entry stays in the log marked "Cancelled", and every edit records who made it, when, and what the entry said before. This shows on the entry's detail page and in the CSV export.
+
+## Backups (`/admin/backups`)
+
+- A copy of the database is made every night (after `BACKUP_HOUR`, default 2 am) and the newest 14 are kept in `/data/backups`.
+- **These copies are on the same disk as the site.** They protect against mistakes, not against losing the disk. To get copies off the server, either set `BACKUP_EMAIL_TO` (needs the email settings below) so each night's copy is emailed, or download one from the Backups page now and then.
+- The Backups page also has **Back up now** and **Download all photos**.
+- A backup contains everything, including anonymous complaints, so the page is limited to admins who can also read complaints, and `BACKUP_EMAIL_TO` should only name such a person.
+- To restore: stop the site, replace `/data/portal.db` with the backup file, start the site.
 
 ## Email notifications
 
@@ -106,11 +150,13 @@ A reply typed with a status change is shown to the submitter (under My submissio
 app/server.js        starts the site
 app/app.js           security headers, sessions, routes
 app/db.js            database tables
-app/routes/          one file per area: auth, home, parts, training, complaints, admin
+app/routes/          one file per area: auth, home, parts, training, complaints, admin, catalog, backups
+app/backup.js        nightly backups
+app/changes.js       edit/cancel rules and history
 app/views/           the pages
-public/              stylesheet and the parts-form script
+public/              stylesheet, scripts, and the home-screen app files (manifest, sw.js, icons)
 scripts/create-admin.js
 test/portal.test.js  automated tests
 ```
 
-Not in this prototype: Microsoft/Outlook sign-in, a parts catalog or stock counts, importing the old Microsoft Forms history.
+Not in this prototype: Microsoft/Outlook sign-in, stock counts, importing the old Microsoft Forms history.

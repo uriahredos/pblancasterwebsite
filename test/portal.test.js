@@ -9,7 +9,7 @@ const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'portal-test-'));
 Object.assign(process.env, {
   DATA_DIR: dataDir, BCRYPT_ROUNDS: '4', LOGIN_RATE_LIMIT: '1000', APP_TIMEZONE: 'America/New_York',
   NOTIFY_TO: 'boss@example.com', COMPLAINT_NOTIFY_TO: 'reviewer@example.com', COMPLAINT_DIGEST_HOUR: '0',
-  BASE_URL: 'http://portal.test',
+  BASE_URL: 'http://portal.test', BACKUP_EMAIL_TO: 'owner@example.com', BACKUP_HOUR: '0',
 });
 
 // Capture everything the app logs so we can prove complaints leave no trace there.
@@ -74,6 +74,7 @@ async function loggedIn(username) {
 before(async () => {
   makeUser('admin', 'Ada Admin', { role: 'admin' });               // admin, NOT a complaint reviewer
   makeUser('reviewer', 'Rita Reviewer', { reviewer: true });       // reviewer, NOT an admin
+  makeUser('owner', 'Olive Owner', { role: 'admin', reviewer: true }); // admin AND reviewer
   makeUser('tech1', 'Terry Tech');
   makeUser('tech2', 'Uma Tech');
   await new Promise((r) => { server = app.listen(0, r); });
@@ -388,4 +389,245 @@ test('user-typed text is escaped on every page that shows it', async () => {
     assert.ok(!text.includes('<img src=x'), url);
     assert.ok(text.includes('&lt;img src=x'), url);
   }
+});
+
+// ---------------------------------------------------------------------------
+// Edit / cancel, usage summary, parts catalog, backups, home-screen app
+// ---------------------------------------------------------------------------
+
+const lastParts = () => db.prepare('SELECT * FROM parts_submissions ORDER BY id DESC').get();
+const itemsOf = (id) => db.prepare('SELECT part_name, quantity FROM parts_items WHERE submission_id = ? ORDER BY id').all(id).map((r) => ({ ...r }));
+
+test('a person can edit their own parts entry for a while, and the change is recorded', async () => {
+  const tech = await loggedIn('tech1');
+  await tech.post('/parts', [['action', 'take'], ['part_name', 'EDIT-ME'], ['quantity', '70'], ['source', 'van']], { multipart: true });
+  const s = lastParts();
+  const page = `/parts/${s.id}/edit`;
+  assert.match((await tech.get('/my')).text, new RegExp(`href="${page}"`));
+  assert.match((await tech.get(page)).text, /value="EDIT-ME"/);
+
+  const r = await tech.post(page, [['action', 'request'], ['part_name', 'EDIT-ME'], ['quantity', '7'], ['source', 'job'], ['job_number', 'J-1']], { multipart: true, page });
+  assert.equal(r.status, 302);
+  const after = db.prepare('SELECT * FROM parts_submissions WHERE id = ?').get(s.id);
+  assert.equal(after.action, 'take'); // what was done cannot be switched by an edit
+  assert.equal(after.job_number, 'J-1');
+  assert.ok(after.edited_at);
+  assert.deepEqual(itemsOf(s.id), [{ part_name: 'EDIT-ME', quantity: 7 }]);
+
+  const log = db.prepare("SELECT * FROM change_log WHERE kind = 'parts' AND record_id = ?").all(s.id);
+  assert.equal(log.length, 1);
+  assert.equal(log[0].change, 'edited');
+  assert.deepEqual(JSON.parse(log[0].before_json).items, [{ part_name: 'EDIT-ME', quantity: 70 }]);
+  const detail = (await (await loggedIn('admin')).get(`/admin/parts/${s.id}`)).text;
+  assert.match(detail, /Edited<\/strong> by Terry Tech/);
+  assert.match(detail, /Before: 70 × EDIT-ME · Van stock/);
+
+  // An invalid edit changes nothing.
+  assert.equal((await tech.post(page, [['part_name', 'EDIT-ME'], ['quantity', '0'], ['source', 'van']], { multipart: true, page })).status, 400);
+  assert.deepEqual(itemsOf(s.id), [{ part_name: 'EDIT-ME', quantity: 7 }]);
+});
+
+test('edit and cancel limits: other people, the time window, acted-on requests, cancelled entries', async () => {
+  const tech = await loggedIn('tech1');
+  const other = await loggedIn('tech2');
+  const admin = await loggedIn('admin');
+  const s = db.prepare("SELECT s.id FROM parts_submissions s JOIN parts_items i ON i.submission_id = s.id WHERE i.part_name = 'EDIT-ME'").get();
+  const fields = [['part_name', 'HACKED'], ['quantity', '1'], ['source', 'van']];
+
+  assert.equal((await other.get(`/parts/${s.id}/edit`)).status, 403);
+  assert.equal((await other.post(`/parts/${s.id}/edit`, fields, { multipart: true })).status, 403);
+  assert.equal((await other.post(`/parts/${s.id}/cancel`, {})).status, 403);
+  assert.equal((await new Client().get(`/parts/${s.id}/edit`)).status, 302);
+
+  // 25 hours later the owner is locked out, but an admin can still correct it.
+  const old = new Date(Date.now() - 25 * 3600 * 1000).toISOString();
+  db.prepare('UPDATE parts_submissions SET created_at = ? WHERE id = ?').run(old, s.id);
+  assert.equal((await tech.get(`/parts/${s.id}/edit`)).status, 403);
+  assert.equal((await tech.post(`/parts/${s.id}/cancel`, {})).status, 403);
+  assert.doesNotMatch((await tech.get('/my')).text, new RegExp(`/parts/${s.id}/edit`));
+  assert.equal((await admin.post(`/parts/${s.id}/edit`, [['part_name', 'EDIT-ME'], ['quantity', '6'], ['source', 'van']], { multipart: true, page: `/parts/${s.id}/edit` })).location, `/admin/parts/${s.id}`);
+  assert.deepEqual(itemsOf(s.id), [{ part_name: 'EDIT-ME', quantity: 6 }]);
+
+  // A request someone has already acted on cannot be changed by its sender.
+  await tech.post('/parts', [['action', 'request'], ['part_name', 'REQ-LOCK'], ['quantity', '1'], ['source', 'van'], ['needed_by', '2026-12-24']], { multipart: true });
+  const req = lastParts();
+  assert.equal((await tech.get(`/parts/${req.id}/edit`)).status, 200);
+  db.prepare("UPDATE parts_submissions SET status = 'ordered' WHERE id = ?").run(req.id);
+  assert.equal((await tech.get(`/parts/${req.id}/edit`)).status, 403);
+
+  // Cancel: kept in the log, marked, and no longer changeable by anyone.
+  await tech.post('/parts', [['action', 'take'], ['part_name', 'CANCEL-ME'], ['quantity', '9'], ['source', 'van']], { multipart: true });
+  const c = lastParts();
+  assert.equal((await tech.post(`/parts/${c.id}/cancel`, {})).status, 302);
+  assert.ok(db.prepare('SELECT cancelled_at FROM parts_submissions WHERE id = ?').get(c.id).cancelled_at);
+  assert.equal(db.prepare("SELECT change FROM change_log WHERE kind = 'parts' AND record_id = ?").get(c.id).change, 'cancelled');
+  assert.match((await tech.get('/my')).text, /Cancelled/);
+  assert.equal((await admin.get(`/parts/${c.id}/edit`)).status, 403);
+  assert.match((await admin.get('/admin/parts?q=CANCEL-ME')).text, /Cancelled/);
+  assert.match((await admin.get('/admin/parts.csv?q=CANCEL-ME')).text, /CANCEL-ME,9,Van stock.*\d{4}, /);
+});
+
+test('training requests can be edited and cancelled the same way', async () => {
+  const tech = await loggedIn('tech1');
+  await tech.post('/training', { description: 'Zone expandors', wants_contact: 'no', is_private: 'no' });
+  const t = db.prepare('SELECT * FROM training_requests ORDER BY id DESC').get();
+  const page = `/training/${t.id}/edit`;
+  assert.equal((await tech.post(page, { description: 'Zone expanders', wants_contact: 'yes', is_private: 'yes' }, { page })).status, 302);
+  const after = db.prepare('SELECT * FROM training_requests WHERE id = ?').get(t.id);
+  assert.deepEqual([after.description, after.wants_contact, after.is_private], ['Zone expanders', 1, 1]);
+  assert.equal(JSON.parse(db.prepare("SELECT before_json FROM change_log WHERE kind = 'training' AND record_id = ?").get(t.id).before_json).description, 'Zone expandors');
+  assert.equal((await (await loggedIn('tech2')).post(`/training/${t.id}/cancel`, {})).status, 403);
+  db.prepare("UPDATE training_requests SET status = 'scheduled' WHERE id = ?").run(t.id);
+  assert.equal((await tech.get(page)).status, 403);
+  db.prepare("UPDATE training_requests SET status = 'new' WHERE id = ?").run(t.id);
+  assert.equal((await tech.post(`/training/${t.id}/cancel`, {})).status, 302);
+  assert.match((await tech.get('/my')).text, /Cancelled/);
+});
+
+test('usage summary adds up takes and returns and leaves cancelled entries out', async () => {
+  const tech = await loggedIn('tech2');
+  const send = (action, qty, extra = []) => tech.post('/parts', [['action', action], ['part_name', action === 'take' ? 'sum-part' : 'SUM-PART '], ['quantity', String(qty)], ...extra], { multipart: true });
+  await send('take', 10, [['source', 'job'], ['job_number', 'SUMJOB-1']]);
+  await send('take', 5, [['source', 'van']]);
+  await send('return', 3, [['source', 'job'], ['job_number', 'SUMJOB-1']]);
+  await send('request', 20, [['source', 'van'], ['needed_by', '2026-12-31']]);
+  await send('take', 100, [['source', 'van']]);
+  await tech.post(`/parts/${lastParts().id}/cancel`, {});
+
+  const admin = await loggedIn('admin');
+  const csv = (await admin.get('/admin/parts/summary.csv?q=sum-part')).text.trim().split('\r\n');
+  assert.match(csv[0], /Part,Description,Taken,Returned,Net used,Requested,Entries/);
+  assert.equal(csv.length, 2); // upper/lower case and stray spaces are one part
+  assert.match(csv[1], /^sum-part,,15,3,12,20,4$/i);
+
+  const html = (await admin.get('/admin/parts/summary?q=sum-part')).text;
+  assert.match(html, /Uma Tech<\/td><td class="num">15<\/td><td class="num">3<\/td>/);
+  assert.match(html, /SUMJOB-1<\/td><td class="num">10<\/td><td class="num">3<\/td>/);
+  assert.equal((await admin.get('/admin/parts/summary?from=2000-01-01&to=2000-01-02')).status, 200);
+  assert.equal((await tech.get('/admin/parts/summary')).status, 403);
+  assert.equal((await tech.get('/admin/parts/summary.csv')).status, 403);
+});
+
+test('parts catalog: import ignores prices, re-import updates, suggestions work', async () => {
+  const admin = await loggedIn('admin');
+  const page = '/admin/catalog';
+  const csv = 'Part Code,Description,Manufacturer,Cost,Sales Price\r\nSIGA-CT2,"Dual input module, Class B",Edwards,41.17,88.50\r\nSIGA-UM,Universal module,Edwards,55.25,120.00\r\n,No part number,,1,2\r\nBAT-12V7,12V 7Ah SLA battery,Duracell,9.99,24.00\r\n';
+  const up = (text, name = 'sedona.csv') => admin.post('/admin/catalog/import', [['file', new File([text], name, { type: 'text/csv' })]], { multipart: true, page });
+  assert.equal((await up(csv)).status, 302);
+  assert.match((await admin.get(page)).text, /3 added, 0 updated, 0 unchanged, 1 rows skipped/);
+
+  const cols = db.prepare("SELECT name FROM pragma_table_info('parts_catalog')").all().map((c) => c.name).sort();
+  assert.deepEqual(cols, ['active', 'created_at', 'description', 'id', 'manufacturer', 'part_number']);
+  const stored = JSON.stringify(db.prepare('SELECT * FROM parts_catalog').all());
+  for (const price of ['41.17', '88.50', '55.25', '120.00', '9.99', '24.00']) assert.ok(!stored.includes(price), price);
+  assert.equal(db.prepare("SELECT description FROM parts_catalog WHERE part_number = 'siga-ct2'").get().description, 'Dual input module, Class B');
+
+  await up('part number\tdescription\nSIGA-UM\tUniversal class A/B module\nNEW-1\tNew thing\n');
+  assert.match((await admin.get(page)).text, /1 added, 1 updated/);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM parts_catalog').get().n, 4); // nothing removed
+
+  assert.equal((await up('PK\u0003\u0004 pretend excel', 'parts.xlsx')).status, 400);
+  assert.equal((await admin.post(page, { part_number: 'siga-ct2', description: 'dup' }, { page })).status, 400);
+  assert.equal((await admin.post(page, { part_number: 'HAND-1', description: 'Added by hand' }, { page })).status, 302);
+
+  const tech = await loggedIn('tech1');
+  const suggest = async (q) => JSON.parse((await tech.get('/parts/suggest?q=' + encodeURIComponent(q))).text);
+  assert.deepEqual((await suggest('siga')).map((r) => r.n), ['SIGA-CT2', 'SIGA-UM']);
+  assert.deepEqual(await suggest('battery'), [{ n: 'BAT-12V7', d: '12V 7Ah SLA battery' }]); // matches on description
+  assert.ok((await suggest('4W')).some((r) => r.n === '4WB'));  // falls back to names used before
+  assert.deepEqual(await suggest('s'), []);
+  assert.deepEqual(await suggest('100%'), []);
+
+  const id = db.prepare("SELECT id FROM parts_catalog WHERE part_number = 'SIGA-UM'").get().id;
+  await admin.post(`/admin/catalog/${id}/toggle`, {}, { page });
+  assert.deepEqual((await suggest('siga-')).map((r) => r.n), ['SIGA-CT2']);
+
+  // The summary picks up the catalog description.
+  assert.match((await admin.get('/admin/parts/summary.csv?q=SIGA-CT2')).text, /SIGA-CT2,"Dual input module, Class B",7,/);
+
+  assert.equal((await tech.get(page)).status, 403);
+  assert.equal((await tech.post(page, { part_number: 'X' })).status, 403);
+  assert.equal((await new Client().get('/parts/suggest?q=siga')).status, 302);
+});
+
+test('backups: limited to admins who may read complaints; nightly copy is made once and emailed', async () => {
+  assert.equal((await (await loggedIn('admin')).get('/admin/backups')).status, 403);     // admin, not reviewer
+  assert.equal((await (await loggedIn('reviewer')).get('/admin/backups')).status, 403);  // reviewer, not admin
+  const owner = await loggedIn('owner');
+  const page = '/admin/backups';
+  assert.equal((await owner.get(page)).status, 200);
+  assert.equal((await owner.post(`${page}/run`, {}, { page })).status, 302);
+  const name = /href="\/admin\/backups\/(portal-[0-9-]+\.db)"/.exec((await owner.get(page)).text)[1];
+  const file = await owner.get(`${page}/${name}`);
+  assert.equal(file.status, 200);
+  assert.ok(file.text.startsWith('SQLite format 3'));
+  assert.equal((await owner.get(`${page}/..%2Fportal.db`)).status, 404);
+  assert.equal((await owner.get(`${page}/portal-1999-01-01.db`)).status, 404);
+  assert.equal((await (await loggedIn('admin')).get(`${page}/${name}`)).status, 403);
+
+  const backup = require('../app/backup');
+  sent.length = 0;
+  const made = await backup.nightly();
+  assert.match(made, /^portal-\d{4}-\d{2}-\d{2}\.db$/);
+  assert.equal(await backup.nightly(), null); // only once a day
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].to, 'owner@example.com');
+  assert.equal(sent[0].attachments[0].filename, made + '.gz');
+  const restored = require('zlib').gunzipSync(sent[0].attachments[0].content);
+  assert.equal(restored.subarray(0, 15).toString(), 'SQLite format 3');
+
+  // The copy is a complete, readable database.
+  const Database = require('better-sqlite3');
+  const copy = new Database(path.join(dataDir, 'backups', made), { readonly: true });
+  assert.equal(copy.prepare('SELECT COUNT(*) n FROM users').get().n, db.prepare('SELECT COUNT(*) n FROM users').get().n);
+  copy.close();
+});
+
+test('home-screen app files are served, and signed-out pages still work', async () => {
+  const c = new Client();
+  const manifest = await c.get('/manifest.webmanifest');
+  assert.equal(manifest.status, 200);
+  const m = JSON.parse(manifest.text);
+  assert.equal(m.display, 'standalone');
+  assert.equal(m.start_url, '/');
+  for (const icon of m.icons) assert.equal((await c.get(icon.src)).status, 200, icon.src);
+  for (const url of ['/sw.js', '/site.js', '/offline.html', '/offline.js', '/icons/apple-touch-icon.png']) assert.equal((await c.get(url)).status, 200, url);
+  const sw = (await c.get('/sw.js')).text;
+  for (const asset of /var ASSETS = \[(.*)\]/.exec(sw)[1].match(/'[^']+'/g)) assert.equal((await c.get(asset.slice(1, -1))).status, 200, asset);
+  const login = (await c.get('/login')).text;
+  assert.match(login, /rel="manifest"/);
+  // Complaint drafts are never saved on the phone.
+  const complaint = (await (await loggedIn('tech1')).get('/complaint')).text;
+  assert.doesNotMatch(complaint, /data-draft=/);
+  assert.match((await (await loggedIn('tech1')).get('/parts')).text, /data-draft="parts:\d+"/);
+});
+
+test('a database from the first release is upgraded in place without losing data', async () => {
+  const { execFileSync } = require('child_process');
+  const Database = require('better-sqlite3');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'portal-old-'));
+  const old = new Database(path.join(dir, 'portal.db'));
+  old.exec(`
+    CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE, display_name TEXT NOT NULL, email TEXT,
+      password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user', can_review_complaints INTEGER NOT NULL DEFAULT 0,
+      must_change_password INTEGER NOT NULL DEFAULT 1, active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL);
+    CREATE TABLE parts_submissions (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, action TEXT NOT NULL, source TEXT NOT NULL, job_number TEXT,
+      note TEXT, needed_by TEXT, photo_path TEXT, status TEXT, admin_note TEXT, created_at TEXT NOT NULL, created_local_date TEXT NOT NULL);
+    CREATE TABLE training_requests (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, description TEXT NOT NULL, wants_contact INTEGER NOT NULL,
+      is_private INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'new', admin_note TEXT, created_at TEXT NOT NULL, created_local_date TEXT NOT NULL);
+    INSERT INTO users (username, display_name, password_hash, created_at) VALUES ('old', 'Old User', 'x', '2026-01-01');
+    INSERT INTO parts_submissions (user_id, action, source, created_at, created_local_date) VALUES (1, 'take', 'van', '2026-01-01T00:00:00Z', '2026-01-01');
+  `);
+  old.close();
+  const out = execFileSync(process.execPath, ['-e', `
+    const db = require('./app/db'); require('./app/db');
+    const cols = (t) => db.prepare("SELECT name FROM pragma_table_info('" + t + "')").all().map((c) => c.name);
+    console.log(JSON.stringify({ parts: cols('parts_submissions'), training: cols('training_requests'),
+      rows: db.prepare('SELECT COUNT(*) n FROM parts_submissions').get().n, catalog: cols('parts_catalog').length }));
+  `], { cwd: path.join(__dirname, '..'), env: { ...process.env, DATA_DIR: dir } });
+  const r = JSON.parse(out.toString());
+  for (const t of [r.parts, r.training]) { assert.ok(t.includes('edited_at')); assert.ok(t.includes('cancelled_at')); }
+  assert.equal(r.rows, 1);
+  assert.ok(r.catalog > 0);
+  fs.rmSync(dir, { recursive: true, force: true });
 });

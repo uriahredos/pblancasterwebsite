@@ -1,0 +1,59 @@
+<%- include('partials/header', { wide: true }) %>
+<p><a href="/admin/parts">&larr; Parts log</a></p>
+<h1>Parts usage</h1>
+<p class="lede">Totals for the dates you choose. Cancelled entries are not counted. Net used is taken minus returned.</p>
+<form method="get" class="filters card">
+  <label>From <input type="date" name="from" value="<%= f.from %>"></label>
+  <label>To <input type="date" name="to" value="<%= f.to %>"></label>
+  <label>Person
+    <select name="user"><option value="">Everyone</option>
+      <% users.forEach(function (u) { %><option value="<%= u.id %>" <%= String(u.id) === f.user ? 'selected' : '' %>><%= u.display_name %></option><% }) %>
+    </select>
+  </label>
+  <label class="grow">Search <input type="search" name="q" value="<%= f.q %>" placeholder="Part or job number"></label>
+  <div class="filter-actions">
+    <button class="btn primary small" type="submit">Show</button>
+    <a class="btn small" href="/admin/parts/summary">Clear</a>
+    <a class="btn small" href="/admin/parts/summary.csv<%= qs ? '?' + qs : '' %>">Download CSV</a>
+  </div>
+</form>
+
+<h2>By part</h2>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Part</th><th>Description</th><th class="num">Taken</th><th class="num">Returned</th><th class="num">Net used</th><th class="num">Requested</th><th class="num">Entries</th></tr></thead>
+  <tbody>
+  <% byPart.forEach(function (r) { %>
+  <tr><td><%= r.part %></td><td><%= r.description %></td><td class="num"><%= r.taken %></td><td class="num"><%= r.returned %></td><td class="num"><strong><%= r.taken - r.returned %></strong></td><td class="num"><%= r.requested %></td><td class="num"><%= r.entries %></td></tr>
+  <% }) %>
+  <% if (!byPart.length) { %><tr><td colspan="7" class="empty">Nothing in this range.</td></tr><% } %>
+  </tbody>
+</table>
+</div>
+
+<h2>By person</h2>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Name</th><th class="num">Taken</th><th class="num">Returned</th><th class="num">Requested</th><th class="num">Entries</th></tr></thead>
+  <tbody>
+  <% byPerson.forEach(function (r) { %>
+  <tr><td><%= r.name %></td><td class="num"><%= r.taken %></td><td class="num"><%= r.returned %></td><td class="num"><%= r.requested %></td><td class="num"><%= r.entries %></td></tr>
+  <% }) %>
+  <% if (!byPerson.length) { %><tr><td colspan="5" class="empty">Nothing in this range.</td></tr><% } %>
+  </tbody>
+</table>
+</div>
+
+<h2>By job</h2>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Job</th><th class="num">Taken</th><th class="num">Returned</th><th class="num">Entries</th><th></th></tr></thead>
+  <tbody>
+  <% byJob.forEach(function (r) { %>
+  <tr><td><%= r.job %></td><td class="num"><%= r.taken %></td><td class="num"><%= r.returned %></td><td class="num"><%= r.entries %></td><td><a href="/admin/parts?q=<%= encodeURIComponent(r.job) %>">Entries</a></td></tr>
+  <% }) %>
+  <% if (!byJob.length) { %><tr><td colspan="5" class="empty">No job entries in this range.</td></tr><% } %>
+  </tbody>
+</table>
+</div>
+<%- include('partials/footer') %>

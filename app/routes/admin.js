@@ -5,6 +5,7 @@ const auth = require('../auth');
 const config = require('../config');
 const { sendCsv } = require('../csv');
 const { clean, isYmd, labels, fmtDateTime, localDate } = require('../util');
+const { history } = require('../changes');
 
 const router = express.Router();
 const { requireAdmin, flash } = auth;
@@ -68,11 +69,45 @@ router.get('/admin/parts.csv', requireAdmin, (req, res) => {
      ${sql} ORDER BY s.id, i.id`).all(...params);
   sendCsv(res, `parts-${localDate()}.csv`,
     ['Id', 'Submitted', 'Name', 'Username', 'Action', 'Part', 'Quantity', 'Van stock or job', 'Job number',
-      'Needed by', 'Note', 'Status', 'Admin note', 'Photo'],
+      'Needed by', 'Note', 'Status', 'Admin note', 'Photo', 'Edited', 'Cancelled'],
     rows.map((r) => [r.id, fmtDateTime(r.created_at), r.display_name, r.username, labels.action[r.action],
       r.part_name, r.quantity, labels.source[r.source], r.job_number, r.needed_by, r.note,
       r.status ? labels.partsStatus[r.status] : '', r.admin_note,
-      r.photo_path ? `${config.baseUrl}/parts/photo/${r.id}` : '']));
+      r.photo_path ? `${config.baseUrl}/parts/photo/${r.id}` : '', fmtDateTime(r.edited_at), fmtDateTime(r.cancelled_at)]));
+});
+
+// What was used: totals per part, per person and per job. Cancelled entries are left out.
+function summaryData(query) {
+  const { f, sql, params } = buildFilter({ from: query.from, to: query.to, user: query.user, q: query.q }, 's',
+    { statuses: {}, textCols: ['i.part_name', 's.job_number'] });
+  const where = (sql ? sql + ' AND ' : 'WHERE ') + 's.cancelled_at IS NULL';
+  const sums = `SUM(CASE WHEN s.action = 'take' THEN i.quantity ELSE 0 END) AS taken,
+                SUM(CASE WHEN s.action = 'return' THEN i.quantity ELSE 0 END) AS returned,
+                SUM(CASE WHEN s.action = 'request' THEN i.quantity ELSE 0 END) AS requested,
+                COUNT(DISTINCT s.id) AS entries`;
+  const from = `FROM parts_items i JOIN parts_submissions s ON s.id = i.submission_id JOIN users u ON u.id = s.user_id`;
+  const byPart = db.prepare(
+    `SELECT MIN(TRIM(i.part_name)) AS part, MAX(c.description) AS description, ${sums}
+     ${from} LEFT JOIN parts_catalog c ON c.part_number = TRIM(i.part_name)
+     ${where} GROUP BY UPPER(TRIM(i.part_name)) ORDER BY taken DESC, part COLLATE NOCASE`).all(...params);
+  const byPerson = db.prepare(
+    `SELECT u.display_name AS name, ${sums} ${from} ${where} GROUP BY u.id ORDER BY taken DESC, name COLLATE NOCASE`).all(...params);
+  const byJob = db.prepare(
+    `SELECT s.job_number AS job, ${sums} ${from} ${where} AND s.source = 'job'
+     GROUP BY UPPER(TRIM(s.job_number)) ORDER BY MAX(s.id) DESC LIMIT 300`).all(...params);
+  return { f, byPart, byPerson, byJob };
+}
+
+router.get('/admin/parts/summary', requireAdmin, (req, res) => {
+  const data = summaryData(req.query);
+  res.render('admin_summary', { title: 'Parts usage', ...data, qs: qs(data.f), users: userList() });
+});
+
+router.get('/admin/parts/summary.csv', requireAdmin, (req, res) => {
+  const { byPart } = summaryData(req.query);
+  sendCsv(res, `parts-usage-${localDate()}.csv`,
+    ['Part', 'Description', 'Taken', 'Returned', 'Net used', 'Requested', 'Entries'],
+    byPart.map((r) => [r.part, r.description, r.taken, r.returned, r.taken - r.returned, r.requested, r.entries]));
 });
 
 router.get('/admin/parts/:id', requireAdmin, (req, res) => {
@@ -80,7 +115,7 @@ router.get('/admin/parts/:id', requireAdmin, (req, res) => {
     `SELECT s.*, u.display_name FROM parts_submissions s JOIN users u ON u.id = s.user_id WHERE s.id = ?`).get(req.params.id);
   if (!s) return res.status(404).render('error', { title: 'Page not found', message: 'That entry does not exist.' });
   const items = db.prepare('SELECT part_name, quantity FROM parts_items WHERE submission_id = ? ORDER BY id').all(s.id);
-  res.render('admin_parts_detail', { title: `Parts entry ${s.id}`, s, items });
+  res.render('admin_parts_detail', { title: `Parts entry ${s.id}`, s, items, history: history('parts', s.id) });
 });
 
 router.post('/admin/parts/:id/status', requireAdmin, (req, res) => {
@@ -110,16 +145,17 @@ router.get('/admin/training.csv', requireAdmin, (req, res) => {
     `SELECT t.*, u.display_name, u.username FROM training_requests t JOIN users u ON u.id = t.user_id
      ${sql} ORDER BY t.id`).all(...params);
   sendCsv(res, `training-${localDate()}.csv`,
-    ['Id', 'Submitted', 'Name', 'Username', 'Training description', 'Wants contact', 'Private', 'Status', 'Admin note'],
+    ['Id', 'Submitted', 'Name', 'Username', 'Training description', 'Wants contact', 'Private', 'Status', 'Admin note', 'Edited', 'Cancelled'],
     rows.map((r) => [r.id, fmtDateTime(r.created_at), r.display_name, r.username, r.description,
-      r.wants_contact ? 'Yes' : 'No', r.is_private ? 'Yes' : 'No', labels.trainingStatus[r.status], r.admin_note]));
+      r.wants_contact ? 'Yes' : 'No', r.is_private ? 'Yes' : 'No', labels.trainingStatus[r.status], r.admin_note,
+      fmtDateTime(r.edited_at), fmtDateTime(r.cancelled_at)]));
 });
 
 router.get('/admin/training/:id', requireAdmin, (req, res) => {
   const t = db.prepare(
     'SELECT t.*, u.display_name, u.email FROM training_requests t JOIN users u ON u.id = t.user_id WHERE t.id = ?').get(req.params.id);
   if (!t) return res.status(404).render('error', { title: 'Page not found', message: 'That request does not exist.' });
-  res.render('admin_training_detail', { title: `Training request ${t.id}`, t });
+  res.render('admin_training_detail', { title: `Training request ${t.id}`, t, history: history('training', t.id) });
 });
 
 router.post('/admin/training/:id/status', requireAdmin, (req, res) => {

@@ -1,0 +1,24 @@
+<%- include('partials/header') %>
+<p><a href="/admin/users">&larr; Users</a></p>
+<h1>Backups</h1>
+<p class="lede">A copy of the database is made every night after <%= hour %>:00 and the newest <%= keep %> are kept. <% if (emailTo.length) { %>Each night's copy is also emailed to <%= emailTo.join(', ') %>.<% } else { %>Nightly copies are not being emailed anywhere.<% } %></p>
+<div class="notice">
+  <p><strong>These copies sit on the same disk as the site.</strong> They protect against mistakes, not against losing the disk. Download one now and then and keep it somewhere else, or turn on the nightly email.</p>
+  <p>A backup contains everything, including anonymous complaints and sign-in details. Keep it private.</p>
+</div>
+<div class="rec-actions spaced">
+  <form method="post" action="/admin/backups/run"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn primary small" type="submit">Back up now</button></form>
+  <a class="btn small" href="/admin/backups/photos.tar.gz">Download all photos</a>
+</div>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Backup</th><th>Made</th><th class="num">Size</th><th></th></tr></thead>
+  <tbody>
+  <% backups.forEach(function (b) { %>
+  <tr><td><%= b.name %></td><td class="nowrap"><%= fmtDateTime(b.mtime) %></td><td class="num"><%= (b.size / 1024).toFixed(0) %> KB</td><td><a href="/admin/backups/<%= b.name %>">Download</a></td></tr>
+  <% }) %>
+  <% if (!backups.length) { %><tr><td colspan="4" class="empty">No backups yet. The first is made tonight, or use "Back up now".</td></tr><% } %>
+  </tbody>
+</table>
+</div>
+<%- include('partials/footer') %>

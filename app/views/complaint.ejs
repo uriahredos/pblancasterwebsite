@@ -5,7 +5,7 @@
   <p>The people who read complaints only see what you type. If you want to stay anonymous, leave out details that point to you.</p>
 </div>
 <%- include('partials/errors') %>
-<form method="post" action="/complaint" class="card stack">
+<form method="post" action="/complaint" class="card stack" data-offline-guard>
   <input type="hidden" name="_csrf" value="<%= csrf %>">
   <label>Category
     <select name="category" required>
@@ -21,6 +21,7 @@
   <label>When and where? <span class="hint">Optional</span>
     <input name="occurred_text" value="<%= values.occurred_text || '' %>" maxlength="300" autocomplete="off">
   </label>
+  <p class="flash err" id="offline-msg" role="alert" hidden>No connection right now, so this was not sent. Keep this page open and try again when you have signal. Complaints are never saved on the phone.</p>
   <button class="btn primary" type="submit">Send anonymously</button>
 </form>
 <p class="hint">Already sent one? <a href="/complaint/status">Check its status with your tracking code</a>.</p>

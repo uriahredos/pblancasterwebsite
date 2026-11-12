@@ -5,7 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title><%= title %> · Pye-Barker Lancaster Branch</title>
+<meta name="theme-color" content="#12283f">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="icon" href="/icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="PB Lancaster">
 <link rel="stylesheet" href="/styles.css">
+<script src="/site.js" defer></script>
 </head>
 <body>
 <header class="top">
@@ -21,6 +28,7 @@
       <span class="nav-sep" aria-hidden="true"></span>
       <a href="/admin/parts" <%- path.startsWith('/admin/parts') ? 'aria-current="page"' : '' %>>Parts log</a>
       <a href="/admin/training" <%- path.startsWith('/admin/training') ? 'aria-current="page"' : '' %>>Training log</a>
+      <a href="/admin/catalog" <%- path.startsWith('/admin/catalog') ? 'aria-current="page"' : '' %>>Catalog</a>
       <a href="/admin/users" <%- path.startsWith('/admin/users') ? 'aria-current="page"' : '' %>>Users</a>
       <% } %>
       <% if (user.can_review_complaints) { %>

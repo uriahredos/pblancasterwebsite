@@ -1,6 +1,6 @@
 <%- include('partials/header') %>
 <p><a href="/admin/training">&larr; Training requests</a></p>
-<h1>Training request · <%= t.display_name %></h1>
+<h1>Training request · <%= t.display_name %><% if (t.cancelled_at) { %> <span class="tag off">Cancelled</span><% } %></h1>
 <div class="card stack">
   <dl class="facts">
     <dt>Submitted</dt><dd><%= fmtDateTime(t.created_at) %></dd>
@@ -9,6 +9,24 @@
   </dl>
   <p class="pre"><%= t.description %></p>
 </div>
+
+<% if (history.length) { %>
+<h2>Changes</h2>
+<ul class="records">
+  <% history.forEach(function (h) { %>
+  <li class="card">
+    <p><strong><%= h.change === 'cancelled' ? 'Cancelled' : 'Edited' %></strong> by <%= h.display_name %>, <%= fmtDateTime(h.changed_at) %></p>
+    <% if (h.before) { %><p class="meta pre">Before: <%= h.before.description %> · contact: <%= h.before.wants_contact ? 'Yes' : 'No' %> · private: <%= h.before.is_private ? 'Yes' : 'No' %></p><% } %>
+  </li>
+  <% }) %>
+</ul>
+<% } %>
+<% if (!t.cancelled_at) { %>
+<div class="rec-actions spaced">
+  <a class="btn small" href="/training/<%= t.id %>/edit">Edit</a>
+  <form method="post" action="/training/<%= t.id %>/cancel" data-confirm="Cancel this?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn small" type="submit">Cancel it</button></form>
+</div>
+<% } %>
 <h2>Status</h2>
 <form method="post" action="/admin/training/<%= t.id %>/status" class="card stack">
   <input type="hidden" name="_csrf" value="<%= csrf %>">

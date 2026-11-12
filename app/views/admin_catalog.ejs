@@ -1,0 +1,46 @@
+<%- include('partials/header', { wide: true }) %>
+<h1>Parts catalog</h1>
+<p class="lede"><%= total %> <%= total === 1 ? 'part' : 'parts' %>. These are offered as suggestions when someone types a part on the parts form. People can still type a part that is not listed.</p>
+<%- include('partials/errors') %>
+
+<h2>Import a list</h2>
+<form method="post" action="/admin/catalog/import" enctype="multipart/form-data" class="filters card">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label class="grow">CSV file <span class="hint">Needs a part number column; description and manufacturer are used if present. Prices and any other columns are ignored and not stored.</span>
+    <input type="file" name="file" accept=".csv,.txt,text/csv" required>
+  </label>
+  <div class="filter-actions"><button class="btn primary small" type="submit">Import</button></div>
+</form>
+<p class="hint">Importing again updates descriptions and adds new parts. It never removes any.</p>
+
+<h2>Add one part</h2>
+<form method="post" action="/admin/catalog" class="filters card">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Part number <input name="part_number" value="<%= values.part_number || '' %>" maxlength="100" required autocomplete="off"></label>
+  <label class="grow">Description <input name="description" value="<%= values.description || '' %>" maxlength="300" autocomplete="off"></label>
+  <label>Manufacturer <span class="hint">Optional</span> <input name="manufacturer" value="<%= values.manufacturer || '' %>" maxlength="100" autocomplete="off"></label>
+  <div class="filter-actions"><button class="btn primary small" type="submit">Add part</button></div>
+</form>
+
+<h2>Parts</h2>
+<form method="get" class="filters card">
+  <label class="grow">Search <input type="search" name="q" value="<%= q %>" placeholder="Part number, description or manufacturer"></label>
+  <div class="filter-actions"><button class="btn primary small" type="submit">Search</button><a class="btn small" href="/admin/catalog">Clear</a></div>
+</form>
+<p class="count"><%= matching %> <%= q ? 'matching' : 'in total' %><% if (matching > rows.length) { %>, first <%= rows.length %> shown. Search to narrow it down.<% } %></p>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Part number</th><th>Description</th><th>Manufacturer</th><th>Suggested?</th><th></th></tr></thead>
+  <tbody>
+  <% rows.forEach(function (p) { %>
+  <tr class="<%= p.active ? '' : 'off' %>">
+    <td><%= p.part_number %></td><td><%= p.description %></td><td><%= p.manufacturer %></td>
+    <td><%= p.active ? 'Yes' : 'Hidden' %></td>
+    <td><form method="post" action="/admin/catalog/<%= p.id %>/toggle"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="q" value="<%= q %>"><button class="link" type="submit"><%= p.active ? 'Hide' : 'Show' %></button></form></td>
+  </tr>
+  <% }) %>
+  <% if (!rows.length) { %><tr><td colspan="5" class="empty"><%= q ? 'No parts match.' : 'The catalog is empty. Import a list above.' %></td></tr><% } %>
+  </tbody>
+</table>
+</div>
+<%- include('partials/footer') %>

@@ -36,6 +36,7 @@
   addBtn.addEventListener('click', function () {
     var row = items.querySelector('.item-row').cloneNode(true);
     row.querySelectorAll('input').forEach(function (input) { input.value = ''; });
+    row.querySelectorAll('.suggest').forEach(function (ul) { ul.remove(); });
     row.querySelectorAll('label > span').forEach(function (span) { span.className = 'sr'; });
     items.appendChild(row);
     refresh();
@@ -50,6 +51,45 @@
     first.querySelectorAll('label > span').forEach(function (span) { span.className = 'mini'; });
     refresh();
   });
+
+  // Suggestions from the parts catalog while typing a part.
+  var suggestTimer;
+  function closeSuggest() { items.querySelectorAll('.suggest').forEach(function (ul) { ul.remove(); }); }
+  function showSuggest(input, list) {
+    closeSuggest();
+    if (!list.length || document.activeElement !== input) return;
+    var ul = document.createElement('ul');
+    ul.className = 'suggest';
+    list.forEach(function (p) {
+      var li = document.createElement('li');
+      var b = document.createElement('strong'); b.textContent = p.n; li.appendChild(b);
+      if (p.d) { var d = document.createElement('span'); d.textContent = p.d; li.appendChild(d); }
+      li.addEventListener('pointerdown', function (e) {
+        e.preventDefault();
+        input.value = p.n;
+        closeSuggest();
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        var qty = input.closest('.item-row').querySelector('input[name="quantity"]');
+        if (qty && !qty.value) qty.focus();
+      });
+      ul.appendChild(li);
+    });
+    input.closest('.suggest-wrap').appendChild(ul);
+  }
+  items.addEventListener('input', function (e) {
+    var input = e.target;
+    if (input.name !== 'part_name' || !e.isTrusted) return;
+    clearTimeout(suggestTimer);
+    var q = input.value.trim();
+    if (q.length < 2) return closeSuggest();
+    suggestTimer = setTimeout(function () {
+      fetch('/parts/suggest?q=' + encodeURIComponent(q), { credentials: 'same-origin' })
+        .then(function (r) { return r.ok ? r.json() : []; })
+        .then(function (list) { if (input.value.trim() === q) showSuggest(input, list); })
+        .catch(function () {});
+    }, 200);
+  });
+  items.addEventListener('focusout', function () { setTimeout(closeSuggest, 150); });
 
   form.addEventListener('change', refresh);
   refresh();
