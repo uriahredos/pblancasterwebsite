@@ -50,8 +50,13 @@ function loadUser(req, res, next) {
   }
   res.locals.user = req.user;
   res.locals.can = (perm) => access.can(req.user, perm);
-  res.locals.badges = { updates: 0, requests: 0, notices: 0, certs: 0, inspections: 0, forum: 0 };
+  res.locals.badges = { updates: 0, requests: 0, notices: 0, certs: 0, inspections: 0, forum: 0, tasks: 0 };
+  res.locals.myTasks = [];
   if (req.user) {
+    // Tasks assigned to this person and not done yet: overdue first, then soonest due, then ones with no date.
+    const tasks = require('./tasks');
+    res.locals.myTasks = tasks.openFor(req.user.id, 6);
+    res.locals.badges.tasks = tasks.openCount(req.user.id);
     // "My submissions": status changes this person has not looked at yet.
     res.locals.badges.updates =
       db.prepare('SELECT COUNT(*) AS n FROM parts_submissions WHERE user_id = ? AND unseen = 1').get(req.user.id).n +

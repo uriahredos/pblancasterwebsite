@@ -36,6 +36,7 @@ const GROUPS = [
     ['profiles.manage', 'Create profiles and change what each profile can do'],
     ['certs.manage', 'Record and edit people\'s licenses and certifications'],
     ['announcements.post', 'Post announcements and see who has read them'],
+    ['tasks.assign', 'Assign tasks to people and see whether they are done'],
     ['newsletters.manage', 'Upload and remove the monthly newsletters'],
     ['activity.view', 'See the activity log (who changed what)'],
   ] },
@@ -55,7 +56,7 @@ const SUBMIT = ['parts.submit', 'training.submit', 'complaints.submit', 'inspect
 const DEFAULTS = [
   { name: 'Technician', scope: 'all', perms: [...SUBMIT, 'forum.use'] },
   { name: 'Warehouse', scope: 'all', perms: [...SUBMIT, 'forum.use', 'parts.view', 'parts.manage', 'parts.audit', 'catalog.manage', 'stock.manage', 'inspections.view', 'inspections.manage'] },
-  { name: 'Manager', scope: 'team', perms: [...SUBMIT, 'forum.use', 'parts.view', 'parts.manage', 'parts.audit', 'training.view', 'training.manage', 'digest.weekly', 'inspections.view', 'inspections.manage', 'certs.manage', 'announcements.post'] },
+  { name: 'Manager', scope: 'team', perms: [...SUBMIT, 'forum.use', 'parts.view', 'parts.manage', 'parts.audit', 'training.view', 'training.manage', 'digest.weekly', 'inspections.view', 'inspections.manage', 'certs.manage', 'announcements.post', 'tasks.assign'] },
   { name: 'Admin', scope: 'all', perms: ALL },
 ];
 
@@ -129,6 +130,7 @@ function migrate() {
       'stock.manage': 'catalog.manage', 'activity.view': 'profiles.manage',
       'inspections.submit': 'parts.submit', 'inspections.view': 'parts.view', 'inspections.manage': 'parts.manage',
       'certs.manage': 'training.manage', 'announcements.post': 'training.manage', 'records.delete': 'profiles.manage',
+      'tasks.assign': 'announcements.post',
       'newsletters.manage': 'users.manage', 'forum.use': 'parts.submit', 'forum.moderate': 'users.manage',
     };
     for (const [perm, from] of Object.entries(INHERIT)) {

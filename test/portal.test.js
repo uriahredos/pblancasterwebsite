@@ -827,7 +827,7 @@ test('starting profiles: Technician, Warehouse, Manager and Admin each see only 
   assert.deepEqual(navLinks((await wh.get('/')).text), ['/admin/parts', '/admin/requests', '/admin/parts/audit', '/admin/stock', '/admin/parts/summary', '/admin/catalog', '/admin/inspections', '/admin/inspections/checklist']);
   assert.deepEqual(navLinks((await owner.get('/')).text),
     ['/admin/parts', '/admin/requests', '/admin/parts/audit', '/admin/stock', '/admin/parts/summary', '/admin/catalog', '/admin/inspections', '/admin/inspections/checklist',
-      '/admin/training', '/admin/training/sessions', '/admin/certs', '/admin/users', '/admin/profiles', '/admin/announcements', '/admin/newsletters', '/admin/complaints', '/admin/activity', '/admin/backups', '/admin/import']);
+      '/admin/training', '/admin/training/sessions', '/admin/certs', '/admin/users', '/admin/profiles', '/admin/tasks', '/admin/announcements', '/admin/newsletters', '/admin/complaints', '/admin/activity', '/admin/backups', '/admin/import']);
 
   for (const url of ['/admin/parts', '/admin/parts/audit', '/admin/parts/summary', '/admin/catalog']) assert.equal((await wh.get(url)).status, 200, url);
   for (const url of ['/admin/training', '/admin/users', '/admin/profiles', '/admin/complaints', '/admin/backups']) assert.equal((await wh.get(url)).status, 403, url);
@@ -1677,7 +1677,7 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
 
   const owner = (await (await loggedIn('owner')).get('/admin/users')).text;
   assert.deepEqual(groupsOf(owner), ['Parts', 'Trucks', 'Training', 'Admin']);
-  assert.deepEqual(barLinks(owner), ['/', '/notices', '/discussions', '/my', '/complaint']);
+  assert.deepEqual(barLinks(owner), ['/', '/notices', '/discussions', '/tasks', '/my', '/complaint']);
   const admin = /<summary[^>]*>Admin[\s\S]*?<\/details>/.exec(owner)[0];
   for (const link of ['/admin/users', '/admin/profiles', '/admin/announcements', '/admin/complaints', '/admin/activity', '/admin/backups', '/admin/import']) assert.ok(admin.includes(`href="${link}"`), link);
   assert.match(admin, /<summary aria-current="true">Admin/);               // the group you are in is marked
@@ -1688,14 +1688,14 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
   // A technician: no Admin group; Trucks has one thing, so it is a plain "Inspection" link.
   const tech = (await (await loggedIn('tech1')).get('/')).text;
   assert.deepEqual(groupsOf(tech), ['Parts', 'Training']);
-  assert.deepEqual(barLinks(tech), ['/', '/notices', '/discussions', '/my', '/complaint', '/inspection']);
+  assert.deepEqual(barLinks(tech), ['/', '/notices', '/discussions', '/tasks', '/my', '/complaint', '/inspection']);
   assert.doesNotMatch(tech, /href="\/admin\//);
   assert.doesNotMatch(/<summary[^>]*>Parts[\s\S]*?<\/details>/.exec(tech)[0], /<hr>/); // no stray divider
 
-  // A manager holds one admin item (Announcements), so it is a plain link rather than a one-item drop-down.
+  // A manager's Admin group holds only what their profile allows.
   const mgr = (await (await loggedIn('mgr1')).get('/')).text;
-  assert.deepEqual(groupsOf(mgr), ['Parts', 'Trucks', 'Training']);
-  assert.deepEqual(barLinks(mgr), ['/', '/notices', '/discussions', '/my', '/complaint', '/admin/announcements']);
+  assert.deepEqual(groupsOf(mgr), ['Parts', 'Trucks', 'Training', 'Admin']);          // Assign tasks and Announcements
+  assert.deepEqual(barLinks(mgr), ['/', '/notices', '/discussions', '/tasks', '/my', '/complaint']);
   assert.doesNotMatch(mgr, /admin\/(users|profiles|complaints|backups|activity)"/);
 
   // Styles and scripts carry a version so a new release is not shown with old files.
@@ -2264,4 +2264,93 @@ test('notification bell at the top right gathers what is waiting; light/dark mov
   assert.match(quiet, /aria-label="Notifications, none"/);
   assert.match(quiet, /Nothing waiting/);
   assert.doesNotMatch(quiet, /bell-count/);
+});
+
+test('tasks: assigned with a due date, shown in the bell with when they are due, and ticked off', async () => {
+  const owner = await loggedIn('owner');
+  const page = '/admin/tasks';
+  const bellOf = (html) => /<details class="bell"[\s\S]*?<\/details>/.exec(html)[0].replace(/\s+/g, ' ');
+  const total = (html) => { const m = /class="bell-count">(\d+)/.exec(html); return m ? Number(m[1]) : 0; };
+  makeUser('task1', 'Tess Tasker'); makeUser('task2', 'Toby Tasker');
+  db.prepare("UPDATE users SET email = 'tess@example.com' WHERE username = 'task1'").run();
+  const tess = await loggedIn('task1');
+  const before = total((await tess.get('/')).text);
+
+  assert.equal((await owner.post(page, { title: '', to: String(userId('task1')) }, { page })).status, 400);     // no title
+  assert.equal((await owner.post(page, { title: 'Nobody picked' }, { page })).status, 400);                     // nobody chosen
+  assert.equal((await owner.post(page, { title: 'Bad date', to: String(userId('task1')), due_on: 'soon' }, { page })).status, 400);
+  sent.length = 0;
+  // One task for two people makes a copy each; then tasks due at different times for Tess.
+  await owner.post(page, [['title', 'Restock truck 309 batteries'], ['details', 'Ten 12V 7Ah.'], ['due_on', ymdFromNow(1)], ['to', String(userId('task1'))], ['to', String(userId('task2'))]], { page });
+  await owner.post(page, { title: 'Send in last week\'s timesheet', due_on: ymdFromNow(-3), to: String(userId('task1')) }, { page });
+  await owner.post(page, { title: 'Read the new ladder policy', to: String(userId('task1')) }, { page });
+  await owner.post(page, { title: 'Annual fit test', due_on: ymdFromNow(20), to: String(userId('task1')) }, { page });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM tasks WHERE assigned_to = ?').get(userId('task1')).n, 4);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM tasks WHERE assigned_to = ?').get(userId('task2')).n, 1);
+  assert.deepEqual(sent.map((m) => m.to), Array(4).fill('tess@example.com'));                                  // Toby has no email; the bell still tells him
+  assert.match(sent[0].subject, /New task: Restock truck 309 batteries/);
+  assert.match(sent[0].text, /Olive Owner gave you a task/);
+
+  // The bell: every open task by name, overdue first, each with when it is due; all counted in the number.
+  const home = (await tess.get('/')).text;
+  assert.equal(total(home), before + 4);
+  const bell = bellOf(home);
+  const order = ['Send in last week&#39;s timesheet', 'Restock truck 309 batteries', 'Annual fit test', 'Read the new ladder policy'].map((t) => bell.indexOf(t));
+  assert.ok(order.every((pos, i) => pos > 0 && (i === 0 || pos > order[i - 1])), order.join(','));
+  assert.match(bell, /class="bell-task overdue">.*?timesheet<\/strong><span class="bell-due">Overdue by 3 days \(was due \d+\/\d+\/\d{4}\)/);
+  assert.match(bell, /Restock truck 309 batteries<\/strong><span class="bell-due">Due tomorrow</);
+  assert.match(bell, /Annual fit test<\/strong><span class="bell-due">Due \d+\/\d+\/\d{4}</);
+  assert.match(bell, /Read the new ladder policy<\/strong><span class="bell-due">No due date</);
+  assert.match(home, /href="\/tasks"[^>]*>Tasks <span class="badge"[^>]*>4<\/span>/);
+  assert.equal(total((await (await loggedIn('task2')).get('/')).text) >= 1, true);
+  assert.doesNotMatch(bellOf((await (await loggedIn('task2')).get('/')).text), /timesheet/);                    // only your own
+
+  // My tasks page, and ticking one off with a note.
+  const mine = (await tess.get('/tasks')).text;
+  assert.match(mine, /Ten 12V 7Ah\./); assert.match(mine, /From Olive Owner/); assert.match(mine, /class="tag overdue">Overdue</);
+  const tid = db.prepare("SELECT id FROM tasks WHERE title LIKE 'Send in%'").get().id;
+  await tess.post(`/tasks/${tid}/done`, { done_note: 'Emailed it Monday' }, { page: '/tasks' });
+  const after = (await tess.get('/')).text;
+  assert.equal(total(after), before + 3);
+  assert.doesNotMatch(bellOf(after), /timesheet/);
+  assert.match((await owner.get(page + '?show=done')).text.replace(/\s+/g, ' '), /timesheet.*Note: Emailed it Monday.*Done/);
+  await tess.post(`/tasks/${tid}/done`, {}, { page: '/tasks' });                                                // changed her mind
+  assert.equal(db.prepare('SELECT done_at FROM tasks WHERE id = ?').get(tid).done_at, null);
+  // Nobody can tick off someone else's task from their own page.
+  assert.equal((await (await loggedIn('task2')).post(`/tasks/${tid}/done`, {})).status, 403);
+
+  // More than six: the bell lists six and says how many more.
+  for (let i = 0; i < 4; i++) await owner.post(page, { title: `Extra task ${i}`, to: String(userId('task1')) }, { page });
+  const many = bellOf((await tess.get('/')).text);
+  assert.equal((many.match(/class="bell-task/g) || []).length, 6);
+  assert.match(many, /and 2 more tasks/);
+
+  // Following up: overdue filter, edit, reassign, mark done for them, remove.
+  const list = (await owner.get(page + '?show=overdue')).text;
+  assert.match(list, /timesheet/); assert.doesNotMatch(list, /Annual fit test/);
+  assert.match((await owner.get(page)).text.replace(/\s+/g, ' '), /<strong>\d+<\/strong> open, <strong>1 overdue<\/strong>/);
+  await owner.post(`${page}/${tid}`, { title: 'Send in the timesheet', due_on: ymdFromNow(2), assigned_to: String(userId('task2')) }, { page: `${page}/${tid}` });
+  assert.deepEqual({ ...db.prepare('SELECT title, assigned_to FROM tasks WHERE id = ?').get(tid) }, { title: 'Send in the timesheet', assigned_to: userId('task2') });
+  await owner.post(`${page}/${tid}/done`, {}, { page });
+  assert.match(db.prepare('SELECT done_note FROM tasks WHERE id = ?').get(tid).done_note, /Marked done by Olive Owner/);
+  await owner.post(`${page}/${tid}/delete`, {}, { page });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM tasks WHERE id = ?').get(tid).n, 0);
+
+  // Who may assign: not technicians; a manager only to their own people, and only sees those tasks plus ones they gave.
+  for (const who of ['task1', 'tech1', 'wh1']) {
+    const c = await loggedIn(who);
+    assert.equal((await c.get(page)).status, 403, who);
+    assert.equal((await c.post(page, { title: 'x', to: String(userId('task2')) })).status, 403, who);
+  }
+  const mgr = await loggedIn('mgr1');
+  const form = (await mgr.get(page)).text;
+  assert.match(form, /Terry Tech/); assert.doesNotMatch(form, /Tess Tasker|Uma Tech|Annual fit test/);
+  assert.equal((await mgr.post(page, { title: 'Outside my team', to: String(userId('task1')) }, { page })).status, 400);
+  assert.equal((await mgr.post(page, { title: 'Clean out the van', due_on: ymdFromNow(0), to: String(userId('tech1')) }, { page })).status, 302);
+  assert.match(bellOf((await (await loggedIn('tech1')).get('/')).text), /Clean out the van<\/strong><span class="bell-due">Due today</);
+  const fit = db.prepare("SELECT id FROM tasks WHERE title = 'Annual fit test'").get().id;
+  assert.equal((await mgr.get(`${page}/${fit}`)).status, 403);
+  assert.equal((await mgr.post(`${page}/${fit}/delete`, {})).status, 403);
+  assert.match((await owner.get('/admin/activity?q=Task')).text, /Task assigned/);
+  db.prepare('DELETE FROM tasks').run();
 });

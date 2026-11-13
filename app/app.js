@@ -91,6 +91,7 @@ app.use(require('./routes/sessions'));
 app.use(require('./routes/certs'));
 app.use(require('./routes/inspections'));
 app.use(require('./routes/announcements'));
+app.use(require('./routes/tasks'));
 app.use(require('./routes/newsletters'));
 app.use(require('./routes/forum'));
 app.use(require('./routes/digest'));

@@ -344,4 +344,20 @@ if (db.prepare('SELECT COUNT(*) AS n FROM inspection_items').get().n === 0) {
     .forEach((label, i) => add.run(label, i + 1));
 }
 
+// ---- Tasks: something one person asks another to do, with an optional due date ----
+db.exec(`
+CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY,
+  title TEXT NOT NULL,
+  details TEXT,
+  assigned_to INTEGER NOT NULL REFERENCES users(id),
+  assigned_by INTEGER NOT NULL REFERENCES users(id),
+  due_on TEXT,
+  done_at TEXT,
+  done_note TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS tasks_assignee ON tasks(assigned_to, done_at);
+`);
+
 module.exports = db;

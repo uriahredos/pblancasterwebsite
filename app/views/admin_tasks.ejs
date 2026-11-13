@@ -1,0 +1,57 @@
+<%- include('partials/header', { wide: true }) %>
+<p><a href="/tasks">&larr; My tasks</a></p>
+<h1>Tasks</h1>
+<p class="lede"><strong><%= counts.open %></strong> open<% if (counts.overdue) { %>, <strong><%= counts.overdue %> overdue</strong><% } %>, <%= counts.done %> done. A task shows in the person's notification bell, with its due date, until it is done.</p>
+<form method="get" class="filters card">
+  <label>Show
+    <select name="show">
+      <option value="open" <%= show === 'open' ? 'selected' : '' %>>Open</option>
+      <option value="overdue" <%= show === 'overdue' ? 'selected' : '' %>>Overdue</option>
+      <option value="done" <%= show === 'done' ? 'selected' : '' %>>Done</option>
+      <option value="all" <%= show === 'all' ? 'selected' : '' %>>Everything</option>
+    </select>
+  </label>
+  <label>Person
+    <select name="user"><option value="">Everyone</option>
+      <% people.forEach(function (u) { %><option value="<%= u.id %>" <%= u.id === person ? 'selected' : '' %>><%= u.display_name %></option><% }) %>
+    </select>
+  </label>
+  <div class="filter-actions"><button class="btn primary small" type="submit">Show</button></div>
+</form>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Task</th><th>For</th><th>Due</th><th>From</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+  <% rows.forEach(function (t) { %>
+  <tr class="<%= t.done_at ? 'off' : '' %>">
+    <td><strong><%= t.title %></strong><% if (t.details) { %><br><span class="hint"><%= t.details.length > 120 ? t.details.slice(0, 120) + '…' : t.details %></span><% } %><% if (t.done_note) { %><br><span class="hint">Note: <%= t.done_note %></span><% } %></td>
+    <td><%= t.to_name %></td>
+    <td class="nowrap"><%= t.due_on ? fmtDate(t.due_on) : '' %></td>
+    <td><%= t.by_name %></td>
+    <td><% if (t.done_at) { %><span class="tag return">Done</span> <span class="hint"><%= fmtDateTime(t.done_at) %></span><% } else if (t.overdue) { %><span class="tag overdue">Overdue <%= -t.days %> <%= t.days === -1 ? 'day' : 'days' %></span><% } else { %><span class="tag request">Open</span><% } %></td>
+    <td class="row-actions">
+      <a href="/admin/tasks/<%= t.id %>">Edit</a>
+      <form method="post" action="/admin/tasks/<%= t.id %>/done"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="show" value="<%= show %>"><button class="link" type="submit"><%= t.done_at ? 'Reopen' : 'Mark done' %></button></form>
+    </td>
+  </tr>
+  <% }) %>
+  <% if (!rows.length) { %><tr><td colspan="6" class="empty">No tasks here.</td></tr><% } %>
+  </tbody>
+</table>
+</div>
+<h2>Give someone a task</h2>
+<%- include('partials/errors') %>
+<form method="post" action="/admin/tasks" class="card stack">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>What needs doing <input name="title" value="<%= values.title || '' %>" required maxlength="150" autocomplete="off" placeholder="e.g. Restock truck 309 batteries"></label>
+  <label>Details <span class="hint">Optional</span> <textarea name="details" rows="3" maxlength="2000"><%= values.details || '' %></textarea></label>
+  <label>Due by <span class="hint">Optional</span> <input type="date" name="due_on" value="<%= values.due_on || '' %>"></label>
+  <fieldset>
+    <legend>Who is it for? <span class="hint">Tick more than one to give each person their own copy.</span></legend>
+    <div class="check-grid">
+      <% people.forEach(function (u) { %><label class="choice"><input type="checkbox" name="to" value="<%= u.id %>" <%= values.to.indexOf(String(u.id)) >= 0 ? 'checked' : '' %>> <%= u.display_name %><%= u.id === user.id ? ' (me)' : '' %></label><% }) %>
+    </div>
+  </fieldset>
+  <button class="btn primary" type="submit">Assign task</button>
+</form>
+<%- include('partials/footer') %>

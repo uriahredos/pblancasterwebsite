@@ -1,0 +1,20 @@
+<%- include('partials/header') %>
+<p><a href="/admin/tasks">&larr; Tasks</a></p>
+<h1>Edit task</h1>
+<p class="lede">Given by <%= t.by_name %>, <%= fmtDateTime(t.created_at) %>. <%= t.when %>.</p>
+<%- include('partials/errors') %>
+<form method="post" action="/admin/tasks/<%= t.id %>" class="card stack">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>What needs doing <input name="title" value="<%= values.title || '' %>" required maxlength="150" autocomplete="off"></label>
+  <label>Details <span class="hint">Optional</span> <textarea name="details" rows="3" maxlength="2000"><%= values.details || '' %></textarea></label>
+  <label>Due by <span class="hint">Optional</span> <input type="date" name="due_on" value="<%= values.due_on || '' %>"></label>
+  <label>For
+    <select name="assigned_to">
+      <% if (!people.some(function (u) { return u.id === values.assigned_to; })) { %><option value="<%= values.assigned_to %>" selected><%= t.to_name %></option><% } %>
+      <% people.forEach(function (u) { %><option value="<%= u.id %>" <%= u.id === values.assigned_to ? 'selected' : '' %>><%= u.display_name %></option><% }) %>
+    </select>
+  </label>
+  <button class="btn primary" type="submit">Save</button>
+</form>
+<form method="post" action="/admin/tasks/<%= t.id %>/delete" class="spaced" data-confirm="Remove this task?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Remove this task</button></form>
+<%- include('partials/footer') %>

@@ -39,7 +39,7 @@
             [badges.inspections, '/admin/inspections?show=open', 'truck problem not fixed', 'truck problems not fixed'],
             [badges.certs, '/admin/certs?show=attention', 'certification expired or expiring', 'certifications expired or expiring']
           ].filter(function (a) { return a[0] > 0; });
-          var alertTotal = alerts.reduce(function (n, a) { return n + a[0]; }, 0);
+          var alertTotal = alerts.reduce(function (n, a) { return n + a[0]; }, 0) + badges.tasks;
         %>
         <details class="bell" id="bell">
           <summary aria-label="Notifications<%= alertTotal ? ', ' + alertTotal + ' waiting' : ', none' %>" title="Notifications">
@@ -47,9 +47,14 @@
             <% if (alertTotal) { %><span class="bell-count"><%= alertTotal > 99 ? '99+' : alertTotal %></span><% } %>
           </summary>
           <div class="bell-list">
-            <p class="bell-title">Notifications</p>
+            <% if (myTasks.length) { %>
+            <p class="bell-title">Your tasks</p>
+            <% myTasks.forEach(function (t) { %><a href="/tasks#t<%= t.id %>" class="bell-task <%= t.overdue ? 'overdue' : '' %>"><span class="bell-dot" aria-hidden="true"></span><span><strong><%= t.title %></strong><span class="bell-due"><%= t.when %></span></span></a><% }) %>
+            <% if (badges.tasks > myTasks.length) { %><a href="/tasks" class="bell-more">and <%= badges.tasks - myTasks.length %> more <%= badges.tasks - myTasks.length === 1 ? 'task' : 'tasks' %></a><% } %>
+            <% } %>
+            <% if (alerts.length || !myTasks.length) { %><p class="bell-title">Notifications</p><% } %>
             <% alerts.forEach(function (a) { %><a href="<%= a[1] %>"><span class="bell-n"><%= a[0] %></span><span><%= a[0] === 1 ? a[2] : a[3] %></span></a><% }) %>
-            <% if (!alerts.length) { %><p class="bell-empty">Nothing waiting. You are all caught up.</p><% } %>
+            <% if (!alerts.length && !myTasks.length) { %><p class="bell-empty">Nothing waiting. You are all caught up.</p><% } %>
           </div>
         </details>
         <% } else { %>
@@ -96,6 +101,7 @@
         ['users.manage', '/admin/users', 'Users', is('/admin/users')],
         ['users.manage', '/poster', 'QR code sign', is('/poster')],
         ['profiles.manage', '/admin/profiles', 'Profiles', is('/admin/profiles')],
+        ['tasks.assign', '/admin/tasks', 'Assign tasks', is('/admin/tasks')],
         ['announcements.post', '/admin/announcements', 'Announcements', is('/admin/announcements')],
         ['newsletters.manage', '/admin/newsletters', 'Newsletters', is('/admin/newsletters')],
         ['complaints.review', '/admin/complaints', 'Complaints', is('/admin/complaints')],
@@ -118,6 +124,7 @@
       <a href="/" <%- path === '/' ? 'aria-current="page"' : '' %>>Home</a>
       <a href="/notices" <%- path === '/notices' ? 'aria-current="page"' : '' %>>Notices<% if (badges.notices) { %> <span class="badge" title="Unread"><%= badges.notices %></span><% } %></a>
       <% if (can('forum.use')) { %><a href="/discussions" <%- path.startsWith('/discussions') ? 'aria-current="page"' : '' %>>Discussions<% if (badges.forum) { %> <span class="badge" title="New replies to threads you follow"><%= badges.forum %></span><% } %></a><% } %>
+      <a href="/tasks" <%- path === '/tasks' ? 'aria-current="page"' : '' %>>Tasks<% if (badges.tasks) { %> <span class="badge" title="Tasks to do"><%= badges.tasks %></span><% } %></a>
       <a href="/my" <%- path === '/my' ? 'aria-current="page"' : '' %>>My submissions<% if (badges.updates) { %> <span class="badge" title="Updates you have not seen"><%= badges.updates %></span><% } %></a>
       <% if (can('complaints.submit')) { %><a href="/complaint" <%- path.startsWith('/complaint') ? 'aria-current="page"' : '' %>>Complaint</a><% } %>
       <span class="nav-sep" aria-hidden="true"></span>

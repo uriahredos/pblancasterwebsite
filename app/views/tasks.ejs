@@ -1,0 +1,34 @@
+<%- include('partials/header') %>
+<div class="title-row"><h1>My tasks</h1><% if (can('tasks.assign')) { %><a class="btn small" href="/admin/tasks">Assign or follow up</a><% } %></div>
+<% if (!open.length) { %><p class="card empty">Nothing to do right now.</p><% } %>
+<ul class="records">
+<% open.forEach(function (t) { %>
+  <li class="card task <%= t.overdue ? 'overdue' : t.days !== null && t.days <= 1 ? 'soon' : '' %>" id="t<%= t.id %>">
+    <div class="rec-head">
+      <strong><%= t.title %></strong>
+      <% if (t.overdue) { %><span class="tag overdue">Overdue</span><% } %>
+      <time><%= t.when %></time>
+    </div>
+    <% if (t.details) { %><p class="pre"><%= t.details %></p><% } %>
+    <p class="meta">From <%= t.by_name %>, <%= fmtDateTime(t.created_at) %></p>
+    <form method="post" action="/tasks/<%= t.id %>/done" class="filters">
+      <input type="hidden" name="_csrf" value="<%= csrf %>">
+      <label class="grow"><span class="sr">Note</span><input name="done_note" maxlength="500" autocomplete="off" placeholder="Optional note for <%= t.by_name %>"></label>
+      <div class="filter-actions"><button class="btn primary small" type="submit">Mark as done</button></div>
+    </form>
+  </li>
+<% }) %>
+</ul>
+<% if (done.length) { %>
+<h2>Done</h2>
+<ul class="records">
+<% done.forEach(function (t) { %>
+  <li class="card cancelled">
+    <div class="rec-head"><span class="tag return">Done</span><strong><%= t.title %></strong><time><%= fmtDateTime(t.done_at) %></time></div>
+    <% if (t.done_note) { %><p class="meta">Note: <%= t.done_note %></p><% } %>
+    <form method="post" action="/tasks/<%= t.id %>/done"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Not done after all</button></form>
+  </li>
+<% }) %>
+</ul>
+<% } %>
+<%- include('partials/footer') %>

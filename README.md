@@ -106,7 +106,7 @@ Reached from the **Usage summary** button on the parts log. For a date range (an
 
 - **Always in the bar:** Home, Notices, My submissions, Complaint.
 - **Drop-downs:** Parts, Trucks, Training and Admin. Each holds the forms first, then the pages for managing that area. People only see the items their profile allows; a group with a single item shows as a plain link.
-- **Notification bell** at the top right: a red number for everything waiting on you, and a list when you press it: unread notices, discussions with new replies, updates on your requests and, for people who manage them, open parts requests, truck problems and expiring certifications. Each line goes to the right page, and the number drops as you deal with them.
+- **Notification bell** at the top right: a red number for everything waiting on you, and a list when you press it: your open tasks by name with their due dates, then unread notices, discussions with new replies, updates on your requests and, for people who manage them, open parts requests, truck problems and expiring certifications. Each line goes to the right page, and the number drops as you deal with them.
 - **Light / dark** is in the menu: at the right end of the bar on a computer, near the bottom of the Menu on a phone. On the sign-in page, where there is no menu, it stays at the top right.
 - **On a phone** the whole menu sits behind the Menu button at the top left, with Change password and Sign out at the bottom of it.
 - A number beside a group is the total of what needs attention inside it (open requests, truck problems, expiring certifications).
@@ -218,6 +218,15 @@ On a phone it is one column with the buttons first; on a wider screen the newsle
 - **Critical** keeps it at the very top of everyone's home page, even after they have read it, until its "show until" date passes or it is switched off from the announcement's own page. Use it for things like open enrollment.
 - **About** adds a small label (HR, Training, Safety or Event). **Pin** keeps it at the top of the notice board; pin or unpin later from the announcement's own page.
 - The poster sees "7 of 12 read", and a page listing who has read it (with the time) and who has not.
+
+## Tasks (`/tasks`, `/admin/tasks`)
+
+Something one person asks another to do, with an optional due date.
+
+- **Assigning** (Admin > Assign tasks): say what needs doing, add details and a due date if you like, and tick who it is for. Ticking several people gives each their own copy. Needs the **Assign tasks** permission; a manager can assign to their own people only.
+- **For the person**: every open task appears in their notification bell by name with when it is due ("Due tomorrow", "Overdue by 2 days"), overdue first, and counts toward the bell's number. **Tasks** in the menu lists them with the details and a **Mark as done** button with an optional note.
+- **Following up**: the Tasks page for assigners shows open, overdue and done tasks, who each is for, and any note left when it was done. You can edit, reassign, mark done on someone's behalf, reopen or remove a task.
+- The person is emailed when a task is assigned if they have an email address and email is set up.
 
 ## Deleting records
 
