@@ -55,6 +55,7 @@
             <% if (alerts.length || !myTasks.length) { %><p class="bell-title">Notifications</p><% } %>
             <% alerts.forEach(function (a) { %><a href="<%= a[1] %>"><span class="bell-n"><%= a[0] %></span><span><%= a[0] === 1 ? a[2] : a[3] %></span></a><% }) %>
             <% if (!alerts.length && !myTasks.length) { %><p class="bell-empty">Nothing waiting. You are all caught up.</p><% } %>
+            <a href="/settings/notifications" class="bell-settings">Notification settings</a>
           </div>
         </details>
         <% } else { %>
@@ -147,6 +148,7 @@
       </button>
       <div class="nav-account">
         <span class="nav-sep" aria-hidden="true"></span>
+        <a href="/settings/notifications">Notification settings</a>
         <a href="/account/password">Change password<span class="hint-light"><%= user.display_name %></span></a>
         <form method="post" action="/logout"><input type="hidden" name="_csrf" value="<%= csrf %>"><button type="submit">Sign out</button></form>
       </div>

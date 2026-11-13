@@ -228,6 +228,29 @@ Something one person asks another to do, with an optional due date.
 - **Following up**: the Tasks page for assigners shows open, overdue and done tasks, who each is for, and any note left when it was done. You can edit, reassign, mark done on someone's behalf, reopen or remove a task.
 - The person is emailed when a task is assigned if they have an email address and email is set up.
 
+## Push alerts (`/settings/notifications`)
+
+Alerts that pop up on a phone or computer even when the site is closed. Reached from **Notification settings** at the bottom of the bell, or in the Menu on a phone.
+
+- **Each person turns alerts on per device** with "Turn on alerts on this device"; the phone or browser asks them to allow notifications. The page lists their devices and can send a test alert.
+- **iPhone and iPad**: alerts only work once the site has been added to the Home Screen (Safari > Share > Add to Home Screen) and opened from there. Android and computers work from the browser.
+- **What sends an alert**
+
+  | Alert | Goes to |
+  |---|---|
+  | A task is assigned | The person it is for |
+  | A critical announcement is posted | Everyone it is addressed to |
+  | A parts or training request is updated | The person who asked |
+  | A reply in a discussion | Everyone following that thread |
+  | A task is marked done | Whoever assigned it |
+  | Someone requests parts | People who manage parts (and can see that person) |
+  | A truck problem is reported | People who can see inspections (and that person) |
+  | A part drops to its minimum | People who manage stock |
+
+- **Each person chooses** which of these they want, with tick-boxes on the same page. They only see the kinds that apply to their profile. Everything is on to begin with. The bell on the site shows everything regardless.
+- An alert carries a short title and one line of text, and tapping it opens the right page. Anonymous complaints never send alerts.
+- Nothing needs configuring: the site makes its own signing keys on first use and keeps them in the database. The server must be able to reach the internet to send (Render can).
+
 ## Deleting records
 
 People whose profile has **Permanently delete...** ticked see a delete button at the bottom of a parts entry, training request or truck inspection. Deleting a complaint needs that permission **and** complaint access.

@@ -1,7 +1,7 @@
 // Service worker: lets the site be installed on a phone's home screen and shows a
 // friendly page when there is no signal. Pages themselves are never stored, so
 // nothing private is kept on the phone by this file.
-var CACHE = 'portal-static-v5';
+var CACHE = 'portal-static-v6';
 var ASSETS = ['/offline.html', '/offline.js', '/styles.css', '/site.js', '/theme.js', '/logo.png', '/parts-form.js', '/scan.js', '/inspection-form.js', '/icons/icon-192.png'];
 
 self.addEventListener('install', function (event) {
@@ -12,6 +12,26 @@ self.addEventListener('activate', function (event) {
   event.waitUntil(caches.keys().then(function (keys) {
     return Promise.all(keys.filter(function (k) { return k !== CACHE; }).map(function (k) { return caches.delete(k); }));
   }).then(function () { return self.clients.claim(); }));
+});
+
+// A push alert from the site: show it. The message carries only a short title, a line of text and where to go.
+self.addEventListener('push', function (event) {
+  var data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (e) { data = { title: 'Pye-Barker Lancaster', body: event.data ? event.data.text() : '' }; }
+  event.waitUntil(self.registration.showNotification(data.title || 'Pye-Barker Lancaster', {
+    body: data.body || '', icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', tag: data.tag || undefined, renotify: Boolean(data.tag),
+    data: { url: data.url || '/' }
+  }));
+});
+
+// Tapping the alert opens the right page, reusing a window that is already open.
+self.addEventListener('notificationclick', function (event) {
+  event.notification.close();
+  var url = new URL((event.notification.data && event.notification.data.url) || '/', self.location.origin).href;
+  event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
+    for (var i = 0; i < list.length; i++) { if ('focus' in list[i]) { list[i].navigate(url); return list[i].focus(); } }
+    return self.clients.openWindow(url);
+  }));
 });
 
 self.addEventListener('fetch', function (event) {

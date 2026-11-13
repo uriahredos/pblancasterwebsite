@@ -1,0 +1,44 @@
+<%- include('partials/header') %>
+<h1>Notification settings</h1>
+<p class="lede">Alerts pop up on your phone or computer even when the site is closed. Turn them on for each device you want them on, then choose what you want to hear about.</p>
+
+<h2>This device</h2>
+<div class="card stack" id="push-box" data-key="<%= publicKey %>" data-csrf="<%= csrf %>">
+  <p id="push-state" class="meta">Checking this device…</p>
+  <div class="rec-actions">
+    <button type="button" class="btn primary" id="push-on" hidden>Turn on alerts on this device</button>
+    <button type="button" class="btn" id="push-off" hidden>Turn off alerts on this device</button>
+  </div>
+  <noscript><p class="flash err">Alerts need scripts to be allowed in your browser.</p></noscript>
+</div>
+
+<% if (devices.length) { %>
+<h2>Devices with alerts on</h2>
+<ul class="records">
+  <% devices.forEach(function (d) { %>
+  <li class="card" data-endpoint="<%= d.endpoint %>">
+    <div class="rec-head"><strong><%= d.device || 'A device' %></strong><span class="tag return this-device" hidden>This device</span><time>Since <%= fmtDateTime(d.created_at) %></time></div>
+    <form method="post" action="/push/unsubscribe"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="id" value="<%= d.id %>"><button class="link" type="submit">Turn off for this device</button></form>
+  </li>
+  <% }) %>
+</ul>
+<form method="post" action="/push/test" class="spaced"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn small" type="submit">Send me a test alert</button></form>
+<% } %>
+
+<h2>What to alert me about</h2>
+<form method="post" action="/settings/notifications" class="card stack">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <% var groups = []; kinds.forEach(function (k) { if (groups.indexOf(k.group) < 0) groups.push(k.group); }); %>
+  <% groups.forEach(function (g) { %>
+  <fieldset>
+    <legend><%= g %></legend>
+    <% kinds.filter(function (k) { return k.group === g; }).forEach(function (k) { %>
+    <label class="choice"><input type="checkbox" name="kinds" value="<%= k.key %>" <%= k.on ? 'checked' : '' %>> <%= k.label %></label>
+    <% }) %>
+  </fieldset>
+  <% }) %>
+  <p class="hint">These choices apply to all your devices. Everything still shows in the bell at the top of the site whether or not you get an alert for it.</p>
+  <button class="btn primary" type="submit">Save</button>
+</form>
+<script src="/push.js?v=<%= assetV %>" defer></script>
+<%- include('partials/footer') %>

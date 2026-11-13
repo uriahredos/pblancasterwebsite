@@ -54,6 +54,10 @@ router.post('/inspection', requirePerm('inspections.submit'), uploads.photos('ph
   })();
 
   if (problems.length) {
+    const push = require('../push');
+    push.notify(push.peopleWith('inspections.view', req.user.id, req.user.id), 'truck_problem', {
+      title: `Truck ${values.truck}: ${problems.length} ${problems.length === 1 ? 'problem' : 'problems'} reported`,
+      body: `${req.user.display_name}: ` + problems.map((it) => `${it.label}: ${values.notes[it.id]}`).join('; '), url: `/admin/inspections/${id}` });
     mail.send(config.notifyTo, `Truck ${values.truck}: ${problems.length} ${problems.length === 1 ? 'problem' : 'problems'} reported`,
       `${req.user.display_name} inspected truck ${values.truck} and reported:\n\n` +
       problems.map((it) => `  ${it.label}: ${values.notes[it.id]}`).join('\n') + `\n\n${config.baseUrl}/admin/inspections/${id}\n`);

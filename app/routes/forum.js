@@ -197,6 +197,9 @@ router.post('/discussions/t/:id/reply', use, uploads.photos('photos', MAX_PHOTOS
     markRead(t.id, req.user.id, true);                                  // whoever replies hears about later replies
     return id;
   })();
+  // Tell everyone following this thread, except the person who just wrote.
+  const followers = db.prepare('SELECT user_id FROM forum_reads WHERE thread_id = ? AND following = 1 AND user_id <> ?').all(t.id, req.user.id).map((r) => r.user_id);
+  require('../push').notify(followers, 'forum_reply', { title: `New reply: ${t.title}`, body: `${req.user.display_name}: ${body.replace(/\s+/g, ' ')}`, url: `/discussions/t/${t.id}#p${postId}` });
   res.redirect(`/discussions/t/${t.id}#p${postId}`);
 });
 

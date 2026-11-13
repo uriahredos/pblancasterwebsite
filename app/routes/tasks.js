@@ -6,6 +6,7 @@ const activity = require('../activity');
 const mail = require('../mail');
 const config = require('../config');
 const tasks = require('../tasks');
+const push = require('../push');
 const { requireLogin, requirePerm, forbidden, flash } = require('../auth');
 const { clean, isYmd, localDate, fmtDate } = require('../util');
 
@@ -28,7 +29,13 @@ router.post('/tasks/:id/done', requireLogin, (req, res) => {
   if (!t) return res.redirect('/tasks');
   if (t.assigned_to !== req.user.id) return forbidden(res);
   if (t.done_at) db.prepare('UPDATE tasks SET done_at = NULL, done_note = NULL WHERE id = ?').run(t.id);
-  else db.prepare('UPDATE tasks SET done_at = ?, done_note = ? WHERE id = ?').run(new Date().toISOString(), clean(req.body.done_note, 500) || null, t.id);
+  else {
+    const note = clean(req.body.done_note, 500) || null;
+    db.prepare('UPDATE tasks SET done_at = ?, done_note = ? WHERE id = ?').run(new Date().toISOString(), note, t.id);
+    if (t.assigned_by !== req.user.id) {
+      push.notify([t.assigned_by], 'task_done', { title: `Done: ${t.title}`, body: `${req.user.display_name} marked it done.${note ? ' "' + note + '"' : ''}`, url: '/admin/tasks?show=done' });
+    }
+  }
   flash(req, 'ok', t.done_at ? 'Task reopened.' : 'Task marked as done.');
   res.redirect('/tasks');
 });
@@ -84,6 +91,8 @@ router.post('/admin/tasks', assign, (req, res) => {
   const add = db.prepare('INSERT INTO tasks (title, details, assigned_to, assigned_by, due_on, created_at) VALUES (?, ?, ?, ?, ?, ?)');
   db.transaction(() => { for (const u of to) add.run(values.title, values.details || null, u.id, req.user.id, values.due_on || null, now); })();
   activity.log(req.user, 'Task assigned', `"${values.title}" to ${to.map((u) => u.display_name).join(', ')}${values.due_on ? ', due ' + fmtDate(values.due_on) : ''}`);
+  push.notify(to.filter((u) => u.id !== req.user.id).map((u) => u.id), 'task_assigned',
+    { title: `New task: ${values.title}`, body: `From ${req.user.display_name}. ${values.due_on ? 'Due ' + fmtDate(values.due_on) : 'No due date'}.`, url: '/tasks' });
   // Tell each person by email if they have one (the bell tells them either way).
   for (const u of to) {
     if (u.id === req.user.id) continue;

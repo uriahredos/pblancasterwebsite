@@ -80,6 +80,10 @@ router.post('/admin/announcements', requirePerm('announcements.post'), (req, res
     .run(values.title, values.body, req.user.scope === 'team' ? 'team' : 'all', values.expires_on || null, values.category, values.pinned, values.critical, req.user.id, new Date().toISOString());
   // The person posting has obviously read it.
   db.prepare('INSERT INTO announcement_reads (announcement_id, user_id, read_at) VALUES (?, ?, ?)').run(info.lastInsertRowid, req.user.id, new Date().toISOString());
+  if (values.critical) {
+    const who = audience({ audience: req.user.scope === 'team' ? 'team' : 'all', created_by: req.user.id }).map((p) => p.id).filter((id) => id !== req.user.id);
+    require('../push').notify(who, 'critical_notice', { title: `Critical: ${values.title}`, body: values.body, url: '/notices' });
+  }
   activity.log(req.user, 'Announcement posted', values.title);
   flash(req, 'ok', 'Announcement posted.');
   res.redirect('/admin/announcements');

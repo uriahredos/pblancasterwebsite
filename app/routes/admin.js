@@ -11,6 +11,7 @@ const router = express.Router();
 const access = require('../permissions');
 const activity = require('../activity');
 const mail = require('../mail');
+const push = require('../push');
 const { requirePerm, forbidden, flash } = auth;
 
 /** People this viewer may pick in a "Person" filter: everyone, or just their own team. */
@@ -289,6 +290,7 @@ router.post('/admin/parts/:id/status', requirePerm('parts.manage'), (req, res) =
       db.prepare('UPDATE parts_submissions SET unseen = 1 WHERE id = ?').run(req.params.id);
       mail.notifyStatus(db.prepare('SELECT display_name, email FROM users WHERE id = ?').get(before.user_id),
         'parts request', labels.partsStatus[req.body.status], note, '/my');
+      push.notify([before.user_id], 'request_status', { title: `Parts request: ${labels.partsStatus[req.body.status]}`, body: note || 'Your parts request was updated.', url: '/my' });
     }
     flash(req, 'ok', 'Request updated.');
   }
@@ -360,6 +362,7 @@ router.post('/admin/training/:id/status', requirePerm('training.manage'), (req, 
       db.prepare('UPDATE training_requests SET unseen = 1 WHERE id = ?').run(req.params.id);
       mail.notifyStatus(db.prepare('SELECT display_name, email FROM users WHERE id = ?').get(before.user_id),
         'training request', labels.trainingStatus[req.body.status], note, '/my');
+      push.notify([before.user_id], 'request_status', { title: `Training request: ${labels.trainingStatus[req.body.status]}`, body: note || 'Your training request was updated.', url: '/my' });
     }
     flash(req, 'ok', 'Request updated.');
   }

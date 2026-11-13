@@ -2354,3 +2354,145 @@ test('tasks: assigned with a due date, shown in the bell with when they are due,
   assert.match((await owner.get('/admin/activity?q=Task')).text, /Task assigned/);
   db.prepare('DELETE FROM tasks').run();
 });
+
+test('push alerts: sent for the chosen events, to the right people, and each person can switch kinds off', async () => {
+  const push = require('../app/push');
+  const pushed = [];
+  let fail = null;
+  push.setSender(async (sub, payload) => { if (fail && sub.endpoint.includes(fail)) { const e = new Error('gone'); e.statusCode = 410; throw e; } pushed.push({ to: sub.user_id, endpoint: sub.endpoint, ...JSON.parse(payload) }); });
+  const flush = () => new Promise((r) => setTimeout(r, 30));
+  const take = async () => { await flush(); return pushed.splice(0); };
+  const who = (list) => list.map((p) => db.prepare('SELECT username FROM users WHERE id = ?').get(p.to).username).sort();
+
+  makeUser('push1', 'Petra Push'); makeUser('push2', 'Paul Push');
+  const petra = await loggedIn('push1');
+  const page = '/settings/notifications';
+  const sub = (client, name) => client.post('/push/subscribe', { endpoint: `https://push.example.test/${name}`, p256dh: 'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM', auth: 'tBHItJI5svbpez7KI4CCXg', device: 'Test phone' }, { page });
+
+  // The settings page offers each person only the kinds that apply to them.
+  const mine = (await petra.get(page)).text;
+  for (const k of ['task_assigned', 'critical_notice', 'request_status', 'forum_reply']) assert.match(mine, new RegExp(`name="kinds" value="${k}" checked`));
+  assert.doesNotMatch(mine, /value="(parts_request|truck_problem|low_stock|task_done)"/);
+  const ownerPage = (await (await loggedIn('owner')).get(page)).text;
+  for (const k of ['parts_request', 'truck_problem', 'low_stock', 'task_done']) assert.match(ownerPage, new RegExp(`value="${k}" checked`));
+  assert.match(mine, /data-key="[A-Za-z0-9_-]{80,}"/);                       // the site's public key, made automatically
+  assert.match((await petra.get('/')).text, /href="\/settings\/notifications"/); // reachable from the bell and the menu
+
+  // Registering a device; nonsense is refused.
+  assert.equal((await petra.post('/push/subscribe', { endpoint: 'not-a-url', p256dh: 'x', auth: 'y' }, { page })).status, 400);
+  assert.equal((await sub(petra, 'petra-phone')).status, 200);
+  await sub(petra, 'petra-phone');                                            // registering twice keeps one row
+  await sub(petra, 'petra-laptop');
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM push_subscriptions WHERE user_id = ?').get(userId('push1')).n, 2);
+  const owner = await loggedIn('owner'); await sub(owner, 'owner-phone');
+  const wh = await loggedIn('wh1'); await sub(wh, 'wh-phone');
+  const mgr = await loggedIn('mgr1'); await sub(mgr, 'mgr-phone');
+  const paul = await loggedIn('push2');                                       // no device registered: never pushed to
+  assert.equal((await new Client().get(page)).status, 302);
+
+  // 1. A task is assigned: both of the person's devices; the assigner hears when it is done.
+  await owner.post('/admin/tasks', [['title', 'Push task'], ['due_on', ymdFromNow(1)], ['to', String(userId('push1'))], ['to', String(userId('push2'))]], { page: '/admin/tasks' });
+  let got = await take();
+  assert.deepEqual(got.map((p) => p.endpoint).sort(), ['https://push.example.test/petra-laptop', 'https://push.example.test/petra-phone']);
+  assert.deepEqual([got[0].title, got[0].url, got[0].tag], ['New task: Push task', '/tasks', 'task_assigned']);
+  assert.match(got[0].body, /From Olive Owner\. Due \d+\/\d+\/\d{4}\./);
+  const tid = db.prepare("SELECT id FROM tasks WHERE title = 'Push task' AND assigned_to = ?").get(userId('push1')).id;
+  await petra.post(`/tasks/${tid}/done`, { done_note: 'All set' }, { page: '/tasks' });
+  got = await take();
+  assert.deepEqual(who(got), ['owner']);
+  assert.deepEqual([got[0].title, got[0].tag], ['Done: Push task', 'task_done']);
+  assert.match(got[0].body, /Petra Push marked it done\. "All set"/);
+
+  // 2. Critical announcements go to everyone they are for (not the poster); ordinary ones do not push.
+  await owner.post('/admin/announcements', { title: 'Ordinary note', body: 'Nothing urgent.' }, { page: '/admin/announcements' });
+  assert.deepEqual(await take(), []);
+  await owner.post('/admin/announcements', { title: 'Gas leak at the shop', body: 'Do not come in until told.', critical: '1' }, { page: '/admin/announcements' });
+  got = await take();
+  assert.deepEqual(who(got), ['mgr1', 'push1', 'push1', 'wh1']);
+  assert.equal(got[0].title, 'Critical: Gas leak at the shop');
+
+  // 3. A parts request: people who manage parts (and may see the requester); then the requester hears about the status.
+  await petra.post('/parts', [['action', 'request'], ['part_name', 'PUSH-PART'], ['quantity', '2'], ['source', 'van'], ['needed_by', '2031-10-01']], { multipart: true });
+  got = await take();
+  assert.deepEqual(who(got), ['owner', 'wh1']);                              // the manager does not manage Petra
+  assert.match(got[0].title, /Parts request from Petra Push/); assert.match(got[0].body, /2 × PUSH-PART\. Needed by 2031-10-01\./);
+  await wh.post(`/admin/parts/${lastParts().id}/status`, { status: 'ordered', back: 'requests' }, { page: '/admin/requests' });
+  got = await take();
+  assert.deepEqual(who(got), ['push1', 'push1']);
+  assert.deepEqual([got[0].title, got[0].tag, got[0].url], ['Parts request: Ordered', 'request_status', '/my']);
+
+  // 4. A truck problem: people who can see inspections for that person.
+  const items = db.prepare('SELECT id FROM inspection_items WHERE active = 1 ORDER BY sort').all();
+  await petra.post('/inspection', [['truck', '311'], ...items.map((it, i) => (i === 0 ? [`item_${it.id}`, 'problem'] : [`item_${it.id}`, 'ok'])), [`note_${items[0].id}`, 'Flat tire']], { multipart: true, page: '/inspection' });
+  got = await take();
+  assert.deepEqual(who(got), ['owner', 'wh1']);
+  assert.match(got[0].title, /Truck 311: 1 problem reported/); assert.match(got[0].body, /Petra Push: .*Flat tire/);
+
+  // 5. Low stock: people who manage stock, once, when a take crosses the minimum.
+  await wh.post('/admin/stock', { part_number: 'PUSH-LOW', count: '5', min_level: '3' }, { page: '/admin/stock' });
+  await new Promise((r) => setTimeout(r, 5));
+  await takeParts(petra, [['PUSH-LOW', 2]]);
+  got = await take();
+  assert.deepEqual(who(got), ['owner', 'wh1']);
+  assert.deepEqual([got[0].title, got[0].tag], ['Low stock: PUSH-LOW', 'low_stock']);
+  await takeParts(petra, [['PUSH-LOW', 1]]);
+  assert.deepEqual(await take(), []);
+
+  // 6. A reply in a discussion: the people following it, not the person who wrote.
+  const section = db.prepare('SELECT id FROM forum_sections ORDER BY id LIMIT 1').get().id;
+  await petra.post('/discussions/new', [['section_id', String(section)], ['title', 'Push thread'], ['body', 'First post']], { multipart: true, page: '/discussions/new' });
+  const thread = db.prepare("SELECT id FROM forum_threads WHERE title = 'Push thread'").get().id;
+  await take();
+  await paul.post(`/discussions/t/${thread}/reply`, [['body', 'A reply\nfrom Paul']], { multipart: true, page: `/discussions/t/${thread}` });
+  got = await take();
+  assert.deepEqual(who(got), ['push1', 'push1']);
+  assert.deepEqual([got[0].title, got[0].body, got[0].tag], ['New reply: Push thread', 'Paul Push: A reply from Paul', 'forum_reply']);
+  assert.match(got[0].url, new RegExp(`^/discussions/t/${thread}#p\\d+$`));
+
+  // Switching a kind off stops those alerts for that person only; the rest keep coming.
+  await petra.post(page, [['kinds', 'critical_notice'], ['kinds', 'request_status']], { page });
+  assert.doesNotMatch((await petra.get(page)).text, /value="task_assigned" checked/);
+  await owner.post('/admin/tasks', { title: 'Quiet task', to: String(userId('push1')) }, { page: '/admin/tasks' });
+  await paul.post(`/discussions/t/${thread}/reply`, [['body', 'Another reply']], { multipart: true, page: `/discussions/t/${thread}` });
+  assert.deepEqual(await take(), []);
+  assert.match((await petra.get('/')).text, /Quiet task/);                    // still in the bell
+  await owner.post('/admin/announcements', { title: 'Still critical', body: 'x', critical: '1' }, { page: '/admin/announcements' });
+  assert.ok(who(await take()).includes('push1'));
+
+  // A device the phone has dropped is forgotten the first time sending to it fails.
+  fail = 'petra-laptop';
+  await owner.post('/admin/announcements', { title: 'Critical again', body: 'x', critical: '1' }, { page: '/admin/announcements' });
+  await take();
+  fail = null;
+  assert.deepEqual(db.prepare('SELECT endpoint FROM push_subscriptions WHERE user_id = ?').all(userId('push1')).map((r) => r.endpoint), ['https://push.example.test/petra-phone']);
+
+  // Test alert, and turning a device off (only your own).
+  await petra.post('/push/test', {}, { page });
+  got = await take();
+  assert.deepEqual([got.length, got[0].title], [1, 'Test alert']);
+  const dev = db.prepare('SELECT id FROM push_subscriptions WHERE user_id = ?').get(userId('push1')).id;
+  await paul.post('/push/unsubscribe', { id: String(dev) }, { page });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM push_subscriptions WHERE id = ?').get(dev).n, 1);
+  await petra.post('/push/unsubscribe', { id: String(dev) }, { page });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM push_subscriptions WHERE user_id = ?').get(userId('push1')).n, 0);
+  await petra.post('/push/test', {}, { page });
+  assert.match((await petra.get(page)).text, /No device has alerts turned on yet/);
+
+  // The real sending path: the stored keys can sign and encrypt a message for a genuine browser subscription.
+  const webpush = require('web-push');
+  const crypto = require('crypto');
+  const ecdh = crypto.createECDH('prime256v1'); ecdh.generateKeys();
+  const real = { endpoint: 'https://fcm.googleapis.com/fcm/send/abc123', keys: { p256dh: ecdh.getPublicKey('base64url'), auth: crypto.randomBytes(16).toString('base64url') } };
+  const k = push.vapid();
+  assert.deepEqual(push.vapid(), k);                                          // made once, then reused
+  const details = webpush.generateRequestDetails(real, JSON.stringify({ title: 'x' }), { vapidDetails: { subject: 'https://portal.test', publicKey: k.publicKey, privateKey: k.privateKey } });
+  assert.equal(details.method, 'POST');
+  assert.match(details.headers.Authorization, /^vapid t=.+, k=/);
+  assert.ok(details.body.length > 50);
+
+  // The background script handles the alert and the tap.
+  const sw = (await new Client().get('/sw.js')).text;
+  assert.match(sw, /addEventListener\('push'/); assert.match(sw, /addEventListener\('notificationclick'/);
+  db.prepare('DELETE FROM push_subscriptions').run(); db.prepare('DELETE FROM tasks').run();
+  push.setSender(async () => {});
+});

@@ -560,3 +560,5 @@ table.audit .check-cell form { display: block; margin: 0 0 .2rem; }
 .bell-task.overdue .bell-due { color: var(--err); font-weight: 600; }
 .bell-more { font-size: .88rem; color: var(--accent) !important; }
 .bell-list { max-height: min(70vh, 32rem); overflow-y: auto; }
+
+.bell-settings { margin-top: .3rem; border-top: 1px solid var(--line); border-radius: 0 0 6px 6px !important; font-size: .88rem; color: var(--accent) !important; }
