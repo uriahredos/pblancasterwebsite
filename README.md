@@ -142,7 +142,44 @@ The sign-in page has a **Forgot your password?** link. It emails a link that wor
 
 ## Activity log (`/admin/activity`)
 
-Linked from the Users page. Records who added or edited a person, reset a password, disabled an account, changed a profile's tick-boxes (listing what was added and removed), imported the catalog, changed stock, ran or downloaded a backup, or added a training session. Needs the **See the activity log** permission. Anonymous complaints are never recorded there.
+Linked from the Users page. Records who added or edited a person, reset a password, disabled an account, changed a profile's tick-boxes (listing what was added and removed), imported the catalog, changed stock, ran or downloaded a backup, or added a training session. Needs the **See the activity log** permission. What a complaint says, who sent it and replies to it are never recorded there; the only complaint event logged is that one was deleted, and by whom.
+
+## Licenses and certifications (`/admin/certs`)
+
+Record each person's licenses and certifications with an optional issuer, number, issued date and expiry date.
+
+- The list shows **Expired**, **days left** (within 60 days) or **Current**, soonest expiry first, with a filter for the ones needing attention and a CSV download.
+- Each person sees their own under My submissions. In the last 30 days (and once expired) a warning shows on their home page.
+- They are emailed once at 30 days and once at 7 days before expiry (needs email set up and an email address on their account).
+- When something is renewed, edit the record and change the expiry date; reminders start again.
+- The menu shows a count of records expired or expiring within 30 days.
+- Needs the **Record and edit people's licenses and certifications** permission. Managers keep records for their own people only.
+
+## Truck inspections (`/inspection`, `/admin/inspections`)
+
+- **The form**: truck number (remembered), optional odometer, then each checklist item marked **OK** or **Problem**. A problem needs a short description. Up to four photos and an optional note. Answers are saved on the phone while filling it in; photos are not.
+- **Problems** are emailed to `NOTIFY_TO` (needs email set up) and counted in the menu until someone marks them fixed, with an optional reply the sender sees under My submissions.
+- **Inspections page**: filter by date, person, truck or open problems; download a CSV with one row per checklist item.
+- **Who is due**: everyone with a truck, longest since their last inspection first.
+- **Edit the checklist**: add, reword, reorder or remove items. Inspections already sent keep the wording they were answered with.
+- Sending needs **Send truck inspections**; viewing needs **See truck inspections**; marking fixed and editing the checklist need **Mark inspection problems as fixed**.
+
+## Announcements (`/notices`, `/admin/announcements`)
+
+- Anyone with **Post announcements** can post a title and message, with an optional "show until" date.
+- Someone who sees everyone posts to **everyone**. A manager posts to **their own people**.
+- It shows at the top of each person's home page until they press **I have read this**, and stays on their Notices page afterwards. The menu shows how many are unread.
+- The poster sees "7 of 12 read", and a page listing who has read it (with the time) and who has not.
+
+## Deleting records
+
+People whose profile has **Permanently delete...** ticked see a delete button at the bottom of a parts entry, training request or truck inspection. Deleting a complaint needs that permission **and** complaint access.
+
+- Deleting is permanent. There is no undo, and a deleted record is not in later backups. For a mistake that should stay on the record, use **Cancel** instead.
+- Deleting a parts entry removes its photo and returns stock to what it would be without it.
+- Deleting a training request keeps any session held for it and its attendance.
+- Deleting a complaint means its tracking code no longer finds anything.
+- Each deletion is written to the activity log with who did it. For a complaint the log says only that one was deleted; for a private training request it leaves out the wording.
 
 ## Editing and cancelling
 

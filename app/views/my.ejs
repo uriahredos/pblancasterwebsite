@@ -50,6 +50,30 @@
   </li>
 <% }) %>
 </ul>
+<% if (inspections.length) { %>
+<h2>Truck inspections</h2>
+<ul class="records">
+  <% inspections.forEach(function (i) { %>
+  <li class="card"><div class="rec-head"><strong>Truck <%= i.truck %></strong>
+    <% if (i.problems && !i.resolved_at) { %><span class="tag overdue"><%= i.problems %> <%= i.problems === 1 ? 'problem' : 'problems' %> reported</span><% } else if (i.problems) { %><span class="tag return">Fixed</span><% } else { %><span class="tag return">All OK</span><% } %>
+    <time><%= fmtDateTime(i.created_at) %></time></div>
+    <% if (i.resolved_note) { %><p class="reply"><strong>Reply:</strong> <%= i.resolved_note %></p><% } %>
+  </li>
+  <% }) %>
+</ul>
+<% } %>
+<% if (myCerts.length) { %>
+<h2>My licenses and certifications</h2>
+<ul class="records">
+  <% myCerts.forEach(function (c) { %>
+  <li class="card"><div class="rec-head"><strong><%= c.name %></strong>
+    <% if (c.status === 'expired') { %><span class="tag overdue">Expired</span><% } else if (c.status === 'soon') { %><span class="tag request">Expires in <%= c.days %> <%= c.days === 1 ? 'day' : 'days' %></span><% } else if (c.status === 'ok') { %><span class="tag return">Current</span><% } %>
+    <time><%= c.expires_on ? 'Expires ' + fmtDate(c.expires_on) : 'No expiry date' %></time></div>
+    <% if (c.issuer || c.number) { %><p class="meta"><%= [c.issuer, c.number].filter(Boolean).join(' · ') %></p><% } %>
+  </li>
+  <% }) %>
+</ul>
+<% } %>
 <% if (attended.length) { %>
 <h2>Training attended</h2>
 <ul class="records">

@@ -1,0 +1,7 @@
+  <div class="filters">
+    <label>Issued by <span class="hint">Optional</span> <input name="issuer" value="<%= values.issuer || '' %>" maxlength="120" autocomplete="off"></label>
+    <label>Number <span class="hint">Optional</span> <input name="number" value="<%= values.number || '' %>" maxlength="80" autocomplete="off"></label>
+    <label>Issued <span class="hint">Optional</span> <input type="date" name="issued_on" value="<%= values.issued_on || '' %>"></label>
+    <label>Expires <span class="hint">Blank if it never does</span> <input type="date" name="expires_on" value="<%= values.expires_on || '' %>"></label>
+  </div>
+  <label>Notes <span class="hint">Optional</span> <input name="notes" value="<%= values.notes || '' %>" maxlength="500" autocomplete="off"></label>

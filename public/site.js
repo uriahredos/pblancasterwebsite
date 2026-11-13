@@ -16,7 +16,7 @@
 
   // After a form is sent the server adds ?sent=parts or ?sent=training: drop that draft.
   var sent = new URLSearchParams(location.search).get('sent');
-  if (sent === 'parts' || sent === 'training') {
+  if (sent === 'parts' || sent === 'training' || sent === 'inspection') {
     store.clearPrefix('draft:' + sent + ':');
     history.replaceState(null, '', location.pathname);
   }

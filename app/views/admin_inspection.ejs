@@ -1,0 +1,38 @@
+<%- include('partials/header') %>
+<p><a href="/admin/inspections">&larr; Truck inspections</a></p>
+<h1>Truck <%= i.truck %> · <%= i.display_name %></h1>
+<p class="lede"><%= fmtDateTime(i.created_at) %><%= i.odometer ? ' · Odometer ' + i.odometer : '' %></p>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Item</th><th>Result</th><th>What is wrong</th></tr></thead>
+  <tbody>
+  <% results.forEach(function (r) { %><tr><td><%= r.label %></td><td class="<%= r.ok ? 'result-ok' : 'result-bad' %>"><%= r.ok ? 'OK' : 'Problem' %></td><td><%= r.note %></td></tr><% }) %>
+  </tbody>
+</table>
+</div>
+<% if (i.notes) { %><h2>Notes</h2><p class="pre"><%= i.notes %></p><% } %>
+<% if (photos.length) { %>
+<h2>Photos</h2>
+<div class="photo-grid"><% photos.forEach(function (p) { %><a href="/inspection/photo/<%= p.id %>"><img src="/inspection/photo/<%= p.id %>" alt="Inspection photo" loading="lazy"></a><% }) %></div>
+<% } %>
+<% if (i.problems) { %>
+<h2>Problems</h2>
+<% if (i.resolved_at) { %>
+<p class="flash ok">Marked as fixed by <%= i.resolved_by_name %>, <%= fmtDateTime(i.resolved_at) %>.<% if (i.resolved_note) { %> <%= i.resolved_note %><% } %></p>
+<% } else { %><p class="flash err"><%= i.problems %> <%= i.problems === 1 ? 'problem' : 'problems' %> reported and not yet marked as fixed.</p><% } %>
+<% if (can('inspections.manage')) { %>
+<form method="post" action="/admin/inspections/<%= i.id %>/resolve" class="card stack">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <% if (!i.resolved_at) { %>
+  <label>What was done <span class="hint">Optional. <%= i.display_name %> sees this under My submissions.</span>
+    <input name="resolved_note" maxlength="500" autocomplete="off">
+  </label>
+  <button class="btn primary" type="submit">Mark as fixed</button>
+  <% } else { %><button class="btn" type="submit">Mark as not fixed yet</button><% } %>
+</form>
+<% } %>
+<% } %>
+<% if (can('records.delete')) { %>
+<form method="post" action="/admin/inspections/<%= i.id %>/delete" class="spaced danger-zone" data-confirm="Permanently delete this inspection and its photos? This cannot be undone."><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn small danger" type="submit">Delete this inspection permanently</button></form>
+<% } %>
+<%- include('partials/footer') %>

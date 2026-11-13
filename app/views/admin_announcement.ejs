@@ -1,0 +1,23 @@
+<%- include('partials/header') %>
+<p><a href="/admin/announcements">&larr; Announcements</a></p>
+<h1><%= a.title %></h1>
+<p class="lede">Posted by <%= a.author %>, <%= fmtDateTime(a.created_at) %> · to <%= a.audience === 'team' ? 'their people' : 'everyone' %><%= a.expires_on ? ' · shown until ' + fmtDate(a.expires_on) : '' %></p>
+<div class="card"><p class="pre"><%= a.body %></p></div>
+<div class="stats">
+  <div class="stat return"><span class="stat-label">Read</span><span class="stat-num"><%= read.length %></span><span class="stat-sub">of <%= read.length + unread.length %></span></div>
+  <div class="stat request"><span class="stat-label">Not yet</span><span class="stat-num"><%= unread.length %></span><span class="stat-sub"><%= unread.length ? 'still to read it' : 'everyone has read it' %></span></div>
+</div>
+<h2>Not read yet</h2>
+<% if (!unread.length) { %><p class="empty">Nobody.</p><% } else { %><p><%= unread.map(function (p) { return p.display_name; }).join(', ') %></p><% } %>
+<h2>Read</h2>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Name</th><th>When</th></tr></thead>
+  <tbody>
+  <% read.forEach(function (p) { %><tr><td><%= p.display_name %></td><td class="nowrap"><%= fmtDateTime(p.read_at) %></td></tr><% }) %>
+  <% if (!read.length) { %><tr><td colspan="2" class="empty">Nobody yet.</td></tr><% } %>
+  </tbody>
+</table>
+</div>
+<form method="post" action="/admin/announcements/<%= a.id %>/delete" class="spaced" data-confirm="Remove this announcement and its read record?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Remove this announcement</button></form>
+<%- include('partials/footer') %>

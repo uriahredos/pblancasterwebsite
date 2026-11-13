@@ -190,4 +190,80 @@ addColumn('training_requests', 'unseen', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('parts_submissions', 'audited_at', 'TEXT');
 addColumn('parts_submissions', 'audited_by', 'INTEGER');
 
+// ---- Certifications, truck inspections, announcements ----
+db.exec(`
+CREATE TABLE IF NOT EXISTS certifications (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  name TEXT NOT NULL,
+  issuer TEXT,
+  number TEXT,
+  issued_on TEXT,
+  expires_on TEXT,
+  notes TEXT,
+  reminded_30 INTEGER NOT NULL DEFAULT 0,
+  reminded_7 INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS certs_user ON certifications(user_id);
+
+-- The checklist people fill in. Editable on the Inspections page.
+CREATE TABLE IF NOT EXISTS inspection_items (
+  id INTEGER PRIMARY KEY,
+  label TEXT NOT NULL,
+  sort INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1
+);
+CREATE TABLE IF NOT EXISTS inspections (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  truck TEXT NOT NULL,
+  odometer TEXT,
+  notes TEXT,
+  problems INTEGER NOT NULL DEFAULT 0,
+  resolved_at TEXT,
+  resolved_by INTEGER REFERENCES users(id),
+  resolved_note TEXT,
+  created_at TEXT NOT NULL,
+  created_local_date TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS inspections_date ON inspections(created_local_date);
+-- The wording of each item is copied in, so old inspections still read correctly after the checklist changes.
+CREATE TABLE IF NOT EXISTS inspection_results (
+  id INTEGER PRIMARY KEY,
+  inspection_id INTEGER NOT NULL REFERENCES inspections(id) ON DELETE CASCADE,
+  label TEXT NOT NULL,
+  ok INTEGER NOT NULL,
+  note TEXT
+);
+CREATE TABLE IF NOT EXISTS inspection_photos (
+  id INTEGER PRIMARY KEY,
+  inspection_id INTEGER NOT NULL REFERENCES inspections(id) ON DELETE CASCADE,
+  path TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS announcements (
+  id INTEGER PRIMARY KEY,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  -- 'all': everyone.  'team': the people the poster manages.
+  audience TEXT NOT NULL DEFAULT 'all' CHECK (audience IN ('all','team')),
+  expires_on TEXT,
+  created_by INTEGER NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS announcement_reads (
+  announcement_id INTEGER NOT NULL REFERENCES announcements(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  read_at TEXT NOT NULL,
+  PRIMARY KEY (announcement_id, user_id)
+);
+`);
+if (db.prepare('SELECT COUNT(*) AS n FROM inspection_items').get().n === 0) {
+  const add = db.prepare('INSERT INTO inspection_items (label, sort) VALUES (?, ?)');
+  ['Tires and wheels', 'Lights and turn signals', 'Brakes', 'No fluid leaks', 'Windshield, wipers and mirrors', 'Horn and backup alarm',
+    'Ladders and rack secure', 'Fire extinguisher present and charged', 'First aid kit', 'Tools and meters accounted for', 'Cab and cargo area clean']
+    .forEach((label, i) => add.run(label, i + 1));
+}
+
 module.exports = db;

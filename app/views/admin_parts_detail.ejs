@@ -46,4 +46,7 @@
   <button class="btn primary" type="submit">Save</button>
 </form>
 <% } %>
+<% if (can('records.delete')) { %>
+<form method="post" action="/admin/parts/<%= s.id %>/delete" class="spaced danger-zone" data-confirm="Permanently delete this entry? This cannot be undone."><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn small danger" type="submit">Delete this entry permanently</button></form>
+<% } %>
 <%- include('partials/footer') %>

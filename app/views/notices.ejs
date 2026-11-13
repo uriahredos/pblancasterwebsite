@@ -1,0 +1,12 @@
+<%- include('partials/header') %>
+<div class="title-row"><h1>Notices</h1><% if (can('announcements.post')) { %><a class="btn small" href="/admin/announcements">Post or manage</a><% } %></div>
+<% if (!notices.length) { %><p class="empty">No notices right now.</p><% } %>
+<% notices.forEach(function (n) { %>
+<div class="card notice-card <%= n.read_at ? 'read' : '' %>">
+  <div class="rec-head"><% if (!n.read_at) { %><span class="tag new">New</span><% } %><strong><%= n.title %></strong><time><%= n.author %>, <%= fmtDateTime(n.created_at) %></time></div>
+  <p class="pre"><%= n.body %></p>
+  <% if (n.read_at) { %><p class="meta">You read this <%= fmtDateTime(n.read_at) %>.</p>
+  <% } else { %><form method="post" action="/notices/<%= n.id %>/read"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn primary small" type="submit">I have read this</button></form><% } %>
+</div>
+<% }) %>
+<%- include('partials/footer') %>

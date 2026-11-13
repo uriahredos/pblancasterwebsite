@@ -1,5 +1,15 @@
 <%- include('partials/header') %>
 <h1>Hi, <%= user.display_name %></h1>
+<% notices.forEach(function (n) { %>
+<div class="card notice-card">
+  <div class="rec-head"><span class="tag new">New notice</span><strong><%= n.title %></strong><time><%= n.author %>, <%= fmtDateTime(n.created_at) %></time></div>
+  <p class="pre"><%= n.body %></p>
+  <form method="post" action="/notices/<%= n.id %>/read"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="back" value="home"><button class="btn primary small" type="submit">I have read this</button></form>
+</div>
+<% }) %>
+<% myCerts.forEach(function (c) { %>
+<p class="flash <%= c.status === 'expired' ? 'err' : 'warn' %>"><strong><%= c.name %></strong> <%= c.status === 'expired' ? 'expired on ' + fmtDate(c.expires_on) : c.days === 0 ? 'expires today' : 'expires in ' + c.days + (c.days === 1 ? ' day' : ' days') + ', on ' + fmtDate(c.expires_on) %>. Tell your manager when it is renewed.</p>
+<% }) %>
 <p class="lede">What do you need to do?</p>
 <div class="tiles">
   <% if (can('parts.submit')) { %>
@@ -9,6 +19,9 @@
   <% } %>
   <% if (can('training.submit')) { %>
   <a class="tile" href="/training"><strong>Training request</strong><span>Ask for training on a topic</span></a>
+  <% } %>
+  <% if (can('inspections.submit')) { %>
+  <a class="tile" href="/inspection"><strong>Truck inspection</strong><span>Checklist and photos for your truck</span></a>
   <% } %>
   <% if (can('complaints.submit')) { %>
   <a class="tile quiet" href="/complaint"><strong>Anonymous complaint</strong><span>Your name is not recorded</span></a>

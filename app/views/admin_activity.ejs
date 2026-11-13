@@ -1,7 +1,7 @@
 <%- include('partials/header', { wide: true }) %>
 <p><a href="/admin/users">&larr; Users</a></p>
 <h1>Activity log</h1>
-<p class="lede">Changes to people, profiles, the catalog, stock, training sessions and backups. Anonymous complaints are never recorded here.</p>
+<p class="lede">Changes to people, profiles, the catalog, stock, training sessions and backups. Nothing about what a complaint says or who sent it is recorded here; only that one was deleted.</p>
 <form method="get" class="filters card">
   <label class="grow">Search <input type="search" name="q" value="<%= q %>" placeholder="Name, action or detail"></label>
   <div class="filter-actions"><button class="btn primary small" type="submit">Search</button><a class="btn small" href="/admin/activity">Clear</a></div>

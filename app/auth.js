@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const db = require('./db');
 const config = require('./config');
 const access = require('./permissions');
+const { localDate } = require('./util');
 
 const userById = db.prepare('SELECT * FROM users WHERE id = ?');
 const userByName = db.prepare('SELECT * FROM users WHERE username = ?');
@@ -49,12 +50,31 @@ function loadUser(req, res, next) {
   }
   res.locals.user = req.user;
   res.locals.can = (perm) => access.can(req.user, perm);
-  res.locals.badges = { updates: 0, requests: 0 };
+  res.locals.badges = { updates: 0, requests: 0, notices: 0, certs: 0, inspections: 0 };
   if (req.user) {
     // "My submissions": status changes this person has not looked at yet.
     res.locals.badges.updates =
       db.prepare('SELECT COUNT(*) AS n FROM parts_submissions WHERE user_id = ? AND unseen = 1').get(req.user.id).n +
       db.prepare('SELECT COUNT(*) AS n FROM training_requests WHERE user_id = ? AND unseen = 1').get(req.user.id).n;
+    res.locals.badges.notices = db.prepare(
+      `SELECT COUNT(*) AS n FROM announcements a
+       WHERE (a.audience = 'all' OR a.created_by = @me OR EXISTS (SELECT 1 FROM user_managers um WHERE um.manager_id = a.created_by AND um.user_id = @me))
+         AND (a.expires_on IS NULL OR a.expires_on >= @today)
+         AND NOT EXISTS (SELECT 1 FROM announcement_reads r WHERE r.announcement_id = a.id AND r.user_id = @me)`).get({ me: req.user.id, today: localDate() }).n;
+    const scopeIds = access.visibleUserIds(req.user);
+    const inScope = (col) => (scopeIds ? `AND ${col} IN (${scopeIds.map(Number).join(',')})` : '');
+    // Certifications expired or expiring within 30 days, for people who keep those records.
+    if (access.can(req.user, 'certs.manage')) {
+      const limit = new Date(localDate() + 'T12:00:00Z'); limit.setUTCDate(limit.getUTCDate() + 30);
+      res.locals.badges.certs = db.prepare(
+        `SELECT COUNT(*) AS n FROM certifications c JOIN users u ON u.id = c.user_id
+         WHERE u.active = 1 AND c.expires_on IS NOT NULL AND c.expires_on <= ? ${inScope('c.user_id')}`).get(limit.toISOString().slice(0, 10)).n;
+    }
+    // Truck problems nobody has marked as fixed.
+    if (access.can(req.user, 'inspections.view')) {
+      res.locals.badges.inspections = db.prepare(
+        `SELECT COUNT(*) AS n FROM inspections WHERE problems > 0 AND resolved_at IS NULL ${inScope('user_id')}`).get().n;
+    }
     // "Requests": open parts requests waiting on someone who can act on them.
     if (access.can(req.user, 'parts.manage')) {
       const ids = access.visibleUserIds(req.user);

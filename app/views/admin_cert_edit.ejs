@@ -1,0 +1,13 @@
+<%- include('partials/header') %>
+<p><a href="/admin/certs">&larr; Licenses and certifications</a></p>
+<h1><%= c.display_name %></h1>
+<%- include('partials/errors') %>
+<form method="post" action="/admin/certs/<%= c.id %>" class="card stack">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>License or certification <input name="name" value="<%= values.name || '' %>" required maxlength="120" autocomplete="off"></label>
+  <%- include('partials/cert_fields') %>
+  <p class="hint">When it is renewed, change the expiry date here. Reminders start again for the new date.</p>
+  <button class="btn primary" type="submit">Save</button>
+</form>
+<form method="post" action="/admin/certs/<%= c.id %>/delete" class="spaced" data-confirm="Remove this record?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Remove this record</button></form>
+<%- include('partials/footer') %>

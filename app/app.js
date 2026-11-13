@@ -9,7 +9,7 @@ const SqliteStore = require('./sessionStore');
 const auth = require('./auth');
 const util = require('./util');
 
-const MULTIPART_PATHS = /^\/(parts|parts\/\d+\/edit|admin\/catalog\/import|admin\/stock\/import)$/;
+const MULTIPART_PATHS = /^\/(parts|parts\/\d+\/edit|admin\/catalog\/import|admin\/stock\/import|inspection)$/;
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000; // stay signed in on a phone for 30 days
 
 const app = express();
@@ -84,6 +84,9 @@ app.use(require('./routes/complaints'));
 app.use(require('./routes/catalog'));
 app.use(require('./routes/stock'));
 app.use(require('./routes/sessions'));
+app.use(require('./routes/certs'));
+app.use(require('./routes/inspections'));
+app.use(require('./routes/announcements'));
 app.use(require('./routes/digest'));
 app.use(require('./routes/backups'));
 app.use(require('./routes/admin'));

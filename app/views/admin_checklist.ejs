@@ -1,0 +1,29 @@
+<%- include('partials/header') %>
+<p><a href="/admin/inspections">&larr; Truck inspections</a></p>
+<h1>Inspection checklist</h1>
+<p class="lede">What people are asked on the truck inspection form, in this order. Changing it does not alter inspections already sent.</p>
+<ul class="records">
+<% items.forEach(function (it) { %>
+  <li class="card <%= it.active ? '' : 'cancelled' %>">
+    <form method="post" action="/admin/inspections/checklist/<%= it.id %>/rename" class="filters">
+      <input type="hidden" name="_csrf" value="<%= csrf %>">
+      <label class="grow"><span class="sr">Item</span><input name="label" value="<%= it.label %>" maxlength="120" required></label>
+      <div class="filter-actions"><button class="btn small" type="submit">Save wording</button></div>
+    </form>
+    <div class="rec-actions">
+      <% if (it.active) { %>
+      <form method="post" action="/admin/inspections/checklist/<%= it.id %>/up"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Move up</button></form>
+      <form method="post" action="/admin/inspections/checklist/<%= it.id %>/down"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Move down</button></form>
+      <% } else { %><span class="tag off">Not on the form</span><% } %>
+      <form method="post" action="/admin/inspections/checklist/<%= it.id %>/toggle"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit"><%= it.active ? 'Take off the form' : 'Put back on the form' %></button></form>
+    </div>
+  </li>
+<% }) %>
+</ul>
+<h2>Add an item</h2>
+<form method="post" action="/admin/inspections/checklist" class="filters card">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label class="grow">What to check <input name="label" maxlength="120" required autocomplete="off" placeholder="e.g. Registration and insurance card in the cab"></label>
+  <div class="filter-actions"><button class="btn primary small" type="submit">Add</button></div>
+</form>
+<%- include('partials/footer') %>

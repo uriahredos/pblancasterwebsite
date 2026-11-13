@@ -130,6 +130,7 @@ legend { font-weight: 600; padding: 0; margin-bottom: .4rem; }
 .flash.ok { background: var(--ok-bg); color: var(--ok); }
 .flash.err, .errors { background: var(--err-bg); color: var(--err); }
 .flash.info, .notice { background: var(--info-bg); }
+.flash.warn { background: var(--warn-bg); color: var(--warn); }
 .notice p:last-child { margin-bottom: 0; }
 .errors ul { margin: .3rem 0 0; padding-left: 1.2rem; }
 
@@ -269,3 +270,22 @@ table.audit tfoot td { font-weight: 700; border-top: 2px solid var(--line); bord
 #scan-view { width: 100%; min-height: 200px; background: #000; border-radius: 8px; overflow: hidden; margin-bottom: .6rem; }
 #scan-view video { display: block; width: 100% !important; }
 .stats > div.stat { cursor: default; }
+
+/* Notices, inspections, delete */
+.notice-card { border-left: 5px solid var(--green); margin-bottom: 1rem; }
+.notice-card.read { border-left-color: var(--line); }
+.btn.danger { border-color: var(--err); color: var(--err); background: transparent; }
+.btn.danger:hover { background: var(--err-bg); }
+.danger-zone { border-top: 1px solid var(--line); padding-top: 1rem; }
+.check-row { border: 1px solid var(--line); border-radius: 8px; padding: .65rem .75rem; }
+.check-row + .check-row { margin-top: .5rem; }
+.check-row .q { font-weight: 600; margin: 0 0 .45rem; }
+.check-row .segmented { grid-template-columns: 1fr 1fr; }
+.check-row .segmented span { min-height: 44px; }
+.check-row .segmented input[value="problem"]:checked + span { background: var(--err); border-color: var(--err); color: #fff; }
+.check-row .segmented input[value="ok"]:checked + span { background: var(--green-text); border-color: var(--green-text); color: #fff; }
+.check-row .why { margin-top: .5rem; font-weight: 400; }
+.photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); gap: .5rem; }
+.photo-grid img { width: 100%; height: 9rem; object-fit: cover; border-radius: 8px; display: block; }
+.result-ok { color: var(--ok); font-weight: 600; }
+.result-bad { color: var(--err); font-weight: 700; }

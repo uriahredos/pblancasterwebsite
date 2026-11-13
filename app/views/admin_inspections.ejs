@@ -1,0 +1,51 @@
+<%- include('partials/header', { wide: true }) %>
+<div class="title-row"><h1>Truck inspections</h1><% if (can('inspections.manage')) { %><a class="btn small" href="/admin/inspections/checklist">Edit the checklist</a><% } %></div>
+<p class="lede"><% if (open) { %><strong><%= open %> with problems not yet fixed.</strong><% } else { %>No open problems.<% } %></p>
+<form method="get" class="filters card">
+  <label>From <input type="date" name="from" value="<%= f.from %>"></label>
+  <label>To <input type="date" name="to" value="<%= f.to %>"></label>
+  <label>Person
+    <select name="user"><option value="">Everyone</option>
+      <% users.forEach(function (u) { %><option value="<%= u.id %>" <%= String(u.id) === f.user ? 'selected' : '' %>><%= u.display_name %></option><% }) %>
+    </select>
+  </label>
+  <label>Truck <input name="truck" value="<%= f.truck %>" maxlength="20" autocomplete="off"></label>
+  <label>Show
+    <select name="show"><option value="">All</option><option value="open" <%= f.show === 'open' ? 'selected' : '' %>>Problems not fixed</option><option value="problems" <%= f.show === 'problems' ? 'selected' : '' %>>Any with problems</option></select>
+  </label>
+  <div class="filter-actions">
+    <button class="btn primary small" type="submit">Filter</button><a class="btn small" href="/admin/inspections">Clear</a>
+    <a class="btn small" href="/admin/inspections.csv<%= qs ? '?' + qs : '' %>">Download CSV</a>
+  </div>
+</form>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Date</th><th>Name</th><th>Truck</th><th>Result</th><th class="num">Photos</th><th></th></tr></thead>
+  <tbody>
+  <% rows.forEach(function (i) { %>
+  <tr>
+    <td class="nowrap"><%= fmtDateTime(i.created_at) %></td><td><%= i.display_name %></td><td><%= i.truck %></td>
+    <td><% if (i.problems && !i.resolved_at) { %><span class="tag overdue"><%= i.problems %> <%= i.problems === 1 ? 'problem' : 'problems' %></span><% } else if (i.problems) { %><span class="tag return">Fixed</span> <span class="hint"><%= i.problems %> reported</span><% } else { %><span class="tag return">All OK</span><% } %></td>
+    <td class="num"><%= i.photos || '' %></td><td><a href="/admin/inspections/<%= i.id %>">Open</a></td>
+  </tr>
+  <% }) %>
+  <% if (!rows.length) { %><tr><td colspan="6" class="empty">No inspections match.</td></tr><% } %>
+  </tbody>
+</table>
+</div>
+
+<h2>Who is due</h2>
+<p class="hint">People who can send inspections and have a truck, longest since their last one first.</p>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Name</th><th>Usual truck</th><th>Last inspection</th><th></th></tr></thead>
+  <tbody>
+  <% people.forEach(function (p) { %>
+  <tr><td><%= p.display_name %></td><td><%= p.default_truck %></td><td><%= p.last ? fmtDate(p.last) : 'Never' %></td>
+    <td><% if (p.days === null) { %><span class="tag overdue">None yet</span><% } else if (p.days > 7) { %><span class="tag request"><%= p.days %> days ago</span><% } else { %><span class="tag return"><%= p.days === 0 ? 'Today' : p.days + (p.days === 1 ? ' day ago' : ' days ago') %></span><% } %></td></tr>
+  <% }) %>
+  <% if (!people.length) { %><tr><td colspan="4" class="empty">Nobody has a truck recorded yet. It is remembered from the parts form or the first inspection.</td></tr><% } %>
+  </tbody>
+</table>
+</div>
+<%- include('partials/footer') %>

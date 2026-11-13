@@ -1,0 +1,36 @@
+<%- include('partials/header') %>
+<h1>Truck inspection</h1>
+<p class="lede">Submitting as <strong><%= user.display_name %></strong>. Mark each item OK or Problem.</p>
+<%- include('partials/errors') %>
+<form method="post" action="/inspection" enctype="multipart/form-data" class="card stack" id="inspection-form" data-draft="inspection:<%= user.id %>" <%- errors.length ? '' : 'data-draft-restore' %> data-offline-guard>
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <div class="filters">
+    <label>Truck <input name="truck" value="<%= values.truck || '' %>" required maxlength="20" autocomplete="off" placeholder="e.g. 309"></label>
+    <label>Odometer <span class="hint">Optional</span> <input name="odometer" value="<%= values.odometer || '' %>" inputmode="numeric" maxlength="12" autocomplete="off"></label>
+  </div>
+  <fieldset>
+    <legend>Checklist</legend>
+    <% items.forEach(function (it) { var v = values.results[it.id]; %>
+    <div class="check-row">
+      <p class="q"><%= it.label %></p>
+      <div class="segmented">
+        <label><input type="radio" name="item_<%= it.id %>" value="ok" <%= v === 'ok' ? 'checked' : '' %> required><span>OK</span></label>
+        <label><input type="radio" name="item_<%= it.id %>" value="problem" <%= v === 'problem' ? 'checked' : '' %>><span>Problem</span></label>
+      </div>
+      <label class="why" data-why="item_<%= it.id %>">What is wrong?
+        <input name="note_<%= it.id %>" value="<%= values.notes[it.id] || '' %>" maxlength="300" autocomplete="off">
+      </label>
+    </div>
+    <% }) %>
+  </fieldset>
+  <label>Photos <span class="hint">Optional, up to <%= maxPhotos %>. Damage, tires, anything worth showing.</span>
+    <input type="file" name="photos" accept="image/jpeg,image/png,image/webp,image/gif" multiple>
+  </label>
+  <label>Anything else? <span class="hint">Optional</span>
+    <textarea name="notes" rows="2" maxlength="1000"><%= values.notes_text || '' %></textarea>
+  </label>
+  <p class="flash err" id="offline-msg" role="alert" hidden>No connection right now, so this was not sent. Your answers are saved on this phone (photos are not). Try again when you have signal.</p>
+  <button class="btn primary" type="submit">Send inspection</button>
+</form>
+<script src="/inspection-form.js" defer></script>
+<%- include('partials/footer') %>

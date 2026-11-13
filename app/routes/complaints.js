@@ -115,4 +115,16 @@ router.post('/admin/complaints/:id', requireReviewer, (req, res) => {
   res.redirect(`/admin/complaints/${req.params.id}`);
 });
 
+// Permanently remove a complaint. Needs both "delete records" and complaint access.
+// The log records that one was deleted and by whom, never what it said.
+router.post('/admin/complaints/:id/delete', requireReviewer, (req, res) => {
+  if (!require('../permissions').can(req.user, 'records.delete')) return require('../auth').forbidden(res);
+  const info = db.prepare('DELETE FROM complaints WHERE id = ?').run(req.params.id);
+  if (info.changes) {
+    require('../activity').log(req.user, 'Complaint deleted', null);
+    flash(req, 'ok', 'Complaint deleted.');
+  }
+  res.redirect('/admin/complaints');
+});
+
 module.exports = router;

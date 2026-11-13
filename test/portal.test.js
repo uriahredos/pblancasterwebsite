@@ -801,9 +801,9 @@ test('starting profiles: Technician, Warehouse, Manager and Admin each see only 
   const owner = await loggedIn('owner');
 
   assert.deepEqual(navLinks((await tech.get('/')).text), []); // a technician has no admin menu at all
-  assert.deepEqual(navLinks((await wh.get('/')).text), ['/admin/parts', '/admin/requests', '/admin/parts/audit', '/admin/stock', '/admin/catalog']);
+  assert.deepEqual(navLinks((await wh.get('/')).text), ['/admin/parts', '/admin/requests', '/admin/parts/audit', '/admin/stock', '/admin/inspections', '/admin/catalog']);
   assert.deepEqual(navLinks((await owner.get('/')).text),
-    ['/admin/parts', '/admin/requests', '/admin/parts/audit', '/admin/stock', '/admin/training', '/admin/catalog', '/admin/users', '/admin/profiles', '/admin/complaints']);
+    ['/admin/parts', '/admin/requests', '/admin/parts/audit', '/admin/stock', '/admin/inspections', '/admin/training', '/admin/certs', '/admin/announcements', '/admin/catalog', '/admin/users', '/admin/profiles', '/admin/complaints']);
 
   for (const url of ['/admin/parts', '/admin/parts/audit', '/admin/parts/summary', '/admin/catalog']) assert.equal((await wh.get(url)).status, 200, url);
   for (const url of ['/admin/training', '/admin/users', '/admin/profiles', '/admin/complaints', '/admin/backups']) assert.equal((await wh.get(url)).status, 403, url);
@@ -1374,4 +1374,275 @@ test('permissions added in an update are given once to the profiles that held th
   access.setPermissions(id, ['parts.view', 'catalog.manage']);            // an admin later unticks it
   access.migrate();
   assert.ok(!access.permsOf(id).has('stock.manage'));                      // and it stays unticked
+});
+
+// ---------------------------------------------------------------------------
+// Deleting records, certifications, truck inspections, announcements
+// ---------------------------------------------------------------------------
+
+const ymdFromNow = (days) => { const d = new Date(require('../app/util').localDate() + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10); };
+
+test('deleting: parts entries, training requests and complaints can be removed for good by those allowed', async () => {
+  const owner = await loggedIn('owner');     // Admin: everything
+  const limited = await loggedIn('admin');   // has "delete records" but no complaint access
+  const wh = await loggedIn('wh1');
+  const tech = await loggedIn('tech1');
+  db.prepare('DELETE FROM activity_log').run();
+
+  // A parts entry with a photo, tracked in stock.
+  await wh.post('/admin/stock', { part_number: 'DEL-1', count: '10' }, { page: '/admin/stock' });
+  await new Promise((r) => setTimeout(r, 5));
+  await tech.post('/parts', [['action', 'return'], ['part_name', 'DEL-1'], ['quantity', '4'], ['source', 'van'], ['photo', new File([PNG], 'p.png', { type: 'image/png' })]], { multipart: true });
+  const entry = lastParts();
+  await tech.post(`/parts/${entry.id}/edit`, [['part_name', 'DEL-1'], ['quantity', '5'], ['source', 'van']], { multipart: true, page: `/parts/${entry.id}/edit` });
+  assert.equal(onHand('DEL-1'), 15);
+  const file = path.join(dataDir, 'uploads', entry.photo_path);
+  assert.ok(fs.existsSync(file));
+
+  for (const c of [wh, tech, await loggedIn('mgr1')]) assert.equal((await c.post(`/admin/parts/${entry.id}/delete`, {})).status, 403);
+  assert.doesNotMatch((await wh.get(`/admin/parts/${entry.id}`)).text, /Delete this entry permanently/);
+  assert.match((await limited.get(`/admin/parts/${entry.id}`)).text, /Delete this entry permanently/);
+  assert.equal((await limited.post(`/admin/parts/${entry.id}/delete`, {}, { page: `/admin/parts/${entry.id}` })).location, '/admin/parts');
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM parts_submissions WHERE id = ?').get(entry.id).n, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM parts_items WHERE submission_id = ?').get(entry.id).n, 0);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM change_log WHERE kind = 'parts' AND record_id = ?").get(entry.id).n, 0);
+  assert.equal(onHand('DEL-1'), 10);          // stock is as if it never happened
+  await new Promise((r) => setTimeout(r, 100));
+  assert.ok(!fs.existsSync(file));            // the photo is gone too
+  assert.equal((await limited.get(`/admin/parts/${entry.id}`)).status, 404);
+  assert.doesNotMatch((await tech.get('/my')).text, /DEL-1/);
+
+  // A training request that has a session: the session and its attendance are kept.
+  await tech.post('/training', { description: 'DELETE-ME secret topic', wants_contact: 'no', is_private: 'yes' });
+  const tid = db.prepare('SELECT MAX(id) id FROM training_requests').get().id;
+  await owner.post('/admin/training/sessions', { title: 'Kept session', session_date: '2031-08-01', request_id: String(tid) }, { page: '/admin/training/sessions' });
+  const sid = db.prepare('SELECT MAX(id) id FROM training_sessions').get().id;
+  assert.equal((await wh.post(`/admin/training/${tid}/delete`, {})).status, 403);
+  assert.equal((await owner.post(`/admin/training/${tid}/delete`, {}, { page: `/admin/training/${tid}` })).location, '/admin/training');
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM training_requests WHERE id = ?').get(tid).n, 0);
+  assert.deepEqual({ ...db.prepare('SELECT title, request_id FROM training_sessions WHERE id = ?').get(sid) }, { title: 'Kept session', request_id: null });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM training_attendance WHERE session_id = ?').get(sid).n, 1);
+
+  // A complaint: needs both "delete records" and complaint access.
+  const sender = await loggedIn('fav1');
+  const r = await sender.post('/complaint', { category: 'other', description: 'DELETE-ME complaint text' }, { page: '/complaint' });
+  const code = /id="code">([A-Z0-9-]{14})</.exec(r.text)[1];
+  const cid = db.prepare("SELECT id FROM complaints WHERE description = 'DELETE-ME complaint text'").get().id;
+  assert.equal((await limited.post(`/admin/complaints/${cid}/delete`, {})).status, 403);                    // no complaint access
+  assert.equal((await (await loggedIn('reviewer')).post(`/admin/complaints/${cid}/delete`, {})).status, 403); // can read, cannot delete
+  assert.doesNotMatch((await (await loggedIn('reviewer')).get(`/admin/complaints/${cid}`)).text, /Delete this complaint/);
+  assert.equal((await owner.post(`/admin/complaints/${cid}/delete`, {}, { page: `/admin/complaints/${cid}` })).location, '/admin/complaints');
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM complaints WHERE id = ?').get(cid).n, 0);
+  assert.equal((await sender.post('/complaint/status', { code }, { page: '/complaint/status' })).status, 404); // the code no longer finds anything
+
+  // The log says who deleted what, without a private request's wording or any complaint content.
+  const log = db.prepare("SELECT a.action, a.detail, u.username FROM activity_log a JOIN users u ON u.id = a.user_id WHERE a.action LIKE '%deleted' ORDER BY a.id").all();
+  assert.deepEqual(log.map((l) => [l.action, l.username]), [['Parts entry deleted', 'admin'], ['Training request deleted', 'owner'], ['Complaint deleted', 'owner']]);
+  assert.match(log[0].detail, /Return parts by Terry Tech, .*: 5 × DEL-1/);
+  assert.match(log[1].detail, /by Terry Tech, .*\(private\)$/);
+  assert.equal(log[2].detail, null);
+  assert.ok(!JSON.stringify(log).includes('DELETE-ME'));
+
+  // A manager given the delete tick-box still cannot reach outside their own people.
+  access.setPermissions(profileId('Manager'), [...access.permsOf(profileId('Manager')), 'records.delete']);
+  const other = db.prepare('SELECT id FROM parts_submissions WHERE user_id = ? ORDER BY id DESC').get(userId('tech2')).id;
+  assert.equal((await (await loggedIn('mgr1')).post(`/admin/parts/${other}/delete`, {})).status, 403);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM parts_submissions WHERE id = ?').get(other).n, 1);
+  access.setPermissions(profileId('Manager'), [...access.permsOf(profileId('Manager'))].filter((p) => p !== 'records.delete'));
+});
+
+test('certifications: recorded per person, flagged when expiring, and the person is reminded', async () => {
+  const owner = await loggedIn('owner');
+  const page = '/admin/certs';
+  const add = (fields) => owner.post(page, fields, { page });
+  assert.equal((await add({ name: 'NICET II' })).status, 400);                                  // no person
+  assert.equal((await add({ user_id: userId('tech1'), name: '' })).status, 400);
+  assert.equal((await add({ user_id: userId('tech1'), name: 'X', issued_on: '2030-01-01', expires_on: '2029-01-01' })).status, 400);
+  await add({ user_id: userId('tech1'), name: 'NICET Fire Alarm Level II', issuer: 'NICET', number: '123456', issued_on: '2024-01-01', expires_on: ymdFromNow(400) });
+  await add({ user_id: userId('tech1'), name: 'Driver\'s license', expires_on: ymdFromNow(20) });
+  await add({ user_id: userId('tech1'), name: 'OSHA 10' });                                       // never expires
+  await add({ user_id: userId('tech2'), name: 'DOT medical card', expires_on: ymdFromNow(-3) });
+  await add({ user_id: userId('tech2'), name: 'First aid / CPR', expires_on: ymdFromNow(45) });
+
+  const list = (await owner.get(page)).text.replace(/\s+/g, ' ');
+  assert.match(list, /1 expired\.<\/strong> <strong>2 expiring within 60 days/);
+  assert.match(list, /DOT medical card.*?Expired 3 days ago/);
+  assert.match(list, /Driver&#39;s license.*?20 days left/);
+  assert.match(list, /NICET Fire Alarm Level II.*?Current/);
+  assert.match(list, /OSHA 10.*?No expiry/);
+  const attention = (await owner.get(page + '?show=attention')).text;
+  assert.match(attention, /DOT medical card/); assert.doesNotMatch(attention, /<strong>OSHA 10<\/strong>|<strong>NICET Fire Alarm Level II<\/strong>/);
+  assert.match((await owner.get('/')).text, /Certifications <span class="badge">2<\/span>/); // expired or within 30 days
+  assert.match((await owner.get(page + '.csv')).text, /Terry Tech,tech1,NICET Fire Alarm Level II,NICET,123456,2024-01-01,\d{4}-\d{2}-\d{2},Current/);
+
+  // The person sees their own, and is warned on the home page inside 30 days.
+  const t1 = await loggedIn('tech1');
+  const mine = (await t1.get('/my')).text;
+  assert.match(mine, /My licenses and certifications/); assert.match(mine, /Expires in 20 days/);
+  assert.doesNotMatch(mine, /DOT medical card/);
+  assert.match((await t1.get('/')).text, /<strong>Driver&#39;s license<\/strong> expires in 20 days/);
+  assert.match((await (await loggedIn('tech2')).get('/')).text, /<strong>DOT medical card<\/strong> expired on/);
+  assert.equal((await t1.get(page)).status, 403);
+
+  // Reminder emails: once inside 30 days, once inside 7, and again after a renewal.
+  const certs = require('../app/certs');
+  sent.length = 0;
+  assert.equal(await certs.runReminders(), 1);              // tech1's licence at 20 days (tech2's 45-day one is not due; the expired one is past)
+  assert.equal(sent[0].to, 'terry@example.com');
+  assert.match(sent[0].subject, /Driver's license expires in 20 days/);
+  assert.equal(await certs.runReminders(), 0);              // not again
+  const later = new Date(Date.now() + 15 * 86400000);       // 5 days to go
+  assert.equal(await certs.runReminders(later), 2);         // tech1's second reminder, and tech2's card has now reached 30 days
+  assert.deepEqual(sent.slice(1).map((m) => [m.to, m.subject]).sort(), [
+    ['terry@example.com', "Driver's license expires in 5 days"], ['uma@example.com', 'First aid / CPR expires in 30 days']]);
+  assert.equal(await certs.runReminders(later), 0);
+  const id = db.prepare("SELECT id FROM certifications WHERE name = 'Driver''s license'").get().id;
+  await owner.post(`${page}/${id}`, { name: 'Driver\'s license', expires_on: ymdFromNow(25) }, { page: `${page}/${id}` }); // renewed
+  assert.equal(await certs.runReminders(), 1);
+
+  // A manager keeps records for their own people only.
+  const mgr = await loggedIn('mgr1');
+  const mlist = (await mgr.get(page)).text;
+  assert.match(mlist, /<strong>NICET Fire Alarm Level II<\/strong>/); assert.doesNotMatch(mlist, /<strong>DOT medical card<\/strong>|Uma Tech/);
+  const theirs = db.prepare("SELECT id FROM certifications WHERE name = 'DOT medical card'").get().id;
+  assert.equal((await mgr.get(`${page}/${theirs}`)).status, 403);
+  assert.equal((await mgr.post(`${page}/${theirs}/delete`, {})).status, 403);
+  assert.equal((await mgr.post(page, { user_id: userId('tech2'), name: 'Sneaky' }, { page })).status, 400);
+  await owner.post(`${page}/${theirs}/delete`, {}, { page });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM certifications WHERE id = ?').get(theirs).n, 0);
+});
+
+test('truck inspections: checklist with OK/Problem, photos, problems followed up', async () => {
+  const tech = await loggedIn('tech1');
+  const items = db.prepare('SELECT id, label FROM inspection_items WHERE active = 1 ORDER BY sort').all();
+  const answers = (problemAt, note) => items.flatMap((it, i) => (i === problemAt ? [[`item_${it.id}`, 'problem'], ...(note ? [[`note_${it.id}`, note]] : [])] : [[`item_${it.id}`, 'ok']]));
+  const send = (fields) => tech.post('/inspection', fields, { multipart: true, page: '/inspection' });
+  const count = () => db.prepare('SELECT COUNT(*) n FROM inspections').get().n;
+  const files = () => fs.readdirSync(path.join(dataDir, 'uploads')).length;
+  const before = files();
+
+  const form = (await tech.get('/inspection')).text;
+  for (const it of items) assert.ok(form.includes(it.label.replace('&', '&amp;')), it.label);
+  assert.equal((await send([['truck', ''], ...answers(-1)])).status, 400);                         // no truck
+  assert.equal((await send([['truck', '309'], ...answers(-1).slice(1)])).status, 400);             // one item unanswered
+  assert.equal((await send([['truck', '309'], ...answers(2)])).status, 400);                       // problem without saying what
+  const five = Array.from({ length: 5 }, (_, i) => ['photos', new File([PNG], `p${i}.png`, { type: 'image/png' })]);
+  assert.equal((await send([['truck', '309'], ...answers(-1), ...five])).status, 400);             // too many photos
+  assert.equal((await send([['truck', '309'], ...answers(-1), ['photos', new File(['not an image'], 'x.png', { type: 'image/png' })]])).status, 400);
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(count(), 0); assert.equal(files(), before);                                          // nothing kept from failed tries
+
+  sent.length = 0;
+  assert.equal((await send([['truck', '309'], ['odometer', '84210'], ...answers(-1)])).location, '/my?sent=inspection');
+  assert.equal(sent.length, 0);                                                                     // all OK: no email
+  const photo = (n) => ['photos', new File([PNG], `p${n}.png`, { type: 'image/png' })];
+  await send([['truck', '309'], ...answers(2, 'Pulls left under braking'), photo(1), photo(2), ['notes', 'Needs the shop']]);
+  const insp = db.prepare('SELECT * FROM inspections ORDER BY id DESC').get();
+  assert.deepEqual([insp.truck, insp.problems, insp.resolved_at], ['309', 1, null]);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM inspection_photos WHERE inspection_id = ?').get(insp.id).n, 2);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].subject, /Truck 309: 1 problem reported/);
+  assert.match(sent[0].text, new RegExp(`${items[2].label}: Pulls left under braking`));
+  assert.equal(db.prepare("SELECT default_truck FROM users WHERE username = 'tech1'").get().default_truck, '309');
+
+  // Following up.
+  const wh = await loggedIn('wh1');
+  assert.match((await wh.get('/')).text, /Inspections <span class="badge">1<\/span>/);
+  const list = (await wh.get('/admin/inspections')).text.replace(/\s+/g, ' ');
+  assert.match(list, /1 with problems not yet fixed/);
+  assert.match(list, /Who is due.*Terry Tech<\/td><td>309<\/td>.*Today/);
+  assert.doesNotMatch((await wh.get('/admin/inspections?show=open')).text, /All OK/);
+  const detail = (await wh.get(`/admin/inspections/${insp.id}`)).text;
+  assert.match(detail, /Pulls left under braking/); assert.match(detail, /Needs the shop/);
+  const pid = db.prepare('SELECT id FROM inspection_photos WHERE inspection_id = ?').get(insp.id).id;
+  assert.equal((await wh.get(`/inspection/photo/${pid}`)).status, 200);
+  assert.equal((await tech.get(`/inspection/photo/${pid}`)).status, 200);
+  assert.equal((await (await loggedIn('tech2')).get(`/inspection/photo/${pid}`)).status, 403);
+  await wh.post(`/admin/inspections/${insp.id}/resolve`, { resolved_note: 'Front pads replaced' }, { page: `/admin/inspections/${insp.id}` });
+  assert.ok(db.prepare('SELECT resolved_at FROM inspections WHERE id = ?').get(insp.id).resolved_at);
+  assert.doesNotMatch((await wh.get('/')).text, /Inspections <span class="badge"/);
+  assert.match((await tech.get('/my')).text.replace(/\s+/g, ' '), /Truck inspections.*Fixed.*Front pads replaced/);
+  assert.match((await wh.get('/admin/inspections.csv?show=problems')).text, new RegExp(`Terry Tech,309,,${items[2].label},Problem,Pulls left under braking,`));
+
+  // Changing the checklist changes the form, not inspections already sent.
+  const cl = '/admin/inspections/checklist';
+  await wh.post(cl, { label: 'Registration card in the cab' }, { page: cl });
+  await wh.post(`${cl}/${items[0].id}/toggle`, {}, { page: cl });
+  await wh.post(`${cl}/${items[1].id}/rename`, { label: 'All lights working' }, { page: cl });
+  const form2 = (await tech.get('/inspection')).text;
+  assert.match(form2, /Registration card in the cab/); assert.match(form2, /All lights working/);
+  assert.ok(!form2.includes(items[0].label));
+  assert.match((await wh.get(`/admin/inspections/${insp.id}`)).text, new RegExp(items[0].label));  // old wording kept on the old inspection
+  await wh.post(`${cl}/${items[0].id}/toggle`, {}, { page: cl });
+
+  // Who can do what.
+  for (const url of ['/admin/inspections', `/admin/inspections/${insp.id}`, cl, '/admin/inspections.csv']) assert.equal((await tech.get(url)).status, 403, url);
+  const mgr = await loggedIn('mgr1');
+  assert.equal((await mgr.get(`/admin/inspections/${insp.id}`)).status, 200);                      // tech1 is theirs
+  await (await loggedIn('tech2')).post('/inspection', [['truck', '310'], ...db.prepare('SELECT id FROM inspection_items WHERE active = 1').all().map((it) => [`item_${it.id}`, 'ok'])], { multipart: true, page: '/inspection' });
+  const other = db.prepare('SELECT MAX(id) id FROM inspections').get().id;
+  assert.equal((await mgr.get(`/admin/inspections/${other}`)).status, 403);
+  assert.doesNotMatch((await mgr.get('/admin/inspections')).text, /Uma Tech/);
+  assert.equal((await wh.post(`/admin/inspections/${insp.id}/delete`, {})).status, 403);           // deleting needs its own permission
+  const stored = db.prepare('SELECT path FROM inspection_photos WHERE inspection_id = ?').all(insp.id).map((p) => path.join(dataDir, 'uploads', p.path));
+  await (await loggedIn('owner')).post(`/admin/inspections/${insp.id}/delete`, {}, { page: `/admin/inspections/${insp.id}` });
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM inspection_results WHERE inspection_id = ?').get(insp.id).n, 0);
+  assert.ok(stored.every((f) => !fs.existsSync(f)));
+});
+
+test('announcements: shown on the home page until read, with a record of who has read them', async () => {
+  const owner = await loggedIn('owner');
+  const page = '/admin/announcements';
+  assert.equal((await owner.post(page, { title: '', body: 'x' }, { page })).status, 400);
+  await owner.post(page, { title: 'Shop closed Friday', body: 'The shop is closed Friday for inventory.\nPick up parts Thursday.' }, { page });
+  const aid = db.prepare('SELECT MAX(id) id FROM announcements').get().id;
+
+  const t1 = await loggedIn('tech1');
+  const home = (await t1.get('/')).text;
+  assert.match(home, /New notice/); assert.match(home, /Shop closed Friday/); assert.match(home, /Pick up parts Thursday/);
+  assert.match(home, /Notices <span class="badge"[^>]*>1<\/span>/);
+  assert.doesNotMatch((await owner.get('/')).text, /New notice/);            // the poster has already read it
+  const active = db.prepare('SELECT COUNT(*) n FROM users WHERE active = 1').get().n;
+  assert.match((await owner.get(page)).text, new RegExp(`<strong>1 of ${active}</strong>`));
+
+  assert.equal((await t1.post(`/notices/${aid}/read`, { back: 'home' }, { page: '/' })).location, '/');
+  const after = (await t1.get('/')).text;
+  assert.doesNotMatch(after, /New notice/); assert.doesNotMatch(after, /Notices <span class="badge"/);
+  assert.match((await t1.get('/notices')).text, /You read this/);            // still there to look back at
+  const who = (await owner.get(`${page}/${aid}`)).text.replace(/\s+/g, ' ');
+  assert.match(who, /Read<\/span><span class="stat-num">2</);
+  assert.match(who, /Not read yet<\/h2> <p>[^<]*Uma Tech/);
+  assert.match(who, /<td>Terry Tech<\/td>/);
+
+  // A manager's announcement goes to their own people only.
+  const mgr = await loggedIn('mgr1');
+  await mgr.post(page, { title: 'Team meeting Monday', body: '7am at the shop.' }, { page });
+  const mid = db.prepare('SELECT MAX(id) id FROM announcements').get().id;
+  assert.equal(db.prepare('SELECT audience FROM announcements WHERE id = ?').get(mid).audience, 'team');
+  assert.match((await t1.get('/')).text, /Team meeting Monday/);
+  const t2 = await loggedIn('tech2');
+  assert.doesNotMatch((await t2.get('/')).text, /Team meeting Monday/);
+  assert.doesNotMatch((await t2.get('/notices')).text, /Team meeting Monday/);
+  await t2.post(`/notices/${mid}/read`, {}, { page: '/notices' });            // not addressed to them: nothing recorded
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM announcement_reads WHERE announcement_id = ? AND user_id = ?').get(mid, userId('tech2')).n, 0);
+  const mlist = (await mgr.get(page)).text;
+  assert.match(mlist, /Team meeting Monday/); assert.doesNotMatch(mlist, /Shop closed Friday/); // sees only their own to manage
+  assert.match(mlist, /<strong>1 of 2<\/strong>/);                            // the manager and tech1
+  assert.equal((await mgr.get(`${page}/${aid}`)).status, 403);
+  assert.equal((await mgr.post(`${page}/${aid}/delete`, {})).status, 403);
+  assert.equal((await owner.get(`${page}/${mid}`)).status, 200);              // someone who sees everyone can manage any
+
+  // Past its "show until" date it disappears for people who have not read it.
+  await owner.post(page, { title: 'Old news', body: 'Expired yesterday.', expires_on: ymdFromNow(-1) }, { page });
+  assert.doesNotMatch((await t2.get('/')).text, /Old news/);
+  assert.match((await owner.get(page)).text, /\(ended\)/);
+
+  for (const who2 of ['tech1', 'wh1']) {
+    const c = await loggedIn(who2);
+    assert.equal((await c.get(page)).status, 403, who2);
+    assert.equal((await c.post(page, { title: 'x', body: 'y' })).status, 403, who2);
+  }
+  await owner.post(`${page}/${aid}/delete`, {}, { page });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM announcement_reads WHERE announcement_id = ?').get(aid).n, 0);
 });

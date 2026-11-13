@@ -42,13 +42,18 @@
       <% if (can('parts.submit')) { %><a href="/parts" <%- path === '/parts' ? 'aria-current="page"' : '' %>>Parts</a><% } %>
       <% if (can('training.submit')) { %><a href="/training" <%- path === '/training' ? 'aria-current="page"' : '' %>>Training</a><% } %>
       <% if (can('complaints.submit')) { %><a href="/complaint" <%- path.startsWith('/complaint') ? 'aria-current="page"' : '' %>>Complaint</a><% } %>
+      <% if (can('inspections.submit')) { %><a href="/inspection" <%- path === '/inspection' ? 'aria-current="page"' : '' %>>Inspection</a><% } %>
+      <a href="/notices" <%- path === '/notices' ? 'aria-current="page"' : '' %>>Notices<% if (badges.notices) { %> <span class="badge" title="Unread"><%= badges.notices %></span><% } %></a>
       <a href="/my" <%- path === '/my' ? 'aria-current="page"' : '' %>>My submissions<% if (badges.updates) { %> <span class="badge" title="Updates you have not seen"><%= badges.updates %></span><% } %></a>
       <% var adminLinks = [
         ['parts.view', '/admin/parts', 'Parts log', path.startsWith('/admin/parts') && !path.startsWith('/admin/parts/audit')],
         ['parts.view', '/admin/requests', 'Requests', path.startsWith('/admin/requests'), badges.requests],
         ['parts.audit', '/admin/parts/audit', 'Audit', path.startsWith('/admin/parts/audit')],
         ['parts.view', '/admin/stock', 'Stock', path.startsWith('/admin/stock')],
+        ['inspections.view', '/admin/inspections', 'Inspections', path.startsWith('/admin/inspections'), badges.inspections],
         ['training.view', '/admin/training', 'Training log', path.startsWith('/admin/training')],
+        ['certs.manage', '/admin/certs', 'Certifications', path.startsWith('/admin/certs'), badges.certs],
+        ['announcements.post', '/admin/announcements', 'Announcements', path.startsWith('/admin/announcements')],
         ['catalog.manage', '/admin/catalog', 'Catalog', path.startsWith('/admin/catalog')],
         ['users.manage', '/admin/users', 'Users', path.startsWith('/admin/users')],
         ['profiles.manage', '/admin/profiles', 'Profiles', path.startsWith('/admin/profiles')],

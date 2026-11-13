@@ -1,0 +1,51 @@
+<%- include('partials/header', { wide: true }) %>
+<div class="title-row"><h1>Licenses and certifications</h1><a class="btn small" href="/admin/certs.csv<%= f.user || f.show ? '?' + new URLSearchParams(Object.entries(f).filter(function (e) { return e[1]; })).toString() : '' %>">Download CSV</a></div>
+<p class="lede"><% if (counts.expired) { %><strong><%= counts.expired %> expired.</strong> <% } %><% if (counts.soon) { %><strong><%= counts.soon %> expiring within <%= soonDays %> days.</strong><% } %><% if (!counts.expired && !counts.soon) { %>Nothing expired or expiring within <%= soonDays %> days.<% } %> Each person sees their own under My submissions and is warned on their home page in the last 30 days.</p>
+<form method="get" class="filters card">
+  <label>Person
+    <select name="user"><option value="">Everyone</option>
+      <% people.forEach(function (u) { %><option value="<%= u.id %>" <%= String(u.id) === f.user ? 'selected' : '' %>><%= u.display_name %></option><% }) %>
+    </select>
+  </label>
+  <label>Show
+    <select name="show"><option value="">All</option><option value="attention" <%= f.show === 'attention' ? 'selected' : '' %>>Expired or expiring soon</option><option value="expired" <%= f.show === 'expired' ? 'selected' : '' %>>Expired only</option></select>
+  </label>
+  <div class="filter-actions"><button class="btn primary small" type="submit">Filter</button><a class="btn small" href="/admin/certs">Clear</a></div>
+</form>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Name</th><th>License or certification</th><th>Issued by</th><th>Number</th><th>Expires</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+  <% list.forEach(function (c) { %>
+  <tr>
+    <td><%= c.display_name %></td><td><strong><%= c.name %></strong></td><td><%= c.issuer %></td><td><%= c.number %></td>
+    <td class="nowrap"><%= c.expires_on ? fmtDate(c.expires_on) : '' %></td>
+    <td><% if (c.status === 'expired') { %><span class="tag overdue">Expired <%= -c.days %> <%= c.days === -1 ? 'day' : 'days' %> ago</span><% } else if (c.status === 'soon') { %><span class="tag request"><%= c.days === 0 ? 'Expires today' : c.days + (c.days === 1 ? ' day left' : ' days left') %></span><% } else if (c.status === 'ok') { %><span class="tag return">Current</span><% } else { %><span class="hint">No expiry</span><% } %></td>
+    <td><a href="/admin/certs/<%= c.id %>">Edit</a></td>
+  </tr>
+  <% }) %>
+  <% if (!list.length) { %><tr><td colspan="7" class="empty">Nothing recorded<%= f.user || f.show ? ' that matches' : ' yet' %>.</td></tr><% } %>
+  </tbody>
+</table>
+</div>
+<h2>Add one</h2>
+<%- include('partials/errors') %>
+<form method="post" action="/admin/certs" class="card stack">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <div class="filters">
+    <label>Person
+      <select name="user_id" required><option value="">Choose</option>
+        <% people.forEach(function (u) { %><option value="<%= u.id %>" <%= String(u.id) === String(values.user_id) ? 'selected' : '' %>><%= u.display_name %></option><% }) %>
+      </select>
+    </label>
+    <label class="grow">License or certification
+      <input name="name" value="<%= values.name || '' %>" list="cert-names" required maxlength="120" autocomplete="off" placeholder="e.g. NICET Fire Alarm Level II">
+    </label>
+  </div>
+  <%- include('partials/cert_fields') %>
+  <button class="btn primary" type="submit">Add</button>
+</form>
+<datalist id="cert-names">
+  <% ['NICET Fire Alarm Level I', 'NICET Fire Alarm Level II', 'NICET Fire Alarm Level III', 'NICET Fire Alarm Level IV', 'NICET Inspection and Testing of Fire Alarm Systems', 'Driver\'s license', 'DOT medical card', 'OSHA 10', 'OSHA 30', 'First aid / CPR', 'State fire alarm license', 'State burglar alarm license', 'Edwards EST certification', 'Notifier certification', 'DMP certification', 'Aerial lift certification'].forEach(function (n) { %><option value="<%= n %>"><% }) %>
+</datalist>
+<%- include('partials/footer') %>

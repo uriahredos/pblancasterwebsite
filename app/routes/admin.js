@@ -289,6 +289,23 @@ router.post('/admin/parts/:id/status', requirePerm('parts.manage'), (req, res) =
   res.redirect(req.body.back === 'requests' ? '/admin/requests' : `/admin/parts/${req.params.id}`);
 });
 
+// Permanently remove a parts entry. Stock goes back to what it would be without it.
+router.post('/admin/parts/:id/delete', requirePerm('records.delete'), (req, res) => {
+  const s = db.prepare('SELECT s.*, u.display_name FROM parts_submissions s JOIN users u ON u.id = s.user_id WHERE s.id = ?').get(req.params.id);
+  if (!s) return res.redirect('/admin/parts');
+  if (!access.canSee(req.user, s.user_id)) return forbidden(res);
+  const items = db.prepare('SELECT part_name, quantity FROM parts_items WHERE submission_id = ? ORDER BY id').all(s.id);
+  db.transaction(() => {
+    db.prepare("DELETE FROM change_log WHERE kind = 'parts' AND record_id = ?").run(s.id);
+    db.prepare('DELETE FROM parts_submissions WHERE id = ?').run(s.id); // its part lines go with it
+  })();
+  if (s.photo_path) require('../uploads').remove(s.photo_path);
+  activity.log(req.user, 'Parts entry deleted',
+    `${labels.action[s.action]} by ${s.display_name}, ${fmtDateTime(s.created_at)}: ${items.map((i) => i.quantity + ' × ' + i.part_name).join(', ')}`);
+  flash(req, 'ok', 'Entry deleted.');
+  res.redirect(req.body.back === 'requests' ? '/admin/requests' : '/admin/parts');
+});
+
 // ---- Training -------------------------------------------------------------
 
 const trainingFilter = (query, viewer) => buildFilter(query, 't', { statuses: labels.trainingStatus, textCols: ['t.description', 'u.display_name'] }, viewer);
@@ -341,6 +358,22 @@ router.post('/admin/training/:id/status', requirePerm('training.manage'), (req, 
     flash(req, 'ok', 'Request updated.');
   }
   res.redirect(`/admin/training/${req.params.id}`);
+});
+
+router.post('/admin/training/:id/delete', requirePerm('records.delete'), (req, res) => {
+  const t = db.prepare('SELECT t.*, u.display_name FROM training_requests t JOIN users u ON u.id = t.user_id WHERE t.id = ?').get(req.params.id);
+  if (!t) return res.redirect('/admin/training');
+  if (!access.canSee(req.user, t.user_id)) return forbidden(res);
+  db.transaction(() => {
+    db.prepare("DELETE FROM change_log WHERE kind = 'training' AND record_id = ?").run(t.id);
+    db.prepare('UPDATE training_sessions SET request_id = NULL WHERE request_id = ?').run(t.id); // sessions and attendance are kept
+    db.prepare('DELETE FROM training_requests WHERE id = ?').run(t.id);
+  })();
+  // A private request's wording is not copied into the log.
+  activity.log(req.user, 'Training request deleted',
+    `by ${t.display_name}, ${fmtDateTime(t.created_at)}${t.is_private ? ' (private)' : ': ' + t.description.slice(0, 120)}`);
+  flash(req, 'ok', 'Training request deleted.');
+  res.redirect('/admin/training');
 });
 
 // ---- Users ----------------------------------------------------------------

@@ -10,6 +10,7 @@ const GROUPS = [
     ['parts.submit', 'Take, return and request parts'],
     ['training.submit', 'Send training requests'],
     ['complaints.submit', 'Send anonymous complaints'],
+    ['inspections.submit', 'Send truck inspections'],
   ] },
   { title: 'Parts', items: [
     ['parts.view', 'See the parts log, usage summary and exports'],
@@ -18,6 +19,10 @@ const GROUPS = [
     ['catalog.manage', 'Manage the parts catalog'],
     ['stock.manage', 'Manage stock: counts, deliveries, minimum levels'],
   ] },
+  { title: 'Trucks', items: [
+    ['inspections.view', 'See truck inspections and exports'],
+    ['inspections.manage', 'Mark inspection problems as fixed; edit the inspection checklist'],
+  ] },
   { title: 'Training', items: [
     ['training.view', 'See training requests and exports'],
     ['training.manage', 'Update training requests; edit or cancel them'],
@@ -25,6 +30,8 @@ const GROUPS = [
   { title: 'People', items: [
     ['users.manage', 'Add people, edit them, reset passwords, disable accounts, choose their profile and who manages them'],
     ['profiles.manage', 'Create profiles and change what each profile can do'],
+    ['certs.manage', 'Record and edit people\'s licenses and certifications'],
+    ['announcements.post', 'Post announcements and see who has read them'],
     ['activity.view', 'See the activity log (who changed what)'],
   ] },
   { title: 'Email', items: [
@@ -33,16 +40,17 @@ const GROUPS = [
   { title: 'Sensitive', items: [
     ['complaints.review', 'Read and answer anonymous complaints'],
     ['backups', 'Download backups (a backup contains everything, including complaints)'],
+    ['records.delete', 'Permanently delete parts entries, training requests, inspections and (with complaint access) complaints'],
   ] },
 ];
 const ALL = GROUPS.flatMap((g) => g.items.map((i) => i[0]));
-const SUBMIT = ['parts.submit', 'training.submit', 'complaints.submit'];
+const SUBMIT = ['parts.submit', 'training.submit', 'complaints.submit', 'inspections.submit'];
 
 // Starting profiles. After the first start they are ordinary profiles: change them on the Profiles page.
 const DEFAULTS = [
   { name: 'Technician', scope: 'all', perms: SUBMIT },
-  { name: 'Warehouse', scope: 'all', perms: [...SUBMIT, 'parts.view', 'parts.manage', 'parts.audit', 'catalog.manage', 'stock.manage'] },
-  { name: 'Manager', scope: 'team', perms: [...SUBMIT, 'parts.view', 'parts.manage', 'parts.audit', 'training.view', 'training.manage', 'digest.weekly'] },
+  { name: 'Warehouse', scope: 'all', perms: [...SUBMIT, 'parts.view', 'parts.manage', 'parts.audit', 'catalog.manage', 'stock.manage', 'inspections.view', 'inspections.manage'] },
+  { name: 'Manager', scope: 'team', perms: [...SUBMIT, 'parts.view', 'parts.manage', 'parts.audit', 'training.view', 'training.manage', 'digest.weekly', 'inspections.view', 'inspections.manage', 'certs.manage', 'announcements.post'] },
   { name: 'Admin', scope: 'all', perms: ALL },
 ];
 
@@ -112,7 +120,11 @@ function migrate() {
     }
     // Permissions added in a later release: give each one, once, to the profiles that already
     // hold the closest existing permission, so nobody has to re-tick boxes after an update.
-    const INHERIT = { 'stock.manage': 'catalog.manage', 'activity.view': 'profiles.manage' };
+    const INHERIT = {
+      'stock.manage': 'catalog.manage', 'activity.view': 'profiles.manage',
+      'inspections.submit': 'parts.submit', 'inspections.view': 'parts.view', 'inspections.manage': 'parts.manage',
+      'certs.manage': 'training.manage', 'announcements.post': 'training.manage', 'records.delete': 'profiles.manage',
+    };
     for (const [perm, from] of Object.entries(INHERIT)) {
       const key = `perm_granted:${perm}`;
       if (db.prepare('SELECT 1 FROM meta WHERE key = ?').get(key)) continue;
