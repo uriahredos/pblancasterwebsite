@@ -1,5 +1,5 @@
 <%- include('partials/header') %>
-<div class="title-row"><h1>My tasks</h1><% if (can('tasks.assign')) { %><a class="btn small" href="/admin/tasks">Assign or follow up</a><% } %></div>
+<div class="title-row"><h1>Tasks</h1><% if (can('tasks.assign')) { %><a class="btn small" href="/admin/tasks">Manage tasks</a><% } %></div>
 <% if (!open.length) { %><p class="card empty">Nothing to do right now.</p><% } %>
 <ul class="records">
 <% open.forEach(function (t) { %>

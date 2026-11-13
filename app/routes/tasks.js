@@ -20,7 +20,7 @@ router.get('/tasks', requireLogin, (req, res) => {
   const done = db.prepare(
     `SELECT t.*, b.display_name AS by_name FROM tasks t JOIN users b ON b.id = t.assigned_by
      WHERE t.assigned_to = ? AND t.done_at IS NOT NULL ORDER BY t.done_at DESC LIMIT 30`).all(req.user.id).map((t) => tasks.decorate(t, today));
-  res.render('tasks', { title: 'My tasks', open: tasks.openFor(req.user.id), done });
+  res.render('tasks', { title: 'Tasks', open: tasks.openFor(req.user.id), done });
 });
 
 // Mark my own task done (with an optional note), or put it back.
@@ -85,7 +85,7 @@ function listPage(req, res, extra = {}) {
   const counts = { open: rows.filter((t) => !t.done_at).length, overdue: rows.filter((t) => t.overdue).length, done: rows.filter((t) => t.done_at).length };
   const shown = rows.filter((t) => (show === 'all' ? true : show === 'done' ? t.done_at : show === 'overdue' ? t.overdue : !t.done_at));
   res.status(extra.errors ? 400 : 200).render('admin_tasks', {
-    title: 'Tasks', rows: shown, counts, show, person, people: assignable(req.user), groups: groups(assignable(req.user)), errors: [], values: { to: [], groups: [] }, ...extra,
+    title: 'Manage tasks', rows: shown, counts, show, person, people: assignable(req.user), groups: groups(assignable(req.user)), errors: [], values: { to: [], groups: [] }, ...extra,
   });
 }
 

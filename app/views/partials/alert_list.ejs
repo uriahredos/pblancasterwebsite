@@ -1,0 +1,10 @@
+<%# What is waiting on this person: their tasks, then counts of everything else. Used by the bell and the Alerts page. %>
+<% if (myTasks.length) { %>
+<p class="bell-title">Your tasks</p>
+<% myTasks.forEach(function (t) { %><a href="/tasks#t<%= t.id %>" class="bell-task <%= t.overdue ? 'overdue' : '' %>"><span class="bell-dot" aria-hidden="true"></span><span><strong><%= t.title %></strong><span class="bell-due"><%= t.when %></span></span></a><% }) %>
+<% if (badges.tasks > myTasks.length) { %><a href="/tasks" class="bell-more">and <%= badges.tasks - myTasks.length %> more <%= badges.tasks - myTasks.length === 1 ? 'task' : 'tasks' %></a><% } %>
+<% } %>
+<% if (alerts.length || !myTasks.length) { %><p class="bell-title">Notifications</p><% } %>
+<% alerts.forEach(function (a) { %><a href="<%= a[1] %>"><span class="bell-n"><%= a[0] %></span><span><%= a[0] === 1 ? a[2] : a[3] %></span></a><% }) %>
+<% if (!alerts.length && !myTasks.length) { %><p class="bell-empty">Nothing waiting. You are all caught up.</p><% } %>
+<a href="/settings/notifications" class="bell-settings">Notification settings</a>

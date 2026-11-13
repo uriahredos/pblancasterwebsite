@@ -86,7 +86,6 @@
     // Menu: one drop-down open at a time; close on a click elsewhere or Escape.
     var menus = Array.prototype.slice.call(document.querySelectorAll('details.menu, details.bell'));
     var navbar = document.getElementById('navbar');
-    var menuToggle = document.getElementById('menu-toggle');
     function closeMenus(except) { menus.forEach(function (m) { if (m !== except) m.open = false; }); }
     menus.forEach(function (m) {
       m.querySelector('summary').addEventListener('click', function () { closeMenus(m); });
@@ -100,13 +99,47 @@
       var open = menus.filter(function (m) { return m.open; })[0];
       if (open) { open.open = false; open.querySelector('summary').focus(); }
     });
-    // On a phone the whole menu sits behind the Menu button.
-    if (menuToggle && navbar) {
-      menuToggle.addEventListener('click', function () {
-        var open = navbar.classList.toggle('open');
-        menuToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-        if (open) { var current = navbar.querySelector('summary[aria-current]'); if (current) current.parentNode.open = true; }
+    // On a phone the whole menu is a sheet that slides up from the More button in the bottom bar.
+    // The phone's Back button closes it; choosing a link replaces the "sheet open" step in the
+    // history so Back from the next page comes straight back here.
+    var more = document.getElementById('more-toggle');
+    function sheetOpen() { return Boolean(navbar && navbar.classList.contains('open')); }
+    function closeSheet(fromBack) {
+      if (!sheetOpen()) return;
+      navbar.classList.remove('open');
+      document.documentElement.classList.remove('sheet-open');
+      more.setAttribute('aria-expanded', 'false');
+      if (!fromBack && history.state && history.state.menuSheet) history.back();
+    }
+    if (more && navbar) {
+      more.addEventListener('click', function (e) {
+        e.preventDefault();
+        if (sheetOpen()) { closeSheet(false); return; }
+        closeMenus(null);
+        navbar.classList.add('open');
+        document.documentElement.classList.add('sheet-open');
+        more.setAttribute('aria-expanded', 'true');
+        var current = navbar.querySelector('summary[aria-current]'); if (current) current.parentNode.open = true;
+        navbar.scrollTop = 0;
+        history.pushState({ menuSheet: true }, '');
       });
+      navbar.addEventListener('click', function (e) {
+        var link = e.target.closest('a[href]');
+        if (!link || !sheetOpen() || e.ctrlKey || e.metaKey || e.shiftKey || e.button) return;
+        if (history.state && history.state.menuSheet) { e.preventDefault(); location.replace(link.href); }
+      });
+      document.addEventListener('click', function (e) {
+        if (sheetOpen() && !e.target.closest('#navbar, #more-toggle')) closeSheet(false);
+      });
+      document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && sheetOpen() && !menus.some(function (m) { return m.open; })) closeSheet(false); });
+      window.addEventListener('popstate', function () { closeSheet(true); });
+      window.addEventListener('pageshow', function (e) { if (e.persisted) closeSheet(true); });
+      // Turning the phone or widening the window past the phone layout puts the menu back in the bar.
+      if (window.matchMedia) {
+        var wide = window.matchMedia('(min-width: 900px)');
+        var onWide = function () { if (wide.matches) closeSheet(false); };
+        if (wide.addEventListener) wide.addEventListener('change', onWide); else if (wide.addListener) wide.addListener(onWide);
+      }
     }
 
     // Photos open in a viewer on top of the page rather than as a bare image with no way back.

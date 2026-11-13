@@ -24,7 +24,7 @@
 <form method="post" action="/admin/inspections/<%= i.id %>/resolve" class="card stack">
   <input type="hidden" name="_csrf" value="<%= csrf %>">
   <% if (!i.resolved_at) { %>
-  <label>What was done <span class="hint">Optional. <%= i.display_name %> sees this under My submissions.</span>
+  <label>What was done <span class="hint">Optional. <%= i.display_name %> sees this under My activity.</span>
     <input name="resolved_note" maxlength="500" autocomplete="off">
   </label>
   <button class="btn primary" type="submit">Mark as fixed</button>

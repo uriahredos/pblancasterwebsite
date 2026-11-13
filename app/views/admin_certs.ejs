@@ -1,6 +1,6 @@
 <%- include('partials/header', { wide: true }) %>
-<div class="title-row"><h1>Licenses and certifications</h1><a class="btn small" href="/admin/certs.csv<%= f.user || f.show ? '?' + new URLSearchParams(Object.entries(f).filter(function (e) { return e[1]; })).toString() : '' %>">Download CSV</a></div>
-<p class="lede"><% if (counts.expired) { %><strong><%= counts.expired %> expired.</strong> <% } %><% if (counts.soon) { %><strong><%= counts.soon %> expiring within <%= soonDays %> days.</strong><% } %><% if (!counts.expired && !counts.soon) { %>Nothing expired or expiring within <%= soonDays %> days.<% } %> Each person sees their own under My submissions and is warned on their home page in the last 30 days.</p>
+<div class="title-row"><h1>Certifications</h1><a class="btn small" href="/admin/certs.csv<%= f.user || f.show ? '?' + new URLSearchParams(Object.entries(f).filter(function (e) { return e[1]; })).toString() : '' %>">Download CSV</a></div>
+<p class="lede"><% if (counts.expired) { %><strong><%= counts.expired %> expired.</strong> <% } %><% if (counts.soon) { %><strong><%= counts.soon %> expiring within <%= soonDays %> days.</strong><% } %><% if (!counts.expired && !counts.soon) { %>Nothing expired or expiring within <%= soonDays %> days.<% } %> Each person sees their own under My activity and is warned on their home page in the last 30 days.</p>
 <form method="get" class="filters card">
   <label>Person
     <select name="user"><option value="">Everyone</option>

@@ -34,14 +34,21 @@ router.get('/poster', requireLogin, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// The home page is a dashboard: what needs attention, quick actions, the newsletter,
-// the notice board, what is coming up, and where this person's own submissions stand.
+// Everything waiting on this person, as a page. On a phone this is the Alerts button in the
+// bottom bar; on a computer the same list drops down from the bell.
+router.get('/alerts', requireLogin, (req, res) => {
+  res.render('alerts', { title: 'Alerts' });
+});
+
+// The home page, in the order people need it: critical announcements, the branch numbers for
+// people who run things, this person's tasks, the form buttons, announcements, then what is
+// coming up, where their own requests stand, the newsletter and discussions.
 router.get('/', requireLogin, (req, res) => {
   const me = req.user.id;
   const can = (perm) => access.can(req.user, perm);
   const today = localDate();
   const all = require('./announcements').forUser(me);
-  // Unread announcements sit at the top until read; after that they stay on the notice board.
+  // Unread announcements lead the Announcements panel until read; after that the latest few stay listed.
   // Critical ones are always first on the page, read or not.
   const critical = all.filter((n) => n.critical).sort((x, y) => y.id - x.id);
   const notices = all.filter((n) => !n.read_at && !n.critical);
@@ -87,10 +94,53 @@ router.get('/', requireLogin, (req, res) => {
   const certCount = db.prepare('SELECT COUNT(*) AS n FROM certifications WHERE user_id = ?').get(me).n;
   if (certCount) status.push({ label: 'Certifications', value: String(certCount), sub: myCerts.length ? `${myCerts.length} need${myCerts.length === 1 ? 's' : ''} attention` : 'all current', warn: myCerts.length > 0 });
 
+  if (res.locals.badges.tasks) {
+    const late = db.prepare('SELECT COUNT(*) AS n FROM tasks WHERE assigned_to = ? AND done_at IS NULL AND due_on < ?').get(me, today).n;
+    status.unshift({ label: 'Tasks', value: String(res.locals.badges.tasks), sub: late ? `${late} overdue` : 'to do', warn: late > 0, url: '/tasks' });
+  }
+
+  // For people who run things: the branch (or their own team) in a handful of numbers, each one
+  // a link to the list behind it. A person only gets the numbers their profile lets them act on,
+  // and a manager's numbers cover only the people assigned to them.
+  const b = res.locals.badges;
+  const ids = access.visibleUserIds(req.user);
+  const scoped = (col) => (ids ? `AND ${col} IN (${ids.map(Number).join(',')})` : '');
+  const branch = [];
+  if (can('parts.manage')) {
+    const late = db.prepare(
+      `SELECT COUNT(*) AS n FROM parts_submissions WHERE action = 'request' AND cancelled_at IS NULL AND status IN ('new','ordered')
+       AND needed_by IS NOT NULL AND needed_by < ? ${scoped('user_id')}`).get(today).n;
+    branch.push({ label: 'Parts requests', value: b.requests, sub: !b.requests ? 'none open' : late ? `open · ${late} past the needed-by date` : 'open', level: late ? 'bad' : b.requests ? 'warn' : '', url: '/admin/requests' });
+  }
+  if (can('inspections.view')) {
+    branch.push({ label: 'Truck problems', value: b.inspections, sub: b.inspections ? 'not fixed yet' : 'none waiting', level: b.inspections ? 'bad' : '', url: '/admin/inspections?show=open' });
+  }
+  if (can('stock.manage') || can('parts.view')) {
+    const low = require('../stock').lowCount();
+    branch.push({ label: 'Low stock', value: low, sub: low === 1 ? 'part at or below its minimum' : 'parts at or below their minimum', level: low ? 'warn' : '', url: '/admin/stock?low=1' });
+  }
+  if (can('tasks.assign')) {
+    const given = db.prepare('SELECT assigned_to, assigned_by, due_on FROM tasks WHERE done_at IS NULL').all()
+      .filter((t) => t.assigned_by === me || access.canSee(req.user, t.assigned_to));
+    const late = given.filter((t) => t.due_on && t.due_on < today).length;
+    branch.push({ label: 'Overdue tasks', value: late, sub: `${given.length} open in all`, level: late ? 'bad' : '', url: late ? '/admin/tasks?show=overdue' : '/admin/tasks' });
+  }
+  if (can('certs.manage')) {
+    branch.push({ label: 'Certifications', value: b.certs, sub: b.certs ? 'expired or expiring in 30 days' : 'all current', level: b.certs ? 'warn' : '', url: '/admin/certs?show=attention' });
+  }
+  if (can('parts.audit')) {
+    const from = new Date(`${today}T12:00:00Z`); from.setUTCDate(from.getUTCDate() - 30);
+    const fromYmd = from.toISOString().slice(0, 10);
+    const n = db.prepare(
+      `SELECT COUNT(*) AS n FROM parts_submissions WHERE created_local_date >= ? AND created_local_date <= ?
+       AND audited_at IS NULL AND cancelled_at IS NULL ${scoped('user_id')}`).get(fromYmd, today).n;
+    branch.push({ label: 'Audit', value: n, sub: n === 1 ? 'entry not checked, last 30 days' : 'entries not checked, last 30 days', level: '', url: `/admin/parts/audit?from=${fromYmd}&to=${today}&show=unchecked` });
+  }
+
   const now = new Date();
   const dateLine = new Intl.DateTimeFormat('en-US', { timeZone: config.timezone, weekday: 'long', month: 'long', day: 'numeric' }).format(now);
   res.render('home', {
-    title: 'Home', wide: true, critical, notices, board, replies, talk, myCerts, issue: issues[0] || null, pastIssues: issues.slice(1), upcoming, status, dateLine,
+    title: 'Home', wide: true, branch, branchTitle: ids ? 'Your team at a glance' : 'Branch at a glance', critical, notices, board, replies, talk, myCerts, issue: issues[0] || null, pastIssues: issues.slice(1), upcoming, status, dateLine,
     categories: require('./announcements').CATEGORIES,
   });
 });
@@ -111,7 +161,7 @@ router.get('/my', requireLogin, (req, res) => {
   const inspections = db.prepare(
     `SELECT i.*, (SELECT COUNT(*) FROM inspection_photos p WHERE p.inspection_id = i.id) AS photos FROM inspections i
      WHERE i.user_id = ? ORDER BY i.id DESC LIMIT 20`).all(req.user.id);
-  res.render('my', { title: 'My submissions', parts, training, attended, myCerts, inspections });
+  res.render('my', { title: 'My activity', parts, training, attended, myCerts, inspections });
   // They have now seen any status changes.
   db.prepare('UPDATE parts_submissions SET unseen = 0 WHERE user_id = ? AND unseen = 1').run(req.user.id);
   db.prepare('UPDATE training_requests SET unseen = 0 WHERE user_id = ? AND unseen = 1').run(req.user.id);

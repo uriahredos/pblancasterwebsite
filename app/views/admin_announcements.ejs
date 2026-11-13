@@ -1,7 +1,7 @@
 <%- include('partials/header', { wide: true }) %>
-<p><a href="/notices">&larr; Notices</a></p>
-<h1>Announcements</h1>
-<p class="lede"><%= team ? 'What you post goes to the people you manage.' : 'What you post goes to everyone.' %> It shows at the top of their home page until they press "I have read this", then stays on the notice board.</p>
+<p><a href="/notices">&larr; Announcements</a></p>
+<h1>Post announcements</h1>
+<p class="lede"><%= team ? 'What you post goes to the people you manage.' : 'What you post goes to everyone.' %> It is marked New on their home page until they press "I have read this", and stays on their Announcements page after that.</p>
 <div class="table-wrap">
 <table>
   <thead><tr><th>Posted</th><th>Title</th><th>By</th><th>To</th><th>Read</th><th>Shown until</th><th></th></tr></thead>
@@ -29,7 +29,7 @@
     <select name="category"><% Object.keys(categories).forEach(function (k) { %><option value="<%= k %>" <%= (values.category || 'general') === k ? 'selected' : '' %>><%= categories[k] %></option><% }) %></select>
   </label>
   <label class="choice"><input type="checkbox" name="critical" value="1" <%= values.critical ? 'checked' : '' %>> Critical: keep it at the very top of the home page, even after it is read, until the "show until" date or until you switch it off</label>
-  <label class="choice"><input type="checkbox" name="pinned" value="1" <%= values.pinned ? 'checked' : '' %>> Pin to the top of the notice board on the home page</label>
+  <label class="choice"><input type="checkbox" name="pinned" value="1" <%= values.pinned ? 'checked' : '' %>> Pin to the top of the announcements on the home page</label>
   <label>Show until <span class="hint">Optional. After this date it disappears for people who have not read it.</span>
     <input type="date" name="expires_on" value="<%= values.expires_on || '' %>">
   </label>

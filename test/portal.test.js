@@ -327,7 +327,7 @@ test('anonymous complaint: nothing identifying is stored, logged or emailed', as
   assert.equal(db.prepare('SELECT COUNT(*) n FROM parts_submissions WHERE note LIKE ?').get('%Ladder%').n, 0);
   void techId;
 
-  // It never shows up under "My submissions".
+  // It never shows up under "My activity".
   assert.doesNotMatch((await tech.get('/my')).text, /Ladder/);
 
   // The daily notice carries a count and a link only.
@@ -1119,7 +1119,7 @@ test('requests queue: open requests by due date, one-tap status, and the sender 
   const queue = (await wh.get('/admin/requests')).text;
   assert.match(queue, /2 open, <strong>1 overdue<\/strong>/);
   assert.ok(queue.indexOf('Q-OVERDUE') < queue.indexOf('Q-LATER')); // soonest first
-  assert.match((await wh.get('/')).text, /Requests <span class="badge">2<\/span>/);
+  assert.match((await wh.get('/')).text, /Parts requests <span class="badge">2<\/span>/);
 
   // A note written on the detail page survives a one-tap status change from the queue.
   await wh.post(`/admin/parts/${overdue}/status`, { status: 'new', admin_note: 'Checking with the supplier' }, { page: `/admin/parts/${overdue}` });
@@ -1134,11 +1134,11 @@ test('requests queue: open requests by due date, one-tap status, and the sender 
   assert.equal(sent[0].to, 'terry@example.com');
   assert.match(sent[0].subject, /Your parts request is now: Ordered/);
   assert.match(sent[0].text, /Checking with the supplier/);
-  assert.match((await tech.get('/')).text, /My submissions <span class="badge"[^>]*>2<\/span>/); // the note, then the status
+  assert.match((await tech.get('/')).text, /My activity <span class="badge"[^>]*>2<\/span>/); // the note, then the status
   const mine = (await tech.get('/my')).text;
   assert.match(mine, /class="tag new">Updated</);
   assert.doesNotMatch((await tech.get('/my')).text, /class="tag new">Updated</); // seen now
-  assert.doesNotMatch((await tech.get('/')).text, /My submissions <span class="badge"/);
+  assert.doesNotMatch((await tech.get('/')).text, /My activity <span class="badge"/);
 
   await wh.post(`/admin/parts/${overdue}/status`, { status: 'fulfilled', back: 'requests' }, { page: '/admin/requests' });
   const after = (await wh.get('/admin/requests')).text;
@@ -1571,7 +1571,7 @@ test('truck inspections: checklist with OK/Problem, photos, problems followed up
 
   // Following up.
   const wh = await loggedIn('wh1');
-  assert.match((await wh.get('/')).text, /Inspections <span class="badge">1<\/span>/);
+  assert.match((await wh.get('/')).text, /Inspection log <span class="badge">1<\/span>/);
   const list = (await wh.get('/admin/inspections')).text.replace(/\s+/g, ' ');
   assert.match(list, /1 with problems not yet fixed/);
   assert.match(list, /Who is due.*Terry Tech<\/td><td>309<\/td>.*Today/);
@@ -1624,15 +1624,15 @@ test('announcements: shown on the home page until read, with a record of who has
 
   const t1 = await loggedIn('tech1');
   const home = (await t1.get('/')).text;
-  assert.match(home, /New notice/); assert.match(home, /Shop closed Friday/); assert.match(home, /Pick up parts Thursday/);
-  assert.match(home, /Notices <span class="badge"[^>]*>1<\/span>/);
-  assert.doesNotMatch((await owner.get('/')).text, /New notice/);            // the poster has already read it
+  assert.match(home, /<span class="tag new">New<\/span>/); assert.match(home, /Shop closed Friday/); assert.match(home, /Pick up parts Thursday/);
+  assert.match(home, /Announcements <span class="badge"[^>]*>1<\/span>/);
+  assert.doesNotMatch((await owner.get('/')).text, /<span class="tag new">New<\/span>/);            // the poster has already read it
   const active = db.prepare('SELECT COUNT(*) n FROM users WHERE active = 1').get().n;
   assert.match((await owner.get(page)).text, new RegExp(`<strong>1 of ${active}</strong>`));
 
   assert.equal((await t1.post(`/notices/${aid}/read`, { back: 'home' }, { page: '/' })).location, '/');
   const after = (await t1.get('/')).text;
-  assert.doesNotMatch(after, /New notice/); assert.doesNotMatch(after, /Notices <span class="badge"/);
+  assert.doesNotMatch(after, /<span class="tag new">New<\/span>/); assert.doesNotMatch(after, /Announcements <span class="badge"/);
   assert.match((await t1.get('/notices')).text, /You read this/);            // still there to look back at
   const who = (await owner.get(`${page}/${aid}`)).text.replace(/\s+/g, ' ');
   assert.match(who, /Read<\/span><span class="stat-num">2</);
@@ -1676,26 +1676,36 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
   const barLinks = (html) => { const nav = /<nav class="nav"[\s\S]*?<\/nav>/.exec(html)[0].replace(/<details[\s\S]*?<\/details>/g, '').replace(/<div class="nav-account">[\s\S]*?<\/div>/, ''); return [...nav.matchAll(/<a href="([^"]+)"/g)].map((m) => m[1]); };
 
   const owner = (await (await loggedIn('owner')).get('/admin/users')).text;
-  assert.deepEqual(groupsOf(owner), ['Parts', 'Trucks', 'Training', 'Admin']);
-  assert.deepEqual(barLinks(owner), ['/', '/notices', '/discussions', '/tasks', '/my', '/complaint']);
-  const admin = /<summary[^>]*>Admin[\s\S]*?<\/details>/.exec(owner)[0];
-  for (const link of ['/admin/users', '/admin/profiles', '/admin/announcements', '/admin/complaints', '/admin/activity', '/admin/backups', '/admin/import']) assert.ok(admin.includes(`href="${link}"`), link);
-  assert.match(admin, /<summary aria-current="true">Admin/);               // the group you are in is marked
-  assert.match(admin, /href="\/admin\/users" aria-current="page"/);
-  assert.match(owner, /id="menu-toggle"/);                                 // the phone Menu button
+  assert.deepEqual(groupsOf(owner), ['Parts', 'Trucks', 'Training', 'Team', 'Setup']);
+  assert.deepEqual(barLinks(owner), ['/', '/notices', '/discussions', '/tasks', '/my']);
+  // What used to be one long Admin list is two: Team (people and what goes out to them) and Setup (the site itself).
+  const team = /<summary[^>]*>Team[\s\S]*?<\/details>/.exec(owner)[0];
+  const setup = /<summary[^>]*>Setup[\s\S]*?<\/details>/.exec(owner)[0];
+  const hrefs = (html) => [...html.matchAll(/<a href="([^"]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(hrefs(team), ['/complaint', '/admin/users', '/admin/profiles', '/admin/tasks', '/admin/announcements', '/admin/newsletters', '/admin/complaints']);
+  assert.deepEqual(hrefs(setup), ['/poster', '/admin/activity', '/admin/backups', '/admin/import']);
+  assert.match(team, /<summary aria-current="true">Team/);                 // the group you are in is marked
+  assert.match(team, /href="\/admin\/users" aria-current="page"/);
+  assert.doesNotMatch(setup, /<summary aria-current/);
+  // One name for each thing, wherever it appears.
+  const ownerNav = /<nav class="nav"[\s\S]*?<\/nav>/.exec(owner)[0];
+  for (const name of ['Announcements', 'My activity', 'Anonymous complaint', 'Parts requests', 'Truck inspection', 'Manage tasks', 'Post announcements', 'Certifications']) assert.match(ownerNav, new RegExp(`>${name}(<| <span)`), name);
+  for (const old of ['Notices', 'My submissions', 'Assign tasks', '>Complaint<', '>Requests<', 'New inspection']) assert.ok(!ownerNav.includes(old), old);
+  assert.doesNotMatch(owner, /id="menu-toggle"/);                          // the old phone Menu button is gone
   assert.match(owner, /class="nav-account">[\s\S]*Change password[\s\S]*Sign out/); // account links are in the menu for phones
 
-  // A technician: no Admin group; Trucks has one thing, so it is a plain "Inspection" link.
+  // A technician: no Team or Setup; Trucks has one thing, so it is a plain "Truck inspection" link.
   const tech = (await (await loggedIn('tech1')).get('/')).text;
   assert.deepEqual(groupsOf(tech), ['Parts', 'Training']);
-  assert.deepEqual(barLinks(tech), ['/', '/notices', '/discussions', '/tasks', '/my', '/complaint', '/inspection']);
+  assert.deepEqual(barLinks(tech), ['/', '/notices', '/discussions', '/tasks', '/my', '/inspection', '/complaint']); // one-item groups show as plain links
   assert.doesNotMatch(tech, /href="\/admin\//);
+  assert.match(tech, /<a href="\/inspection"[^>]*>Truck inspection<\/a>/);
   assert.doesNotMatch(/<summary[^>]*>Parts[\s\S]*?<\/details>/.exec(tech)[0], /<hr>/); // no stray divider
 
-  // A manager's Admin group holds only what their profile allows.
+  // A manager's Team group holds only what their profile allows, and they have no Setup group.
   const mgr = (await (await loggedIn('mgr1')).get('/')).text;
-  assert.deepEqual(groupsOf(mgr), ['Parts', 'Trucks', 'Training', 'Admin']);          // Assign tasks and Announcements
-  assert.deepEqual(barLinks(mgr), ['/', '/notices', '/discussions', '/tasks', '/my', '/complaint']);
+  assert.deepEqual(groupsOf(mgr), ['Parts', 'Trucks', 'Training', 'Team']);           // Manage tasks and Post announcements
+  assert.deepEqual(barLinks(mgr), ['/', '/notices', '/discussions', '/tasks', '/my']);
   assert.doesNotMatch(mgr, /admin\/(users|profiles|complaints|backups|activity)"/);
 
   // Styles and scripts carry a version so a new release is not shown with old files.
@@ -1875,7 +1885,7 @@ test('someone who manages training can tidy the wording of a request from the to
 });
 
 // ----------------------------------------------------------------------------
-// The home dashboard: newsletters, the notice board, what is coming up
+// The home dashboard: newsletters, announcements, what is coming up
 // ----------------------------------------------------------------------------
 
 /** A one-page PDF, small but well formed. */
@@ -1971,7 +1981,7 @@ test('newsletter permission is given once to profiles that manage people, and is
   db.prepare('DELETE FROM profiles WHERE id = ?').run(pid);
 });
 
-test('home dashboard: notice board with labels and pins, coming up, and my status', async () => {
+test('home dashboard: announcements with labels and pins, coming up, and my status', async () => {
   const owner = await loggedIn('owner');
   const t2 = await loggedIn('tech2');
   const page = '/admin/announcements';
@@ -1982,19 +1992,19 @@ test('home dashboard: notice board with labels and pins, coming up, and my statu
   assert.deepEqual(db.prepare('SELECT category, pinned FROM announcements WHERE id = ?').get(pinId), { category: 'safety', pinned: 1 });
   assert.deepEqual(db.prepare('SELECT category, pinned FROM announcements WHERE id = ?').get(plainId), { category: 'general', pinned: 0 });
 
-  // Unread: at the top with its label. Read: on the notice board, the pinned one first even though it is older.
+  // Unread: at the top with its label. Read: in the list below, the pinned one first even though it is older.
   let home = (await t2.get('/')).text;
-  assert.match(home, /New notice<\/span><span class="tag cat-safety">Safety<\/span><strong>Ladder recall/);
+  assert.match(home, /<span class="tag new">New<\/span><span class="tag cat-safety">Safety<\/span><strong>Ladder recall/);
   await t2.post(`/notices/${pinId}/read`, { back: 'home' }, { page: '/' });
   await t2.post(`/notices/${plainId}/read`, { back: 'home' }, { page: '/' });
   home = (await t2.get('/')).text;
-  assert.doesNotMatch(home, /New notice/);
+  assert.doesNotMatch(home, /<span class="tag new">New<\/span>/);
   const board = /<ul class="board">[\s\S]*?<\/ul>/.exec(home)[0];
   assert.match(board, /Pinned[\s\S]*Ladder recall[\s\S]*Parking lot repaving/);
   assert.match(board, new RegExp(`href="/notices#n${pinId}"`));
   assert.match((await t2.get('/notices')).text, new RegExp(`id="n${pinId}"`));
   // The poster can unpin it; then newest comes first.
-  assert.match((await owner.get(`${page}/${pinId}`)).text, /Unpin from the notice board/);
+  assert.match((await owner.get(`${page}/${pinId}`)).text, /Unpin from the top of the list/);
   await owner.post(`${page}/${pinId}/pin`, {}, { page: `${page}/${pinId}` });
   assert.match(/<ul class="board">[\s\S]*?<\/ul>/.exec((await t2.get('/')).text)[0], /Parking lot repaving[\s\S]*Ladder recall/);
   assert.equal((await t2.post(`${page}/${plainId}/pin`, {})).status, 403);
@@ -2037,14 +2047,14 @@ test('a critical announcement stays at the top of the home page, read or not, un
 
   // First on the page, above the newer ordinary notice, and shown once only.
   let home = (await t2.get('/')).text;
-  assert.match(home, /class="critical"[\s\S]*Critical<\/span><span class="tag new">New notice[\s\S]*Open enrollment[\s\S]*class="attention"[\s\S]*Ordinary news/);
+  assert.match(home, /class="critical"[\s\S]*Critical<\/span><span class="tag new">New<[\s\S]*Open enrollment[\s\S]*id="board-h"[\s\S]*Ordinary news/);
   assert.equal(home.match(/Open enrollment/g).length, 1);
-  // Still there after it is read, without the button, and not repeated on the notice board.
+  // Still there after it is read, without the button, and not repeated in the list of announcements.
   await t2.post(`/notices/${id}/read`, { back: 'home' }, { page: '/' });
   home = (await t2.get('/')).text;
   const top = /<section class="critical"[\s\S]*?<\/section>/.exec(home)[0];
   assert.match(top, /Open enrollment[\s\S]*Update your selections by Friday\.[\s\S]*You read this on/);
-  assert.doesNotMatch(top, /I have read this|New notice/);
+  assert.doesNotMatch(top, /I have read this|<span class="tag new">/);
   assert.doesNotMatch(/<ul class="board">[\s\S]*?<\/ul>/.exec(home)[0], /Open enrollment/);
   assert.match((await t2.get('/notices')).text, /is-critical[\s\S]*?Critical<\/span>[\s\S]*?Open enrollment/);
   assert.match((await owner.get(page)).text, /Open enrollment<\/strong><\/a> <span class="tag cat-hr">HR<\/span> <span class="tag crit">Critical/);
@@ -2054,7 +2064,7 @@ test('a critical announcement stays at the top of the home page, read or not, un
   assert.doesNotMatch((await t2.get('/')).text, /Open enrollment/);
   db.prepare('UPDATE announcements SET expires_on = NULL WHERE id = ?').run(id);
 
-  // Switched off, it drops to the notice board; an existing announcement can be switched on the same way.
+  // Switched off, it drops back in with the other announcements; an existing announcement can be switched on the same way.
   assert.equal((await t2.post(`${page}/${id}/critical`, {})).status, 403);
   assert.match((await owner.get(`${page}/${id}`)).text, /Stop showing as critical/);
   await owner.post(`${page}/${id}/critical`, {}, { page: `${page}/${id}` });
@@ -2241,7 +2251,7 @@ test('notification bell at the top right gathers what is waiting; light/dark mov
   assert.equal(total(after), before + 2);
   const bell = bellOf(after);
   assert.match(bell, /aria-label="Notifications, \d+ waiting"/);
-  assert.match(bell, /href="\/notices"><span class="bell-n">\d+<\/span><span>unread notices?<\/span>/);
+  assert.match(bell, /href="\/notices"><span class="bell-n">\d+<\/span><span>unread announcements?<\/span>/);
   assert.match(bell, /href="\/my"><span class="bell-n">1<\/span><span>update on your requests<\/span>/);
   assert.doesNotMatch(bell, /admin\//);                                   // a technician is not shown management items
 
@@ -2305,7 +2315,7 @@ test('tasks: assigned with a due date, shown in the bell with when they are due,
   assert.equal(total((await (await loggedIn('task2')).get('/')).text) >= 1, true);
   assert.doesNotMatch(bellOf((await (await loggedIn('task2')).get('/')).text), /timesheet/);                    // only your own
 
-  // My tasks page, and ticking one off with a note.
+  // Tasks page, and ticking one off with a note.
   const mine = (await tess.get('/tasks')).text;
   assert.match(mine, /Ten 12V 7Ah\./); assert.match(mine, /From Olive Owner/); assert.match(mine, /class="tag overdue">Overdue</);
   const tid = db.prepare("SELECT id FROM tasks WHERE title LIKE 'Send in%'").get().id;
@@ -2548,4 +2558,122 @@ test('photos open in the page viewer: no link sends the app to a bare image in a
   for (const link of photoLinks) assert.doesNotMatch(link, /target=/, link);
   const js = (await new Client().get('/site.js')).text;
   assert.match(js, /photo-viewer/); assert.match(js, /popstate/);        // the viewer, and Back closing it
+});
+
+test('phone bottom bar: Home, Parts, Tasks, Alerts and More, with the bell list as a page of its own', async () => {
+  const barOf = (html) => { const m = /<nav class="tabbar[\s\S]*?<\/nav>/.exec(html); return m ? m[0] : null; };
+  const tabs = (html) => [...barOf(html).matchAll(/<a href="([^"]+)"[^>]*>(?:<svg[\s\S]*?<\/svg>)<span>([^<]+)<\/span>/g)].map((m) => `${m[2]} ${m[1]}`);
+
+  // Signed out there is no bar.
+  assert.equal(barOf((await new Client().get('/login')).text), null);
+
+  makeUser('bar1', 'Barry Bar');
+  const c = await loggedIn('bar1');
+  let home = (await c.get('/')).text;
+  assert.deepEqual(tabs(home), ['Home /', 'Parts /parts', 'Tasks /tasks', 'Alerts /alerts', 'More #navbar']);
+  assert.match(barOf(home), /<a href="\/" aria-current="page"/);                       // the tab you are on is marked
+  assert.match(barOf((await c.get('/parts')).text), /<a href="\/parts" aria-current="page"/);
+  assert.match(home, /<body class="has-tabbar">/);
+  assert.match(home, /viewport-fit=cover/);
+
+  // Tasks and everything else are counted separately on the bar.
+  const count = (html, label) => { const m = new RegExp(`<span>${label}</span><b class="tab-count">(\\d+)`).exec(barOf(html)); return m ? Number(m[1]) : 0; };
+  const alertsBefore = count(home, 'Alerts');
+  assert.equal(count(home, 'Tasks'), 0);
+  const owner = await loggedIn('owner');
+  await owner.post('/admin/tasks', [['title', 'Bar task'], ['due_on', ymdFromNow(-1)], ['to', String(userId('bar1'))]], { page: '/admin/tasks' });
+  await owner.post('/admin/announcements', { title: 'Bar announcement', body: 'Read me.' }, { page: '/admin/announcements' });
+  home = (await c.get('/')).text;
+  assert.equal(count(home, 'Tasks'), 1);
+  assert.equal(count(home, 'Alerts'), alertsBefore + 1);
+
+  // The Alerts page holds the same list as the bell.
+  const alerts = (await c.get('/alerts')).text;
+  assert.match(alerts, /<h1>Alerts<\/h1>/);
+  assert.match(alerts, /class="card alert-items alert-page">[\s\S]*Your tasks[\s\S]*Bar task[\s\S]*Overdue by 1 day[\s\S]*unread announcements?[\s\S]*Notification settings/);
+  assert.match(barOf(alerts), /<a href="\/alerts" aria-current="page"/);
+  assert.equal((await new Client().get('/alerts')).status, 302);                      // signed in only
+
+  // Someone who cannot send parts entries but can read the log gets the log; with neither, no Parts tab.
+  const pid = db.prepare("INSERT INTO profiles (name, scope, created_at) VALUES ('Bar reader', 'all', ?)").run(new Date().toISOString()).lastInsertRowid;
+  db.prepare("INSERT INTO profile_permissions (profile_id, permission) VALUES (?, 'parts.view')").run(pid);
+  db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(pid, userId('bar1'));
+  assert.deepEqual(tabs((await c.get('/')).text).slice(0, 2), ['Home /', 'Parts /admin/parts']);
+  db.prepare('DELETE FROM profile_permissions WHERE profile_id = ?').run(pid);
+  assert.deepEqual(tabs((await c.get('/')).text), ['Home /', 'Tasks /tasks', 'Alerts /alerts', 'More #navbar']);
+
+  // The sheet behind More, and Back closing it, are in the script.
+  const js = (await new Client().get('/site.js')).text;
+  assert.match(js, /more-toggle/); assert.match(js, /menuSheet/);
+  db.prepare('DELETE FROM tasks').run();
+});
+
+test('home page: tasks first, then the form buttons, then announcements; branch numbers only for people who run things', async () => {
+  const flat = async (c) => (await c.get('/')).text.replace(/\s+/g, ' ');
+  const order = (html, ...marks) => marks.map((m) => html.indexOf(m));
+  const rising = (list) => list.every((n, i) => n >= 0 && (i === 0 || n > list[i - 1]));
+
+  // A technician: their tasks, the buttons, then announcements, in that order on a phone.
+  const owner = await loggedIn('owner');
+  await owner.post('/admin/tasks', [['title', 'Home task late'], ['due_on', ymdFromNow(-2)], ['to', String(userId('tech2'))]], { page: '/admin/tasks' });
+  await owner.post('/admin/tasks', [['title', 'Home task later'], ['due_on', ymdFromNow(20)], ['to', String(userId('tech2'))]], { page: '/admin/tasks' });
+  await owner.post('/admin/announcements', { title: 'Home order news', body: 'Read me.' }, { page: '/admin/announcements' });
+  const t2 = await loggedIn('tech2');
+  const home = await flat(t2);
+  const tasksPanel = /<section class="panel p-tasks"[\s\S]*?<\/section>/.exec(home)[0];
+  assert.match(tasksPanel, /<li class="overdue"><a href="\/tasks#t\d+"><strong>Home task late<\/strong><span class="todo-when">Overdue by 2 days[^<]* · from /);
+  assert.ok(tasksPanel.indexOf('Home task late') < tasksPanel.indexOf('Home task later'));   // overdue first
+  assert.match(/<section class="panel p-board"[\s\S]*?<\/section>/.exec(home)[0], /<span class="tag new">New<\/span><strong>Home order news[\s\S]*I have read this/);
+  assert.match(/<section class="panel p-status"[\s\S]*?<\/section>/.exec(home)[0], /<a href="\/tasks" class="warn"><span class="mini-label">Tasks<\/span><span class="mini-num">2<\/span><span class="mini-sub">1 overdue/);
+  const css = (await new Client().get('/styles.css')).text;
+  assert.match(css, /\.dash \.p-tasks \{ order: 1; \} \.dash \.p-actions \{ order: 2; \} \.dash \.p-board \{ order: 3; \}/);
+  assert.doesNotMatch(home, /class="panel branch-panel"/);                                   // nothing about the branch for a technician
+  assert.doesNotMatch(home, /href="\/admin\//);
+
+  // Nothing to do: no empty tasks box in the way of the buttons.
+  makeUser('home1', 'Holly Home');
+  assert.doesNotMatch(await flat(await loggedIn('home1')), /p-tasks/);
+
+  // The owner: branch numbers on top, each a link to the list behind it.
+  await t2.post('/parts', [['action', 'request'], ['part_name', 'HOME-PART'], ['quantity', '1'], ['source', 'van'], ['needed_by', '2031-09-01']], { multipart: true });
+  const reqId = lastParts().id;
+  db.prepare('UPDATE parts_submissions SET needed_by = ? WHERE id = ?').run(ymdFromNow(-3), reqId);
+  const oh = await flat(owner);
+  const branch = /<section class="panel branch-panel"[\s\S]*?<\/section>/.exec(oh)[0];
+  assert.match(branch, /Branch at a glance/);
+  assert.ok(rising(order(oh, 'class="dash-hello"', 'class="panel branch-panel"', 'class="dash"')));
+  const tile = (html, label) => { const m = new RegExp(`<a href="([^"]+)" class="([a-z]*)"><span class="mini-num">(\\d+)</span><span class="mini-label">${label}</span><span class="mini-sub">([^<]*)`).exec(html); return m ? { url: m[1], level: m[2], n: Number(m[3]), sub: m[4] } : null; };
+  for (const label of ['Parts requests', 'Truck problems', 'Low stock', 'Overdue tasks', 'Certifications', 'Audit']) assert.ok(tile(branch, label), label);
+  const reqs = tile(branch, 'Parts requests');
+  assert.equal(reqs.url, '/admin/requests'); assert.equal(reqs.level, 'bad'); assert.ok(reqs.n >= 1); assert.match(reqs.sub, /\d+ past the needed-by date/);
+  const late = tile(branch, 'Overdue tasks');
+  assert.equal(late.url, '/admin/tasks?show=overdue'); assert.equal(late.n, 1); assert.equal(late.sub, '2 open in all');
+  const audit = tile(branch, 'Audit');
+  assert.match(audit.url, /^\/admin\/parts\/audit\?from=\d{4}-\d\d-\d\d&amp;to=\d{4}-\d\d-\d\d&amp;show=unchecked$/);
+  assert.ok(audit.n >= 1);
+  // The number on the tile is the number of entries the page behind it lists.
+  const auditPage = (await owner.get(audit.url.replace(/&amp;/g, '&'))).text;
+  assert.match(auditPage, /HOME-PART/);
+  assert.equal(tile(branch, 'Truck problems').url, '/admin/inspections?show=open');
+  assert.equal(tile(branch, 'Low stock').url, '/admin/stock?low=1');
+  assert.equal(tile(branch, 'Low stock').n, stockLib.lowCount());
+
+  // A manager sees their own people only: Terry Tech's request counts, Uma Tech's does not.
+  const mh = await flat(await loggedIn('mgr1'));
+  const team = /<section class="panel branch-panel"[\s\S]*?<\/section>/.exec(mh)[0];
+  assert.match(team, /Your team at a glance/);
+  const before = tile(team, 'Parts requests').n;
+  const t1 = await loggedIn('tech1');
+  await t1.post('/parts', [['action', 'request'], ['part_name', 'HOME-TEAM'], ['quantity', '1'], ['source', 'van'], ['needed_by', '2031-09-01']], { multipart: true });
+  const teamReq = lastParts().id;
+  const after = /<section class="panel branch-panel"[\s\S]*?<\/section>/.exec(await flat(await loggedIn('mgr1')))[0];
+  assert.equal(tile(after, 'Parts requests').n, before + 1);
+  assert.equal(tile(after, 'Overdue tasks').n, 0);                                     // the owner's task for Uma is not theirs to chase
+  // Only what the profile allows: the Warehouse profile has no tasks or certifications to manage.
+  const wh = /<section class="panel branch-panel"[\s\S]*?<\/section>/.exec(await flat(await loggedIn('wh1')))[0];
+  assert.ok(tile(wh, 'Parts requests')); assert.ok(tile(wh, 'Low stock'));
+  assert.equal(tile(wh, 'Overdue tasks'), null); assert.equal(tile(wh, 'Certifications'), null);
+
+  db.prepare('DELETE FROM parts_submissions WHERE id IN (?, ?)').run(reqId, teamReq);
+  db.prepare('DELETE FROM tasks').run();
 });

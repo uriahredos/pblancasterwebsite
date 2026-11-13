@@ -69,7 +69,7 @@ The site can be installed like an app, with its own icon.
 
 On a phone's browser the site shows a small **Get the app** bar at the bottom of the page: an **Install** button on Android, the two taps to use on an iPhone. It does not show inside the installed app, and **Not now** hides it for two weeks.
 
-**QR code sign:** `/poster` (also under **Admin > QR code sign**) is a printable sign with a QR code that opens the site. It uses `BASE_URL`, or the address the page was opened at when that is not set.
+**QR code sign:** `/poster` (also under **Setup > QR code sign**) is a printable sign with a QR code that opens the site. It uses `BASE_URL`, or the address the page was opened at when that is not set.
 
 What it does with no signal:
 
@@ -104,11 +104,12 @@ Reached from the **Usage summary** button on the parts log. For a date range (an
 
 ## The menu
 
-- **Always in the bar:** Home, Notices, My submissions, Complaint.
-- **Drop-downs:** Parts, Trucks, Training and Admin. Each holds the forms first, then the pages for managing that area. People only see the items their profile allows; a group with a single item shows as a plain link.
-- **Notification bell** at the top right: a red number for everything waiting on you, and a list when you press it: your open tasks by name with their due dates, then unread notices, discussions with new replies, updates on your requests and, for people who manage them, open parts requests, truck problems and expiring certifications. Each line goes to the right page, and the number drops as you deal with them.
-- **Light / dark** is in the menu: at the right end of the bar on a computer, near the bottom of the Menu on a phone. On the sign-in page, where there is no menu, it stays at the top right.
-- **On a phone** the whole menu sits behind the Menu button at the top left, with Change password and Sign out at the bottom of it.
+- **Always in the bar:** Home, Announcements, Discussions, Tasks, My activity.
+- **Drop-downs:** Parts, Trucks, Training, Team and Setup. Each holds the forms first, then the pages for managing that area. **Team** is people and what goes out to them (Anonymous complaint, Users, Profiles, Manage tasks, Post announcements, Newsletters, Complaints); **Setup** is the site itself (QR code sign, Activity log, Backups, Import old data). People only see the items their profile allows; a group with a single item shows as a plain link, so a technician sees "Truck inspection" and "Anonymous complaint" as links.
+- **One name for each thing:** Announcements (posting them is "Post announcements"), Tasks (giving them out is "Manage tasks"), Truck inspection, Anonymous complaint (reviewing them is "Complaints"), Certifications, Parts requests, and My activity for a person's own entries and requests.
+- **Notification bell** at the top right on a computer: a red number for everything waiting on you, and a list when you press it: your open tasks by name with their due dates, then unread announcements, discussions with new replies, updates on your requests and, for people who manage them, open parts requests, truck problems and expiring certifications. **Notification settings** is at the bottom of the list.
+- **Light / dark** is in the menu: the moon or sun at the right end of the bar on a computer, near the bottom of More on a phone. On the sign-in page, where there is no menu, it stays at the top right.
+- **On a phone** there is a bar of five buttons fixed to the bottom of the screen: **Home**, **Parts** (the parts form), **Tasks** (with the number still to do), **Alerts** (the bell's list as a page, `/alerts`, with the number waiting) and **More**, which slides the whole menu up from the bottom with Notification settings, Change password and Sign out at the end. The phone's Back button closes it. Someone who cannot send parts entries but can read the log gets the log behind Parts; with neither there is no Parts button.
 - A number beside a group is the total of what needs attention inside it (open requests, truck problems, expiring certifications).
 
 ## Look and feel
@@ -131,7 +132,7 @@ Tracks how many of a part are on the shelf. A part is tracked once you give it a
 
 Open requests (New or Ordered), soonest needed-by first, with overdue ones marked. **Ordered**, **Fulfilled** and **Decline** buttons change the status in one tap; use "Open / add a reply" to write a note. The menu shows how many are open. Managers see only their own people's requests.
 
-When someone else changes the status or reply on a person's request (parts or training), that person sees an **Updated** marker and a number beside "My submissions" until they look, and is emailed if they have an email address and email is set up.
+When someone else changes the status or reply on a person's request (parts or training), that person sees an **Updated** marker and a number beside "My activity" until they look, and is emailed if they have an email address and email is set up.
 
 ## Trucks, usual parts and barcode scanning
 
@@ -144,7 +145,7 @@ When someone else changes the status or reply on a person's request (parts or tr
 - **Topics** (`/training/topics`): everyone who can send training requests sees the open, non-private requests and can tap **I want this too**. People who manage training also see **Edit wording** on each one; the original text stays in that request's history. The most wanted rise to the top, and the admin training log shows the count.
 - **Sessions** (`/admin/training/sessions`, from the Training log): schedule a session with a date, time and place. Scheduling one from a training request lists the requester and everyone who added their name, and sets the request to Scheduled.
 - On the day, tick who came and press **Mark as held**; the linked request becomes Completed.
-- Each person sees **Training attended** under My submissions. The sessions page can filter by person and export attendance as CSV.
+- Each person sees **Training attended** under My activity. The sessions page can filter by person and export attendance as CSV.
 - Managers can tick attendance for their own people only.
 
 ## Weekly summary (`/admin/weekly`)
@@ -159,12 +160,12 @@ The sign-in page has a **Forgot your password?** link. It emails a link that wor
 
 Linked from the Users page. Records who added or edited a person, reset a password, disabled an account, changed a profile's tick-boxes (listing what was added and removed), imported the catalog, changed stock, ran or downloaded a backup, or added a training session. Needs the **See the activity log** permission. What a complaint says, who sent it and replies to it are never recorded there; the only complaint event logged is that one was deleted, and by whom.
 
-## Licenses and certifications (`/admin/certs`)
+## Certifications (`/admin/certs`)
 
 Record each person's licenses and certifications with an optional issuer, number, issued date and expiry date.
 
 - The list shows **Expired**, **days left** (within 60 days) or **Current**, soonest expiry first, with a filter for the ones needing attention and a CSV download.
-- Each person sees their own under My submissions. In the last 30 days (and once expired) a warning shows on their home page.
+- Each person sees their own under My activity. In the last 30 days (and once expired) a warning shows on their home page.
 - They are emailed once at 30 days and once at 7 days before expiry (needs email set up and an email address on their account).
 - When something is renewed, edit the record and change the expiry date; reminders start again.
 - The menu shows a count of records expired or expiring within 30 days.
@@ -173,7 +174,7 @@ Record each person's licenses and certifications with an optional issuer, number
 ## Truck inspections (`/inspection`, `/admin/inspections`)
 
 - **The form**: truck number (remembered), optional odometer, then each checklist item marked **OK** or **Problem**. A problem needs a short description. Up to four photos and an optional note. Answers are saved on the phone while filling it in; photos are not.
-- **Problems** are emailed to `NOTIFY_TO` (needs email set up) and counted in the menu until someone marks them fixed, with an optional reply the sender sees under My submissions.
+- **Problems** are emailed to `NOTIFY_TO` (needs email set up) and counted in the menu until someone marks them fixed, with an optional reply the sender sees under My activity.
 - **Inspections page**: filter by date, person, truck or open problems; download a CSV with one row per checklist item.
 - **Who is due**: everyone with a truck, longest since their last inspection first.
 - **Edit the checklist**: add, reword, reorder or remove items. Inspections already sent keep the wording they were answered with.
@@ -181,17 +182,20 @@ Record each person's licenses and certifications with an optional issuer, number
 
 ## Home page
 
-The home page is a dashboard. From the top:
+The home page is laid out in the order people need it. From the top:
 
-- **Critical notices**: announcements marked critical, always first and shown every time, read or not.
-- **Needs your attention**: new replies in discussion threads they follow, announcements the person has not read yet, and their certifications that are expired or expire within 30 days.
+- **Critical announcements**: announcements marked critical, always first and shown every time, read or not.
+- **Branch at a glance** (only for people who run things): a row of numbers, each one a link to the list behind it: open **parts requests** (and how many are past their needed-by date), **truck problems** not fixed, **low stock** (parts at or below their minimum), **overdue tasks** among the ones they gave out, **certifications** expired or expiring within 30 days, and parts entries from the last 30 days not yet checked in the **audit**. A person only gets the numbers their profile lets them act on. A manager's panel is headed **Your team at a glance** and counts only the people assigned to them (stock is the branch's). Technicians do not see it.
+- New replies in discussion threads they follow, and their own certifications that are expired or expire within 30 days.
+- **Your tasks**: what they have been given, overdue first, with when each is due and who it is from. Left out when there is nothing to do.
 - **What do you need to do?**: the forms their profile allows, as buttons.
-- **The Monthly Barker**: the newest newsletter with its cover and highlights, and the three before it.
-- **Notice board**: the latest announcements they have already read, pinned ones first.
+- **Announcements**: ones they have not read yet first, marked New, each with its **I have read this** button; then the latest ones they have read, pinned ones first.
 - **Coming up**: the next training sessions on the calendar. Sessions scheduled from a private request are not shown.
-- **My status**: their open parts and training requests, days since their last truck inspection, and their certifications.
+- **My status**: their tasks, open parts and training requests, days since their last truck inspection, and their certifications.
+- **The Monthly Barker**: the newest newsletter with its cover and highlights, and the three before it.
+- **Discussions**: the latest threads.
 
-On a phone it is one column with the buttons first; on a wider screen the newsletter and notice board sit on the left.
+On a phone it is one column in that order; on a wider screen tasks, announcements, the newsletter and discussions sit on the left, with the buttons, what is coming up and My status on the right.
 
 ## Discussions (`/discussions`)
 
@@ -204,7 +208,7 @@ On a phone it is one column with the buttons first; on a wider screen the newsle
 
 ## Newsletters (`/newsletters`, `/admin/newsletters`)
 
-- Anyone with **Upload and remove the monthly newsletters** uploads a PDF (up to 25 MB) under **Admin > Newsletters**, choosing its month. A title and up to four highlight lines are optional.
+- Anyone with **Upload and remove the monthly newsletters** uploads a PDF (up to 25 MB) under **Team > Newsletters**, choosing its month. A title and up to four highlight lines are optional.
 - Each page (up to 12) is turned into a picture so it reads well on a phone; **Open the PDF** gives the original. This uses `pdftoppm` from poppler-utils, which the `Dockerfile` installs. Without it, people open the PDF itself.
 - Everyone signed in can read every issue at `/newsletters`. Nothing is visible signed out.
 - After an update, the permission is given once to profiles that already manage people. Tick it on any other profile that should have it.
@@ -214,23 +218,23 @@ On a phone it is one column with the buttons first; on a wider screen the newsle
 
 - Anyone with **Post announcements** can post a title and message, with an optional "show until" date.
 - Someone who sees everyone posts to **everyone**. A manager posts to **their own people**.
-- It shows at the top of each person's home page until they press **I have read this**, then stays on the home page notice board and their Notices page. The menu shows how many are unread.
+- It is marked New in the Announcements panel of each person's home page until they press **I have read this**, then stays in that panel's list and on their Announcements page. The menu shows how many are unread.
 - **Critical** keeps it at the very top of everyone's home page, even after they have read it, until its "show until" date passes or it is switched off from the announcement's own page. Use it for things like open enrollment.
-- **About** adds a small label (HR, Training, Safety or Event). **Pin** keeps it at the top of the notice board; pin or unpin later from the announcement's own page.
+- **About** adds a small label (HR, Training, Safety or Event). **Pin** keeps it at the top of the list; pin or unpin later from the announcement's own page.
 - The poster sees "7 of 12 read", and a page listing who has read it (with the time) and who has not.
 
 ## Tasks (`/tasks`, `/admin/tasks`)
 
 Something one person asks another to do, with an optional due date.
 
-- **Assigning** (Admin > Assign tasks): say what needs doing, add details and a due date if you like, then choose who it is for. Tap a group button to give it to **Everyone** or to everyone on a profile (for example all Technicians), or type a name in the search box to pick particular people; you can mix both. Each person gets their own copy, and the form says how many people that will be before you send it. Needs the **Assign tasks** permission; a manager can assign to their own people only.
-- **For the person**: every open task appears in their notification bell by name with when it is due ("Due tomorrow", "Overdue by 2 days"), overdue first, and counts toward the bell's number. **Tasks** in the menu lists them with the details and a **Mark as done** button with an optional note.
-- **Following up**: the Tasks page for assigners shows open, overdue and done tasks, who each is for, and any note left when it was done. You can edit, reassign, mark done on someone's behalf, reopen or remove a task.
+- **Assigning** (Team > Manage tasks): say what needs doing, add details and a due date if you like, then choose who it is for. Tap a group button to give it to **Everyone** or to everyone on a profile (for example all Technicians), or type a name in the search box to pick particular people; you can mix both. Each person gets their own copy, and the form says how many people that will be before you send it. Needs the **Assign tasks** permission; a manager can assign to their own people only.
+- **For the person**: every open task appears at the top of their home page and in their notification bell (Alerts on a phone) by name with when it is due ("Due tomorrow", "Overdue by 2 days"), overdue first, and counts toward the bell's number. **Tasks** in the menu lists them with the details and a **Mark as done** button with an optional note.
+- **Following up**: the Manage tasks page shows open, overdue and done tasks, who each is for, and any note left when it was done. You can edit, reassign, mark done on someone's behalf, reopen or remove a task.
 - The person is emailed when a task is assigned if they have an email address and email is set up.
 
 ## Push alerts (`/settings/notifications`)
 
-Alerts that pop up on a phone or computer even when the site is closed. Reached from **Notification settings** at the bottom of the bell, or in the Menu on a phone.
+Alerts that pop up on a phone or computer even when the site is closed. Reached from **Notification settings** at the bottom of the bell, or at the bottom of Alerts or More on a phone.
 
 - **Each person turns alerts on per device** with "Turn on alerts on this device"; the phone or browser asks them to allow notifications. The page lists their devices and can send a test alert.
 - **iPhone and iPad**: alerts only work once the site has been added to the Home Screen (Safari > Share > Add to Home Screen) and opened from there. Android and computers work from the browser.
@@ -267,7 +271,7 @@ People whose profile has **Permanently delete...** ticked see a delete button at
 
 ## Importing the old Microsoft Forms history (`/admin/import`)
 
-Under **Admin > Import old data**. It takes an import file (`.json`) prepared from the two Forms exports and adds each old parts entry and training request under the person who sent it, with its original date.
+Under **Setup > Import old data**. It takes an import file (`.json`) prepared from the two Forms exports and adds each old parts entry and training request under the person who sent it, with its original date.
 
 - **People**: someone is matched to an existing account by email address or by full name. Anyone not found gets a new account that is switched off, on the Technician profile, so their history has a name on it. To let them in, press Enable and Reset password on the Users page.
 - **Parts and quantities**: the old form was free typing ("(7) SIGA-CT2", "5x 12-7", "3 Cases (15) batteries"). Each line was read into a part and a quantity. Where that needed a judgment call, the entry's note keeps the original wording after "As typed:". A line with no quantity counts as 1. Something counted in cases with no total given is recorded as, for example, "3 x SLA12-7F batteries (cases)".
@@ -280,7 +284,7 @@ The import file contains people's names and emails, so it is not kept in the cod
 
 ## Editing and cancelling
 
-- A person can edit or cancel their own parts entry or training request from **My submissions** for 24 hours (`EDIT_WINDOW_HOURS`), as long as nobody has acted on it (a request that is no longer "New" is locked).
+- A person can edit or cancel their own parts entry or training request from **My activity** for 24 hours (`EDIT_WINDOW_HOURS`), as long as nobody has acted on it (a request that is no longer "New" is locked).
 - People whose profile allows managing parts or training can edit or cancel any entry they can see, at any time, from its detail page.
 - Take / Return / Request cannot be switched by an edit; cancel and send a new one.
 - Nothing is deleted. A cancelled entry stays in the log marked "Cancelled", and every edit records who made it, when, and what the entry said before. This shows on the entry's detail page and in the CSV export.
@@ -368,7 +372,7 @@ What it cannot do:
 - Training requests: New, Reviewed, Scheduled, Completed, Declined.
 - Complaints: New, Under review, Resolved, Closed.
 
-A reply typed with a status change is shown to the submitter (under My submissions, or via the tracking code for complaints).
+A reply typed with a status change is shown to the submitter (under My activity, or via the tracking code for complaints).
 
 ## Where things are
 

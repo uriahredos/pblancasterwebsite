@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
 <title><%= title %> · Pye-Barker Lancaster Branch</title>
 <meta name="theme-color" content="#09324f">
@@ -15,11 +15,10 @@
 <link rel="stylesheet" href="/styles.css?v=<%= assetV %>">
 <script src="/site.js?v=<%= assetV %>" defer></script>
 </head>
-<body>
+<body class="<%= user && !user.must_change_password ? 'has-tabbar' : '' %>">
 <header class="top">
   <div class="banner">
     <div class="banner-in">
-      <% if (user && !user.must_change_password) { %><button type="button" class="menu-toggle" id="menu-toggle" aria-expanded="false" aria-controls="navbar"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg><span>Menu</span></button><% } %>
       <a class="brand" href="/">
         <span class="logo-plate"><img src="/logo.png" alt="Pye-Barker Fire &amp; Safety" width="640" height="168"></span>
         <span class="branch">Lancaster Branch</span>
@@ -29,33 +28,14 @@
         <a class="who-name" href="/account/password" title="Change password"><%= user.display_name %></a>
         <form method="post" action="/logout" class="who-out"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Sign out</button></form>
         <% } %>
-        <% if (user && !user.must_change_password) {
-          // Everything waiting on this person, in one place. [count, link, one, many]
-          var alerts = [
-            [badges.notices, '/notices', 'unread notice', 'unread notices'],
-            [badges.forum, '/discussions', 'discussion with new replies', 'discussions with new replies'],
-            [badges.updates, '/my', 'update on your requests', 'updates on your requests'],
-            [badges.requests, '/admin/requests', 'open parts request', 'open parts requests'],
-            [badges.inspections, '/admin/inspections?show=open', 'truck problem not fixed', 'truck problems not fixed'],
-            [badges.certs, '/admin/certs?show=attention', 'certification expired or expiring', 'certifications expired or expiring']
-          ].filter(function (a) { return a[0] > 0; });
-          var alertTotal = alerts.reduce(function (n, a) { return n + a[0]; }, 0) + badges.tasks;
-        %>
+        <% if (user && !user.must_change_password) { var alertTotal = alerts.reduce(function (n, a) { return n + a[0]; }, 0) + badges.tasks; %>
         <details class="bell" id="bell">
           <summary aria-label="Notifications<%= alertTotal ? ', ' + alertTotal + ' waiting' : ', none' %>" title="Notifications">
             <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 2.5a6.5 6.5 0 0 0-6.5 6.5v3.2c0 .7-.25 1.38-.7 1.9L3.6 15.5a1.25 1.25 0 0 0 .95 2.06h14.9a1.25 1.25 0 0 0 .95-2.06l-1.2-1.4a2.9 2.9 0 0 1-.7-1.9V9A6.5 6.5 0 0 0 12 2.5zM9.6 19.3a2.5 2.5 0 0 0 4.8 0z"/></svg>
             <% if (alertTotal) { %><span class="bell-count"><%= alertTotal > 99 ? '99+' : alertTotal %></span><% } %>
           </summary>
-          <div class="bell-list">
-            <% if (myTasks.length) { %>
-            <p class="bell-title">Your tasks</p>
-            <% myTasks.forEach(function (t) { %><a href="/tasks#t<%= t.id %>" class="bell-task <%= t.overdue ? 'overdue' : '' %>"><span class="bell-dot" aria-hidden="true"></span><span><strong><%= t.title %></strong><span class="bell-due"><%= t.when %></span></span></a><% }) %>
-            <% if (badges.tasks > myTasks.length) { %><a href="/tasks" class="bell-more">and <%= badges.tasks - myTasks.length %> more <%= badges.tasks - myTasks.length === 1 ? 'task' : 'tasks' %></a><% } %>
-            <% } %>
-            <% if (alerts.length || !myTasks.length) { %><p class="bell-title">Notifications</p><% } %>
-            <% alerts.forEach(function (a) { %><a href="<%= a[1] %>"><span class="bell-n"><%= a[0] %></span><span><%= a[0] === 1 ? a[2] : a[3] %></span></a><% }) %>
-            <% if (!alerts.length && !myTasks.length) { %><p class="bell-empty">Nothing waiting. You are all caught up.</p><% } %>
-            <a href="/settings/notifications" class="bell-settings">Notification settings</a>
+          <div class="bell-list alert-items">
+            <%- include('alert_list') %>
           </div>
         </details>
         <% } else { %>
@@ -78,16 +58,16 @@
         ['parts.submit', '/parts?action=request', 'Request parts', false],
         'divider',
         ['parts.view', '/admin/parts', 'Parts log', is('/admin/parts') && !is('/admin/parts/audit') && !is('/admin/parts/summary')],
-        ['parts.view', '/admin/requests', 'Requests', is('/admin/requests'), badges.requests],
+        ['parts.view', '/admin/requests', 'Parts requests', is('/admin/requests'), badges.requests],
         ['parts.audit', '/admin/parts/audit', 'Audit', is('/admin/parts/audit')],
         ['parts.view', '/admin/stock', 'Stock', is('/admin/stock')],
         ['parts.view', '/admin/parts/summary', 'Usage summary', is('/admin/parts/summary') || is('/admin/weekly')],
         ['catalog.manage', '/admin/catalog', 'Catalog', is('/admin/catalog')]
       ], current: path === '/parts' },
       { name: 'Trucks', items: [
-        ['inspections.submit', '/inspection', 'New inspection', path === '/inspection'],
+        ['inspections.submit', '/inspection', 'Truck inspection', path === '/inspection'],
         'divider',
-        ['inspections.view', '/admin/inspections', 'Inspections', is('/admin/inspections') && !is('/admin/inspections/checklist'), badges.inspections],
+        ['inspections.view', '/admin/inspections', 'Inspection log', is('/admin/inspections') && !is('/admin/inspections/checklist'), badges.inspections],
         ['inspections.manage', '/admin/inspections/checklist', 'Checklist', is('/admin/inspections/checklist')]
       ] },
       { name: 'Training', items: [
@@ -98,14 +78,18 @@
         ['training.view', '/admin/training/sessions', 'Sessions', is('/admin/training/sessions')],
         ['certs.manage', '/admin/certs', 'Certifications', is('/admin/certs'), badges.certs]
       ] },
-      { name: 'Admin', items: [
+      { name: 'Team', items: [
+        ['complaints.submit', '/complaint', 'Anonymous complaint', is('/complaint')],
+        'divider',
         ['users.manage', '/admin/users', 'Users', is('/admin/users')],
-        ['users.manage', '/poster', 'QR code sign', is('/poster')],
         ['profiles.manage', '/admin/profiles', 'Profiles', is('/admin/profiles')],
-        ['tasks.assign', '/admin/tasks', 'Assign tasks', is('/admin/tasks')],
-        ['announcements.post', '/admin/announcements', 'Announcements', is('/admin/announcements')],
+        ['tasks.assign', '/admin/tasks', 'Manage tasks', is('/admin/tasks')],
+        ['announcements.post', '/admin/announcements', 'Post announcements', is('/admin/announcements')],
         ['newsletters.manage', '/admin/newsletters', 'Newsletters', is('/admin/newsletters')],
-        ['complaints.review', '/admin/complaints', 'Complaints', is('/admin/complaints')],
+        ['complaints.review', '/admin/complaints', 'Complaints', is('/admin/complaints')]
+      ] },
+      { name: 'Setup', items: [
+        ['users.manage', '/poster', 'QR code sign', is('/poster')],
         ['activity.view', '/admin/activity', 'Activity log', is('/admin/activity')],
         ['backups', '/admin/backups', 'Backups', is('/admin/backups')],
         [user.scope === 'all' ? 'users.manage' : 'no.such.permission', '/admin/import', 'Import old data', is('/admin/import')]
@@ -123,15 +107,14 @@
   <div class="navbar" id="navbar">
     <nav class="nav" aria-label="Main">
       <a href="/" <%- path === '/' ? 'aria-current="page"' : '' %>>Home</a>
-      <a href="/notices" <%- path === '/notices' ? 'aria-current="page"' : '' %>>Notices<% if (badges.notices) { %> <span class="badge" title="Unread"><%= badges.notices %></span><% } %></a>
+      <a href="/notices" <%- path === '/notices' ? 'aria-current="page"' : '' %>>Announcements<% if (badges.notices) { %> <span class="badge" title="Unread"><%= badges.notices %></span><% } %></a>
       <% if (can('forum.use')) { %><a href="/discussions" <%- path.startsWith('/discussions') ? 'aria-current="page"' : '' %>>Discussions<% if (badges.forum) { %> <span class="badge" title="New replies to threads you follow"><%= badges.forum %></span><% } %></a><% } %>
       <a href="/tasks" <%- path === '/tasks' ? 'aria-current="page"' : '' %>>Tasks<% if (badges.tasks) { %> <span class="badge" title="Tasks to do"><%= badges.tasks %></span><% } %></a>
-      <a href="/my" <%- path === '/my' ? 'aria-current="page"' : '' %>>My submissions<% if (badges.updates) { %> <span class="badge" title="Updates you have not seen"><%= badges.updates %></span><% } %></a>
-      <% if (can('complaints.submit')) { %><a href="/complaint" <%- path.startsWith('/complaint') ? 'aria-current="page"' : '' %>>Complaint</a><% } %>
+      <a href="/my" <%- path === '/my' ? 'aria-current="page"' : '' %>>My activity<% if (badges.updates) { %> <span class="badge" title="Updates you have not seen"><%= badges.updates %></span><% } %></a>
       <span class="nav-sep" aria-hidden="true"></span>
       <% groups.forEach(function (g) { %>
       <% if (g.links.length === 1) { var only = g.links[0]; %>
-      <a href="<%= only[1] %>" <%- g.current ? 'aria-current="page"' : '' %>><%= g.name === 'Trucks' && only[0] === 'inspections.submit' ? 'Inspection' : only[2] %><% if (only[4]) { %> <span class="badge"><%= only[4] %></span><% } %></a>
+      <a href="<%= only[1] %>" <%- g.current ? 'aria-current="page"' : '' %>><%= only[2] %><% if (only[4]) { %> <span class="badge"><%= only[4] %></span><% } %></a>
       <% } else { %>
       <details class="menu">
         <summary <%- g.current ? 'aria-current="true"' : '' %>><%= g.name %><% if (g.badge) { %> <span class="badge"><%= g.badge %></span><% } %></summary>

@@ -35,7 +35,7 @@ function audience(a) {
 }
 
 router.get('/notices', requireLogin, (req, res) => {
-  res.render('notices', { title: 'Notices', notices: forUser(req.user.id), categories: CATEGORIES });
+  res.render('notices', { title: 'Announcements', notices: forUser(req.user.id), categories: CATEGORIES });
 });
 
 router.post('/notices/:id/read', requireLogin, (req, res) => {
@@ -59,7 +59,7 @@ function listPage(req, res, extra = {}) {
       return { ...a, total: people.length, read, expired: Boolean(a.expires_on && a.expires_on < localDate()) };
     });
   res.status(extra.errors ? 400 : 200).render('admin_announcements', {
-    title: 'Announcements', rows, errors: [], values: {}, team: req.user.scope === 'team', categories: CATEGORIES, ...extra,
+    title: 'Post announcements', rows, errors: [], values: {}, team: req.user.scope === 'team', categories: CATEGORIES, ...extra,
   });
 }
 
@@ -114,17 +114,17 @@ router.post('/admin/announcements/:id/critical', requirePerm('announcements.post
   if (!a) return;
   db.prepare('UPDATE announcements SET critical = ? WHERE id = ?').run(a.critical ? 0 : 1, a.id);
   activity.log(req.user, a.critical ? 'Announcement no longer critical' : 'Announcement marked critical', a.title);
-  flash(req, 'ok', a.critical ? 'No longer critical. It is back on the notice board.' : 'Marked critical. It now stays at the top of the home page.');
+  flash(req, 'ok', a.critical ? 'No longer critical. It is back with the other announcements.' : 'Marked critical. It now stays at the top of the home page.');
   res.redirect(`/admin/announcements/${a.id}`);
 });
 
-// Pinned announcements stay at the top of the notice board on the home page.
+// Pinned announcements stay at the top of the announcements on the home page.
 router.post('/admin/announcements/:id/pin', requirePerm('announcements.post'), (req, res) => {
   const a = load(req, res);
   if (!a) return;
   db.prepare('UPDATE announcements SET pinned = ? WHERE id = ?').run(a.pinned ? 0 : 1, a.id);
   activity.log(req.user, a.pinned ? 'Announcement unpinned' : 'Announcement pinned', a.title);
-  flash(req, 'ok', a.pinned ? 'No longer pinned.' : 'Pinned to the top of the notice board.');
+  flash(req, 'ok', a.pinned ? 'No longer pinned.' : 'Pinned to the top of the announcements.');
   res.redirect(`/admin/announcements/${a.id}`);
 });
 
