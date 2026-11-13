@@ -20,6 +20,8 @@ if (config.production) app.set('trust proxy', 1);
 
 Object.assign(app.locals, {
   labels: util.labels, fmtDateTime: util.fmtDateTime, fmtDate: util.fmtDate,
+  // Changes on every start, so browsers fetch fresh styles and scripts after an update.
+  assetV: Date.now().toString(36),
   minPasswordLength: config.minPasswordLength, editWindowHours: config.editWindowHours,
 });
 

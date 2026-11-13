@@ -96,6 +96,13 @@ Reached from the **Usage summary** button on the parts log. For a date range (an
 - If an entry is edited after it was checked, the tick is removed so it gets checked again.
 - **Print** gives a clean printout without menus; **Download CSV** gives one row per part.
 
+## The menu
+
+- **Always in the bar:** Home, Notices, My submissions, Complaint.
+- **Drop-downs:** Parts, Trucks, Training and Admin. Each holds the forms first, then the pages for managing that area. People only see the items their profile allows; a group with a single item shows as a plain link.
+- **On a phone** the whole menu sits behind the Menu button at the top left, with Change password and Sign out at the bottom of it.
+- A number beside a group is the total of what needs attention inside it (open requests, truck problems, expiring certifications).
+
 ## Look and feel
 
 The banner uses the Pye-Barker logo (`public/logo.png`) and the colors are taken from it; they are set at the top of `public/styles.css`. The button at the top right switches between light and dark. The choice is remembered on that device; until someone uses the button, the site follows the device's own light/dark setting.

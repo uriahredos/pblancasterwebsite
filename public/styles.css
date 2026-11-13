@@ -59,17 +59,52 @@ p { margin: 0 0 .75rem; }
 :root[data-theme="dark"] .icon-moon { display: none; }
 .stripe { height: 5px; background: linear-gradient(105deg, var(--pb-green) 0 38%, var(--pb-blue) 38% 100%); }
 .navbar { max-width: 1200px; margin: 0 auto; padding: .35rem 16px; }
-.nav { display: flex; gap: .25rem; overflow-x: auto; margin: 0 -16px; padding: 0 16px; scrollbar-width: none; }
-@media (min-width: 900px) { .nav { flex-wrap: wrap; overflow: visible; row-gap: .15rem; } }
-.nav::-webkit-scrollbar { display: none; }
-.nav a { color: #c9d9e8; text-decoration: none; white-space: nowrap; padding: .45rem .7rem; border-radius: 8px; font-size: .95rem; }
-.nav a:hover { background: rgba(255,255,255,.08); color: #fff; }
-.nav a[aria-current] { background: rgba(255,255,255,.16); color: #fff; font-weight: 600; box-shadow: inset 0 -3px 0 var(--green); }
-.nav-sep { width: 1px; background: rgba(255,255,255,.25); margin: .4rem .35rem; flex: none; }
+.nav { display: flex; flex-wrap: wrap; align-items: center; gap: .15rem .25rem; }
+.nav > a, .menu > summary { color: #c9d9e8; text-decoration: none; white-space: nowrap; padding: .45rem .7rem; border-radius: 8px; font-size: .95rem; cursor: pointer; }
+.nav > a:hover, .menu > summary:hover, .menu[open] > summary { background: rgba(255,255,255,.1); color: #fff; }
+.nav > a[aria-current], .menu > summary[aria-current] { background: rgba(255,255,255,.16); color: #fff; font-weight: 600; box-shadow: inset 0 -3px 0 var(--green); }
+.nav-sep { width: 1px; align-self: stretch; background: rgba(255,255,255,.25); margin: .3rem .35rem; flex: none; }
+.menu { position: relative; }
+.menu > summary { list-style: none; display: flex; align-items: center; gap: .35rem; user-select: none; }
+.menu > summary::-webkit-details-marker { display: none; }
+.menu > summary::after { content: ""; width: .45em; height: .45em; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg) translateY(-2px); margin-left: .15rem; opacity: .8; }
+.menu[open] > summary::after { transform: rotate(-135deg) translateY(-2px); }
+.menu-list { position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; min-width: 13.5rem; padding: .35rem; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 28px rgba(0,0,0,.28); }
+.menu-list a { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .55rem .7rem; border-radius: 6px; color: var(--ink); text-decoration: none; white-space: nowrap; }
+.menu-list a:hover { background: var(--accent-soft); }
+.menu-list a[aria-current] { font-weight: 700; box-shadow: inset 3px 0 0 var(--green); }
+.menu-list hr { border: 0; border-top: 1px solid var(--line); margin: .3rem .2rem; }
+.menu-toggle { display: none; }
+.nav-account { display: none; }
+
+/* Phones and narrow windows: everything sits behind the Menu button at the top left. */
+@media (max-width: 899px) {
+  .js .menu-toggle { display: inline-flex; align-items: center; gap: .4rem; min-height: 40px; padding: 0 .65rem; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--banner-ink); font: inherit; font-weight: 600; font-size: .9rem; cursor: pointer; flex: none; }
+  .js .menu-toggle span:not(.badge) { display: none; }
+  .js .navbar { display: none; }
+  .js .navbar.open { display: block; }
+  .navbar { padding: .4rem 12px .6rem; }
+  .nav { flex-direction: column; align-items: stretch; gap: 0; }
+  .nav > a, .menu > summary { padding: .8rem .75rem; font-size: 1.02rem; justify-content: space-between; }
+  .nav > a { display: flex; align-items: center; justify-content: space-between; }
+  .nav-sep { width: auto; height: 1px; align-self: auto; margin: .3rem .5rem; }
+  .menu-list { position: static; box-shadow: none; border: 0; background: rgba(255,255,255,.06); margin: 0 0 .3rem; padding: .2rem .2rem .2rem .6rem; }
+  .menu-list a { color: #dbe6f1; padding: .7rem .7rem; }
+  .menu-list a:hover { background: rgba(255,255,255,.08); }
+  .menu-list hr { border-top-color: rgba(255,255,255,.15); }
+  /* Account links live in the menu on small screens, where the banner has no room for them. */
+  .nav-account { display: block; }
+  .nav-account a, .nav-account button { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: .8rem .75rem; border: 0; border-radius: 8px; background: none; color: #c9d9e8; font: inherit; font-size: 1.02rem; text-decoration: none; text-align: left; cursor: pointer; }
+  .nav-account a:hover, .nav-account button:hover { background: rgba(255,255,255,.1); color: #fff; }
+  .hint-light { font-size: .85rem; opacity: .7; }
+  .js .who-out, .js .who-name { display: none; }
+}
+@media (min-width: 521px) and (max-width: 899px) { .js .menu-toggle span:not(.badge) { display: inline; } }
 @media (max-width: 520px) {
   .logo-plate img { height: 34px; }
   .branch { font-size: .72rem; padding-left: .5rem; }
   .brand { gap: .5rem; }
+  .banner-in { gap: .5rem; padding-left: 12px; padding-right: 12px; }
   .who { gap: .5rem; font-size: .82rem; }
   .who-name { display: none; }
 }

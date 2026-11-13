@@ -6,19 +6,20 @@
 <meta name="robots" content="noindex">
 <title><%= title %> · Pye-Barker Lancaster Branch</title>
 <meta name="theme-color" content="#09324f">
-<script src="/theme.js"></script>
+<script src="/theme.js?v=<%= assetV %>"></script>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <link rel="icon" href="/icons/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="PB Lancaster">
-<link rel="stylesheet" href="/styles.css">
-<script src="/site.js" defer></script>
+<link rel="stylesheet" href="/styles.css?v=<%= assetV %>">
+<script src="/site.js?v=<%= assetV %>" defer></script>
 </head>
 <body>
 <header class="top">
   <div class="banner">
     <div class="banner-in">
+      <% if (user && !user.must_change_password) { %><button type="button" class="menu-toggle" id="menu-toggle" aria-expanded="false" aria-controls="navbar"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg><span>Menu</span><% if (badges.notices + badges.updates) { %><span class="badge"><%= badges.notices + badges.updates %></span><% } %></button><% } %>
       <a class="brand" href="/">
         <span class="logo-plate"><img src="/logo.png" alt="Pye-Barker Fire &amp; Safety" width="640" height="168"></span>
         <span class="branch">Lancaster Branch</span>
@@ -26,7 +27,7 @@
       <div class="who">
         <% if (user) { %>
         <a class="who-name" href="/account/password" title="Change password"><%= user.display_name %></a>
-        <form method="post" action="/logout"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Sign out</button></form>
+        <form method="post" action="/logout" class="who-out"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Sign out</button></form>
         <% } %>
         <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Switch between light and dark mode" title="Light / dark mode">
           <svg class="icon-moon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M20.4 14.6A8.5 8.5 0 0 1 9.4 3.6a.75.75 0 0 0-.98-.93A10 10 0 1 0 21.33 15.6a.75.75 0 0 0-.93-1z"/></svg>
@@ -36,31 +37,78 @@
     </div>
   </div>
   <div class="stripe" aria-hidden="true"></div>
-  <% if (user && !user.must_change_password) { %>
-  <div class="navbar">
+  <% if (user && !user.must_change_password) {
+    // The menu: a few plain links, then groups. Each entry is [permission or null, link, label, is-current, badge].
+    var is = function (prefix) { return path === prefix || path.indexOf(prefix + '/') === 0; };
+    var groups = [
+      { name: 'Parts', items: [
+        ['parts.submit', '/parts?action=take', 'Take parts', false],
+        ['parts.submit', '/parts?action=return', 'Return parts', false],
+        ['parts.submit', '/parts?action=request', 'Request parts', false],
+        'divider',
+        ['parts.view', '/admin/parts', 'Parts log', is('/admin/parts') && !is('/admin/parts/audit') && !is('/admin/parts/summary')],
+        ['parts.view', '/admin/requests', 'Requests', is('/admin/requests'), badges.requests],
+        ['parts.audit', '/admin/parts/audit', 'Audit', is('/admin/parts/audit')],
+        ['parts.view', '/admin/stock', 'Stock', is('/admin/stock')],
+        ['parts.view', '/admin/parts/summary', 'Usage summary', is('/admin/parts/summary') || is('/admin/weekly')],
+        ['catalog.manage', '/admin/catalog', 'Catalog', is('/admin/catalog')]
+      ], current: path === '/parts' },
+      { name: 'Trucks', items: [
+        ['inspections.submit', '/inspection', 'New inspection', path === '/inspection'],
+        'divider',
+        ['inspections.view', '/admin/inspections', 'Inspections', is('/admin/inspections') && !is('/admin/inspections/checklist'), badges.inspections],
+        ['inspections.manage', '/admin/inspections/checklist', 'Checklist', is('/admin/inspections/checklist')]
+      ] },
+      { name: 'Training', items: [
+        ['training.submit', '/training', 'Request training', path === '/training'],
+        ['training.submit', '/training/topics', 'Topics', is('/training/topics')],
+        'divider',
+        ['training.view', '/admin/training', 'Training log', is('/admin/training') && !is('/admin/training/sessions')],
+        ['training.view', '/admin/training/sessions', 'Sessions', is('/admin/training/sessions')],
+        ['certs.manage', '/admin/certs', 'Certifications', is('/admin/certs'), badges.certs]
+      ] },
+      { name: 'Admin', items: [
+        ['users.manage', '/admin/users', 'Users', is('/admin/users')],
+        ['profiles.manage', '/admin/profiles', 'Profiles', is('/admin/profiles')],
+        ['announcements.post', '/admin/announcements', 'Announcements', is('/admin/announcements')],
+        ['complaints.review', '/admin/complaints', 'Complaints', is('/admin/complaints')],
+        ['activity.view', '/admin/activity', 'Activity log', is('/admin/activity')],
+        ['backups', '/admin/backups', 'Backups', is('/admin/backups')]
+      ] }
+    ].map(function (g) {
+      // Keep what this person may use; drop dividers left at an edge or doubled up.
+      var kept = g.items.filter(function (it) { return it === 'divider' || can(it[0]); });
+      kept = kept.filter(function (it, i) { return it !== 'divider' || (i > 0 && i < kept.length - 1 && kept[i - 1] !== 'divider' && kept.slice(i + 1).some(function (x) { return x !== 'divider'; }) && kept.slice(0, i).some(function (x) { return x !== 'divider'; })); });
+      var links = kept.filter(function (it) { return it !== 'divider'; });
+      return { name: g.name, items: kept, links: links,
+        current: Boolean(g.current) || links.some(function (it) { return it[3]; }),
+        badge: links.reduce(function (n, it) { return n + (it[4] || 0); }, 0) };
+    }).filter(function (g) { return g.links.length; });
+  %>
+  <div class="navbar" id="navbar">
     <nav class="nav" aria-label="Main">
-      <% if (can('parts.submit')) { %><a href="/parts" <%- path === '/parts' ? 'aria-current="page"' : '' %>>Parts</a><% } %>
-      <% if (can('training.submit')) { %><a href="/training" <%- path === '/training' ? 'aria-current="page"' : '' %>>Training</a><% } %>
-      <% if (can('complaints.submit')) { %><a href="/complaint" <%- path.startsWith('/complaint') ? 'aria-current="page"' : '' %>>Complaint</a><% } %>
-      <% if (can('inspections.submit')) { %><a href="/inspection" <%- path === '/inspection' ? 'aria-current="page"' : '' %>>Inspection</a><% } %>
+      <a href="/" <%- path === '/' ? 'aria-current="page"' : '' %>>Home</a>
       <a href="/notices" <%- path === '/notices' ? 'aria-current="page"' : '' %>>Notices<% if (badges.notices) { %> <span class="badge" title="Unread"><%= badges.notices %></span><% } %></a>
       <a href="/my" <%- path === '/my' ? 'aria-current="page"' : '' %>>My submissions<% if (badges.updates) { %> <span class="badge" title="Updates you have not seen"><%= badges.updates %></span><% } %></a>
-      <% var adminLinks = [
-        ['parts.view', '/admin/parts', 'Parts log', path.startsWith('/admin/parts') && !path.startsWith('/admin/parts/audit')],
-        ['parts.view', '/admin/requests', 'Requests', path.startsWith('/admin/requests'), badges.requests],
-        ['parts.audit', '/admin/parts/audit', 'Audit', path.startsWith('/admin/parts/audit')],
-        ['parts.view', '/admin/stock', 'Stock', path.startsWith('/admin/stock')],
-        ['inspections.view', '/admin/inspections', 'Inspections', path.startsWith('/admin/inspections'), badges.inspections],
-        ['training.view', '/admin/training', 'Training log', path.startsWith('/admin/training')],
-        ['certs.manage', '/admin/certs', 'Certifications', path.startsWith('/admin/certs'), badges.certs],
-        ['announcements.post', '/admin/announcements', 'Announcements', path.startsWith('/admin/announcements')],
-        ['catalog.manage', '/admin/catalog', 'Catalog', path.startsWith('/admin/catalog')],
-        ['users.manage', '/admin/users', 'Users', path.startsWith('/admin/users')],
-        ['profiles.manage', '/admin/profiles', 'Profiles', path.startsWith('/admin/profiles')],
-        ['complaints.review', '/admin/complaints', 'Complaints', path.startsWith('/admin/complaints')]
-      ].filter(function (l) { return can(l[0]); }); %>
-      <% if (adminLinks.length) { %><span class="nav-sep" aria-hidden="true"></span><% } %>
-      <% adminLinks.forEach(function (l) { %><a href="<%= l[1] %>" <%- l[3] ? 'aria-current="page"' : '' %>><%= l[2] %><% if (l[4]) { %> <span class="badge"><%= l[4] %></span><% } %></a><% }) %>
+      <% if (can('complaints.submit')) { %><a href="/complaint" <%- path.startsWith('/complaint') ? 'aria-current="page"' : '' %>>Complaint</a><% } %>
+      <span class="nav-sep" aria-hidden="true"></span>
+      <% groups.forEach(function (g) { %>
+      <% if (g.links.length === 1) { var only = g.links[0]; %>
+      <a href="<%= only[1] %>" <%- g.current ? 'aria-current="page"' : '' %>><%= g.name === 'Trucks' && only[0] === 'inspections.submit' ? 'Inspection' : only[2] %><% if (only[4]) { %> <span class="badge"><%= only[4] %></span><% } %></a>
+      <% } else { %>
+      <details class="menu">
+        <summary <%- g.current ? 'aria-current="true"' : '' %>><%= g.name %><% if (g.badge) { %> <span class="badge"><%= g.badge %></span><% } %></summary>
+        <div class="menu-list">
+          <% g.items.forEach(function (it) { if (it === 'divider') { %><hr><% } else { %><a href="<%= it[1] %>" <%- it[3] ? 'aria-current="page"' : '' %>><%= it[2] %><% if (it[4]) { %> <span class="badge"><%= it[4] %></span><% } %></a><% } }) %>
+        </div>
+      </details>
+      <% } %>
+      <% }) %>
+      <div class="nav-account">
+        <span class="nav-sep" aria-hidden="true"></span>
+        <a href="/account/password">Change password<span class="hint-light"><%= user.display_name %></span></a>
+        <form method="post" action="/logout"><input type="hidden" name="_csrf" value="<%= csrf %>"><button type="submit">Sign out</button></form>
+      </div>
     </nav>
   </div>
   <% } %>

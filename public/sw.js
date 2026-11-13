@@ -1,7 +1,7 @@
 // Service worker: lets the site be installed on a phone's home screen and shows a
 // friendly page when there is no signal. Pages themselves are never stored, so
 // nothing private is kept on the phone by this file.
-var CACHE = 'portal-static-v4';
+var CACHE = 'portal-static-v5';
 var ASSETS = ['/offline.html', '/offline.js', '/styles.css', '/site.js', '/theme.js', '/logo.png', '/parts-form.js', '/scan.js', '/inspection-form.js', '/icons/icon-192.png'];
 
 self.addEventListener('install', function (event) {
@@ -30,6 +30,6 @@ self.addEventListener('fetch', function (event) {
     event.respondWith(fetch(req).then(function (res) {
       if (res.ok) { var copy = res.clone(); caches.open(CACHE).then(function (c) { c.put(req, copy); }); }
       return res;
-    }).catch(function () { return caches.match(req); }));
+    }).catch(function () { return caches.match(req, { ignoreSearch: true }); }));
   }
 });

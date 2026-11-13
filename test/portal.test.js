@@ -801,9 +801,10 @@ test('starting profiles: Technician, Warehouse, Manager and Admin each see only 
   const owner = await loggedIn('owner');
 
   assert.deepEqual(navLinks((await tech.get('/')).text), []); // a technician has no admin menu at all
-  assert.deepEqual(navLinks((await wh.get('/')).text), ['/admin/parts', '/admin/requests', '/admin/parts/audit', '/admin/stock', '/admin/inspections', '/admin/catalog']);
+  assert.deepEqual(navLinks((await wh.get('/')).text), ['/admin/parts', '/admin/requests', '/admin/parts/audit', '/admin/stock', '/admin/parts/summary', '/admin/catalog', '/admin/inspections', '/admin/inspections/checklist']);
   assert.deepEqual(navLinks((await owner.get('/')).text),
-    ['/admin/parts', '/admin/requests', '/admin/parts/audit', '/admin/stock', '/admin/inspections', '/admin/training', '/admin/certs', '/admin/announcements', '/admin/catalog', '/admin/users', '/admin/profiles', '/admin/complaints']);
+    ['/admin/parts', '/admin/requests', '/admin/parts/audit', '/admin/stock', '/admin/parts/summary', '/admin/catalog', '/admin/inspections', '/admin/inspections/checklist',
+      '/admin/training', '/admin/training/sessions', '/admin/certs', '/admin/users', '/admin/profiles', '/admin/announcements', '/admin/complaints', '/admin/activity', '/admin/backups']);
 
   for (const url of ['/admin/parts', '/admin/parts/audit', '/admin/parts/summary', '/admin/catalog']) assert.equal((await wh.get(url)).status, 200, url);
   for (const url of ['/admin/training', '/admin/users', '/admin/profiles', '/admin/complaints', '/admin/backups']) assert.equal((await wh.get(url)).status, 403, url);
@@ -1236,7 +1237,7 @@ test('the parts form offers the person\'s most-used parts and a barcode scanner'
   const html = (await c.get('/parts')).text;
   assert.deepEqual([...html.matchAll(/class="chip" data-part="([^"]+)"/g)].map((m) => m[1]), ['FAV-A', 'FAV-B']); // most used first, cancelled left out
   assert.match(html, /id="scan-btn"/);
-  assert.match(html, /src="\/scan\.js"/);
+  assert.match(html, /src="\/scan\.js\?v=[a-z0-9]+"/);
   const lib = await new Client().get('/vendor/html5-qrcode.min.js');
   assert.equal(lib.status, 200);
   assert.ok(lib.text.includes('Html5Qrcode'));
@@ -1645,4 +1646,36 @@ test('announcements: shown on the home page until read, with a record of who has
   }
   await owner.post(`${page}/${aid}/delete`, {}, { page });
   assert.equal(db.prepare('SELECT COUNT(*) n FROM announcement_reads WHERE announcement_id = ?').get(aid).n, 0);
+});
+
+test('menu: everyday links in the bar, the rest in drop-downs that only hold what the profile allows', async () => {
+  const groupsOf = (html) => [...html.matchAll(/<details class="menu">\s*<summary[^>]*>([A-Za-z]+)/g)].map((m) => m[1]);
+  const barLinks = (html) => { const nav = /<nav class="nav"[\s\S]*?<\/nav>/.exec(html)[0].replace(/<details[\s\S]*?<\/details>/g, '').replace(/<div class="nav-account">[\s\S]*?<\/div>/, ''); return [...nav.matchAll(/<a href="([^"]+)"/g)].map((m) => m[1]); };
+
+  const owner = (await (await loggedIn('owner')).get('/admin/users')).text;
+  assert.deepEqual(groupsOf(owner), ['Parts', 'Trucks', 'Training', 'Admin']);
+  assert.deepEqual(barLinks(owner), ['/', '/notices', '/my', '/complaint']);
+  const admin = /<summary[^>]*>Admin[\s\S]*?<\/details>/.exec(owner)[0];
+  for (const link of ['/admin/users', '/admin/profiles', '/admin/announcements', '/admin/complaints', '/admin/activity', '/admin/backups']) assert.ok(admin.includes(`href="${link}"`), link);
+  assert.match(admin, /<summary aria-current="true">Admin/);               // the group you are in is marked
+  assert.match(admin, /href="\/admin\/users" aria-current="page"/);
+  assert.match(owner, /id="menu-toggle"/);                                 // the phone Menu button
+  assert.match(owner, /class="nav-account">[\s\S]*Change password[\s\S]*Sign out/); // account links are in the menu for phones
+
+  // A technician: no Admin group; Trucks has one thing, so it is a plain "Inspection" link.
+  const tech = (await (await loggedIn('tech1')).get('/')).text;
+  assert.deepEqual(groupsOf(tech), ['Parts', 'Training']);
+  assert.deepEqual(barLinks(tech), ['/', '/notices', '/my', '/complaint', '/inspection']);
+  assert.doesNotMatch(tech, /href="\/admin\//);
+  assert.doesNotMatch(/<summary[^>]*>Parts[\s\S]*?<\/details>/.exec(tech)[0], /<hr>/); // no stray divider
+
+  // A manager holds one admin item (Announcements), so it is a plain link rather than a one-item drop-down.
+  const mgr = (await (await loggedIn('mgr1')).get('/')).text;
+  assert.deepEqual(groupsOf(mgr), ['Parts', 'Trucks', 'Training']);
+  assert.deepEqual(barLinks(mgr), ['/', '/notices', '/my', '/complaint', '/admin/announcements']);
+  assert.doesNotMatch(mgr, /admin\/(users|profiles|complaints|backups|activity)"/);
+
+  // Styles and scripts carry a version so a new release is not shown with old files.
+  assert.match(owner, /href="\/styles\.css\?v=[a-z0-9]+"/);
+  assert.equal((await new Client().get('/styles.css?v=anything')).status, 200);
 });

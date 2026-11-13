@@ -35,6 +35,32 @@
       });
     }
 
+    // Menu: one drop-down open at a time; close on a click elsewhere or Escape.
+    var menus = Array.prototype.slice.call(document.querySelectorAll('details.menu'));
+    var navbar = document.getElementById('navbar');
+    var menuToggle = document.getElementById('menu-toggle');
+    function closeMenus(except) { menus.forEach(function (m) { if (m !== except) m.open = false; }); }
+    menus.forEach(function (m) {
+      m.querySelector('summary').addEventListener('click', function () { closeMenus(m); });
+      m.addEventListener('toggle', function () { if (m.open) closeMenus(m); });
+    });
+    document.addEventListener('click', function (e) {
+      if (!e.target.closest('details.menu')) closeMenus(null);
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape') return;
+      var open = menus.filter(function (m) { return m.open; })[0];
+      if (open) { open.open = false; open.querySelector('summary').focus(); }
+    });
+    // On a phone the whole menu sits behind the Menu button.
+    if (menuToggle && navbar) {
+      menuToggle.addEventListener('click', function () {
+        var open = navbar.classList.toggle('open');
+        menuToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (open) { var current = navbar.querySelector('summary[aria-current]'); if (current) current.parentNode.open = true; }
+      });
+    }
+
     // Print buttons.
     document.querySelectorAll('[data-print]').forEach(function (btn) {
       btn.addEventListener('click', function () { window.print(); });
