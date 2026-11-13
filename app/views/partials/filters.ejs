@@ -19,6 +19,13 @@
     </select>
   </label>
   <label class="grow">Search <input type="search" name="q" value="<%= f.q %>" placeholder="<%= searchHint %>"></label>
+  <label>Sort
+    <select name="sort">
+      <option value="">Newest first</option>
+      <option value="oldest" <%= f.sort === 'oldest' ? 'selected' : '' %>>Oldest first</option>
+      <option value="name" <%= f.sort === 'name' ? 'selected' : '' %>>Name A to Z</option>
+    </select>
+  </label>
   <div class="filter-actions">
     <button class="btn primary small" type="submit">Filter</button>
     <a class="btn small" href="<%= base %>">Clear</a>

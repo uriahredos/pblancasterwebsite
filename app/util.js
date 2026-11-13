@@ -40,6 +40,12 @@ function isYmd(s) {
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
 }
 
+/** Entries brought in from the old form start their note with a fixed sentence. Show that as a tag, not as text. */
+function splitNote(note) {
+  const m = /^Imported from Microsoft Forms \(response (\d+)\)\.?\s*/.exec(note || '');
+  return m ? { imported: m[1], text: note.slice(m[0].length).trim() } : { imported: null, text: (note || '').trim() };
+}
+
 const clean = (v, max) => String(v ?? '').replace(/\r\n/g, '\n').trim().slice(0, max);
 
 const labels = {
@@ -54,4 +60,4 @@ const labels = {
   },
 };
 
-module.exports = { fmtDateTime, fmtDate, localDate, localHour, isYmd, clean, labels };
+module.exports = { splitNote, fmtDateTime, fmtDate, localDate, localHour, isYmd, clean, labels };

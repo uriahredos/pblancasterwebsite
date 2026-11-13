@@ -696,7 +696,7 @@ test('audit: lists what was taken, returned and requested in a date range, with 
   assert.match(html, /Requested<\/span> <span class="stat-num">0<\/span>/); // the request is on the 20th
   assert.match(html, /1 cancelled, not counted/);
   assert.match(html, /AUD-CANCELLED/);                                     // shown, struck out, not in the totals
-  assert.match(html, /SIGA-CT2<\/td> <td>Dual input module, Class B<\/td> <td class="num">2<\/td>/); // catalog description
+  assert.match(html, /<span class="pn">SIGA-CT2<\/span><span class="sub">Dual input module, Class B<\/span><\/td> <td class="num qty">2<\/td>/); // catalog description
   assert.match((await admin.get('/admin/parts/audit?from=2031-03-16&to=2031-03-31')).text.replace(/\s+/g, ' '), /Requested<\/span> <span class="stat-num">9<\/span>/);
   // Dates the wrong way round are swapped; with no dates it shows this month.
   assert.match((await admin.get('/admin/parts/audit?from=2031-03-15&to=2031-03-01')).text, /3\/1\/2031 to 3\/15\/2031/);
@@ -725,7 +725,7 @@ test('audit: entries can be ticked as checked, one by one or all at once; an edi
   assert.equal(r.location, `/admin/parts/audit?${range}#e${take}`);
   assert.equal(checked(take).audited_by, adminId);
   assert.match((await admin.get(page)).text.replace(/\s+/g, ' '), /1 of 1 checked/);
-  assert.match((await admin.get(page)).text, /Ada Admin<br>/);
+  assert.match((await admin.get(page)).text, /<span class="sub">Ada Admin, \d/);
 
   await admin.post(`/admin/parts/${take}/audit`, { qs: range }, { page });   // click again to undo
   assert.equal(checked(take).audited_at, null);
@@ -1783,4 +1783,46 @@ test('importing old Microsoft Forms data: history lands under the right people w
   await owner.post(`${page}/undo`, {}, { page });
   const log = db.prepare("SELECT action FROM activity_log WHERE action IN ('Old data imported', 'Imported data removed')").all().map((r) => r.action);
   assert.ok(log.includes('Old data imported') && log.includes('Imported data removed'));
+});
+
+test('sorting: the audit and the logs can be ordered by date or by name A to Z', async () => {
+  const owner = await loggedIn('owner');
+  const order = (html, names) => names.map((n) => html.indexOf(n)).every((pos, i, a) => pos >= 0 && (i === 0 || pos > a[i - 1]));
+  const put = (who, part, when) => {
+    const info = db.prepare(`INSERT INTO parts_submissions (user_id, action, source, note, created_at, created_local_date) VALUES (?, 'take', 'van', ?, ?, ?)`)
+      .run(userId(who), part === 'SORT-B' ? 'Imported from Microsoft Forms (response 363). As typed: 2. SORT-B' : 'Imported from Microsoft Forms (response 364).', when, when.slice(0, 10));
+    db.prepare('INSERT INTO parts_items (submission_id, part_name, quantity) VALUES (?, ?, 1)').run(info.lastInsertRowid, part);
+  };
+  // Added out of date order on purpose, the way imported history is.
+  put('wh1', 'SORT-C', '2033-05-03T15:00:00.000Z');   // Wanda Warehouse
+  put('tech1', 'SORT-A', '2033-05-01T15:00:00.000Z'); // Terry Tech
+  put('owner', 'SORT-B', '2033-05-02T15:00:00.000Z'); // Olive Owner
+  const range = 'from=2033-05-01&to=2033-05-31';
+
+  const audit = async (extra) => (await owner.get(`/admin/parts/audit?${range}${extra}`)).text;
+  assert.ok(order(await audit(''), ['SORT-A', 'SORT-B', 'SORT-C']));                 // oldest first, by date not by when it was added
+  assert.ok(order(await audit('&sort=newest'), ['SORT-C', 'SORT-B', 'SORT-A']));
+  assert.ok(order(await audit('&sort=name'), ['Olive Owner', 'Terry Tech', 'Wanda Warehouse']));
+  assert.match(await audit('&sort=name'), /<option value="name" selected>/);
+  assert.match(await audit('&sort=name'), /from=2033-05-01&amp;to=2033-05-01[^"]*&sort=name|sort=name/); // quick ranges keep the sort
+  // Ticking an entry comes back to the same sorted view.
+  const id = db.prepare("SELECT s.id FROM parts_submissions s JOIN parts_items i ON i.submission_id = s.id WHERE i.part_name = 'SORT-A'").get().id;
+  assert.match((await owner.post(`/admin/parts/${id}/audit`, { qs: `${range}&sort=name` }, { page: '/admin/parts/audit' })).location, /sort=name#e\d+$/);
+
+  const log = async (extra) => (await owner.get(`/admin/parts?${range}${extra}`)).text;
+  assert.ok(order(await log(''), ['SORT-C', 'SORT-B', 'SORT-A']));                    // newest first
+  assert.ok(order(await log('&sort=oldest'), ['SORT-A', 'SORT-B', 'SORT-C']));
+  assert.ok(order(await log('&sort=name'), ['Olive Owner', 'Terry Tech', 'Wanda Warehouse']));
+  const csv = (await owner.get(`/admin/parts.csv?${range}&sort=name`)).text;
+  assert.ok(order(csv, ['Olive Owner', 'Terry Tech', 'Wanda Warehouse']));
+  assert.match((await owner.get('/admin/training?sort=name')).text, /<option value="name" selected>/);
+  assert.equal((await owner.get('/admin/training?sort=bogus')).status, 200);
+
+  // The fixed "Imported from Microsoft Forms" sentence is shown as a small tag; what the person wrote stays.
+  const html = await audit('');
+  assert.doesNotMatch(html, /Imported from Microsoft Forms/);
+  assert.match(html, /class="pill"[^>]*response 363[^>]*>Imported</);
+  assert.match(html, /<span class="sub note">As typed: 2\. SORT-B<\/span>/);
+  assert.equal((html.match(/class="sub note"/g) || []).length, 1);                     // nothing printed where there was only the fixed sentence
+  db.prepare("DELETE FROM parts_submissions WHERE created_local_date LIKE '2033-05-%'").run();
 });

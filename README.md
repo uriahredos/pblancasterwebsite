@@ -90,6 +90,8 @@ Reached from the **Usage summary** button on the parts log. For a date range (an
 
 **Audit** in the admin menu. Choose a date range (or a quick range such as This month or Last month) and it lists every part taken, returned and requested in those dates, in three sections, with unit totals for each. Catalog descriptions are filled in where the part number matches.
 
+- **Sort:** oldest first, newest first, or by name A to Z. The parts log and training log have the same choice. Sorting is by the entry's date, so imported history sits in its proper place.
+- Each entry is one band: date and time, who, each part with its catalog description underneath, quantity, and where it went. Entries brought in from the old form carry a small "Imported" tag.
 - **Checked box:** tick an entry once you have checked it against the shelf or paperwork. It records who ticked it and when. Click again to undo. **Mark all as checked** ticks everything still unticked in that section and date range.
 - **Show: Not checked yet** hides entries already ticked.
 - Cancelled entries are listed struck through and are not counted in the totals.

@@ -12,7 +12,7 @@
       <time>Needed by <%= fmtDate(s.needed_by) %></time>
     </div>
     <p class="items"><%= s.items %></p>
-    <p class="meta"><%= s.source === 'job' ? 'Job ' + s.job_number : 'Van stock' %><% if (s.truck) { %> · Truck <%= s.truck %><% } %> · Asked <%= fmtDateTime(s.created_at) %><% if (s.note) { %> · Note: <%= s.note %><% } %></p>
+    <p class="meta"><%= s.source === 'job' ? 'Job ' + s.job_number : 'Van stock' %><% if (s.truck) { %> · Truck <%= s.truck %><% } %> · Asked <%= fmtDateTime(s.created_at) %><% var sn = splitNote(s.note); if (sn.text) { %> · Note: <%= sn.text %><% } %></p>
     <% if (s.admin_note) { %><p class="reply"><strong>Reply:</strong> <%= s.admin_note %></p><% } %>
     <div class="rec-actions">
       <% if (can('parts.manage')) { %>

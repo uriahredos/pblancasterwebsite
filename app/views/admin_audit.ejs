@@ -19,9 +19,16 @@
   <label>Show
     <select name="show"><option value="">All entries</option><option value="unchecked" <%= f.show ? 'selected' : '' %>>Not checked yet</option></select>
   </label>
+  <label>Sort
+    <select name="sort">
+      <option value="">Oldest first</option>
+      <option value="newest" <%= f.sort === 'newest' ? 'selected' : '' %>>Newest first</option>
+      <option value="name" <%= f.sort === 'name' ? 'selected' : '' %>>Name A to Z</option>
+    </select>
+  </label>
   <div class="filter-actions"><button class="btn primary small" type="submit">Show</button></div>
   <div class="presets">
-    <% presets.forEach(function (p) { %><a href="/admin/parts/audit?from=<%= p[1] %>&amp;to=<%= p[2] %><%= f.user ? '&user=' + f.user : '' %><%= f.show ? '&show=' + f.show : '' %>" <%- p[1] === f.from && p[2] === f.to ? 'aria-current="true"' : '' %>><%= p[0] %></a><% }) %>
+    <% presets.forEach(function (p) { %><a href="/admin/parts/audit?from=<%= p[1] %>&amp;to=<%= p[2] %><%= f.user ? '&user=' + f.user : '' %><%= f.show ? '&show=' + f.show : '' %><%= f.sort ? '&sort=' + f.sort : '' %>" <%- p[1] === f.from && p[2] === f.to ? 'aria-current="true"' : '' %>><%= p[0] %></a><% }) %>
   </div>
 </form>
 
@@ -47,20 +54,27 @@
     <% } %>
   </div>
   <div class="table-wrap">
-  <table class="audit">
-    <thead><tr><th>Submitted</th><th>Name</th><th>Part</th><th>Description</th><th class="num">Qty</th><th>For</th><% if (isReq) { %><th>Needed by</th><th>Status</th><% } %><th>Checked</th></tr></thead>
+  <table class="audit <%= isReq ? 'is-request' : '' %>">
+    <colgroup><col class="c-when"><col class="c-who"><col class="c-part"><col class="c-qty"><col class="c-for"><% if (isReq) { %><col class="c-due"><col class="c-status"><% } %><col class="c-check"></colgroup>
+    <thead><tr><th>When</th><th>Who</th><th>Part</th><th class="num">Qty</th><th>For</th><% if (isReq) { %><th>Needed by</th><th>Status</th><% } %><th>Checked</th></tr></thead>
     <tbody>
-    <% sec.entries.forEach(function (e) { e.items.forEach(function (it, i) { %>
-    <tr class="<%= e.cancelled_at ? 'off' : '' %> <%= i === 0 ? 'entry-start' : '' %>" <%- i === 0 ? 'id="e' + e.id + '"' : '' %>>
+    <% sec.entries.forEach(function (e, n) { var note = splitNote(e.note); e.items.forEach(function (it, i) { %>
+    <tr class="<%= e.cancelled_at ? 'off' : '' %> <%= i === 0 ? 'entry-start' : '' %> <%= n % 2 ? 'band' : '' %>" <%- i === 0 ? 'id="e' + e.id + '"' : '' %>>
       <% if (i === 0) { %>
-      <td class="nowrap" rowspan="<%= e.items.length %>"><% if (can('parts.view')) { %><a href="/admin/parts/<%= e.id %>"><%= fmtDateTime(e.created_at) %></a><% } else { %><%= fmtDateTime(e.created_at) %><% } %><% if (e.edited_at) { %><br><span class="hint">edited</span><% } %></td>
-      <td rowspan="<%= e.items.length %>"><%= e.display_name %></td>
+      <td class="when" rowspan="<%= e.items.length %>">
+        <% if (can('parts.view')) { %><a href="/admin/parts/<%= e.id %>"><%= dateOnly(e.created_at) %></a><% } else { %><%= dateOnly(e.created_at) %><% } %>
+        <span class="sub"><%= timeOnly(e.created_at) %></span>
+        <% if (e.edited_at) { %><span class="sub">edited</span><% } %>
+      </td>
+      <td class="person" rowspan="<%= e.items.length %>"><%= e.display_name %></td>
       <% } %>
-      <td class="items"><%= it.part_name %></td>
-      <td><%= it.description %></td>
-      <td class="num"><%= it.quantity %></td>
+      <td class="part"><span class="pn"><%= it.part_name %></span><% if (it.description) { %><span class="sub"><%= it.description %></span><% } %></td>
+      <td class="num qty"><%= it.quantity %></td>
       <% if (i === 0) { %>
-      <td rowspan="<%= e.items.length %>"><%= e.source === 'job' ? 'Job ' + e.job_number : 'Van stock' %><% if (e.truck) { %><br><span class="hint">Truck <%= e.truck %></span><% } %><% if (e.note) { %><br><span class="hint"><%= e.note %></span><% } %></td>
+      <td class="for" rowspan="<%= e.items.length %>">
+        <%= e.source === 'job' ? 'Job ' + e.job_number : 'Van stock' %><% if (e.truck) { %> <span class="pill">Truck <%= e.truck %></span><% } %><% if (note.imported) { %> <span class="pill" title="Brought in from the old Microsoft Form, response <%= note.imported %>">Imported</span><% } %>
+        <% if (note.text) { %><span class="sub note"><%= note.text %></span><% } %>
+      </td>
       <% if (isReq) { %>
       <td class="nowrap" rowspan="<%= e.items.length %>"><%= fmtDate(e.needed_by) %></td>
       <td rowspan="<%= e.items.length %>"><% if (!e.cancelled_at && e.status) { %><span class="status s-<%= e.status %>"><%= labels.partsStatus[e.status] %></span><% } %></td>
@@ -72,16 +86,16 @@
           <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="qs" value="<%= qs %>">
           <button type="submit" class="check <%= e.audited_at ? 'on' : '' %>" aria-pressed="<%= e.audited_at ? 'true' : 'false' %>" title="<%= e.audited_at ? 'Checked. Click to undo.' : 'Mark as checked' %>"><span class="box" aria-hidden="true"><%= e.audited_at ? '✓' : '' %></span><span class="sr"><%= e.audited_at ? 'Checked' : 'Not checked' %></span></button>
         </form>
-        <% if (e.audited_at) { %><span class="hint"><%= e.audited_by_name %><br><%= fmtDateTime(e.audited_at) %></span><% } %>
+        <% if (e.audited_at) { %><span class="sub"><%= e.audited_by_name %>, <%= dateOnly(e.audited_at) %></span><% } %>
         <% } %>
       </td>
       <% } %>
     </tr>
     <% }) }) %>
-    <% if (!sec.entries.length) { %><tr><td colspan="<%= isReq ? 9 : 7 %>" class="empty">Nothing <%= a[1].toLowerCase() %> in these dates.</td></tr><% } %>
+    <% if (!sec.entries.length) { %><tr><td colspan="<%= isReq ? 8 : 6 %>" class="empty">Nothing <%= a[1].toLowerCase() %> in these dates.</td></tr><% } %>
     </tbody>
     <% if (sec.entries.length) { %>
-    <tfoot><tr><td colspan="4">Total <%= a[1].toLowerCase() %></td><td class="num"><%= sec.quantity %></td><td colspan="<%= isReq ? 4 : 2 %>"></td></tr></tfoot>
+    <tfoot><tr><td colspan="3">Total <%= a[1].toLowerCase() %></td><td class="num qty"><%= sec.quantity %></td><td colspan="<%= isReq ? 4 : 2 %>"></td></tr></tfoot>
     <% } %>
   </table>
   </div>

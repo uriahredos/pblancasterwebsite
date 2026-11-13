@@ -35,6 +35,7 @@ function buildFilter(query, t, { statuses, textCols, action = false }, viewer) {
     status: statuses[query.status] ? query.status : '',
     action: action && labels.action[query.action] ? query.action : '',
     q: clean(query.q, 100),
+    sort: ['oldest', 'name'].includes(query.sort) ? query.sort : '',
   };
   const where = [];
   const params = [];
@@ -50,7 +51,10 @@ function buildFilter(query, t, { statuses, textCols, action = false }, viewer) {
     where.push('(' + textCols.map((c) => `${c} LIKE ? ESCAPE '\\'`).join(' OR ') + ')');
     textCols.forEach(() => params.push(like));
   }
-  return { f, sql: where.length ? 'WHERE ' + where.join(' AND ') : '', params };
+  // Newest first unless asked otherwise. By date, not by id: imported history was added later but is older.
+  const order = f.sort === 'name' ? `u.display_name COLLATE NOCASE, ${t}.created_at DESC, ${t}.id DESC`
+    : f.sort === 'oldest' ? `${t}.created_at, ${t}.id` : `${t}.created_at DESC, ${t}.id DESC`;
+  return { f, sql: where.length ? 'WHERE ' + where.join(' AND ') : '', params, order };
 }
 
 const qs = (f) => new URLSearchParams(Object.entries(f).filter(([, v]) => v)).toString();
@@ -72,23 +76,23 @@ router.get('/admin', auth.requireLogin, (req, res) => {
 });
 
 router.get('/admin/parts', requirePerm('parts.view'), (req, res) => {
-  const { f, sql, params } = partsFilter(req.query, req.user);
+  const { f, sql, params, order } = partsFilter(req.query, req.user);
   const rows = db.prepare(
     `SELECT s.*, u.display_name,
             (SELECT group_concat(i.quantity || ' × ' || i.part_name, char(10))
              FROM parts_items i WHERE i.submission_id = s.id) AS items
      FROM parts_submissions s JOIN users u ON u.id = s.user_id
-     ${sql} ORDER BY s.id DESC LIMIT 501`).all(...params);
+     ${sql} ORDER BY ${order} LIMIT 501`).all(...params);
   res.render('admin_parts', { title: 'Parts log', rows: rows.slice(0, 500), more: rows.length > 500, f, qs: qs(f), users: userList(req.user) });
 });
 
 router.get('/admin/parts.csv', requirePerm('parts.view'), (req, res) => {
-  const { sql, params } = partsFilter(req.query, req.user);
+  const { sql, params, order } = partsFilter(req.query, req.user);
   const rows = db.prepare(
     `SELECT s.*, u.display_name, u.username, i.part_name, i.quantity
      FROM parts_submissions s JOIN users u ON u.id = s.user_id
      JOIN parts_items i ON i.submission_id = s.id
-     ${sql} ORDER BY s.id, i.id`).all(...params);
+     ${sql} ORDER BY ${order}, i.id`).all(...params);
   sendCsv(res, `parts-${localDate()}.csv`,
     ['Id', 'Submitted', 'Name', 'Username', 'Action', 'Part', 'Quantity', 'Van stock or job', 'Job number', 'Truck',
       'Needed by', 'Note', 'Status', 'Admin note', 'Photo', 'Edited', 'Cancelled', 'Checked'],
@@ -126,6 +130,7 @@ function auditRange(query) {
     from, to,
     user: /^\d+$/.test(query.user || '') ? query.user : '',
     show: query.show === 'unchecked' ? 'unchecked' : '',
+    sort: ['newest', 'name'].includes(query.sort) ? query.sort : '',
   };
 }
 
@@ -144,7 +149,8 @@ function auditData(query, viewer) {
      JOIN parts_items i ON i.submission_id = s.id
      LEFT JOIN users a ON a.id = s.audited_by
      LEFT JOIN parts_catalog c ON c.part_number = TRIM(i.part_name)
-     WHERE ${where.join(' AND ')} ORDER BY s.id, i.id`).all(...params);
+     WHERE ${where.join(' AND ')}
+     ORDER BY ${f.sort === 'name' ? 'u.display_name COLLATE NOCASE, s.created_at, s.id' : f.sort === 'newest' ? 's.created_at DESC, s.id DESC' : 's.created_at, s.id'}, i.id`).all(...params);
 
   const sections = {};
   for (const action of ['take', 'return', 'request']) {
@@ -311,19 +317,19 @@ router.post('/admin/parts/:id/delete', requirePerm('records.delete'), (req, res)
 const trainingFilter = (query, viewer) => buildFilter(query, 't', { statuses: labels.trainingStatus, textCols: ['t.description', 'u.display_name'] }, viewer);
 
 router.get('/admin/training', requirePerm('training.view'), (req, res) => {
-  const { f, sql, params } = trainingFilter(req.query, req.user);
+  const { f, sql, params, order } = trainingFilter(req.query, req.user);
   const rows = db.prepare(
     `SELECT t.*, u.display_name, (SELECT COUNT(*) FROM training_votes v WHERE v.request_id = t.id) AS votes
      FROM training_requests t JOIN users u ON u.id = t.user_id
-     ${sql} ORDER BY t.id DESC LIMIT 501`).all(...params);
+     ${sql} ORDER BY ${order} LIMIT 501`).all(...params);
   res.render('admin_training', { title: 'Training requests', rows: rows.slice(0, 500), more: rows.length > 500, f, qs: qs(f), users: userList(req.user) });
 });
 
 router.get('/admin/training.csv', requirePerm('training.view'), (req, res) => {
-  const { sql, params } = trainingFilter(req.query, req.user);
+  const { sql, params, order } = trainingFilter(req.query, req.user);
   const rows = db.prepare(
     `SELECT t.*, u.display_name, u.username FROM training_requests t JOIN users u ON u.id = t.user_id
-     ${sql} ORDER BY t.id`).all(...params);
+     ${sql} ORDER BY ${order}`).all(...params);
   sendCsv(res, `training-${localDate()}.csv`,
     ['Id', 'Submitted', 'Name', 'Username', 'Training description', 'Wants contact', 'Private', 'Status', 'Admin note', 'Edited', 'Cancelled'],
     rows.map((r) => [r.id, fmtDateTime(r.created_at), r.display_name, r.username, r.description,

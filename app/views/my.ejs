@@ -14,7 +14,7 @@
     </div>
     <p class="items"><%= s.items %></p>
     <p class="meta"><%= s.source === 'job' ? 'Job ' + s.job_number : 'Van stock' %><% if (s.truck) { %> · Truck <%= s.truck %><% } %><% if (s.needed_by) { %> · Needed by <%= fmtDate(s.needed_by) %><% } %><% if (s.photo_path) { %> · <a href="/parts/photo/<%= s.id %>">Photo</a><% } %></p>
-    <% if (s.note) { %><p class="meta">Note: <%= s.note %></p><% } %>
+    <% var sn = splitNote(s.note); if (sn.text) { %><p class="meta">Note: <%= sn.text %></p><% } %><% if (sn.imported) { %><p class="meta"><span class="pill">Imported from the old form</span></p><% } %>
     <% if (s.admin_note) { %><p class="reply"><strong>Reply:</strong> <%= s.admin_note %></p><% } %>
     <% if (s.edited_at && !s.cancelled_at) { %><p class="meta">Edited <%= fmtDateTime(s.edited_at) %></p><% } %>
     <% if (s.can_change) { %>
