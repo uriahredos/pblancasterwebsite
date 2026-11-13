@@ -192,7 +192,8 @@ router.post('/parts/:id/edit', requireLogin, parseUpload, verifyCsrf, (req, res)
       items: getItems(row.id), source: row.source, job_number: row.job_number, note: row.note, needed_by: row.needed_by,
     });
     db.prepare(
-      `UPDATE parts_submissions SET source = ?, job_number = ?, note = ?, needed_by = ?, photo_path = ?, edited_at = ? WHERE id = ?`
+      `UPDATE parts_submissions SET source = ?, job_number = ?, note = ?, needed_by = ?, photo_path = ?, edited_at = ?,
+         audited_at = NULL, audited_by = NULL WHERE id = ?` // an edited entry needs checking again
     ).run(values.source, values.source === 'job' ? values.job_number : null, values.note || null,
       row.action === 'request' ? values.needed_by : null, photo ? photo.filename : row.photo_path,
       new Date().toISOString(), row.id);

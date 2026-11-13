@@ -69,11 +69,115 @@ router.get('/admin/parts.csv', requireAdmin, (req, res) => {
      ${sql} ORDER BY s.id, i.id`).all(...params);
   sendCsv(res, `parts-${localDate()}.csv`,
     ['Id', 'Submitted', 'Name', 'Username', 'Action', 'Part', 'Quantity', 'Van stock or job', 'Job number',
-      'Needed by', 'Note', 'Status', 'Admin note', 'Photo', 'Edited', 'Cancelled'],
+      'Needed by', 'Note', 'Status', 'Admin note', 'Photo', 'Edited', 'Cancelled', 'Checked'],
     rows.map((r) => [r.id, fmtDateTime(r.created_at), r.display_name, r.username, labels.action[r.action],
       r.part_name, r.quantity, labels.source[r.source], r.job_number, r.needed_by, r.note,
       r.status ? labels.partsStatus[r.status] : '', r.admin_note,
-      r.photo_path ? `${config.baseUrl}/parts/photo/${r.id}` : '', fmtDateTime(r.edited_at), fmtDateTime(r.cancelled_at)]));
+      r.photo_path ? `${config.baseUrl}/parts/photo/${r.id}` : '', fmtDateTime(r.edited_at), fmtDateTime(r.cancelled_at), fmtDateTime(r.audited_at)]));
+});
+
+// ---- Audit: every part taken, returned and requested in a date range ------
+
+function auditRange(query) {
+  const today = localDate();
+  let from = isYmd(query.from) ? query.from : today.slice(0, 8) + '01'; // default: this month so far
+  let to = isYmd(query.to) ? query.to : today;
+  if (from > to) [from, to] = [to, from];
+  return {
+    from, to,
+    user: /^\d+$/.test(query.user || '') ? query.user : '',
+    show: query.show === 'unchecked' ? 'unchecked' : '',
+  };
+}
+
+function auditData(query) {
+  const f = auditRange(query);
+  const where = ['s.created_local_date >= ?', 's.created_local_date <= ?'];
+  const params = [f.from, f.to];
+  if (f.user) { where.push('s.user_id = ?'); params.push(Number(f.user)); }
+  if (f.show === 'unchecked') where.push('s.audited_at IS NULL AND s.cancelled_at IS NULL');
+  const rows = db.prepare(
+    `SELECT s.*, u.display_name, a.display_name AS audited_by_name,
+            i.part_name, i.quantity, c.description AS part_description
+     FROM parts_submissions s JOIN users u ON u.id = s.user_id
+     JOIN parts_items i ON i.submission_id = s.id
+     LEFT JOIN users a ON a.id = s.audited_by
+     LEFT JOIN parts_catalog c ON c.part_number = TRIM(i.part_name)
+     WHERE ${where.join(' AND ')} ORDER BY s.id, i.id`).all(...params);
+
+  const sections = {};
+  for (const action of ['take', 'return', 'request']) {
+    sections[action] = { entries: [], count: 0, lines: 0, quantity: 0, checked: 0, cancelled: 0 };
+  }
+  let current = null;
+  for (const r of rows) {
+    const sec = sections[r.action];
+    if (!current || current.id !== r.id) {
+      current = { ...r, items: [] };
+      sec.entries.push(current);
+      if (r.cancelled_at) sec.cancelled++;
+      else { sec.count++; if (r.audited_at) sec.checked++; }
+    }
+    current.items.push({ part_name: r.part_name, quantity: r.quantity, description: r.part_description });
+    if (!r.cancelled_at) { sec.lines++; sec.quantity += r.quantity; }
+  }
+  return { f, sections, rows };
+}
+
+router.get('/admin/parts/audit', requireAdmin, (req, res) => {
+  const data = auditData(req.query);
+  const today = localDate();
+  const d = new Date(today + 'T12:00:00Z');
+  const ymd = (x) => x.toISOString().slice(0, 10);
+  const monthStart = today.slice(0, 8) + '01';
+  const lastMonthEnd = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 0, 12));
+  const weekStart = new Date(d); weekStart.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); // Monday
+  const week = new Date(d); week.setUTCDate(d.getUTCDate() - 6);
+  res.render('admin_audit', {
+    title: 'Parts audit', ...data, qs: qs(data.f), users: userList(),
+    presets: [
+      ['Today', today, today],
+      ['This week', ymd(weekStart), today],
+      ['Last 7 days', ymd(week), today],
+      ['This month', monthStart, today],
+      ['Last month', ymd(lastMonthEnd).slice(0, 8) + '01', ymd(lastMonthEnd)],
+    ],
+  });
+});
+
+router.get('/admin/parts/audit.csv', requireAdmin, (req, res) => {
+  const { f, rows } = auditData(req.query);
+  sendCsv(res, `parts-audit-${f.from}-to-${f.to}.csv`,
+    ['Entry', 'Submitted', 'Action', 'Name', 'Part', 'Description', 'Quantity', 'Van stock or job', 'Job number', 'Needed by',
+      'Status', 'Note', 'Edited', 'Cancelled', 'Checked', 'Checked by'],
+    rows.map((r) => [r.id, fmtDateTime(r.created_at), labels.action[r.action], r.display_name, r.part_name, r.part_description,
+      r.quantity, labels.source[r.source], r.job_number, r.needed_by, r.status ? labels.partsStatus[r.status] : '', r.note,
+      fmtDateTime(r.edited_at), fmtDateTime(r.cancelled_at), fmtDateTime(r.audited_at), r.audited_by_name]));
+});
+
+const auditBack = (body) => '/admin/parts/audit' + (typeof body.qs === 'string' && body.qs ? '?' + qs(auditRange(Object.fromEntries(new URLSearchParams(body.qs)))) : '');
+
+// Tick (or untick) one entry as checked.
+router.post('/admin/parts/:id/audit', requireAdmin, (req, res) => {
+  const row = db.prepare('SELECT id, audited_at, cancelled_at FROM parts_submissions WHERE id = ?').get(req.params.id);
+  if (row && !row.cancelled_at) {
+    if (row.audited_at) db.prepare('UPDATE parts_submissions SET audited_at = NULL, audited_by = NULL WHERE id = ?').run(row.id);
+    else db.prepare('UPDATE parts_submissions SET audited_at = ?, audited_by = ? WHERE id = ?').run(new Date().toISOString(), req.user.id, row.id);
+  }
+  res.redirect(auditBack(req.body) + '#e' + req.params.id);
+});
+
+// Tick everything in the chosen range that is not checked yet.
+router.post('/admin/parts/audit/check-all', requireAdmin, (req, res) => {
+  const f = auditRange(Object.fromEntries(new URLSearchParams(String(req.body.qs || ''))));
+  const where = ['created_local_date >= ?', 'created_local_date <= ?', 'audited_at IS NULL', 'cancelled_at IS NULL'];
+  const params = [f.from, f.to];
+  if (f.user) { where.push('user_id = ?'); params.push(Number(f.user)); }
+  if (labels.action[req.body.action]) { where.push('action = ?'); params.push(req.body.action); }
+  const info = db.prepare(`UPDATE parts_submissions SET audited_at = ?, audited_by = ? WHERE ${where.join(' AND ')}`)
+    .run(new Date().toISOString(), req.user.id, ...params);
+  flash(req, 'ok', `${info.changes} ${info.changes === 1 ? 'entry' : 'entries'} marked as checked.`);
+  res.redirect(auditBack(req.body));
 });
 
 // What was used: totals per part, per person and per job. Cancelled entries are left out.

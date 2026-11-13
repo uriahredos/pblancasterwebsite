@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title><%= title %> · Pye-Barker Lancaster Branch</title>
-<meta name="theme-color" content="#12283f">
+<meta name="theme-color" content="#09324f">
+<script src="/theme.js"></script>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <link rel="icon" href="/icons/icon-192.png">
@@ -16,9 +17,27 @@
 </head>
 <body>
 <header class="top">
-  <div class="top-in">
-    <a class="brand" href="/">Pye-Barker Lancaster</a>
-    <% if (user && !user.must_change_password) { %>
+  <div class="banner">
+    <div class="banner-in">
+      <a class="brand" href="/">
+        <span class="logo-plate"><img src="/logo.png" alt="Pye-Barker Fire &amp; Safety" width="640" height="168"></span>
+        <span class="branch">Lancaster Branch</span>
+      </a>
+      <div class="who">
+        <% if (user) { %>
+        <a class="who-name" href="/account/password" title="Change password"><%= user.display_name %></a>
+        <form method="post" action="/logout"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Sign out</button></form>
+        <% } %>
+        <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Switch between light and dark mode" title="Light / dark mode">
+          <svg class="icon-moon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M20.4 14.6A8.5 8.5 0 0 1 9.4 3.6a.75.75 0 0 0-.98-.93A10 10 0 1 0 21.33 15.6a.75.75 0 0 0-.93-1z"/></svg>
+          <svg class="icon-sun" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></g></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+  <div class="stripe" aria-hidden="true"></div>
+  <% if (user && !user.must_change_password) { %>
+  <div class="navbar">
     <nav class="nav" aria-label="Main">
       <a href="/parts" <%- path === '/parts' ? 'aria-current="page"' : '' %>>Parts</a>
       <a href="/training" <%- path === '/training' ? 'aria-current="page"' : '' %>>Training</a>
@@ -26,7 +45,8 @@
       <a href="/my" <%- path === '/my' ? 'aria-current="page"' : '' %>>My submissions</a>
       <% if (user.role === 'admin') { %>
       <span class="nav-sep" aria-hidden="true"></span>
-      <a href="/admin/parts" <%- path.startsWith('/admin/parts') ? 'aria-current="page"' : '' %>>Parts log</a>
+      <a href="/admin/parts" <%- path.startsWith('/admin/parts') && !path.startsWith('/admin/parts/audit') ? 'aria-current="page"' : '' %>>Parts log</a>
+      <a href="/admin/parts/audit" <%- path.startsWith('/admin/parts/audit') ? 'aria-current="page"' : '' %>>Audit</a>
       <a href="/admin/training" <%- path.startsWith('/admin/training') ? 'aria-current="page"' : '' %>>Training log</a>
       <a href="/admin/catalog" <%- path.startsWith('/admin/catalog') ? 'aria-current="page"' : '' %>>Catalog</a>
       <a href="/admin/users" <%- path.startsWith('/admin/users') ? 'aria-current="page"' : '' %>>Users</a>
@@ -35,14 +55,8 @@
       <a href="/admin/complaints" <%- path.startsWith('/admin/complaints') ? 'aria-current="page"' : '' %>>Complaints</a>
       <% } %>
     </nav>
-    <% } %>
-    <% if (user) { %>
-    <div class="who">
-      <a href="/account/password" title="Change password"><%= user.display_name %></a>
-      <form method="post" action="/logout"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Sign out</button></form>
-    </div>
-    <% } %>
   </div>
+  <% } %>
 </header>
 <main class="<%= typeof wide !== 'undefined' && wide ? 'wide' : '' %>">
 <% if (flash) { %><p class="flash <%= flash.type %>" role="status"><%= flash.text %></p><% } %>

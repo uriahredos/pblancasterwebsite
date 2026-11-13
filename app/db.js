@@ -121,5 +121,8 @@ for (const table of ['parts_submissions', 'training_requests']) {
 }
 
 addColumn('parts_catalog', 'category', 'TEXT');
+// Audit: who confirmed an entry against the shelf / paperwork, and when.
+addColumn('parts_submissions', 'audited_at', 'TEXT');
+addColumn('parts_submissions', 'audited_by', 'INTEGER');
 
 module.exports = db;

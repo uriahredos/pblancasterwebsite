@@ -632,3 +632,99 @@ test('a database from the first release is upgraded in place without losing data
   assert.ok(r.catalog > 0);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+// ---------------------------------------------------------------------------
+// Audit, logo banner and light/dark switch
+// ---------------------------------------------------------------------------
+
+test('audit: lists what was taken, returned and requested in a date range, with totals', async () => {
+  const tech = await loggedIn('tech2');
+  const send = (fields) => tech.post('/parts', fields, { multipart: true });
+  await send([['action', 'take'], ['part_name', 'AUD-A'], ['quantity', '4'], ['part_name', 'SIGA-CT2'], ['quantity', '2'], ['source', 'job'], ['job_number', 'AUDJOB']]);
+  const takeId = lastParts().id;
+  await send([['action', 'return'], ['part_name', 'AUD-A'], ['quantity', '1'], ['source', 'van']]);
+  await send([['action', 'request'], ['part_name', 'AUD-B'], ['quantity', '9'], ['source', 'van'], ['needed_by', '2027-01-15']]);
+  await send([['action', 'take'], ['part_name', 'AUD-CANCELLED'], ['quantity', '500'], ['source', 'van']]);
+  await tech.post(`/parts/${lastParts().id}/cancel`, {});
+  // Move these four entries to their own days so the totals are exact.
+  const uid = db.prepare("SELECT id FROM users WHERE username = 'tech2'").get().id;
+  db.prepare("UPDATE parts_submissions SET created_local_date = '2031-03-10' WHERE id >= ? AND user_id = ?").run(takeId, uid);
+  db.prepare("UPDATE parts_submissions SET created_local_date = '2031-03-20' WHERE id = ?").run(takeId + 2);
+
+  const admin = await loggedIn('admin');
+  const page = '/admin/parts/audit?from=2031-03-01&to=2031-03-15';
+  const html = (await admin.get(page)).text.replace(/\s+/g, ' ');
+  assert.match(html, /3\/1\/2031 to 3\/15\/2031/);
+  assert.match(html, /Taken<\/span> <span class="stat-num">6<\/span> <span class="stat-sub">units in 1 entry · 0 of 1 checked/);
+  assert.match(html, /Returned<\/span> <span class="stat-num">1<\/span>/);
+  assert.match(html, /Requested<\/span> <span class="stat-num">0<\/span>/); // the request is on the 20th
+  assert.match(html, /1 cancelled, not counted/);
+  assert.match(html, /AUD-CANCELLED/);                                     // shown, struck out, not in the totals
+  assert.match(html, /SIGA-CT2<\/td> <td>Dual input module, Class B<\/td> <td class="num">2<\/td>/); // catalog description
+  assert.match((await admin.get('/admin/parts/audit?from=2031-03-16&to=2031-03-31')).text.replace(/\s+/g, ' '), /Requested<\/span> <span class="stat-num">9<\/span>/);
+  // Dates the wrong way round are swapped; with no dates it shows this month.
+  assert.match((await admin.get('/admin/parts/audit?from=2031-03-15&to=2031-03-01')).text, /3\/1\/2031 to 3\/15\/2031/);
+  assert.equal((await admin.get('/admin/parts/audit')).status, 200);
+
+  const csv = (await admin.get('/admin/parts/audit.csv?from=2031-03-01&to=2031-03-31')).text.trim().split('\r\n');
+  assert.match(csv[0], /^.?Entry,Submitted,Action,Name,Part,Description,Quantity/);
+  assert.equal(csv.length, 1 + 5); // five part lines including the cancelled one
+  assert.ok(csv.some((l) => /Take parts,Uma Tech,AUD-A,,4,Job,AUDJOB/.test(l)));
+
+  for (const url of ['/admin/parts/audit', '/admin/parts/audit.csv']) assert.equal((await tech.get(url)).status, 403, url);
+  assert.equal((await tech.post(`/admin/parts/${takeId}/audit`, {})).status, 403);
+  assert.equal((await tech.post('/admin/parts/audit/check-all', {})).status, 403);
+});
+
+test('audit: entries can be ticked as checked, one by one or all at once; an edit unticks', async () => {
+  const admin = await loggedIn('admin');
+  const range = 'from=2031-03-01&to=2031-03-31';
+  const page = '/admin/parts/audit?' + range;
+  const ids = db.prepare("SELECT id, action, cancelled_at FROM parts_submissions WHERE created_local_date LIKE '2031-03-%' ORDER BY id").all();
+  const [take, ret, req, cancelled] = ids.map((r) => r.id);
+  const checked = (id) => db.prepare('SELECT audited_at, audited_by FROM parts_submissions WHERE id = ?').get(id);
+  const adminId = db.prepare("SELECT id FROM users WHERE username = 'admin'").get().id;
+
+  const r = await admin.post(`/admin/parts/${take}/audit`, { qs: range }, { page });
+  assert.equal(r.location, `/admin/parts/audit?${range}#e${take}`);
+  assert.equal(checked(take).audited_by, adminId);
+  assert.match((await admin.get(page)).text.replace(/\s+/g, ' '), /1 of 1 checked/);
+  assert.match((await admin.get(page)).text, /Ada Admin<br>/);
+
+  await admin.post(`/admin/parts/${take}/audit`, { qs: range }, { page });   // click again to undo
+  assert.equal(checked(take).audited_at, null);
+  await admin.post(`/admin/parts/${cancelled}/audit`, { qs: range }, { page }); // cancelled entries cannot be ticked
+  assert.equal(checked(cancelled).audited_at, null);
+
+  // "Mark all as checked" for one section only touches that section and that date range.
+  const before = db.prepare('SELECT COUNT(*) n FROM parts_submissions WHERE audited_at IS NOT NULL').get().n;
+  await admin.post('/admin/parts/audit/check-all', { qs: range, action: 'take' }, { page });
+  assert.ok(checked(take).audited_at);
+  assert.equal(checked(ret).audited_at, null);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM parts_submissions WHERE audited_at IS NOT NULL').get().n, before + 1);
+  await admin.post('/admin/parts/audit/check-all', { qs: range }, { page });
+  assert.ok(checked(ret).audited_at && checked(req).audited_at);
+  assert.equal(checked(cancelled).audited_at, null);
+  assert.match((await admin.get(page + '&show=unchecked')).text, /Nothing taken in these dates/);
+
+  // The redirect target is rebuilt from known fields, never taken as-is.
+  assert.equal((await admin.post(`/admin/parts/${ret}/audit`, { qs: 'from=//evil.example&to=x' }, { page })).location.startsWith('/admin/parts/audit?from='), true);
+
+  // Changing an entry after it was checked means it needs checking again.
+  await admin.post(`/parts/${take}/edit`, [['part_name', 'AUD-A'], ['quantity', '3'], ['source', 'van']], { multipart: true, page: `/parts/${take}/edit` });
+  assert.equal(checked(take).audited_at, null);
+});
+
+test('logo banner and light/dark switch are on every page', async () => {
+  const c = new Client();
+  for (const url of ['/logo.png', '/theme.js']) assert.equal((await c.get(url)).status, 200, url);
+  const login = (await c.get('/login')).text;
+  assert.match(login, /<img src="\/logo\.png" alt="Pye-Barker Fire &amp; Safety"/);
+  assert.match(login, /id="theme-toggle"/);                          // available before signing in too
+  assert.ok(login.indexOf('/theme.js') < login.indexOf('/styles.css')); // applied before the page is drawn
+  assert.match((await (await loggedIn('tech1')).get('/')).text, /id="theme-toggle"/);
+  const css = (await c.get('/styles.css')).text;
+  for (const color of ['#24b24b', '#235fad', '#09324f']) assert.ok(css.includes(color), color);
+  assert.match(css, /:root\[data-theme="dark"\]/);
+  assert.match(css, /:root:not\(\[data-theme="light"\]\)/);
+});

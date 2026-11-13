@@ -12,6 +12,7 @@ A small website for the Pye-Barker Lancaster Branch: parts sign-out (take / retu
 | `/complaint/status` | Check a complaint with its tracking code |
 | `/my` | A person's own parts and training submissions, with status |
 | `/admin/parts`, `/admin/training`, `/admin/users` | Admins only |
+| `/admin/parts/audit` | Parts audit for a date range (admins) |
 | `/admin/parts/summary` | Parts usage totals (admins) |
 | `/admin/catalog` | Parts catalog (admins) |
 | `/admin/backups` | Backups (admins who can also read complaints) |
@@ -84,6 +85,20 @@ A list of part numbers and descriptions. When someone types on the parts form, m
 ## Parts usage summary (`/admin/parts/summary`)
 
 Reached from the **Usage summary** button on the parts log. For a date range (and optionally one person or a search), it shows totals by part (taken, returned, net used, requested), by person and by job, with a CSV download. Part names are matched ignoring upper/lower case and stray spaces. Cancelled entries are not counted.
+
+## Parts audit (`/admin/parts/audit`)
+
+**Audit** in the admin menu. Choose a date range (or a quick range such as This month or Last month) and it lists every part taken, returned and requested in those dates, in three sections, with unit totals for each. Catalog descriptions are filled in where the part number matches.
+
+- **Checked box:** tick an entry once you have checked it against the shelf or paperwork. It records who ticked it and when. Click again to undo. **Mark all as checked** ticks everything still unticked in that section and date range.
+- **Show: Not checked yet** hides entries already ticked.
+- Cancelled entries are listed struck through and are not counted in the totals.
+- If an entry is edited after it was checked, the tick is removed so it gets checked again.
+- **Print** gives a clean printout without menus; **Download CSV** gives one row per part.
+
+## Look and feel
+
+The banner uses the Pye-Barker logo (`public/logo.png`) and the colors are taken from it; they are set at the top of `public/styles.css`. The button at the top right switches between light and dark. The choice is remembered on that device; until someone uses the button, the site follows the device's own light/dark setting.
 
 ## Editing and cancelling
 
