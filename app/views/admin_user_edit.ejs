@@ -1,0 +1,19 @@
+<%- include('partials/header') %>
+<p><a href="/admin/users">&larr; Users</a></p>
+<h1>Edit <%= target.display_name %></h1>
+<%- include('partials/errors') %>
+<form method="post" action="/admin/users/<%= target.id %>/edit" class="card stack">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Full name <span class="hint">Shown on their submissions and in the logs.</span>
+    <input name="display_name" value="<%= values.display_name %>" required maxlength="80" autocomplete="off">
+  </label>
+  <label>Username <span class="hint">What they type to sign in. If you change it, tell them.</span>
+    <input name="username" value="<%= values.username %>" required maxlength="40" autocapitalize="none" autocomplete="off">
+  </label>
+  <label>Email <span class="hint">Optional</span>
+    <input name="email" type="email" value="<%= values.email || '' %>" maxlength="120" autocomplete="off">
+  </label>
+  <button class="btn primary" type="submit">Save</button>
+</form>
+<p class="hint spaced">Password, admin access and complaint access are changed from the Users list.</p>
+<%- include('partials/footer') %>

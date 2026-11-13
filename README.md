@@ -127,6 +127,7 @@ With no SMTP settings the site works normally and skips email.
 ## Managing people (`/admin/users`)
 
 - **Add a person**: enter a username and name. The site generates a temporary password and shows it once. Pass it on; the person chooses their own password at first sign-in.
+- **Edit**: change a person's name, username or email after the account exists.
 - **Reset password**: generates a new temporary password, shown once. There is no "forgot password" email; people ask an admin.
 - **Disable**: the person is signed out at once and cannot sign in. Their past submissions stay.
 - **Make admin**: can see every parts and training submission, change status, export, and manage users.

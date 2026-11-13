@@ -728,3 +728,24 @@ test('logo banner and light/dark switch are on every page', async () => {
   assert.match(css, /:root\[data-theme="dark"\]/);
   assert.match(css, /:root:not\(\[data-theme="light"\]\)/);
 });
+
+test('an admin can change a person\'s name, username and email after the account exists', async () => {
+  const admin = await loggedIn('admin');
+  const id = auth.createUser({ username: 'uriah.redos', displayName: 'uriah.redos', password: 'correct horse battery' });
+  db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?').run(id);
+  const page = `/admin/users/${id}/edit`;
+  assert.match((await admin.get('/admin/users')).text, new RegExp(`href="${page}"`));
+  assert.match((await admin.get(page)).text, /value="uriah\.redos"/);
+  assert.equal((await admin.post(page, { username: 'uriah.redos', display_name: 'Uriah Redos', email: '' }, { page })).status, 302);
+  assert.equal(db.prepare('SELECT display_name FROM users WHERE id = ?').get(id).display_name, 'Uriah Redos');
+  const user = await loggedIn('uriah.redos'); // sign-in is unaffected
+  assert.match((await user.get('/')).text, /Hi, Uriah Redos/);
+
+  assert.equal((await admin.post(page, { username: 'tech1', display_name: 'Uriah Redos' }, { page })).status, 400); // taken
+  assert.equal((await admin.post(page, { username: 'uriah.redos', display_name: '' }, { page })).status, 400);
+  assert.equal((await admin.post(page, { username: 'uriah.redos', display_name: 'U', email: 'nope' }, { page })).status, 400);
+  assert.equal((await admin.post(page, { username: 'uredos', display_name: 'Uriah Redos', email: 'u@example.com' }, { page })).status, 302);
+  await loggedIn('uredos');
+  assert.equal((await user.get(page)).status, 403);
+  assert.equal((await user.post(page, { username: 'x', display_name: 'Hacked' })).status, 403);
+});

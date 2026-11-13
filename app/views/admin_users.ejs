@@ -36,6 +36,7 @@
     <td><%= u.can_review_complaints ? 'Can read' : 'No' %></td>
     <td><%= !u.active ? 'Disabled' : u.must_change_password ? 'Temporary password' : 'Active' %></td>
     <td class="row-actions">
+      <a href="/admin/users/<%= u.id %>/edit">Edit</a>
       <% [['reset-password', 'Reset password'], ['toggle-admin', u.role === 'admin' ? 'Remove admin' : 'Make admin'], ['toggle-reviewer', u.can_review_complaints ? 'Remove complaints access' : 'Allow complaints'], ['toggle-active', u.active ? 'Disable' : 'Enable']].forEach(function (op) { %>
       <form method="post" action="/admin/users/<%= u.id %>/<%= op[0] %>"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit"><%= op[1] %></button></form>
       <% }) %>

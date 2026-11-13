@@ -304,6 +304,29 @@ router.post('/admin/users', requireAdmin, (req, res) => {
   res.redirect('/admin/users');
 });
 
+// Change a person's name, username or email after the account exists.
+router.get('/admin/users/:id/edit', requireAdmin, (req, res) => {
+  const target = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
+  if (!target) return res.redirect('/admin/users');
+  res.render('admin_user_edit', { title: 'Edit person', target, values: target, errors: [] });
+});
+
+router.post('/admin/users/:id/edit', requireAdmin, (req, res) => {
+  const target = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
+  if (!target) return res.redirect('/admin/users');
+  const values = { username: clean(req.body.username, 40), display_name: clean(req.body.display_name, 80), email: clean(req.body.email, 120) };
+  const errors = [];
+  if (!/^[a-zA-Z0-9._-]{3,40}$/.test(values.username)) errors.push('Username: 3-40 letters, numbers, dot, dash or underscore.');
+  else if (db.prepare('SELECT 1 FROM users WHERE username = ? AND id <> ?').get(values.username, target.id)) errors.push('That username is already taken.');
+  if (!values.display_name) errors.push('Enter the person\'s name.');
+  if (values.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)) errors.push('That email address does not look right.');
+  if (errors.length) return res.status(400).render('admin_user_edit', { title: 'Edit person', target, values, errors });
+  db.prepare('UPDATE users SET username = ?, display_name = ?, email = ? WHERE id = ?')
+    .run(values.username, values.display_name, values.email || null, target.id);
+  flash(req, 'ok', `${values.display_name} updated.`);
+  res.redirect('/admin/users');
+});
+
 router.post('/admin/users/:id/:op', requireAdmin, (req, res) => {
   const target = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
   if (!target) return res.redirect('/admin/users');
