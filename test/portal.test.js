@@ -2160,3 +2160,26 @@ test('discussions: threads, replies with photos, following, new-reply notices, s
   assert.equal((await t1.get('/discussions')).status, 403);
   access.setPermissions(techProfile, [...access.SUBMIT, 'forum.use']);
 });
+
+test('discussions: a double tap on Post makes one thread and one reply, not two', async () => {
+  access.setPermissions(access.profileByName('Technician').id, [...access.SUBMIT, 'forum.use']);
+  const t1 = await loggedIn('tech1');
+  const intro = db.prepare("SELECT id FROM forum_sections WHERE name = 'Introductions'").get().id;
+  const page = '/discussions/new';
+  const fields = { section_id: String(intro), title: 'Terry T.', body: 'Hello from the install side.' };
+  const [a, b] = await Promise.all([t1.post(page, fields, { page, multipart: true }), t1.post(page, fields, { page, multipart: true })]);
+  assert.equal(a.location, b.location);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM forum_threads WHERE title = 'Terry T.'").get().n, 1);
+  assert.match((await t1.get(page)).text, /<form[^>]*data-once/);
+  // A different message under the same title is a new thread.
+  const other = await t1.post(page, { ...fields, body: 'A second, different hello.' }, { page, multipart: true });
+  assert.notEqual(other.location, a.location);
+  // The same reply twice in a row is kept once; saying something else afterwards is not held back.
+  const tp = a.location;
+  const r1 = await t1.post(`${tp}/reply`, { body: 'Forgot to say: 12 years in.' }, { page: tp, multipart: true });
+  const r2 = await t1.post(`${tp}/reply`, { body: 'Forgot to say: 12 years in.' }, { page: tp, multipart: true });
+  assert.equal(r1.location, r2.location);
+  await t1.post(`${tp}/reply`, { body: 'And one more thing.' }, { page: tp, multipart: true });
+  assert.equal(db.prepare('SELECT reply_count FROM forum_threads WHERE id = ?').get(Number(tp.split('/').pop())).reply_count, 2);
+  db.prepare("DELETE FROM forum_threads WHERE title = 'Terry T.'").run();
+});

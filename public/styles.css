@@ -477,6 +477,7 @@ table.audit .check-cell form { display: block; margin: 0 0 .2rem; }
 .mod-tools summary { cursor: pointer; font-weight: 600; }
 .mod-tools .thread-tools { margin: .75rem 0 0; }
 .link.danger { color: var(--err); }
+.btn[aria-disabled="true"] { opacity: .65; cursor: progress; }
 .posts { display: grid; gap: .75rem; margin-bottom: 1.5rem; }
 .post { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: .85rem 1rem; scroll-margin-top: 1rem; }
 .post.first { border-left: 5px solid var(--accent); }

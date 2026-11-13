@@ -12,6 +12,7 @@ const router = express.Router();
 const use = requirePerm('forum.use');
 const MAX_PHOTOS = 4;
 const PER_PAGE = 30;
+const DOUBLE_POST_MS = 5 * 60 * 1000;
 const isId = (v) => /^\d+$/.test(String(v));
 const isMod = (user) => access.can(user, 'forum.moderate');
 const notFound = (res) => res.status(404).render('error', { title: 'Page not found', message: 'That discussion is not here. It may have been removed.' });
@@ -119,6 +120,12 @@ router.post('/discussions/new', use, uploads.photos('photos', MAX_PHOTOS), verif
   const problem = photoProblem(req);
   if (problem) errors.push(problem);
   if (errors.length) { dropFiles(req); return newForm(req, res, { errors, values }); }
+  // A second tap on "Post" while the first is still sending must not make a second thread.
+  const twin = db.prepare(
+    `SELECT t.id FROM forum_threads t WHERE t.user_id = ? AND t.section_id = ? AND t.title = ? AND t.created_at > ?
+       AND (SELECT body FROM forum_posts p WHERE p.thread_id = t.id ORDER BY p.id LIMIT 1) = ?`)
+    .get(req.user.id, section.id, values.title, new Date(Date.now() - DOUBLE_POST_MS).toISOString(), values.body);
+  if (twin) { dropFiles(req); return res.redirect(`/discussions/t/${twin.id}`); }
 
   const now = new Date().toISOString();
   const id = db.transaction(() => {
@@ -176,6 +183,12 @@ router.post('/discussions/t/:id/reply', use, uploads.photos('photos', MAX_PHOTOS
   const problem = photoProblem(req);
   if (problem) errors.push(problem);
   if (errors.length) { dropFiles(req); return threadPage(req, res, t, { errors, values: { body } }); }
+  // The same reply sent twice in a row (a double tap) is kept once.
+  const lastPost = db.prepare('SELECT id, user_id, body, created_at FROM forum_posts WHERE thread_id = ? ORDER BY id DESC LIMIT 1').get(t.id);
+  if (lastPost && lastPost.user_id === req.user.id && lastPost.body === body && lastPost.created_at > new Date(Date.now() - DOUBLE_POST_MS).toISOString()) {
+    dropFiles(req);
+    return res.redirect(`/discussions/t/${t.id}#p${lastPost.id}`);
+  }
 
   const now = new Date().toISOString();
   const postId = db.transaction(() => {

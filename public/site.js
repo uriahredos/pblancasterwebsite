@@ -73,6 +73,22 @@
       });
     });
 
+    // A form that should only be sent once: a second tap while the first is still sending does nothing.
+    document.querySelectorAll('form[data-once]').forEach(function (form) {
+      var btn = form.querySelector('button[type="submit"]');
+      var label = btn ? btn.textContent : '';
+      form.addEventListener('submit', function (e) {
+        if (form.getAttribute('data-sending')) { e.preventDefault(); return; }
+        form.setAttribute('data-sending', '1');
+        if (btn) { btn.setAttribute('aria-disabled', 'true'); btn.textContent = 'Posting…'; }
+      });
+      // Coming back to the page with the Back button makes the form usable again.
+      window.addEventListener('pageshow', function () {
+        form.removeAttribute('data-sending');
+        if (btn) { btn.removeAttribute('aria-disabled'); btn.textContent = label; }
+      });
+    });
+
     // Do not let a form vanish into a "no internet" page.
     document.querySelectorAll('form[data-offline-guard]').forEach(function (form) {
       var msg = form.querySelector('#offline-msg');

@@ -50,7 +50,7 @@
 <% } else { %>
 <h2 id="reply">Reply</h2>
 <%- include('partials/errors') %>
-<form method="post" action="/discussions/t/<%= t.id %>/reply" enctype="multipart/form-data" class="card stack">
+<form method="post" action="/discussions/t/<%= t.id %>/reply" enctype="multipart/form-data" class="card stack" data-once>
   <input type="hidden" name="_csrf" value="<%= csrf %>">
   <label>Your reply
     <textarea name="body" rows="4" maxlength="6000" required><%= values.body || '' %></textarea>

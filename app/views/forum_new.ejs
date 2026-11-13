@@ -2,7 +2,7 @@
 <p><a href="/discussions">&larr; All discussions</a></p>
 <h1>Start a thread</h1>
 <%- include('partials/errors') %>
-<form method="post" action="/discussions/new" enctype="multipart/form-data" class="card stack">
+<form method="post" action="/discussions/new" enctype="multipart/form-data" class="card stack" data-once>
   <input type="hidden" name="_csrf" value="<%= csrf %>">
   <label>Section
     <select name="section_id" required>
