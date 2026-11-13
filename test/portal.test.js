@@ -1826,3 +1826,27 @@ test('sorting: the audit and the logs can be ordered by date or by name A to Z',
   assert.equal((html.match(/class="sub note"/g) || []).length, 1);                     // nothing printed where there was only the fixed sentence
   db.prepare("DELETE FROM parts_submissions WHERE created_local_date LIKE '2033-05-%'").run();
 });
+
+test('someone who manages training can tidy the wording of a request from the topics page', async () => {
+  const t1 = await loggedIn('tech1');
+  await t1.post('/training', { description: 'need traning on dualcoms asap!!', wants_contact: 'no', is_private: 'no' });
+  const id = db.prepare('SELECT MAX(id) id FROM training_requests').get().id;
+  const owner = await loggedIn('owner');
+  const page = `/training/${id}/edit?back=topics`;
+  assert.match((await owner.get('/training/topics')).text, new RegExp(`href="/training/${id}/edit\\?back=topics">Edit wording`));
+  assert.doesNotMatch((await (await loggedIn('tech2')).get('/training/topics')).text, /Edit wording/);  // not for people who cannot manage training
+  assert.match((await owner.get(page)).text, /Asked by <strong>Terry Tech<\/strong>/);
+  const r = await owner.post(`/training/${id}/edit`, { description: 'DualCom installation: full capture testing', wants_contact: 'no', is_private: 'no', back: 'topics' }, { page });
+  assert.equal(r.location, `/training/topics#t${id}`);
+  const topics = (await owner.get('/training/topics')).text;
+  assert.match(topics, /DualCom installation: full capture testing/); assert.doesNotMatch(topics, /traning on dualcoms/);
+  assert.match(topics, /Asked by Terry Tech/);                                   // still under the person who asked
+  assert.match((await owner.get(`/admin/training/${id}`)).text, /Edited<\/strong> by Olive Owner[\s\S]*Before: need traning on dualcoms asap!!/); // original kept
+  assert.match((await t1.get('/my')).text, /DualCom installation: full capture testing/);
+  assert.equal((await (await loggedIn('tech2')).post(`/training/${id}/edit`, { description: 'x', wants_contact: 'no', is_private: 'no', back: 'topics' })).status, 403);
+  // A manager can reword their own people's requests only.
+  const mgr = await loggedIn('mgr1');
+  assert.equal((await mgr.get(`/training/${id}/edit?back=topics`)).status, 200);
+  await (await loggedIn('tech2')).post('/training', { description: 'other team topic', wants_contact: 'no', is_private: 'no' });
+  assert.equal((await mgr.get(`/training/${db.prepare('SELECT MAX(id) id FROM training_requests').get().id}/edit`)).status, 403);
+});

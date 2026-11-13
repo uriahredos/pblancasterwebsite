@@ -135,7 +135,7 @@ When someone else changes the status or reply on a person's request (parts or tr
 
 ## Training topics, sessions and attendance
 
-- **Topics** (`/training/topics`): everyone who can send training requests sees the open, non-private requests and can tap **I want this too**. The most wanted rise to the top, and the admin training log shows the count.
+- **Topics** (`/training/topics`): everyone who can send training requests sees the open, non-private requests and can tap **I want this too**. People who manage training also see **Edit wording** on each one; the original text stays in that request's history. The most wanted rise to the top, and the admin training log shows the count.
 - **Sessions** (`/admin/training/sessions`, from the Training log): schedule a session with a date, time and place. Scheduling one from a training request lists the requester and everyone who added their name, and sets the request to Scheduled.
 - On the day, tick who came and press **Mark as held**; the linked request becomes Completed.
 - Each person sees **Training attended** under My submissions. The sessions page can filter by person and export attendance as CSV.

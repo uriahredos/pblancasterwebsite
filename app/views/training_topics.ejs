@@ -23,6 +23,7 @@
       <% } else { %>
       <form method="post" action="/training/topics/<%= t.id %>/vote"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn small <%= t.mine ? '' : 'primary' %>" type="submit"><%= t.mine ? 'Take my name off' : 'I want this too' %></button></form>
       <% } %>
+      <% if (can('training.manage')) { %><a href="/training/<%= t.id %>/edit?back=topics">Edit wording</a><% } %>
     </div>
   </li>
 <% }) %>

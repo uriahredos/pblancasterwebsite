@@ -1,7 +1,7 @@
 <%- include('partials/header') %>
 <h1><%= editing ? 'Edit training request' : 'Training request' %></h1>
 <% if (editing) { %>
-<p class="lede">Sent <%= fmtDateTime(editing.created_at) %>. The change is recorded.</p>
+<p class="lede"><% if (editing.user_id !== user.id) { %>Asked by <strong><%= editing.display_name %></strong>. <% } %>Sent <%= fmtDateTime(editing.created_at) %>. The original wording is kept in the request's history.</p>
 <% } else { %>
 <p class="lede">Submitting as <strong><%= user.display_name %></strong>.</p>
 <% } %>
@@ -9,6 +9,7 @@
 <%- include('partials/errors') %>
 <form method="post" action="<%= editing ? '/training/' + editing.id + '/edit' : '/training' %>" class="card stack" <%- editing ? '' : 'data-draft="training:' + user.id + '"' %> <%- !editing && !errors.length ? 'data-draft-restore' : '' %> data-offline-guard>
   <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <% if (typeof back !== 'undefined' && back) { %><input type="hidden" name="back" value="<%= back %>"><% } %>
   <label>Training description
     <span class="hint">What would you like training on? Panels, devices, procedures, anything.</span>
     <textarea name="description" rows="6" maxlength="4000" required><%= values.description || '' %></textarea>

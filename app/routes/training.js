@@ -51,7 +51,7 @@ router.post('/training', requirePerm('training.submit'), (req, res) => {
 const backTo = (user, row) => (user.id === row.user_id ? '/my' : `/admin/training/${row.id}`);
 
 function loadChangeable(req, res) {
-  const row = /^\d+$/.test(req.params.id) ? db.prepare('SELECT * FROM training_requests WHERE id = ?').get(req.params.id) : null;
+  const row = /^\d+$/.test(req.params.id) ? db.prepare('SELECT t.*, u.display_name FROM training_requests t JOIN users u ON u.id = t.user_id WHERE t.id = ?').get(req.params.id) : null;
   if (!row) { res.status(404).render('error', { title: 'Page not found', message: 'That request does not exist.' }); return null; }
   const mayManage = access.can(req.user, 'training.manage') && access.canSee(req.user, row.user_id);
   if (row.user_id !== req.user.id && !mayManage) { forbidden(res); return null; }
@@ -69,7 +69,7 @@ router.get('/training/:id/edit', requireLogin, (req, res) => {
   const row = loadChangeable(req, res);
   if (!row) return;
   res.render('training', {
-    title: 'Edit training request', errors: [], editing: row,
+    title: 'Edit training request', errors: [], editing: row, back: req.query.back === 'topics' ? 'topics' : '',
     values: { description: row.description, wants_contact: row.wants_contact ? 'yes' : 'no', is_private: row.is_private ? 'yes' : 'no' },
   });
 });
@@ -78,7 +78,8 @@ router.post('/training/:id/edit', requireLogin, (req, res) => {
   const row = loadChangeable(req, res);
   if (!row) return;
   const { values, errors } = readForm(req.body);
-  if (errors.length) return res.status(400).render('training', { title: 'Edit training request', values, errors, editing: row });
+  const back = req.body.back === 'topics' ? 'topics' : '';
+  if (errors.length) return res.status(400).render('training', { title: 'Edit training request', values, errors, editing: row, back });
   db.transaction(() => {
     logChange('training', row.id, req.user.id, 'edited', {
       description: row.description, wants_contact: row.wants_contact, is_private: row.is_private,
@@ -87,7 +88,7 @@ router.post('/training/:id/edit', requireLogin, (req, res) => {
       .run(values.description, values.wants_contact === 'yes' ? 1 : 0, values.is_private === 'yes' ? 1 : 0, new Date().toISOString(), row.id);
   })();
   flash(req, 'ok', 'Request updated.');
-  res.redirect(backTo(req.user, row));
+  res.redirect(back === 'topics' ? `/training/topics#t${row.id}` : backTo(req.user, row));
 });
 
 router.post('/training/:id/cancel', requireLogin, (req, res) => {
