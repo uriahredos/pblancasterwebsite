@@ -419,6 +419,15 @@ table.audit .check-cell form { display: block; margin: 0 0 .2rem; }
 .tag.cat-training { background: var(--accent-soft); }
 .tag.cat-safety { background: var(--err-bg); color: var(--err); }
 .tag.cat-event { background: var(--ok-bg); color: var(--ok); }
+/* Critical notices: always first on the home page. */
+.critical { margin-bottom: 1rem; }
+.critical-card { border: 2px solid var(--err); border-left-width: 8px; background: var(--err-bg); margin-bottom: .75rem; }
+.critical-card .rec-head strong { font-size: 1.1rem; }
+.critical-card .meta { margin: 0; }
+.notice-card.is-critical, .notice-card.read.is-critical { border-left-color: var(--err); }
+.tag.crit { background: var(--err); color: #fff; border-color: var(--err); text-transform: uppercase; letter-spacing: .05em; }
+:root[data-theme="dark"] .tag.crit { color: #2a0808; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .tag.crit { color: #2a0808; } }
 .tag.pin { background: var(--pb-navy); color: #fff; border-color: var(--pb-navy); }
 :root[data-theme="dark"] .tag.pin { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .tag.pin { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); } }

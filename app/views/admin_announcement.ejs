@@ -1,7 +1,7 @@
 <%- include('partials/header') %>
 <p><a href="/admin/announcements">&larr; Announcements</a></p>
 <h1><%= a.title %></h1>
-<p><% if (a.category && a.category !== 'general') { %><span class="tag cat-<%= a.category %>"><%= categories[a.category] %></span> <% } %><% if (a.pinned) { %><span class="tag pin">Pinned</span><% } %></p>
+<p><% if (a.category && a.category !== 'general') { %><span class="tag cat-<%= a.category %>"><%= categories[a.category] %></span> <% } %><% if (a.critical) { %><span class="tag crit">Critical</span> <% } %><% if (a.pinned) { %><span class="tag pin">Pinned</span><% } %></p>
 <p class="lede">Posted by <%= a.author %>, <%= fmtDateTime(a.created_at) %> · to <%= a.audience === 'team' ? 'their people' : 'everyone' %><%= a.expires_on ? ' · shown until ' + fmtDate(a.expires_on) : '' %></p>
 <div class="card"><p class="pre"><%= a.body %></p></div>
 <div class="stats">
@@ -20,6 +20,7 @@
   </tbody>
 </table>
 </div>
+<form method="post" action="/admin/announcements/<%= a.id %>/critical" class="spaced"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn small" type="submit"><%= a.critical ? 'Stop showing as critical' : 'Mark as critical (always at the top of the home page)' %></button></form>
 <form method="post" action="/admin/announcements/<%= a.id %>/pin" class="spaced"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn small" type="submit"><%= a.pinned ? 'Unpin from the notice board' : 'Pin to the top of the notice board' %></button></form>
 <form method="post" action="/admin/announcements/<%= a.id %>/delete" class="spaced" data-confirm="Remove this announcement and its read record?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Remove this announcement</button></form>
 <%- include('partials/footer') %>

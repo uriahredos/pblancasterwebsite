@@ -8,7 +8,7 @@
   <tbody>
   <% rows.forEach(function (a) { %>
   <tr class="<%= a.expired ? 'off' : '' %>">
-    <td class="nowrap"><%= fmtDateTime(a.created_at) %></td><td><a href="/admin/announcements/<%= a.id %>"><strong><%= a.title %></strong></a><% if (a.category && a.category !== 'general') { %> <span class="tag cat-<%= a.category %>"><%= categories[a.category] %></span><% } %><% if (a.pinned) { %> <span class="tag pin">Pinned</span><% } %></td><td><%= a.author %></td>
+    <td class="nowrap"><%= fmtDateTime(a.created_at) %></td><td><a href="/admin/announcements/<%= a.id %>"><strong><%= a.title %></strong></a><% if (a.category && a.category !== 'general') { %> <span class="tag cat-<%= a.category %>"><%= categories[a.category] %></span><% } %><% if (a.critical) { %> <span class="tag crit">Critical</span><% } %><% if (a.pinned) { %> <span class="tag pin">Pinned</span><% } %></td><td><%= a.author %></td>
     <td><%= a.audience === 'team' ? 'Their people' : 'Everyone' %></td>
     <td><strong><%= a.read %> of <%= a.total %></strong></td>
     <td class="nowrap"><%= a.expires_on ? fmtDate(a.expires_on) + (a.expired ? ' (ended)' : '') : 'No end date' %></td>
@@ -28,6 +28,7 @@
   <label>About <span class="hint">Shows as a small label on the notice.</span>
     <select name="category"><% Object.keys(categories).forEach(function (k) { %><option value="<%= k %>" <%= (values.category || 'general') === k ? 'selected' : '' %>><%= categories[k] %></option><% }) %></select>
   </label>
+  <label class="choice"><input type="checkbox" name="critical" value="1" <%= values.critical ? 'checked' : '' %>> Critical: keep it at the very top of the home page, even after it is read, until the "show until" date or until you switch it off</label>
   <label class="choice"><input type="checkbox" name="pinned" value="1" <%= values.pinned ? 'checked' : '' %>> Pin to the top of the notice board on the home page</label>
   <label>Show until <span class="hint">Optional. After this date it disappears for people who have not read it.</span>
     <input type="date" name="expires_on" value="<%= values.expires_on || '' %>">

@@ -17,6 +17,20 @@
   <p class="dash-date"><%= dateLine %></p>
 </div>
 
+<% if (critical.length) { %>
+<section class="critical" aria-label="Critical notices">
+<% critical.forEach(function (n) { %>
+<div class="card critical-card">
+  <div class="rec-head"><span class="tag crit">Critical</span><% if (!n.read_at) { %><span class="tag new">New notice</span><% } %><% if (n.category !== 'general') { %><span class="tag cat-<%= n.category %>"><%= categories[n.category] %></span><% } %><strong><%= n.title %></strong><time><%= n.author %>, <%= fmtDateTime(n.created_at) %></time></div>
+  <p class="pre"><%= n.body %></p>
+  <% if (!n.read_at) { %>
+  <form method="post" action="/notices/<%= n.id %>/read"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="back" value="home"><button class="btn primary small" type="submit">I have read this</button></form>
+  <% } else { %><p class="meta">You read this on <%= fmtDateTime(n.read_at) %><%= n.expires_on ? '. Showing until ' + fmtDate(n.expires_on) : '' %>.</p><% } %>
+</div>
+<% }) %>
+</section>
+<% } %>
+
 <% if (notices.length || myCerts.length) { %>
 <section class="attention" aria-label="Needs your attention">
 <% notices.forEach(function (n) { %>
@@ -70,7 +84,7 @@
 
     <section class="panel" aria-labelledby="board-h">
       <div class="panel-head"><h2 id="board-h">Notice board</h2><a href="/notices">All notices</a></div>
-      <% if (!board.length) { %><p class="empty"><%= notices.length ? 'Nothing else posted right now.' : 'No notices right now.' %></p><% } %>
+      <% if (!board.length) { %><p class="empty"><%= notices.length || critical.length ? 'Nothing else posted right now.' : 'No notices right now.' %></p><% } %>
       <ul class="board">
         <% board.forEach(function (n) { %>
         <li class="cat-<%= n.category %>">

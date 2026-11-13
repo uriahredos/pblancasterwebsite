@@ -15,12 +15,12 @@ const CURRENT = `(a.expires_on IS NULL OR a.expires_on >= @today)`;
 // What an announcement is about. 'general' shows no label.
 const CATEGORIES = { general: 'General', hr: 'HR', training: 'Training', safety: 'Safety', event: 'Event' };
 
-/** Current announcements for this person: unread first, then pinned, then newest. */
+/** Current announcements for this person: unread first, then critical, then pinned, then newest. */
 function forUser(userId) {
   return db.prepare(
     `SELECT a.*, u.display_name AS author, r.read_at FROM announcements a JOIN users u ON u.id = a.created_by
      LEFT JOIN announcement_reads r ON r.announcement_id = a.id AND r.user_id = @me
-     WHERE ${FOR_ME} AND ${CURRENT} ORDER BY r.read_at IS NOT NULL, a.pinned DESC, a.id DESC LIMIT 100`).all({ me: userId, today: localDate() });
+     WHERE ${FOR_ME} AND ${CURRENT} ORDER BY r.read_at IS NOT NULL, a.critical DESC, a.pinned DESC, a.id DESC LIMIT 100`).all({ me: userId, today: localDate() });
 }
 const unreadCount = (userId) => db.prepare(
   `SELECT COUNT(*) AS n FROM announcements a WHERE ${FOR_ME} AND ${CURRENT}
@@ -69,14 +69,15 @@ router.post('/admin/announcements', requirePerm('announcements.post'), (req, res
   const values = {
     title: clean(req.body.title, 120), body: clean(req.body.body, 4000), expires_on: clean(req.body.expires_on, 10),
     category: Object.hasOwn(CATEGORIES, req.body.category) ? req.body.category : 'general', pinned: req.body.pinned === '1' ? 1 : 0,
+    critical: req.body.critical === '1' ? 1 : 0,
   };
   const errors = [];
   if (!values.title) errors.push('Enter a title.');
   if (!values.body) errors.push('Enter the announcement.');
   if (values.expires_on && !isYmd(values.expires_on)) errors.push('The "show until" date does not look right.');
   if (errors.length) return listPage(req, res, { errors, values });
-  const info = db.prepare('INSERT INTO announcements (title, body, audience, expires_on, category, pinned, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-    .run(values.title, values.body, req.user.scope === 'team' ? 'team' : 'all', values.expires_on || null, values.category, values.pinned, req.user.id, new Date().toISOString());
+  const info = db.prepare('INSERT INTO announcements (title, body, audience, expires_on, category, pinned, critical, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(values.title, values.body, req.user.scope === 'team' ? 'team' : 'all', values.expires_on || null, values.category, values.pinned, values.critical, req.user.id, new Date().toISOString());
   // The person posting has obviously read it.
   db.prepare('INSERT INTO announcement_reads (announcement_id, user_id, read_at) VALUES (?, ?, ?)').run(info.lastInsertRowid, req.user.id, new Date().toISOString());
   activity.log(req.user, 'Announcement posted', values.title);
@@ -100,6 +101,17 @@ router.get('/admin/announcements/:id', requirePerm('announcements.post'), (req, 
   res.render('admin_announcement', {
     title: a.title, a, categories: CATEGORIES, read: people.filter((p) => p.read_at).sort((x, y) => x.read_at.localeCompare(y.read_at)), unread: people.filter((p) => !p.read_at),
   });
+});
+
+// Critical announcements show at the very top of the home page every time it is opened,
+// even after they are read, until their "show until" date passes or this is switched off.
+router.post('/admin/announcements/:id/critical', requirePerm('announcements.post'), (req, res) => {
+  const a = load(req, res);
+  if (!a) return;
+  db.prepare('UPDATE announcements SET critical = ? WHERE id = ?').run(a.critical ? 0 : 1, a.id);
+  activity.log(req.user, a.critical ? 'Announcement no longer critical' : 'Announcement marked critical', a.title);
+  flash(req, 'ok', a.critical ? 'No longer critical. It is back on the notice board.' : 'Marked critical. It now stays at the top of the home page.');
+  res.redirect(`/admin/announcements/${a.id}`);
 });
 
 // Pinned announcements stay at the top of the notice board on the home page.

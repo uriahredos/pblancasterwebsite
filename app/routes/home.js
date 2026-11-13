@@ -31,8 +31,10 @@ router.get('/', requireLogin, (req, res) => {
   const today = localDate();
   const all = require('./announcements').forUser(me);
   // Unread announcements sit at the top until read; after that they stay on the notice board.
-  const notices = all.filter((n) => !n.read_at);
-  const board = all.filter((n) => n.read_at).sort((x, y) => y.pinned - x.pinned || y.id - x.id).slice(0, 4);
+  // Critical ones are always first on the page, read or not.
+  const critical = all.filter((n) => n.critical).sort((x, y) => y.id - x.id);
+  const notices = all.filter((n) => !n.read_at && !n.critical);
+  const board = all.filter((n) => n.read_at && !n.critical).sort((x, y) => y.pinned - x.pinned || y.id - x.id).slice(0, 4);
   const myCerts = db.prepare('SELECT * FROM certifications WHERE user_id = ? AND expires_on IS NOT NULL').all(me)
     .map((c) => certs.decorate(c, today)).filter((c) => c.status === 'expired' || (c.status === 'soon' && c.days <= 30));
 
@@ -72,7 +74,7 @@ router.get('/', requireLogin, (req, res) => {
   const now = new Date();
   const dateLine = new Intl.DateTimeFormat('en-US', { timeZone: config.timezone, weekday: 'long', month: 'long', day: 'numeric' }).format(now);
   res.render('home', {
-    title: 'Home', wide: true, notices, board, myCerts, issue: issues[0] || null, pastIssues: issues.slice(1), upcoming, status, dateLine,
+    title: 'Home', wide: true, critical, notices, board, myCerts, issue: issues[0] || null, pastIssues: issues.slice(1), upcoming, status, dateLine,
     categories: require('./announcements').CATEGORIES,
   });
 });

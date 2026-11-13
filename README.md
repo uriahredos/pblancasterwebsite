@@ -177,6 +177,7 @@ Record each person's licenses and certifications with an optional issuer, number
 
 The home page is a dashboard. From the top:
 
+- **Critical notices**: announcements marked critical, always first and shown every time, read or not.
 - **Needs your attention**: announcements the person has not read yet, and their certifications that are expired or expire within 30 days.
 - **What do you need to do?**: the forms their profile allows, as buttons.
 - **The Monthly Barker**: the newest newsletter with its cover and highlights, and the three before it.
@@ -199,6 +200,7 @@ On a phone it is one column with the buttons first; on a wider screen the newsle
 - Anyone with **Post announcements** can post a title and message, with an optional "show until" date.
 - Someone who sees everyone posts to **everyone**. A manager posts to **their own people**.
 - It shows at the top of each person's home page until they press **I have read this**, then stays on the home page notice board and their Notices page. The menu shows how many are unread.
+- **Critical** keeps it at the very top of everyone's home page, even after they have read it, until its "show until" date passes or it is switched off from the announcement's own page. Use it for things like open enrollment.
 - **About** adds a small label (HR, Training, Safety or Event). **Pin** keeps it at the top of the notice board; pin or unpin later from the announcement's own page.
 - The poster sees "7 of 12 read", and a page listing who has read it (with the time) and who has not.
 

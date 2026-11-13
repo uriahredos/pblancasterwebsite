@@ -2000,3 +2000,45 @@ test('home dashboard: notice board with labels and pins, coming up, and my statu
   db.prepare('DELETE FROM training_requests WHERE id = ?').run(priv);
   db.prepare('DELETE FROM announcements WHERE id IN (?, ?)').run(pinId, plainId);
 });
+
+test('a critical announcement stays at the top of the home page, read or not, until it ends or is switched off', async () => {
+  const owner = await loggedIn('owner');
+  const t2 = await loggedIn('tech2');
+  const page = '/admin/announcements';
+  await owner.post(page, { title: 'Open enrollment', body: 'Update your selections by Friday.', category: 'hr', critical: '1' }, { page });
+  const id = db.prepare('SELECT MAX(id) id FROM announcements').get().id;
+  assert.equal(db.prepare('SELECT critical FROM announcements WHERE id = ?').get(id).critical, 1);
+  await owner.post(page, { title: 'Ordinary news', body: 'Nothing urgent.' }, { page });
+  const plain = db.prepare('SELECT MAX(id) id FROM announcements').get().id;
+  assert.equal(db.prepare('SELECT critical FROM announcements WHERE id = ?').get(plain).critical, 0);
+
+  // First on the page, above the newer ordinary notice, and shown once only.
+  let home = (await t2.get('/')).text;
+  assert.match(home, /class="critical"[\s\S]*Critical<\/span><span class="tag new">New notice[\s\S]*Open enrollment[\s\S]*class="attention"[\s\S]*Ordinary news/);
+  assert.equal(home.match(/Open enrollment/g).length, 1);
+  // Still there after it is read, without the button, and not repeated on the notice board.
+  await t2.post(`/notices/${id}/read`, { back: 'home' }, { page: '/' });
+  home = (await t2.get('/')).text;
+  const top = /<section class="critical"[\s\S]*?<\/section>/.exec(home)[0];
+  assert.match(top, /Open enrollment[\s\S]*Update your selections by Friday\.[\s\S]*You read this on/);
+  assert.doesNotMatch(top, /I have read this|New notice/);
+  assert.doesNotMatch(/<ul class="board">[\s\S]*?<\/ul>/.exec(home)[0], /Open enrollment/);
+  assert.match((await t2.get('/notices')).text, /is-critical[\s\S]*?Critical<\/span>[\s\S]*?Open enrollment/);
+  assert.match((await owner.get(page)).text, /Open enrollment<\/strong><\/a> <span class="tag cat-hr">HR<\/span> <span class="tag crit">Critical/);
+
+  // Past its "show until" date it is gone.
+  db.prepare("UPDATE announcements SET expires_on = '2020-01-01' WHERE id = ?").run(id);
+  assert.doesNotMatch((await t2.get('/')).text, /Open enrollment/);
+  db.prepare('UPDATE announcements SET expires_on = NULL WHERE id = ?').run(id);
+
+  // Switched off, it drops to the notice board; an existing announcement can be switched on the same way.
+  assert.equal((await t2.post(`${page}/${id}/critical`, {})).status, 403);
+  assert.match((await owner.get(`${page}/${id}`)).text, /Stop showing as critical/);
+  await owner.post(`${page}/${id}/critical`, {}, { page: `${page}/${id}` });
+  home = (await t2.get('/')).text;
+  assert.doesNotMatch(home, /class="critical"/);
+  assert.match(/<ul class="board">[\s\S]*?<\/ul>/.exec(home)[0], /Open enrollment/);
+  await owner.post(`${page}/${plain}/critical`, {}, { page: `${page}/${plain}` });
+  assert.match((await t2.get('/')).text, /<section class="critical"[\s\S]*Ordinary news[\s\S]*<\/section>/);
+  db.prepare('DELETE FROM announcements WHERE id IN (?, ?)').run(id, plain);
+});

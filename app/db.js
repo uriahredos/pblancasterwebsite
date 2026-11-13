@@ -279,6 +279,8 @@ CREATE INDEX IF NOT EXISTS newsletters_month ON newsletters(issue_month);
 `);
 addColumn('announcements', 'category', "TEXT NOT NULL DEFAULT 'general'");
 addColumn('announcements', 'pinned', 'INTEGER NOT NULL DEFAULT 0');
+// Critical announcements stay at the very top of the home page, read or not, until they end or are unmarked.
+addColumn('announcements', 'critical', 'INTEGER NOT NULL DEFAULT 0');
 
 if (db.prepare('SELECT COUNT(*) AS n FROM inspection_items').get().n === 0) {
   const add = db.prepare('INSERT INTO inspection_items (label, sort) VALUES (?, ?)');
