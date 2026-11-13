@@ -1,0 +1,34 @@
+<%- include('partials/header') %>
+<p><a href="/admin/users">&larr; Users</a></p>
+<h1>Import old data</h1>
+<p class="lede">Brings in the history from the old Microsoft Forms: parts taken, returned and requested, and training requests. Already imported: <strong><%= counts.parts %></strong> parts <%= counts.parts === 1 ? 'entry' : 'entries' %> and <strong><%= counts.training %></strong> training <%= counts.training === 1 ? 'request' : 'requests' %>.</p>
+<% if (result) { %>
+<div class="card stack">
+  <p class="flash ok">Imported <strong><%= result.parts %></strong> parts <%= result.parts === 1 ? 'entry' : 'entries' %> and <strong><%= result.training %></strong> training <%= result.training === 1 ? 'request' : 'requests' %>.<% if (result.already) { %> <%= result.already %> were already here and were left alone.<% } %><% if (result.skipped) { %> <%= result.skipped %> could not be read and were skipped.<% } %></p>
+  <% if (result.matched.length) { %><p><strong>Added to existing accounts:</strong> <%= result.matched.join(', ') %></p><% } %>
+  <% if (result.created.length) { %><p><strong>New accounts created, disabled:</strong> <%= result.created.join(', ') %></p>
+  <p class="hint">These people cannot sign in yet. When someone is ready to use the site, open <a href="/admin/users">Users</a>, press Enable, then Reset password, and give them the temporary password. Their history will already be there.</p><% } %>
+</div>
+<% } %>
+<div class="notice">
+  <p><strong>What happens</strong></p>
+  <p>Each old entry is added under the person who sent it, with its original date. People who do not have an account get one that is switched off, so their history has a name on it.</p>
+  <p>The old form was free typing, so parts and quantities were worked out from what people wrote. Where that was a judgment call, the entry's note keeps the original wording after "As typed:".</p>
+  <p>It is safe to import the same file twice: entries already here are skipped. Old entries do not change stock levels.</p>
+</div>
+<form method="post" action="/admin/import" enctype="multipart/form-data" class="card stack">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Import file <span class="hint">The .json file prepared from your Microsoft Forms exports.</span>
+    <input type="file" name="file" accept=".json,application/json" required>
+  </label>
+  <label class="choice"><input type="checkbox" name="close_requests" value="1" checked> <span>Mark old parts requests as Fulfilled <span class="hint">The old form never recorded whether a request was filled. Untick to bring them in as open requests instead.</span></span></label>
+  <button class="btn primary" type="submit">Import</button>
+</form>
+<% if (can('records.delete') && (counts.parts || counts.training)) { %>
+<form method="post" action="/admin/import/undo" class="spaced danger-zone" data-confirm="Remove all <%= counts.parts %> imported parts entries and <%= counts.training %> imported training requests? Entries made in this site are not touched.">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <button class="btn small danger" type="submit">Remove everything that was imported</button>
+  <p class="hint">For starting over with a corrected file. Entries people made in this site, and all accounts, are left alone.</p>
+</form>
+<% } %>
+<%- include('partials/footer') %>

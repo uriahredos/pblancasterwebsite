@@ -73,7 +73,8 @@
         ['announcements.post', '/admin/announcements', 'Announcements', is('/admin/announcements')],
         ['complaints.review', '/admin/complaints', 'Complaints', is('/admin/complaints')],
         ['activity.view', '/admin/activity', 'Activity log', is('/admin/activity')],
-        ['backups', '/admin/backups', 'Backups', is('/admin/backups')]
+        ['backups', '/admin/backups', 'Backups', is('/admin/backups')],
+        [user.scope === 'all' ? 'users.manage' : 'no.such.permission', '/admin/import', 'Import old data', is('/admin/import')]
       ] }
     ].map(function (g) {
       // Keep what this person may use; drop dividers left at an edge or doubled up.

@@ -183,6 +183,9 @@ addColumn('parts_catalog', 'count_at', 'TEXT');
 addColumn('parts_catalog', 'min_level', 'INTEGER');
 addColumn('parts_submissions', 'truck', 'TEXT');
 addColumn('users', 'default_truck', 'TEXT');
+// Entries brought in from the old Microsoft Forms carry a reference, so the same file is never imported twice.
+addColumn('parts_submissions', 'import_ref', 'TEXT');
+addColumn('training_requests', 'import_ref', 'TEXT');
 // Set when someone else changes the status, cleared when the sender opens "My submissions".
 addColumn('parts_submissions', 'unseen', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('training_requests', 'unseen', 'INTEGER NOT NULL DEFAULT 0');

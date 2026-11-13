@@ -804,7 +804,7 @@ test('starting profiles: Technician, Warehouse, Manager and Admin each see only 
   assert.deepEqual(navLinks((await wh.get('/')).text), ['/admin/parts', '/admin/requests', '/admin/parts/audit', '/admin/stock', '/admin/parts/summary', '/admin/catalog', '/admin/inspections', '/admin/inspections/checklist']);
   assert.deepEqual(navLinks((await owner.get('/')).text),
     ['/admin/parts', '/admin/requests', '/admin/parts/audit', '/admin/stock', '/admin/parts/summary', '/admin/catalog', '/admin/inspections', '/admin/inspections/checklist',
-      '/admin/training', '/admin/training/sessions', '/admin/certs', '/admin/users', '/admin/profiles', '/admin/announcements', '/admin/complaints', '/admin/activity', '/admin/backups']);
+      '/admin/training', '/admin/training/sessions', '/admin/certs', '/admin/users', '/admin/profiles', '/admin/announcements', '/admin/complaints', '/admin/activity', '/admin/backups', '/admin/import']);
 
   for (const url of ['/admin/parts', '/admin/parts/audit', '/admin/parts/summary', '/admin/catalog']) assert.equal((await wh.get(url)).status, 200, url);
   for (const url of ['/admin/training', '/admin/users', '/admin/profiles', '/admin/complaints', '/admin/backups']) assert.equal((await wh.get(url)).status, 403, url);
@@ -1656,7 +1656,7 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
   assert.deepEqual(groupsOf(owner), ['Parts', 'Trucks', 'Training', 'Admin']);
   assert.deepEqual(barLinks(owner), ['/', '/notices', '/my', '/complaint']);
   const admin = /<summary[^>]*>Admin[\s\S]*?<\/details>/.exec(owner)[0];
-  for (const link of ['/admin/users', '/admin/profiles', '/admin/announcements', '/admin/complaints', '/admin/activity', '/admin/backups']) assert.ok(admin.includes(`href="${link}"`), link);
+  for (const link of ['/admin/users', '/admin/profiles', '/admin/announcements', '/admin/complaints', '/admin/activity', '/admin/backups', '/admin/import']) assert.ok(admin.includes(`href="${link}"`), link);
   assert.match(admin, /<summary aria-current="true">Admin/);               // the group you are in is marked
   assert.match(admin, /href="\/admin\/users" aria-current="page"/);
   assert.match(owner, /id="menu-toggle"/);                                 // the phone Menu button
@@ -1678,4 +1678,109 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
   // Styles and scripts carry a version so a new release is not shown with old files.
   assert.match(owner, /href="\/styles\.css\?v=[a-z0-9]+"/);
   assert.equal((await new Client().get('/styles.css?v=anything')).status, 200);
+});
+
+test('importing old Microsoft Forms data: history lands under the right people with its original dates', async () => {
+  const owner = await loggedIn('owner');
+  const page = '/admin/import';
+  const file = {
+    format: 'pb-portal-import-1',
+    people: [
+      { key: 'terry tech', name: 'Terry Tech', email: 'someone.else@example.com', username: 'ttech' },      // matches an existing account by name
+      { key: 'uma', name: 'Uma From Forms', email: 'UMA@example.com', username: 'uma.forms' },              // matches by email, whatever the case
+      { key: 'old hand', name: 'Olga Oldhand', email: 'olga@example.com', username: 'olga.oldhand' },       // no account yet
+      { key: 'clash', name: 'Clara Clash', email: 'clara@example.com', username: 'tech1' },                 // wanted username is taken
+    ],
+    parts: [
+      { ref: 'forms-parts-1', person: 'old hand', action: 'take', created_at: '2026-03-20T11:33:23.000Z', local_date: '2026-03-20',
+        items: [{ part_name: 'IMP-A', quantity: 7 }, { part_name: 'IMP-B', quantity: 2 }], source: 'job', job_number: '46926422', truck: null, needed_by: null, note: 'Imported from Microsoft Forms (response 1).' },
+      { ref: 'forms-parts-2', person: 'terry tech', action: 'return', created_at: '2026-04-02T13:00:00.000Z', local_date: '2026-04-02',
+        items: [{ part_name: 'IMP-A', quantity: 1 }], source: 'van', job_number: null, truck: '309', needed_by: null, note: 'Imported from Microsoft Forms (response 2). As typed: IMP-A 1' },
+      { ref: 'forms-parts-3', person: 'uma', action: 'request', created_at: '2026-04-09T16:29:44.000Z', local_date: '2026-04-09',
+        items: [{ part_name: 'IMP-C', quantity: 4 }], source: 'van', job_number: null, truck: null, needed_by: '2026-04-15', note: null },
+      { ref: 'forms-parts-4', person: 'nobody', action: 'take', created_at: '2026-04-09T16:29:44.000Z', local_date: '2026-04-09', items: [{ part_name: 'X', quantity: 1 }], source: 'van' },       // unknown person
+      { ref: 'forms-parts-5', person: 'clash', action: 'steal', created_at: '2026-04-09T16:29:44.000Z', local_date: '2026-04-09', items: [{ part_name: 'X', quantity: 1 }], source: 'van' },        // bad action
+      { ref: 'forms-parts-6', person: 'clash', action: 'take', created_at: 'yesterday', local_date: '2026-04-09', items: [{ part_name: 'X', quantity: 1 }], source: 'van' },                        // bad date
+      { ref: 'forms-parts-7', person: 'clash', action: 'take', created_at: '2026-04-09T16:29:44.000Z', local_date: '2026-04-09', items: [{ part_name: 'X', quantity: 0 }], source: 'van' },        // no usable parts
+    ],
+    training: [
+      { ref: 'forms-training-1', person: 'old hand', created_at: '2026-10-21T12:17:30.000Z', local_date: '2026-10-21', description: 'IMPORTED zone expanders\nSecond line', wants_contact: false, is_private: true },
+    ],
+  };
+  const send = (obj, extra = {}) => owner.post(page, [['file', new File([typeof obj === 'string' ? obj : JSON.stringify(obj)], 'import.json', { type: 'application/json' })], ...Object.entries(extra)], { multipart: true, page });
+  const usersBefore = db.prepare('SELECT COUNT(*) n FROM users').get().n;
+  const stockBefore = JSON.stringify(stockLib.list().map((r) => [r.part_number, r.on_hand]));
+
+  // Files that are not an import file change nothing.
+  for (const bad of ['not json', { format: 'something-else', people: [], parts: [], training: [] }, { format: 'pb-portal-import-1' }]) {
+    assert.equal((await send(bad)).status, 302);
+    assert.match((await owner.get(page)).text, /could not be read|not an import file/);
+  }
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM users').get().n, usersBefore);
+
+  assert.equal((await send(file, { close_requests: '1' })).status, 302);
+  const report = (await owner.get(page)).text.replace(/\s+/g, ' ');
+  assert.match(report, /Imported <strong>3<\/strong> parts entries and <strong>1<\/strong> training request\./);
+  assert.match(report, /4 could not be read and were skipped/);
+  assert.match(report, /Added to existing accounts:<\/strong> Terry Tech, Uma From Forms/);
+  assert.match(report, /New accounts created, disabled:<\/strong> Olga Oldhand, Clara Clash/);
+
+  // New people get a switched-off account nobody can sign in to, on the Technician profile.
+  const olga = db.prepare("SELECT * FROM users WHERE username = 'olga.oldhand'").get();
+  assert.deepEqual([olga.display_name, olga.email, olga.active, olga.profile_id, olga.is_master], ['Olga Oldhand', 'olga@example.com', 0, profileId('Technician'), 0]);
+  assert.equal(db.prepare("SELECT username FROM users WHERE display_name = 'Clara Clash'").get().username, 'tech3');  // "tech1" and "tech2" were taken, so the next free name
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM users').get().n, usersBefore + 2);
+  assert.equal((await new Client().post('/login', { username: 'olga.oldhand', password: '' }, { page: '/login' })).status, 401);
+
+  // Entries keep their original date, person, parts and details.
+  const take = db.prepare("SELECT * FROM parts_submissions WHERE import_ref = 'forms-parts-1'").get();
+  assert.deepEqual([take.user_id, take.action, take.source, take.job_number, take.created_at, take.created_local_date, take.status, take.unseen],
+    [olga.id, 'take', 'job', '46926422', '2026-03-20T11:33:23.000Z', '2026-03-20', null, 0]);
+  assert.deepEqual(itemsOf(take.id), [{ part_name: 'IMP-A', quantity: 7 }, { part_name: 'IMP-B', quantity: 2 }]);
+  const ret = db.prepare("SELECT * FROM parts_submissions WHERE import_ref = 'forms-parts-2'").get();
+  assert.deepEqual([ret.user_id, ret.truck], [userId('tech1'), '309']);
+  const reqRow = db.prepare("SELECT * FROM parts_submissions WHERE import_ref = 'forms-parts-3'").get();
+  assert.deepEqual([reqRow.user_id, reqRow.status, reqRow.needed_by], [userId('tech2'), 'fulfilled', '2026-04-15']);  // matched by email; closed as asked
+  assert.match(reqRow.admin_note, /did not record whether this was filled/);
+  const tr = db.prepare("SELECT * FROM training_requests WHERE import_ref = 'forms-training-1'").get();
+  assert.deepEqual([tr.user_id, tr.description, tr.is_private, tr.status, tr.created_local_date], [olga.id, 'IMPORTED zone expanders\nSecond line', 1, 'new', '2026-10-21']);
+
+  // They show up in the logs, audit and summary for their own dates, and do not move stock or the requests queue.
+  assert.match((await owner.get('/admin/parts?from=2026-03-20&to=2026-03-20')).text, /7 × IMP-A/);
+  assert.match((await owner.get('/admin/parts/audit?from=2026-03-01&to=2026-04-30')).text, /Olga Oldhand/);
+  assert.match((await owner.get('/admin/parts/summary.csv?q=IMP-A')).text, /IMP-A,,7,1,6,0,2/);
+  assert.match((await owner.get('/admin/training?q=IMPORTED')).text, /Olga Oldhand/);
+  assert.doesNotMatch((await owner.get('/admin/requests')).text, /IMP-C/);
+  assert.equal(JSON.stringify(stockLib.list().map((r) => [r.part_number, r.on_hand])), stockBefore);
+  assert.match((await (await loggedIn('tech1')).get('/my')).text, /1 × IMP-A/);                       // and under the person's own history
+  assert.doesNotMatch((await (await loggedIn('tech1')).get('/my')).text, new RegExp(`/parts/${ret.id}/edit`)); // too old to edit
+
+  // Importing the same file again adds nothing.
+  await send(file, { close_requests: '1' });
+  assert.match((await owner.get(page)).text.replace(/\s+/g, ' '), /Imported <strong>0<\/strong> parts entries and <strong>0<\/strong> training requests\. 4 were already here/);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM parts_submissions WHERE import_ref IS NOT NULL').get().n, 3);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM users').get().n, usersBefore + 2);
+
+  // Who may use it.
+  for (const who of ['tech1', 'wh1', 'mgr1']) {
+    const c = await loggedIn(who);
+    assert.equal((await c.get(page)).status, 403, who);
+    assert.equal((await c.post(page, [['file', new File([JSON.stringify(file)], 'i.json')]], { multipart: true })).status, 403, who);
+    assert.equal((await c.post(`${page}/undo`, {})).status, 403, who);
+  }
+
+  // Undo takes out what was imported and nothing else; accounts stay. A fresh import can leave requests open.
+  const mine = db.prepare('SELECT COUNT(*) n FROM parts_submissions WHERE import_ref IS NULL').get().n;
+  await owner.post(`${page}/undo`, {}, { page });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM parts_submissions WHERE import_ref IS NOT NULL').get().n, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM training_requests WHERE import_ref IS NOT NULL').get().n, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM parts_submissions WHERE import_ref IS NULL').get().n, mine);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM users').get().n, usersBefore + 2);
+  await send(file);                                                                                    // box unticked this time
+  assert.equal(db.prepare("SELECT status FROM parts_submissions WHERE import_ref = 'forms-parts-3'").get().status, 'new');
+  assert.match((await owner.get('/admin/requests')).text, /IMP-C/);
+  assert.match((await owner.get(page)).text.replace(/\s+/g, ' '), /Added to existing accounts:<\/strong> Terry Tech, Uma From Forms, Olga Oldhand, Clara Clash/); // no second set of accounts
+  await owner.post(`${page}/undo`, {}, { page });
+  const log = db.prepare("SELECT action FROM activity_log WHERE action IN ('Old data imported', 'Imported data removed')").all().map((r) => r.action);
+  assert.ok(log.includes('Old data imported') && log.includes('Imported data removed'));
 });

@@ -188,6 +188,19 @@ People whose profile has **Permanently delete...** ticked see a delete button at
 - Deleting a complaint means its tracking code no longer finds anything.
 - Each deletion is written to the activity log with who did it. For a complaint the log says only that one was deleted; for a private training request it leaves out the wording.
 
+## Importing the old Microsoft Forms history (`/admin/import`)
+
+Under **Admin > Import old data**. It takes an import file (`.json`) prepared from the two Forms exports and adds each old parts entry and training request under the person who sent it, with its original date.
+
+- **People**: someone is matched to an existing account by email address or by full name. Anyone not found gets a new account that is switched off, on the Technician profile, so their history has a name on it. To let them in, press Enable and Reset password on the Users page.
+- **Parts and quantities**: the old form was free typing ("(7) SIGA-CT2", "5x 12-7", "3 Cases (15) batteries"). Each line was read into a part and a quantity. Where that needed a judgment call, the entry's note keeps the original wording after "As typed:". A line with no quantity counts as 1. Something counted in cases with no total given is recorded as, for example, "3 x SLA12-7F batteries (cases)".
+- **Van stock or job**: an eight-digit number or an LPF number is taken as the job number; "Truck 309" or "309" as the truck; anything else is van stock, with unusual wording kept in the note.
+- **Old parts requests** can be brought in as Fulfilled (the default, since the old form never recorded an outcome) or as open requests.
+- Importing the same file twice adds nothing the second time. Old entries do not change stock levels, and nobody is notified.
+- **Remove everything that was imported** (needs the delete permission) takes the imported entries back out, for starting over with a corrected file. Accounts are left alone.
+
+The import file contains people's names and emails, so it is not kept in the code repository.
+
 ## Editing and cancelling
 
 - A person can edit or cancel their own parts entry or training request from **My submissions** for 24 hours (`EDIT_WINDOW_HOURS`), as long as nobody has acted on it (a request that is no longer "New" is locked).
@@ -296,4 +309,4 @@ scripts/create-admin.js
 test/portal.test.js  automated tests
 ```
 
-Not in this prototype: Microsoft/Outlook sign-in, importing the old Microsoft Forms history.
+Not in this prototype: Microsoft/Outlook sign-in.
