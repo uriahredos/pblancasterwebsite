@@ -1,0 +1,18 @@
+<%- include('partials/header') %>
+<div class="title-row"><h1>QR code sign</h1><button type="button" class="btn primary small" data-print>Print</button></div>
+<p class="hint">Print this and hang it up. Scanning the code opens the site; anyone not signed in gets the sign-in page first, and a phone is then offered the app.</p>
+<div class="poster">
+  <h2>SCAN ME</h2>
+  <p class="poster-sub">Lancaster Branch Portal</p>
+  <img class="poster-logo" src="/logo.png" alt="Pye-Barker Fire &amp; Safety" width="640" height="168">
+  <div class="qr"><%- qr %></div>
+  <ul>
+    <li>Parts: take, return, request</li>
+    <li>Training &amp; truck inspections</li>
+    <li>Notices &amp; newsletters</li>
+  </ul>
+  <p class="poster-url"><%= url %></p>
+  <p class="poster-how">Point your phone's camera at the code and tap the link that pops up.</p>
+</div>
+<script src="/poster.js?v=<%= assetV %>"></script>
+<%- include('partials/footer') %>

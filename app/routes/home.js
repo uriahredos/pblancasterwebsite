@@ -1,5 +1,6 @@
 'use strict';
 const express = require('express');
+const QRCode = require('qrcode');
 const db = require('../db');
 const { requireLogin } = require('../auth');
 const { canChange } = require('../changes');
@@ -22,6 +23,16 @@ function clock(hm) {
   const h = Number(m[1]);
   return `${h % 12 || 12}:${m[2]} ${h < 12 ? 'AM' : 'PM'}`;
 }
+
+// A printable sign with a QR code that opens this site. The address is BASE_URL when that
+// is set, otherwise whatever address the page was opened at.
+router.get('/poster', requireLogin, async (req, res, next) => {
+  try {
+    const url = process.env.BASE_URL ? config.baseUrl : `${req.protocol}://${req.get('host')}`;
+    const qr = await QRCode.toString(`${url}/`, { type: 'svg', errorCorrectionLevel: 'Q', margin: 2 });
+    res.render('poster', { title: 'QR code sign', url, qr });
+  } catch (err) { next(err); }
+});
 
 // The home page is a dashboard: what needs attention, quick actions, the newsletter,
 // the notice board, what is coming up, and where this person's own submissions stand.

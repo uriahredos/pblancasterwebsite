@@ -1,8 +1,56 @@
-// Runs on every page: home-screen app support, saved drafts, and a few small helpers.
+// Runs on every page: home-screen app support and its "Get the app" bar, saved drafts, and a few small helpers.
 (function () {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(function () {});
   }
+
+  // "Get the app" bar. Only on a phone or tablet, only in the browser: inside the installed
+  // app (opened from the home screen) it never shows. "Not now" hides it for two weeks.
+  var ua = navigator.userAgent || '';
+  var isIOS = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  var isAndroid = /Android/.test(ua);
+  function inApp() {
+    return navigator.standalone === true ||
+      (window.matchMedia && ['standalone', 'fullscreen', 'minimal-ui'].some(function (m) { return window.matchMedia('(display-mode: ' + m + ')').matches; }));
+  }
+  function snoozed() {
+    try { return Number(localStorage.getItem('install:later') || 0) > Date.now(); } catch (e) { return false; }
+  }
+  var installEvent = null;
+  function showInstallBar() {
+    var bar = document.getElementById('install-bar');
+    if (!bar || inApp() || snoozed() || !(isIOS || isAndroid)) return;
+    var go = document.getElementById('install-go');
+    var how = document.getElementById('install-how');
+    if (installEvent) go.hidden = false;
+    else if (isIOS) how.textContent = 'Tap the Share button, then "Add to Home Screen".';
+    else return; // Android: wait for the browser to say the app can be installed (it will not if it already is).
+    bar.hidden = false;
+  }
+  function hideInstallBar(days) {
+    var bar = document.getElementById('install-bar');
+    if (bar) bar.hidden = true;
+    if (days) { try { localStorage.setItem('install:later', String(Date.now() + days * 86400000)); } catch (e) {} }
+  }
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault(); // keep the event so our own Install button can use it
+    installEvent = e;
+    showInstallBar();
+  });
+  window.addEventListener('appinstalled', function () { installEvent = null; hideInstallBar(3650); });
+  document.addEventListener('DOMContentLoaded', function () {
+    var go = document.getElementById('install-go');
+    var later = document.getElementById('install-later');
+    if (go) go.addEventListener('click', function () {
+      if (!installEvent) return;
+      var ev = installEvent; installEvent = null;
+      ev.prompt();
+      if (ev.userChoice) ev.userChoice.then(function (c) { hideInstallBar(c && c.outcome === 'accepted' ? 3650 : 14); });
+      else hideInstallBar(14);
+    });
+    if (later) later.addEventListener('click', function () { hideInstallBar(14); });
+    showInstallBar();
+  });
 
   var store = {
     get: function (k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } },

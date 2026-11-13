@@ -600,6 +600,29 @@ test('backups: limited to admins who may read complaints; nightly copy is made o
   copy.close();
 });
 
+test('the get-the-app bar is on every page, hidden until the phone script shows it', async () => {
+  const login = (await new Client().get('/login')).text;
+  assert.match(login, /<aside class="install-bar no-print" id="install-bar" hidden/);
+  const home = (await (await loggedIn('tech1')).get('/')).text;
+  assert.match(home, /id="install-bar" hidden/);
+  assert.match(home, /id="install-go" hidden/);
+  const js = (await new Client().get('/site.js')).text;
+  assert.match(js, /beforeinstallprompt/);
+  assert.match(js, /display-mode: /);          // never shown inside the installed app
+  assert.match(js, /navigator\.standalone/);
+});
+
+test('the QR code sign needs a sign-in and carries a code for the site address', async () => {
+  const out = await new Client().get('/poster');
+  assert.equal(out.status, 302);
+  const page = await (await loggedIn('tech1')).get('/poster');
+  assert.equal(page.status, 200);
+  assert.match(page.text, /SCAN ME/);
+  assert.match(page.text, /<svg[^>]*viewBox/);
+  assert.match(page.text, /class="poster-url">https?:\/\/[^<]+</);
+  assert.equal((await new Client().get('/poster.js')).status, 200);
+});
+
 test('home-screen app files are served, and signed-out pages still work', async () => {
   const c = new Client();
   const manifest = await c.get('/manifest.webmanifest');

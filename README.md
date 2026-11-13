@@ -67,6 +67,10 @@ The site can be installed like an app, with its own icon.
 - **iPhone (Safari):** open the site, tap the Share button, then **Add to Home Screen**.
 - **Android (Chrome):** open the site, tap the three-dot menu, then **Add to Home screen** or **Install app**.
 
+On a phone's browser the site shows a small **Get the app** bar at the bottom of the page: an **Install** button on Android, the two taps to use on an iPhone. It does not show inside the installed app, and **Not now** hides it for two weeks.
+
+**QR code sign:** `/poster` (also under **Admin > QR code sign**) is a printable sign with a QR code that opens the site. It uses `BASE_URL`, or the address the page was opened at when that is not set.
+
 What it does with no signal:
 
 - The parts and training forms save what is typed on the phone as it is typed. If the page is closed or the signal drops, it is put back the next time the form is opened, and it is cleared once the form is sent. Photos are not saved.
