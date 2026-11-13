@@ -1,0 +1,24 @@
+<%- include('partials/header') %>
+<p><a href="/discussions">&larr; All discussions</a></p>
+<h1>Start a thread</h1>
+<%- include('partials/errors') %>
+<form method="post" action="/discussions/new" enctype="multipart/form-data" class="card stack">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Section
+    <select name="section_id" required>
+      <option value="">Choose one</option>
+      <% sections.forEach(function (s) { %><option value="<%= s.id %>" <%= values.section_id === s.id ? 'selected' : '' %>><%= s.name %></option><% }) %>
+    </select>
+  </label>
+  <label>Title <span class="hint">For a question, say what you are stuck on: the panel or device, and what it is doing.</span>
+    <input name="title" value="<%= values.title || '' %>" maxlength="140" required autocomplete="off">
+  </label>
+  <label>Message
+    <textarea name="body" rows="7" maxlength="6000" required><%= values.body || '' %></textarea>
+  </label>
+  <label>Photos <span class="hint">Optional, up to <%= maxPhotos %>. Do not post customer names, addresses or codes.</span>
+    <input type="file" name="photos" accept="image/jpeg,image/png,image/webp,image/gif" multiple>
+  </label>
+  <button class="btn primary" type="submit">Post thread</button>
+</form>
+<%- include('partials/footer') %>

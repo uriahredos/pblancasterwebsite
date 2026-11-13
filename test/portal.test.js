@@ -1654,7 +1654,7 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
 
   const owner = (await (await loggedIn('owner')).get('/admin/users')).text;
   assert.deepEqual(groupsOf(owner), ['Parts', 'Trucks', 'Training', 'Admin']);
-  assert.deepEqual(barLinks(owner), ['/', '/notices', '/my', '/complaint']);
+  assert.deepEqual(barLinks(owner), ['/', '/notices', '/discussions', '/my', '/complaint']);
   const admin = /<summary[^>]*>Admin[\s\S]*?<\/details>/.exec(owner)[0];
   for (const link of ['/admin/users', '/admin/profiles', '/admin/announcements', '/admin/complaints', '/admin/activity', '/admin/backups', '/admin/import']) assert.ok(admin.includes(`href="${link}"`), link);
   assert.match(admin, /<summary aria-current="true">Admin/);               // the group you are in is marked
@@ -1665,14 +1665,14 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
   // A technician: no Admin group; Trucks has one thing, so it is a plain "Inspection" link.
   const tech = (await (await loggedIn('tech1')).get('/')).text;
   assert.deepEqual(groupsOf(tech), ['Parts', 'Training']);
-  assert.deepEqual(barLinks(tech), ['/', '/notices', '/my', '/complaint', '/inspection']);
+  assert.deepEqual(barLinks(tech), ['/', '/notices', '/discussions', '/my', '/complaint', '/inspection']);
   assert.doesNotMatch(tech, /href="\/admin\//);
   assert.doesNotMatch(/<summary[^>]*>Parts[\s\S]*?<\/details>/.exec(tech)[0], /<hr>/); // no stray divider
 
   // A manager holds one admin item (Announcements), so it is a plain link rather than a one-item drop-down.
   const mgr = (await (await loggedIn('mgr1')).get('/')).text;
   assert.deepEqual(groupsOf(mgr), ['Parts', 'Trucks', 'Training']);
-  assert.deepEqual(barLinks(mgr), ['/', '/notices', '/my', '/complaint', '/admin/announcements']);
+  assert.deepEqual(barLinks(mgr), ['/', '/notices', '/discussions', '/my', '/complaint', '/admin/announcements']);
   assert.doesNotMatch(mgr, /admin\/(users|profiles|complaints|backups|activity)"/);
 
   // Styles and scripts carry a version so a new release is not shown with old files.
@@ -2041,4 +2041,122 @@ test('a critical announcement stays at the top of the home page, read or not, un
   await owner.post(`${page}/${plain}/critical`, {}, { page: `${page}/${plain}` });
   assert.match((await t2.get('/')).text, /<section class="critical"[\s\S]*Ordinary news[\s\S]*<\/section>/);
   db.prepare('DELETE FROM announcements WHERE id IN (?, ?)').run(id, plain);
+});
+
+// ----------------------------------------------------------------------------
+// Discussions
+// ----------------------------------------------------------------------------
+
+test('discussions: threads, replies with photos, following, new-reply notices, solved, and moderation', async () => {
+  const techProfile = access.profileByName('Technician').id;
+  access.setPermissions(techProfile, [...access.SUBMIT, 'forum.use']);
+  const owner = await loggedIn('owner');
+  const t1 = await loggedIn('tech1');
+  const t2 = await loggedIn('tech2');
+  const support = db.prepare("SELECT id FROM forum_sections WHERE kind = 'support'").get().id;
+  const general = db.prepare("SELECT id FROM forum_sections WHERE name = 'General'").get().id;
+  const forumFiles = () => db.prepare('SELECT path FROM forum_photos').all().map((r) => r.path).filter((f) => fs.existsSync(path.join(dataDir, 'uploads', f)));
+
+  // The three starting sections are listed, and a signed-out visitor sees nothing.
+  const index = (await t1.get('/discussions')).text;
+  assert.match(index, /Tech support[\s\S]*General[\s\S]*Introductions/); assert.match(index, /Nothing posted yet/);
+  assert.match((await new Client().get('/discussions')).location, /^\/login/);
+
+  // Starting a thread needs a section, a title and a message; a file that is not an image is refused.
+  const page = '/discussions/new';
+  const bad = await t1.post(page, { section_id: '', title: '', body: '' }, { page, multipart: true });
+  assert.equal(bad.status, 400); assert.match(bad.text, /Choose a section[\s\S]*Give the thread a title[\s\S]*Write your message/);
+  const notImage = await t1.post(page, { section_id: String(support), title: 'x', body: 'y', photos: new Blob([Buffer.from('not an image')], { type: 'image/png' }) }, { page, multipart: true });
+  assert.equal(notImage.status, 400);
+  assert.equal((await t1.post(page, { section_id: String(support), title: 'x', body: 'y' }, { multipart: true, csrf: false })).status, 403);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM forum_threads').get().n, 0);
+
+  const made = await t1.post(page, { section_id: String(support), title: 'XR550 will not take a new zone', body: 'Zone 612 shows <b>missing</b> after programming.', photos: new Blob([PNG], { type: 'image/png' }) }, { page, multipart: true });
+  const id = Number(/\/discussions\/t\/(\d+)$/.exec(made.location)[1]);
+  const tp = `/discussions/t/${id}`;
+  let thread = (await t1.get(tp)).text;
+  assert.match(thread, /XR550 will not take a new zone/);
+  assert.match(thread, /Zone 612 shows &lt;b&gt;missing&lt;\/b&gt; after programming\./);            // shown as typed, never as markup
+  assert.match(thread, /Following · stop/); assert.match(thread, /Mark as solved/); assert.match(thread, /Remove thread/);
+  const photoId = db.prepare('SELECT id FROM forum_photos').get().id;
+  assert.match(thread, new RegExp(`src="/discussions/photo/${photoId}"`));
+  assert.equal((await t2.get(`/discussions/photo/${photoId}`)).status, 200);
+  assert.match((await new Client().get(`/discussions/photo/${photoId}`)).location, /^\/login/);
+
+  // Someone else sees it as new, cannot mark it solved or remove it, and is not following until they reply.
+  assert.match((await t2.get('/discussions')).text, /<li class="unread">[\s\S]*?XR550 will not take a new zone/);
+  thread = (await t2.get(tp)).text;
+  assert.match(thread, /Follow this thread/); assert.doesNotMatch(thread, /Mark as solved|Remove thread|Moderator tools/);
+  assert.equal((await t2.post(`${tp}/solved`, {}, { page: tp })).status, 403);
+  assert.equal((await t2.post(`${tp}/delete`, {}, { page: tp })).status, 403);
+  assert.equal((await t2.post(`${tp}/lock`, {}, { page: tp })).status, 403);
+  assert.doesNotMatch((await t2.get('/discussions')).text, /<li class="unread">/);                    // read now
+
+  // A reply tells the person who asked: a badge on the menu and a line at the top of their home page.
+  assert.equal((await t2.post(`${tp}/reply`, { body: '' }, { page: tp, multipart: true })).status, 400);
+  const replied = await t2.post(`${tp}/reply`, { body: 'Check the LX bus address, 612 is on the 600 bus.' }, { page: tp, multipart: true });
+  const replyId = Number(/#p(\d+)$/.exec(replied.location)[1]);
+  assert.equal(db.prepare('SELECT reply_count FROM forum_threads WHERE id = ?').get(id).reply_count, 1);
+  let home = (await t1.get('/')).text;
+  assert.match(home, /href="\/discussions"[^>]*>Discussions <span class="badge"[^>]*>1<\/span>/);
+  assert.match(home, /New replies<\/span>[\s\S]*<strong>Uma Tech<\/strong> replied in <strong>XR550 will not take a new zone<\/strong>/);
+  assert.doesNotMatch((await t2.get('/')).text, /New replies/);                                       // not for the person who wrote it
+  assert.doesNotMatch((await owner.get('/')).text, /New replies/);                                    // nor for people not following
+  // Opening the thread shows which reply is new and clears the notice.
+  thread = (await t1.get(tp)).text;
+  assert.match(thread, new RegExp(`id="p${replyId}"[\\s\\S]*?<span class="tag new">New</span>`));
+  assert.doesNotMatch(thread, /Discussions <span class="badge"/);
+  home = (await t1.get('/')).text;
+  assert.doesNotMatch(home, /New replies/); assert.doesNotMatch(home, /Discussions <span class="badge"/);
+  assert.match(home, /id="talk-h">Discussions[\s\S]*XR550 will not take a new zone[\s\S]*Tech support · 1 reply/);
+  // The replier follows too, so the asker's answer reaches them; unfollowing stops that.
+  await t1.post(`${tp}/reply`, { body: 'That was it, thanks.' }, { page: tp, multipart: true });
+  assert.match((await t2.get('/')).text, /<strong>Terry Tech<\/strong> replied in/);
+  await t2.post(`${tp}/follow`, { follow: '0' }, { page: tp });
+  assert.doesNotMatch((await t2.get('/')).text, /New replies/);
+
+  // The asker marks it solved; with replies they can no longer remove the thread, but can remove their own reply.
+  await t1.post(`${tp}/solved`, {}, { page: tp });
+  assert.match((await t2.get(`/discussions/s/${support}`)).text, /<span class="tag solved">Solved<\/span>/);
+  assert.equal((await t1.post(`${tp}/delete`, {}, { page: tp })).status, 403);
+  assert.equal((await t1.post(`/discussions/p/${replyId}/delete`, {}, { page: tp })).status, 403);   // someone else's reply
+  const firstPost = db.prepare('SELECT MIN(id) id FROM forum_posts WHERE thread_id = ?').get(id).id;
+  assert.equal((await owner.post(`/discussions/p/${firstPost}/delete`, {}, { page: tp })).status, 404); // the opening post goes with its thread
+  const mine = db.prepare('SELECT MAX(id) id FROM forum_posts WHERE thread_id = ?').get(id).id;
+  await t1.post(`/discussions/p/${mine}/delete`, {}, { page: tp });
+  const row = db.prepare('SELECT reply_count, last_post_user_id FROM forum_threads WHERE id = ?').get(id);
+  assert.deepEqual(row, { reply_count: 1, last_post_user_id: userId('tech2') });
+
+  // Search finds words in titles and in replies.
+  assert.match((await t1.get('/discussions?q=LX+bus')).text, /Results for "LX bus"[\s\S]*XR550 will not take a new zone/);
+  assert.match((await t1.get('/discussions?q=nothing%25here')).text, /Nothing found/);
+
+  // A moderator can pin, lock, move and remove. A locked thread takes no replies.
+  thread = (await owner.get(tp)).text;
+  assert.match(thread, /Moderator tools/);
+  await owner.post(`${tp}/pin`, {}, { page: tp });
+  await owner.post(`${tp}/lock`, {}, { page: tp });
+  assert.match((await t2.get(tp)).text, /This thread is locked/);
+  assert.equal((await t2.post(`${tp}/reply`, { body: 'one more thing' }, { page: tp, multipart: true })).status, 400);
+  await owner.post(`${tp}/move`, { section_id: String(general) }, { page: tp });
+  assert.deepEqual(db.prepare('SELECT section_id, solved_at, is_pinned, is_locked FROM forum_threads WHERE id = ?').get(id), { section_id: general, solved_at: null, is_pinned: 1, is_locked: 1 });
+  await owner.post(`/discussions/p/${replyId}/delete`, {}, { page: tp });
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM activity_log WHERE action = 'Discussion reply removed'").get().n, 1);
+  assert.equal(forumFiles().length, 1);
+  const photoFile = path.join(dataDir, 'uploads', forumFiles()[0]);
+  await owner.post(`${tp}/delete`, {}, { page: tp });
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal((await t1.get(tp)).status, 404);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM forum_posts').get().n + db.prepare('SELECT COUNT(*) n FROM forum_photos').get().n + db.prepare('SELECT COUNT(*) n FROM forum_reads').get().n, 0);
+  assert.equal(fs.existsSync(photoFile), false);                                                    // its photo went with it
+
+  // Someone who started a thread nobody has answered can remove it themselves.
+  const own = await t2.post(page, { section_id: String(general), title: 'Posted in the wrong place', body: 'Ignore this.' }, { page, multipart: true });
+  assert.equal((await t2.post(`${own.location}/delete`, {}, { page: own.location })).location, `/discussions/s/${general}`);
+
+  // Without the permission there is no link and no way in.
+  access.setPermissions(techProfile, access.SUBMIT);
+  assert.doesNotMatch((await t1.get('/')).text, /\/discussions/);
+  assert.equal((await t1.get('/discussions')).status, 403);
+  access.setPermissions(techProfile, [...access.SUBMIT, 'forum.use']);
 });

@@ -39,6 +39,11 @@ router.get('/', requireLogin, (req, res) => {
     .map((c) => certs.decorate(c, today)).filter((c) => c.status === 'expired' || (c.status === 'soon' && c.days <= 30));
 
   const issues = newsletters.latest(4);
+  // Discussions: replies to threads this person follows, and the latest activity.
+  const forum = can('forum.use') ? require('./forum') : null;
+  const replies = forum ? forum.repliesFor(me) : [];
+  const talk = forum ? forum.recent(me, 4) : [];
+
 
   // Training sessions on the calendar. Ones scheduled from a private request are left out.
   const upcoming = !can('training.submit') && !can('training.view') ? [] : db.prepare(
@@ -74,7 +79,7 @@ router.get('/', requireLogin, (req, res) => {
   const now = new Date();
   const dateLine = new Intl.DateTimeFormat('en-US', { timeZone: config.timezone, weekday: 'long', month: 'long', day: 'numeric' }).format(now);
   res.render('home', {
-    title: 'Home', wide: true, critical, notices, board, myCerts, issue: issues[0] || null, pastIssues: issues.slice(1), upcoming, status, dateLine,
+    title: 'Home', wide: true, critical, notices, board, replies, talk, myCerts, issue: issues[0] || null, pastIssues: issues.slice(1), upcoming, status, dateLine,
     categories: require('./announcements').CATEGORIES,
   });
 });

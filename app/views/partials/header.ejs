@@ -19,7 +19,7 @@
 <header class="top">
   <div class="banner">
     <div class="banner-in">
-      <% if (user && !user.must_change_password) { %><button type="button" class="menu-toggle" id="menu-toggle" aria-expanded="false" aria-controls="navbar"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg><span>Menu</span><% if (badges.notices + badges.updates) { %><span class="badge"><%= badges.notices + badges.updates %></span><% } %></button><% } %>
+      <% if (user && !user.must_change_password) { %><button type="button" class="menu-toggle" id="menu-toggle" aria-expanded="false" aria-controls="navbar"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg><span>Menu</span><% if (badges.notices + badges.updates + badges.forum) { %><span class="badge"><%= badges.notices + badges.updates + badges.forum %></span><% } %></button><% } %>
       <a class="brand" href="/">
         <span class="logo-plate"><img src="/logo.png" alt="Pye-Barker Fire &amp; Safety" width="640" height="168"></span>
         <span class="branch">Lancaster Branch</span>
@@ -91,6 +91,7 @@
     <nav class="nav" aria-label="Main">
       <a href="/" <%- path === '/' ? 'aria-current="page"' : '' %>>Home</a>
       <a href="/notices" <%- path === '/notices' ? 'aria-current="page"' : '' %>>Notices<% if (badges.notices) { %> <span class="badge" title="Unread"><%= badges.notices %></span><% } %></a>
+      <% if (can('forum.use')) { %><a href="/discussions" <%- path.startsWith('/discussions') ? 'aria-current="page"' : '' %>>Discussions<% if (badges.forum) { %> <span class="badge" title="New replies to threads you follow"><%= badges.forum %></span><% } %></a><% } %>
       <a href="/my" <%- path === '/my' ? 'aria-current="page"' : '' %>>My submissions<% if (badges.updates) { %> <span class="badge" title="Updates you have not seen"><%= badges.updates %></span><% } %></a>
       <% if (can('complaints.submit')) { %><a href="/complaint" <%- path.startsWith('/complaint') ? 'aria-current="page"' : '' %>>Complaint</a><% } %>
       <span class="nav-sep" aria-hidden="true"></span>

@@ -1,0 +1,26 @@
+<%- include('partials/header', { wide: true }) %>
+<div class="title-row"><h1>Discussions</h1><a class="btn primary small" href="/discussions/new">Start a thread</a></div>
+<p class="lede">Ask for help, share what you have learned, or say hello. Everyone at the branch can read what is posted here.</p>
+<form method="get" action="/discussions" class="filters">
+  <label class="grow">Search discussions <input type="search" name="q" value="<%= q %>" maxlength="80" placeholder="A panel, a part, a problem"></label>
+  <button class="btn" type="submit">Search</button>
+</form>
+<% if (!searching) { %>
+<div class="section-grid">
+  <% sections.forEach(function (s) { %>
+  <a class="section-card <%= s.kind %>" href="/discussions/s/<%= s.id %>">
+    <strong><%= s.name %></strong>
+    <span class="meta"><%= s.description %></span>
+    <span class="section-count"><%= s.threads %> <%= s.threads === 1 ? 'thread' : 'threads' %><% if (s.last_post_at) { %> · last post <%= dateOnly(s.last_post_at) %><% } %></span>
+  </a>
+  <% }) %>
+</div>
+<h2>Latest activity</h2>
+<% if (!threads.length) { %><p class="empty">Nothing posted yet. <a href="/discussions/new">Start the first thread</a>.</p><% } %>
+<% } else { %>
+<h2>Results for "<%= q %>"</h2>
+<% if (!threads.length) { %><p class="empty">Nothing found. Try fewer words, or <a href="/discussions/new">ask it as a new thread</a>.</p><% } %>
+<p><a href="/discussions">&larr; All discussions</a></p>
+<% } %>
+<%- include('partials/thread_list', { threads: threads, showSection: true }) %>
+<%- include('partials/footer') %>

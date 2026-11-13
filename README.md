@@ -178,7 +178,7 @@ Record each person's licenses and certifications with an optional issuer, number
 The home page is a dashboard. From the top:
 
 - **Critical notices**: announcements marked critical, always first and shown every time, read or not.
-- **Needs your attention**: announcements the person has not read yet, and their certifications that are expired or expire within 30 days.
+- **Needs your attention**: new replies in discussion threads they follow, announcements the person has not read yet, and their certifications that are expired or expire within 30 days.
 - **What do you need to do?**: the forms their profile allows, as buttons.
 - **The Monthly Barker**: the newest newsletter with its cover and highlights, and the three before it.
 - **Notice board**: the latest announcements they have already read, pinned ones first.
@@ -186,6 +186,15 @@ The home page is a dashboard. From the top:
 - **My status**: their open parts and training requests, days since their last truck inspection, and their certifications.
 
 On a phone it is one column with the buttons first; on a wider screen the newsletter and notice board sit on the left.
+
+## Discussions (`/discussions`)
+
+- Three sections to start: **Tech support**, **General** and **Introductions**. Anyone with **Read and post in Discussions** can start a thread, reply, add up to four photos to a post, and search.
+- **Following**: starting or replying to a thread follows it; anyone can follow or stop from the thread page. When someone else replies to a thread you follow, the Discussions link in the menu shows a count and the reply is listed at the top of your home page until you open the thread. There is no phone notification or email yet.
+- In Tech support the person who asked (or a moderator) can mark a thread **Solved**.
+- People can remove their own replies, and their own thread while nobody has answered it. **Remove other people's posts and threads; lock, pin and move threads** is the moderator permission; what moderators remove is recorded in the activity log.
+- After an update, posting is given once to every profile that can send parts forms, and moderating to profiles that manage people.
+- Photos live in `/data/uploads` with the others.
 
 ## Newsletters (`/newsletters`, `/admin/newsletters`)
 
@@ -325,7 +334,7 @@ A reply typed with a status change is shown to the submitter (under My submissio
 app/server.js        starts the site
 app/app.js           security headers, sessions, routes
 app/db.js            database tables
-app/routes/          one file per area: auth, home, parts, training, complaints, admin, catalog, backups, newsletters
+app/routes/          one file per area: auth, home, parts, training, complaints, admin, catalog, backups, newsletters, forum
 app/permissions.js   profiles, permission list, manager scoping, master account
 app/backup.js        nightly backups
 app/changes.js       edit/cancel rules and history

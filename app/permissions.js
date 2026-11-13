@@ -12,6 +12,10 @@ const GROUPS = [
     ['complaints.submit', 'Send anonymous complaints'],
     ['inspections.submit', 'Send truck inspections'],
   ] },
+  { title: 'Discussions', items: [
+    ['forum.use', 'Read and post in Discussions'],
+    ['forum.moderate', 'Remove other people\'s posts and threads; lock, pin and move threads'],
+  ] },
   { title: 'Parts', items: [
     ['parts.view', 'See the parts log, usage summary and exports'],
     ['parts.manage', 'Update parts requests; edit or cancel other people\'s entries'],
@@ -49,9 +53,9 @@ const SUBMIT = ['parts.submit', 'training.submit', 'complaints.submit', 'inspect
 
 // Starting profiles. After the first start they are ordinary profiles: change them on the Profiles page.
 const DEFAULTS = [
-  { name: 'Technician', scope: 'all', perms: SUBMIT },
-  { name: 'Warehouse', scope: 'all', perms: [...SUBMIT, 'parts.view', 'parts.manage', 'parts.audit', 'catalog.manage', 'stock.manage', 'inspections.view', 'inspections.manage'] },
-  { name: 'Manager', scope: 'team', perms: [...SUBMIT, 'parts.view', 'parts.manage', 'parts.audit', 'training.view', 'training.manage', 'digest.weekly', 'inspections.view', 'inspections.manage', 'certs.manage', 'announcements.post'] },
+  { name: 'Technician', scope: 'all', perms: [...SUBMIT, 'forum.use'] },
+  { name: 'Warehouse', scope: 'all', perms: [...SUBMIT, 'forum.use', 'parts.view', 'parts.manage', 'parts.audit', 'catalog.manage', 'stock.manage', 'inspections.view', 'inspections.manage'] },
+  { name: 'Manager', scope: 'team', perms: [...SUBMIT, 'forum.use', 'parts.view', 'parts.manage', 'parts.audit', 'training.view', 'training.manage', 'digest.weekly', 'inspections.view', 'inspections.manage', 'certs.manage', 'announcements.post'] },
   { name: 'Admin', scope: 'all', perms: ALL },
 ];
 
@@ -125,7 +129,7 @@ function migrate() {
       'stock.manage': 'catalog.manage', 'activity.view': 'profiles.manage',
       'inspections.submit': 'parts.submit', 'inspections.view': 'parts.view', 'inspections.manage': 'parts.manage',
       'certs.manage': 'training.manage', 'announcements.post': 'training.manage', 'records.delete': 'profiles.manage',
-      'newsletters.manage': 'users.manage',
+      'newsletters.manage': 'users.manage', 'forum.use': 'parts.submit', 'forum.moderate': 'users.manage',
     };
     for (const [perm, from] of Object.entries(INHERIT)) {
       const key = `perm_granted:${perm}`;

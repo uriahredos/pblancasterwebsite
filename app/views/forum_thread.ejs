@@ -1,0 +1,65 @@
+<%- include('partials/header') %>
+<p><a href="/discussions/s/<%= t.section_id %>">&larr; <%= t.section %></a></p>
+<h1 class="thread-title"><%= t.title %></h1>
+<p class="thread-tags"><% if (t.is_pinned) { %><span class="tag pin">Pinned</span> <% } %><% if (t.solved_at) { %><span class="tag solved">Solved</span> <% } %><% if (t.is_locked) { %><span class="tag off">Locked</span> <% } %><span class="meta"><%= t.reply_count %> <%= t.reply_count === 1 ? 'reply' : 'replies' %></span></p>
+<div class="thread-tools">
+  <form method="post" action="/discussions/t/<%= t.id %>/follow"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="follow" value="<%= following ? '0' : '1' %>"><button class="btn small" type="submit"><%= following ? 'Following · stop' : 'Follow this thread' %></button></form>
+  <% if (t.kind === 'support' && (owner || mod)) { %>
+  <form method="post" action="/discussions/t/<%= t.id %>/solved"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn small" type="submit"><%= t.solved_at ? 'Not solved after all' : 'Mark as solved' %></button></form>
+  <% } %>
+  <% if (mod || (owner && t.reply_count === 0)) { %>
+  <form method="post" action="/discussions/t/<%= t.id %>/delete" data-confirm="Remove this whole thread? This cannot be undone."><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Remove thread</button></form>
+  <% } %>
+</div>
+<% if (mod) { %>
+<details class="mod-tools">
+  <summary>Moderator tools</summary>
+  <div class="thread-tools">
+    <form method="post" action="/discussions/t/<%= t.id %>/pin"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn small" type="submit"><%= t.is_pinned ? 'Unpin' : 'Pin to the top of its section' %></button></form>
+    <form method="post" action="/discussions/t/<%= t.id %>/lock"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn small" type="submit"><%= t.is_locked ? 'Unlock' : 'Lock (no more replies)' %></button></form>
+    <form method="post" action="/discussions/t/<%= t.id %>/move" class="move"><input type="hidden" name="_csrf" value="<%= csrf %>">
+      <label>Move to <select name="section_id"><% sections.forEach(function (s) { %><option value="<%= s.id %>" <%= s.id === t.section_id ? 'selected' : '' %>><%= s.name %></option><% }) %></select></label>
+      <button class="btn small" type="submit">Move</button></form>
+  </div>
+</details>
+<% } %>
+
+<div class="posts">
+  <% posts.forEach(function (p) { %>
+  <article class="post <%= p.first ? 'first' : '' %> <%= p.isNew ? 'is-new' : '' %>" id="p<%= p.id %>">
+    <header class="post-head">
+      <span class="avatar" aria-hidden="true"><%= p.author.split(/\s+/).map(function (w) { return w.charAt(0); }).slice(0, 2).join('').toUpperCase() %></span>
+      <strong><%= p.author %></strong>
+      <% if (p.user_id === t.user_id && !p.first) { %><span class="pill">Started the thread</span><% } %>
+      <% if (p.isNew) { %><span class="tag new">New</span><% } %>
+      <time><%= fmtDateTime(p.created_at) %></time>
+    </header>
+    <p class="pre"><%= p.body %></p>
+    <% if (p.photos.length) { %>
+    <div class="photo-grid"><% p.photos.forEach(function (ph) { %><a href="/discussions/photo/<%= ph.id %>" target="_blank" rel="noopener"><img src="/discussions/photo/<%= ph.id %>" alt="Photo from <%= p.author %>" loading="lazy"></a><% }) %></div>
+    <% } %>
+    <% if (!p.first && (mod || p.user_id === user.id)) { %>
+    <form method="post" action="/discussions/p/<%= p.id %>/delete" data-confirm="Remove this reply?" class="post-foot"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Remove reply</button></form>
+    <% } %>
+  </article>
+  <% }) %>
+</div>
+
+<% if (t.is_locked) { %>
+<p class="flash warn">This thread is locked, so it cannot take new replies.</p>
+<% } else { %>
+<h2 id="reply">Reply</h2>
+<%- include('partials/errors') %>
+<form method="post" action="/discussions/t/<%= t.id %>/reply" enctype="multipart/form-data" class="card stack">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Your reply
+    <textarea name="body" rows="4" maxlength="6000" required><%= values.body || '' %></textarea>
+  </label>
+  <label>Photos <span class="hint">Optional, up to <%= maxPhotos %>. Do not post customer names, addresses or codes.</span>
+    <input type="file" name="photos" accept="image/jpeg,image/png,image/webp,image/gif" multiple>
+  </label>
+  <button class="btn primary" type="submit">Post reply</button>
+  <p class="hint">Replying follows the thread, so you will see later replies on your home page.</p>
+</form>
+<% } %>
+<%- include('partials/footer') %>

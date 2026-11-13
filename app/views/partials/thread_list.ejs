@@ -1,0 +1,10 @@
+<ul class="threads">
+  <% threads.forEach(function (t) { %>
+  <li class="<%= t.unread ? 'unread' : '' %>">
+    <a href="/discussions/t/<%= t.id %>">
+      <span class="thread-top"><% if (t.unread) { %><span class="tag new">New</span><% } %><% if (t.is_pinned) { %><span class="tag pin">Pinned</span><% } %><% if (t.solved_at) { %><span class="tag solved">Solved</span><% } %><% if (t.is_locked) { %><span class="tag off">Locked</span><% } %><strong><%= t.title %></strong></span>
+      <span class="thread-meta"><% if (typeof showSection !== 'undefined' && showSection) { %><%= t.section %> · <% } %>Started by <%= t.author %> · <%= t.reply_count %> <%= t.reply_count === 1 ? 'reply' : 'replies' %><% if (t.reply_count) { %> · last from <%= t.last_author %>, <%= fmtDateTime(t.last_post_at) %><% } else { %> · <%= fmtDateTime(t.created_at) %><% } %><% if (t.following) { %> · Following<% } %></span>
+    </a>
+  </li>
+  <% }) %>
+</ul>

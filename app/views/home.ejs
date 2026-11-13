@@ -8,6 +8,7 @@
     training: '<path d="M2.5 9 12 4.5 21.5 9 12 13.5z"/><path d="M6.5 11v4.5c1.6 1.5 3.4 2.2 5.5 2.2s3.9-.7 5.5-2.2V11M21.5 9v5.5"/>',
     truck: '<path d="M2.5 6.5h11v10h-11zM13.5 10h4l3 3v3.5h-7z"/><circle cx="7" cy="17.5" r="1.9"/><circle cx="17" cy="17.5" r="1.9"/>',
     complaint: '<path d="M4 5h16v11H10l-4.5 3.5V16H4z"/><path d="M8 9.5h8M8 12.5h5"/>',
+    talk: '<path d="M3.5 5h11v8h-6l-3 2.5V13h-2z"/><path d="M17 9h3.5v8h-2v2.5l-3-2.5h-5v-2"/>',
     mine: '<path d="M9 6.5h11M9 12h11M9 17.5h11"/><path d="m3.5 6.5 1.2 1.2 2-2.4M3.5 12l1.2 1.2 2-2.4M3.5 17.5l1.2 1.2 2-2.4"/>'
   };
   var icon = function (name) { return '<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + icons[name] + '</svg>'; };
@@ -31,8 +32,18 @@
 </section>
 <% } %>
 
-<% if (notices.length || myCerts.length) { %>
+<% if (notices.length || myCerts.length || replies.length) { %>
 <section class="attention" aria-label="Needs your attention">
+<% if (replies.length) { %>
+<div class="card replies-card">
+  <div class="rec-head"><span class="tag new">New replies</span><strong>In threads you follow</strong></div>
+  <ul class="replies">
+    <% replies.forEach(function (t) { %>
+    <li><a href="/discussions/t/<%= t.id %>"><strong><%= t.last_author %></strong> replied in <strong><%= t.title %></strong></a><span class="meta"><%= fmtDateTime(t.last_post_at) %></span></li>
+    <% }) %>
+  </ul>
+</div>
+<% } %>
 <% notices.forEach(function (n) { %>
 <div class="card notice-card cat-<%= n.category %>">
   <div class="rec-head"><span class="tag new">New notice</span><% if (n.category !== 'general') { %><span class="tag cat-<%= n.category %>"><%= categories[n.category] %></span><% } %><strong><%= n.title %></strong><time><%= n.author %>, <%= fmtDateTime(n.created_at) %></time></div>
@@ -97,6 +108,25 @@
         <% }) %>
       </ul>
     </section>
+
+    <% if (can('forum.use')) { %>
+    <section class="panel" aria-labelledby="talk-h">
+      <div class="panel-head"><h2 id="talk-h">Discussions</h2><a href="/discussions">All discussions</a></div>
+      <% if (!talk.length) { %><p class="empty">Nothing posted yet. <a href="/discussions/new">Start the first thread</a>.</p><% } else { %>
+      <ul class="threads compact">
+        <% talk.forEach(function (t) { %>
+        <li class="<%= t.unread ? 'unread' : '' %>">
+          <a href="/discussions/t/<%= t.id %>">
+            <span class="thread-top"><% if (t.solved_at) { %><span class="tag solved">Solved</span><% } %><strong><%= t.title %></strong></span>
+            <span class="thread-meta"><%= t.section %> · <%= t.reply_count %> <%= t.reply_count === 1 ? 'reply' : 'replies' %> · <%= t.last_author %>, <%= dateOnly(t.last_post_at) %></span>
+          </a>
+        </li>
+        <% }) %>
+      </ul>
+      <p class="panel-foot"><a class="btn small" href="/discussions/new">Start a thread</a></p>
+      <% } %>
+    </section>
+    <% } %>
   </div>
 
   <div class="dash-side">
@@ -113,6 +143,9 @@
         <% } %>
         <% if (can('inspections.submit')) { %>
         <a href="/inspection"><%- icon('truck') %><span>Truck inspection</span></a>
+        <% } %>
+        <% if (can('forum.use')) { %>
+        <a href="/discussions"><%- icon('talk') %><span>Discussions</span></a>
         <% } %>
         <% if (can('complaints.submit')) { %>
         <a class="quiet" href="/complaint"><%- icon('complaint') %><span>Anonymous complaint</span></a>

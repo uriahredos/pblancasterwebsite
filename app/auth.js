@@ -50,7 +50,7 @@ function loadUser(req, res, next) {
   }
   res.locals.user = req.user;
   res.locals.can = (perm) => access.can(req.user, perm);
-  res.locals.badges = { updates: 0, requests: 0, notices: 0, certs: 0, inspections: 0 };
+  res.locals.badges = { updates: 0, requests: 0, notices: 0, certs: 0, inspections: 0, forum: 0 };
   if (req.user) {
     // "My submissions": status changes this person has not looked at yet.
     res.locals.badges.updates =
@@ -61,6 +61,13 @@ function loadUser(req, res, next) {
        WHERE (a.audience = 'all' OR a.created_by = @me OR EXISTS (SELECT 1 FROM user_managers um WHERE um.manager_id = a.created_by AND um.user_id = @me))
          AND (a.expires_on IS NULL OR a.expires_on >= @today)
          AND NOT EXISTS (SELECT 1 FROM announcement_reads r WHERE r.announcement_id = a.id AND r.user_id = @me)`).get({ me: req.user.id, today: localDate() }).n;
+    // Discussions: threads this person follows that someone else has replied to since they last looked.
+    if (access.can(req.user, 'forum.use')) {
+      res.locals.badges.forum = db.prepare(
+        `SELECT COUNT(*) AS n FROM forum_reads r JOIN forum_threads t ON t.id = r.thread_id
+         WHERE r.user_id = @me AND r.following = 1 AND t.last_post_user_id <> @me
+           AND (r.last_read_at IS NULL OR t.last_post_at > r.last_read_at)`).get({ me: req.user.id }).n;
+    }
     const scopeIds = access.visibleUserIds(req.user);
     const inScope = (col) => (scopeIds ? `AND ${col} IN (${scopeIds.map(Number).join(',')})` : '');
     // Certifications expired or expiring within 30 days, for people who keep those records.

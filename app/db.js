@@ -282,6 +282,61 @@ addColumn('announcements', 'pinned', 'INTEGER NOT NULL DEFAULT 0');
 // Critical announcements stay at the very top of the home page, read or not, until they end or are unmarked.
 addColumn('announcements', 'critical', 'INTEGER NOT NULL DEFAULT 0');
 
+// ---- Discussions: sections, threads, replies, and who has read what ----
+db.exec(`
+CREATE TABLE IF NOT EXISTS forum_sections (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  kind TEXT NOT NULL DEFAULT 'general' CHECK (kind IN ('general','support')), -- support threads can be marked solved
+  sort_order INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS forum_threads (
+  id INTEGER PRIMARY KEY,
+  section_id INTEGER NOT NULL REFERENCES forum_sections(id),
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  title TEXT NOT NULL,
+  is_locked INTEGER NOT NULL DEFAULT 0,
+  is_pinned INTEGER NOT NULL DEFAULT 0,
+  solved_at TEXT,
+  reply_count INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  last_post_at TEXT NOT NULL,
+  last_post_user_id INTEGER NOT NULL REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS forum_threads_section ON forum_threads(section_id, last_post_at);
+-- Every message, the opening one included (it is the thread's first post).
+CREATE TABLE IF NOT EXISTS forum_posts (
+  id INTEGER PRIMARY KEY,
+  thread_id INTEGER NOT NULL REFERENCES forum_threads(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS forum_posts_thread ON forum_posts(thread_id, id);
+CREATE TABLE IF NOT EXISTS forum_photos (
+  id INTEGER PRIMARY KEY,
+  post_id INTEGER NOT NULL REFERENCES forum_posts(id) ON DELETE CASCADE,
+  path TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS forum_photos_post ON forum_photos(post_id);
+-- When each person last opened a thread, and whether they want to hear about replies to it.
+CREATE TABLE IF NOT EXISTS forum_reads (
+  thread_id INTEGER NOT NULL REFERENCES forum_threads(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  last_read_at TEXT,
+  following INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (thread_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS forum_reads_user ON forum_reads(user_id, following);
+`);
+if (db.prepare('SELECT COUNT(*) AS n FROM forum_sections').get().n === 0) {
+  const add = db.prepare('INSERT INTO forum_sections (name, description, kind, sort_order) VALUES (?, ?, ?, ?)');
+  add.run('Tech support', 'Stuck on a panel, a device or a job? Ask here. Mark the thread solved when you have your answer.', 'support', 1);
+  add.run('General', 'Branch talk, tips, tools and anything else worth sharing.', 'general', 2);
+  add.run('Introductions', 'New here, or never said hello? Tell everyone who you are.', 'general', 3);
+}
+
 if (db.prepare('SELECT COUNT(*) AS n FROM inspection_items').get().n === 0) {
   const add = db.prepare('INSERT INTO inspection_items (label, sort) VALUES (?, ?)');
   ['Tires and wheels', 'Lights and turn signals', 'Brakes', 'No fluid leaks', 'Windshield, wipers and mirrors', 'Horn and backup alarm',

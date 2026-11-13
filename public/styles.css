@@ -449,3 +449,45 @@ table.audit .check-cell form { display: block; margin: 0 0 .2rem; }
 .mini-label { display: block; font-size: .72rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
 .mini-num { display: block; font-size: 1.5rem; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
 .mini-sub { display: block; font-size: .82rem; color: var(--muted); }
+
+/* Discussions */
+.section-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: .75rem; margin-bottom: 1.5rem; }
+.section-card { display: flex; flex-direction: column; gap: .3rem; padding: .9rem 1rem; border: 1px solid var(--line); border-left: 5px solid var(--accent); border-radius: 12px; background: var(--surface); color: var(--ink); text-decoration: none; }
+.section-card.support { border-left-color: var(--green); }
+.section-card strong { font-size: 1.1rem; }
+.section-card:hover { border-color: var(--accent); }
+.section-count { margin-top: auto; padding-top: .35rem; font-size: .82rem; font-weight: 600; color: var(--muted); }
+.threads { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+.threads li { border: 1px solid var(--line); border-left: 5px solid var(--field-line); border-radius: 10px; background: var(--surface); }
+.threads li.unread { border-left-color: var(--green); }
+.threads a { display: block; padding: .65rem .85rem; color: var(--ink); text-decoration: none; }
+.threads a:hover { background: var(--accent-soft); border-radius: 0 9px 9px 0; }
+.thread-top { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; overflow-wrap: anywhere; }
+.threads li:not(.unread) .thread-top strong { font-weight: 600; }
+.thread-meta { display: block; margin-top: .2rem; color: var(--muted); font-size: .85rem; }
+.threads.compact li { background: none; }
+.panel-foot { margin: .85rem 0 0; }
+.tag.solved { background: var(--ok-bg); color: var(--ok); border-color: var(--ok); }
+.thread-title { margin-bottom: .3rem; overflow-wrap: anywhere; }
+.thread-tags { margin: 0 0 .75rem; }
+.thread-tools { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; margin-bottom: 1rem; }
+.thread-tools .move { display: flex; align-items: flex-end; gap: .5rem; }
+.thread-tools .move label { font-size: .9rem; }
+.mod-tools { margin-bottom: 1rem; padding: .6rem .8rem; border: 1px dashed var(--field-line); border-radius: 10px; }
+.mod-tools summary { cursor: pointer; font-weight: 600; }
+.mod-tools .thread-tools { margin: .75rem 0 0; }
+.link.danger { color: var(--err); }
+.posts { display: grid; gap: .75rem; margin-bottom: 1.5rem; }
+.post { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: .85rem 1rem; scroll-margin-top: 1rem; }
+.post.first { border-left: 5px solid var(--accent); }
+.post.is-new { border-color: var(--green); }
+.post-head { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-bottom: .5rem; }
+.post-head time { margin-left: auto; color: var(--muted); font-size: .85rem; }
+.post .pre { margin: 0; }
+.post .photo-grid { margin-top: .75rem; }
+.post-foot { margin-top: .6rem; font-size: .9rem; }
+.avatar { display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: .78rem; font-weight: 700; flex: none; }
+.replies-card { border-left: 5px solid var(--green); margin-bottom: 1rem; }
+.replies { list-style: none; margin: 0; padding: 0; display: grid; gap: .45rem; }
+.replies li { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .1rem .75rem; }
+.replies a { color: var(--ink); overflow-wrap: anywhere; }

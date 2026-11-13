@@ -1,0 +1,14 @@
+<%- include('partials/header', { wide: true }) %>
+<p><a href="/discussions">&larr; All discussions</a></p>
+<div class="title-row"><h1><%= section.name %></h1><a class="btn primary small" href="/discussions/new?section=<%= section.id %>">Start a thread</a></div>
+<p class="lede"><%= section.description %></p>
+<% if (!threads.length) { %><p class="empty">No threads here yet.</p><% } %>
+<%- include('partials/thread_list', { threads: threads, showSection: false }) %>
+<% if (pages > 1) { %>
+<div class="pager">
+  <% if (page > 1) { %><a class="btn small" href="/discussions/s/<%= section.id %>?page=<%= page - 1 %>">&larr; Newer</a><% } else { %><span></span><% } %>
+  <span class="meta">Page <%= page %> of <%= pages %></span>
+  <% if (page < pages) { %><a class="btn small" href="/discussions/s/<%= section.id %>?page=<%= page + 1 %>">Older &rarr;</a><% } else { %><span></span><% } %>
+</div>
+<% } %>
+<%- include('partials/footer') %>
