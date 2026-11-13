@@ -21,6 +21,27 @@ const loginLimiter = rateLimit({
   }),
 });
 
+// The limit above is per connection. This one is per account, wherever the guesses come from:
+// after 10 wrong passwords for one username, that username waits 15 minutes.
+const FAILS = new Map(); // username -> { n, until }
+const WINDOW_MS = 15 * 60 * 1000;
+const NAME_LIMIT = 10;
+const nameKey = (u) => String(u || '').trim().toLowerCase().slice(0, 60);
+function lockedOut(username) {
+  const f = FAILS.get(nameKey(username));
+  if (f && f.until <= Date.now()) { FAILS.delete(nameKey(username)); return false; }
+  return Boolean(f && f.n >= NAME_LIMIT);
+}
+function noteFailure(username) {
+  const key = nameKey(username);
+  if (!key) return;
+  if (FAILS.size > 5000) for (const [k, v] of FAILS) if (v.until <= Date.now()) FAILS.delete(k);
+  if (FAILS.size > 5000) FAILS.clear();
+  const f = FAILS.get(key) || { n: 0, until: Date.now() + WINDOW_MS };
+  f.n += 1;
+  FAILS.set(key, f);
+}
+
 // Only allow redirects back into this site.
 const safeNext = (n) => (typeof n === 'string' && /^\/(?![/\\])/.test(n) ? n : '/');
 
@@ -30,14 +51,22 @@ router.get('/login', (req, res) => {
 });
 
 router.post('/login', loginLimiter, (req, res, next) => {
-  const user = auth.checkLogin(req.body.username, req.body.password);
   const target = safeNext(req.body.next);
+  if (lockedOut(req.body.username)) {
+    return res.status(429).render('login', {
+      title: 'Sign in', next: target, username: String(req.body.username || '').slice(0, 60),
+      error: 'Too many wrong passwords for this username. Wait 15 minutes and try again, or ask an admin to reset it.',
+    });
+  }
+  const user = auth.checkLogin(req.body.username, req.body.password);
   if (!user) {
+    noteFailure(req.body.username);
     return res.status(401).render('login', {
       title: 'Sign in', next: target, username: String(req.body.username || '').slice(0, 60),
       error: 'Wrong username or password.',
     });
   }
+  FAILS.delete(nameKey(req.body.username));
   req.session.regenerate((err) => {
     if (err) return next(err);
     req.session.userId = user.id;
@@ -94,6 +123,8 @@ router.post('/reset/:token', resetLimiter, (req, res) => {
   if (error) return res.status(400).render('reset', { title: 'Choose a new password', valid: true, token: req.params.token, error });
   db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?').run(auth.hashPassword(password), found.user_id);
   db.prepare('DELETE FROM password_resets WHERE user_id = ?').run(found.user_id);
+  auth.endSessions(found.user_id);                       // anyone still signed in as this person is signed out
+  FAILS.delete(nameKey(found.username));
   auth.flash(req, 'ok', 'Password changed. Sign in with your new password.');
   res.redirect('/login');
 });
@@ -135,6 +166,7 @@ router.post('/account/password', (req, res) => {
 
   db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?')
     .run(auth.hashPassword(password), req.user.id);
+  auth.endSessions(req.user.id, req.sessionID);          // other devices are signed out; this one stays in
   const target = safeNext(req.session.afterPassword);
   delete req.session.afterPassword;
   auth.flash(req, 'ok', 'Password changed.');
@@ -142,3 +174,4 @@ router.post('/account/password', (req, res) => {
 });
 
 module.exports = router;
+module.exports.clearLoginFailures = () => FAILS.clear();

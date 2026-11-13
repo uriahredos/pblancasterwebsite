@@ -391,3 +391,15 @@ test/portal.test.js  automated tests
 ```
 
 Not in this prototype: Microsoft/Outlook sign-in.
+
+## Security notes
+
+- **Signing in**: passwords are stored only as bcrypt hashes. Wrong guesses are limited two ways: 10 per connection per 15 minutes, and 10 per username per 15 minutes wherever they come from. Resetting the password by email lifts the wait.
+- **Signed out everywhere**: changing a password signs that person out on every other device; an admin resetting a password or disabling an account signs them out on all of them.
+- **Sessions** last 30 days on a device, in a cookie the page's scripts cannot read, sent only over HTTPS in production.
+- **Every form** carries a one-time-per-session token, so another website cannot submit forms as a signed-in person.
+- **Every page** except sign-in and password reset needs a sign-in; every management page and action checks the profile's permission, and a manager's reach stops at their own people.
+- **Uploads** are stored outside the public folder under random names, checked to really be images (or a PDF for newsletters), and only served to people allowed to see the entry they belong to.
+- **Push alerts** are only ever sent to Google's, Apple's, Mozilla's or Microsoft's alert services.
+- **Password-reset links** work once, expire in an hour, are stored hashed, and are left out of the server log.
+- Not included: two-step sign-in. The site is as strong as people's passwords.

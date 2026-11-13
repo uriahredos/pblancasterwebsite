@@ -522,6 +522,7 @@ router.post('/admin/users/:id/:op', requirePerm('users.manage'), (req, res) => {
     case 'reset-password': {
       const password = auth.tempPassword();
       db.prepare('UPDATE users SET password_hash = ?, must_change_password = 1 WHERE id = ?').run(auth.hashPassword(password), target.id);
+      auth.endSessions(target.id, req.sessionID);
       req.session.created = { username: target.username, password, what: 'reset' };
       activity.log(req.user, 'Password reset', target.display_name);
       break;
@@ -531,6 +532,7 @@ router.post('/admin/users/:id/:op', requirePerm('users.manage'), (req, res) => {
       else if (target.is_master) flash(req, 'err', 'The master account cannot be disabled.');
       else {
         db.prepare('UPDATE users SET active = ? WHERE id = ?').run(target.active ? 0 : 1, target.id);
+        if (target.active) auth.endSessions(target.id);
         activity.log(req.user, target.active ? 'Account disabled' : 'Account enabled', target.display_name);
       }
       break;

@@ -48,7 +48,9 @@ app.use(express.static(path.join(__dirname, '..', 'public'), { maxAge: config.pr
 // Request log. Complaint pages are left out on purpose and no user is ever logged.
 app.use((req, res, next) => {
   if (!req.path.startsWith('/complaint')) {
-    res.on('finish', () => console.log(`${req.method} ${req.path} ${res.statusCode}`));
+    // A password-reset link is a key for an hour, so it is never written to the log.
+    const shown = req.path.startsWith('/reset/') ? '/reset/…' : req.path;
+    res.on('finish', () => console.log(`${req.method} ${shown} ${res.statusCode}`));
   }
   next();
 });

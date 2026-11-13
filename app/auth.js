@@ -146,11 +146,19 @@ function verifyCsrf(req, res, next) {
   next();
 }
 
+/**
+ * Sign this person out everywhere, except (optionally) the session making the change.
+ * Used whenever a password changes or an account is disabled, so an old sign-in on a
+ * lost phone or someone else's computer stops working at once.
+ */
+function endSessions(userId, exceptSid) {
+  return db.prepare("DELETE FROM sessions WHERE json_extract(data, '$.userId') = ? AND sid <> ?").run(userId, exceptSid || '').changes;
+}
 function flash(req, type, text) {
   req.session.flash = { type, text };
 }
 
 module.exports = {
   hashPassword, checkLogin, tempPassword, createUser, loadUser,
-  requireLogin, requirePerm, forbidden, newCsrfToken, verifyCsrf, flash,
+  requireLogin, requirePerm, forbidden, newCsrfToken, verifyCsrf, flash, endSessions,
 };

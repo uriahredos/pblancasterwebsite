@@ -24,12 +24,19 @@ router.post('/settings/notifications', requireLogin, (req, res) => {
   res.redirect('/settings/notifications');
 });
 
+// Alerts are only ever sent to the phone makers' own alert services (Google, Apple, Mozilla,
+// Microsoft), so nobody can register some other address and have this server call it.
+const PUSH_HOSTS = /(^|\.)(fcm\.googleapis\.com|push\.apple\.com|push\.services\.mozilla\.com|notify\.windows\.com)$/;
+function pushHost(endpoint) {
+  try { const u = new URL(endpoint); return u.protocol === 'https:' && !u.username && !u.port && PUSH_HOSTS.test(u.hostname); } catch (e) { return false; }
+}
+
 // A phone or browser that has just been allowed to show alerts registers itself here.
 router.post('/push/subscribe', requireLogin, (req, res) => {
   const endpoint = clean(req.body.endpoint, 1000);
   const p256dh = clean(req.body.p256dh, 200);
   const auth = clean(req.body.auth, 100);
-  if (!/^https:\/\/[^\s]+$/.test(endpoint) || !/^[A-Za-z0-9_-]{20,}$/.test(p256dh) || !/^[A-Za-z0-9_-]{8,}$/.test(auth)) return res.status(400).json({ ok: false });
+  if (!pushHost(endpoint) || !/^[A-Za-z0-9_-]{20,}$/.test(p256dh) || !/^[A-Za-z0-9_-]{8,}$/.test(auth)) return res.status(400).json({ ok: false });
   db.prepare(
     `INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, device, created_at) VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(endpoint) DO UPDATE SET user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth, device = excluded.device`

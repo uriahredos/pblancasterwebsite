@@ -2377,7 +2377,7 @@ test('push alerts: sent for the chosen events, to the right people, and each per
   makeUser('push1', 'Petra Push'); makeUser('push2', 'Paul Push');
   const petra = await loggedIn('push1');
   const page = '/settings/notifications';
-  const sub = (client, name) => client.post('/push/subscribe', { endpoint: `https://push.example.test/${name}`, p256dh: 'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM', auth: 'tBHItJI5svbpez7KI4CCXg', device: 'Test phone' }, { page });
+  const sub = (client, name) => client.post('/push/subscribe', { endpoint: `https://fcm.googleapis.com/fcm/send/${name}`, p256dh: 'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM', auth: 'tBHItJI5svbpez7KI4CCXg', device: 'Test phone' }, { page });
 
   // The settings page offers each person only the kinds that apply to them.
   const mine = (await petra.get(page)).text;
@@ -2403,7 +2403,7 @@ test('push alerts: sent for the chosen events, to the right people, and each per
   // 1. A task is assigned: both of the person's devices; the assigner hears when it is done.
   await owner.post('/admin/tasks', [['title', 'Push task'], ['due_on', ymdFromNow(1)], ['to', String(userId('push1'))], ['to', String(userId('push2'))]], { page: '/admin/tasks' });
   let got = await take();
-  assert.deepEqual(got.map((p) => p.endpoint).sort(), ['https://push.example.test/petra-laptop', 'https://push.example.test/petra-phone']);
+  assert.deepEqual(got.map((p) => p.endpoint).sort(), ['https://fcm.googleapis.com/fcm/send/petra-laptop', 'https://fcm.googleapis.com/fcm/send/petra-phone']);
   assert.deepEqual([got[0].title, got[0].url, got[0].tag], ['New task: Push task', '/tasks', 'task_assigned']);
   assert.match(got[0].body, /From Olive Owner\. Due \d+\/\d+\/\d{4}\./);
   const tid = db.prepare("SELECT id FROM tasks WHERE title = 'Push task' AND assigned_to = ?").get(userId('push1')).id;
@@ -2474,7 +2474,7 @@ test('push alerts: sent for the chosen events, to the right people, and each per
   await owner.post('/admin/announcements', { title: 'Critical again', body: 'x', critical: '1' }, { page: '/admin/announcements' });
   await take();
   fail = null;
-  assert.deepEqual(db.prepare('SELECT endpoint FROM push_subscriptions WHERE user_id = ?').all(userId('push1')).map((r) => r.endpoint), ['https://push.example.test/petra-phone']);
+  assert.deepEqual(db.prepare('SELECT endpoint FROM push_subscriptions WHERE user_id = ?').all(userId('push1')).map((r) => r.endpoint), ['https://fcm.googleapis.com/fcm/send/petra-phone']);
 
   // Test alert, and turning a device off (only your own).
   await petra.post('/push/test', {}, { page });
@@ -2676,4 +2676,59 @@ test('home page: tasks first, then the form buttons, then announcements; branch 
 
   db.prepare('DELETE FROM parts_submissions WHERE id IN (?, ?)').run(reqId, teamReq);
   db.prepare('DELETE FROM tasks').run();
+});
+
+test('security: a changed password signs other devices out, guesses are limited per username, and alerts only go to real alert services', async () => {
+  const authRoutes = require('../app/routes/auth');
+
+  // Two devices signed in as the same person. Changing the password on one signs the other out.
+  makeUser('sec1', 'Sally Secure');
+  const phone = await loggedIn('sec1'); const laptop = await loggedIn('sec1');
+  assert.equal((await laptop.get('/')).status, 200);
+  assert.equal((await phone.post('/account/password', { current: 'correct horse battery', password: 'a brand new password', confirm: 'a brand new password' })).status, 302);
+  assert.equal((await phone.get('/')).status, 200);                                    // the device that made the change stays in
+  assert.equal((await laptop.get('/')).status, 302);                                   // the other is back at the sign-in page
+
+  // An admin resetting the password, or disabling the account, signs the person out everywhere.
+  const owner = await loggedIn('owner');
+  await owner.post(`/admin/users/${userId('sec1')}/reset-password`, {}, { page: '/admin/users' });
+  assert.equal((await phone.get('/')).status, 302);
+  assert.equal((await owner.get('/')).status, 200);                                    // not the admin who did it
+  makeUser('sec2', 'Dana Disabled');
+  const dana = await loggedIn('sec2');
+  await owner.post(`/admin/users/${userId('sec2')}/toggle-active`, {}, { page: '/admin/users' });
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM sessions WHERE json_extract(data, '$.userId') = ?").get(userId('sec2')).n, 0);
+  assert.equal((await dana.get('/')).status, 302);
+
+  // Wrong passwords for one username are counted wherever they come from; after the limit even the right one waits.
+  makeUser('sec3', 'Greta Guessed');
+  authRoutes.clearLoginFailures();
+  const perName = 10;
+  let last;
+  for (let i = 0; i < perName; i++) last = await new Client().post('/login', { username: 'SEC3 ', password: `wrong guess ${i}` }, { page: '/login' });
+  assert.equal(last.status, 401);
+  const blocked = await new Client().post('/login', { username: 'sec3', password: 'correct horse battery' }, { page: '/login' });
+  assert.equal(blocked.status, 429);
+  assert.match(blocked.text, /Too many wrong passwords for this username/);
+  assert.equal((await new Client().post('/login', { username: 'tech1', password: 'correct horse battery' }, { page: '/login' })).status, 302); // others are not affected
+  authRoutes.clearLoginFailures();
+  assert.equal((await new Client().post('/login', { username: 'sec3', password: 'correct horse battery' }, { page: '/login' })).status, 302);
+
+  // A device can only register an address at Google's, Apple's, Mozilla's or Microsoft's alert service.
+  const t1 = await loggedIn('tech1');
+  const keys = { p256dh: 'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM', auth: 'tBHItJI5svbpez7KI4CCXg' };
+  const page = '/settings/notifications';
+  for (const bad of ['https://evil.example/hook', 'https://localhost/x', 'https://169.254.169.254/latest', 'http://fcm.googleapis.com/x', 'https://fcm.googleapis.com.evil.example/x', 'https://user@fcm.googleapis.com/x', 'https://fcm.googleapis.com:8443/x']) {
+    assert.equal((await t1.post('/push/subscribe', { endpoint: bad, ...keys }, { page })).status, 400, bad);
+  }
+  for (const good of ['https://fcm.googleapis.com/fcm/send/sec-a', 'https://web.push.apple.com/sec-b', 'https://updates.push.services.mozilla.com/wpush/v2/sec-c', 'https://wns2-by3p.notify.windows.com/w/?token=sec-d']) {
+    assert.equal((await t1.post('/push/subscribe', { endpoint: good, ...keys }, { page })).status, 200, good);
+  }
+  db.prepare("DELETE FROM push_subscriptions WHERE endpoint LIKE '%sec-_'").run();
+
+  // A password-reset link never reaches the server log.
+  const lines = []; const log = console.log; console.log = (...a) => lines.push(a.join(' '));
+  try { await new Client().get('/reset/' + 'ab'.repeat(32)); await new Promise((r) => setTimeout(r, 30)); } finally { console.log = log; }
+  assert.ok(lines.some((l) => l.includes('/reset/…')));
+  assert.ok(!lines.some((l) => l.includes('abab')));
 });
