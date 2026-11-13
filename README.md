@@ -251,6 +251,10 @@ Alerts that pop up on a phone or computer even when the site is closed. Reached 
 - An alert carries a short title and one line of text, and tapping it opens the right page. Anonymous complaints never send alerts.
 - Nothing needs configuring: the site makes its own signing keys on first use and keeps them in the database. The server must be able to reach the internet to send (Render can).
 
+## Looking at photos
+
+Tapping a photo (in a discussion, a truck inspection or a parts return) opens it in a viewer on top of the page, with a **Close** button and arrows when there is more than one. The phone's Back button closes the viewer and leaves you on the page you were on, so the installed app is never left on a bare image with no way back.
+
 ## Deleting records
 
 People whose profile has **Permanently delete...** ticked see a delete button at the bottom of a parts entry, training request or truck inspection. Deleting a complaint needs that permission **and** complaint access.

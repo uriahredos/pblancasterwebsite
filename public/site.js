@@ -109,6 +109,62 @@
       });
     }
 
+    // Photos open in a viewer on top of the page rather than as a bare image with no way back.
+    // The phone's Back button closes the viewer and leaves you where you were.
+    var viewer = null, viewerLinks = [], viewerAt = 0;
+    function photoLinks(link) {
+      var group = link.closest('.photo-grid');
+      return group ? Array.prototype.slice.call(group.querySelectorAll('a[href*="/photo/"]')) : [link];
+    }
+    function showPhoto(i) {
+      viewerAt = (i + viewerLinks.length) % viewerLinks.length;
+      var link = viewerLinks[viewerAt];
+      var thumb = link.querySelector('img');
+      viewer.querySelector('img').src = link.getAttribute('href');
+      viewer.querySelector('img').alt = thumb ? thumb.alt : 'Photo';
+      viewer.querySelector('.pv-count').textContent = viewerLinks.length > 1 ? (viewerAt + 1) + ' of ' + viewerLinks.length : '';
+    }
+    function closeViewer(fromBack) {
+      if (!viewer) return;
+      viewer.remove(); viewer = null;
+      document.documentElement.classList.remove('pv-open');
+      if (!fromBack && history.state && history.state.photoViewer) history.back();
+    }
+    function openViewer(link) {
+      viewerLinks = photoLinks(link);
+      viewer = document.createElement('div');
+      viewer.className = 'photo-viewer';
+      viewer.setAttribute('role', 'dialog'); viewer.setAttribute('aria-modal', 'true'); viewer.setAttribute('aria-label', 'Photo');
+      viewer.innerHTML = '<div class="pv-bar"><span class="pv-count"></span><button type="button" class="pv-close">Close</button></div>' +
+        '<button type="button" class="pv-nav pv-prev" aria-label="Previous photo">&#8249;</button><img alt="">' +
+        '<button type="button" class="pv-nav pv-next" aria-label="Next photo">&#8250;</button>';
+      var many = viewerLinks.length > 1;
+      viewer.querySelector('.pv-prev').hidden = !many; viewer.querySelector('.pv-next').hidden = !many;
+      viewer.addEventListener('click', function (e) {
+        if (e.target.closest('.pv-prev')) showPhoto(viewerAt - 1);
+        else if (e.target.closest('.pv-next')) showPhoto(viewerAt + 1);
+        else if (e.target.tagName !== 'IMG') closeViewer(false);      // Close button or the dark area around the photo
+      });
+      document.body.appendChild(viewer);
+      document.documentElement.classList.add('pv-open');
+      showPhoto(viewerLinks.indexOf(link));
+      history.pushState({ photoViewer: true }, '');
+      viewer.querySelector('.pv-close').focus();
+    }
+    document.addEventListener('click', function (e) {
+      var link = e.target.closest && e.target.closest('a[href*="/photo/"]');
+      if (!link || e.ctrlKey || e.metaKey || e.shiftKey || e.button) return;
+      e.preventDefault();
+      openViewer(link);
+    });
+    window.addEventListener('popstate', function () { closeViewer(true); });
+    document.addEventListener('keydown', function (e) {
+      if (!viewer) return;
+      if (e.key === 'Escape') closeViewer(false);
+      else if (e.key === 'ArrowLeft' && viewerLinks.length > 1) showPhoto(viewerAt - 1);
+      else if (e.key === 'ArrowRight' && viewerLinks.length > 1) showPhoto(viewerAt + 1);
+    });
+
     // Print buttons.
     document.querySelectorAll('[data-print]').forEach(function (btn) {
       btn.addEventListener('click', function () { window.print(); });

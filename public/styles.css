@@ -574,3 +574,13 @@ table.audit .check-cell form { display: block; margin: 0 0 .2rem; }
 .person-list.searching { max-height: 14rem; }
 .picked-chip { background: var(--accent-soft); border-color: var(--accent); }
 #picked:empty { display: none; }
+
+/* Photo viewer */
+.pv-open { overflow: hidden; }
+.photo-viewer { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.92); display: flex; align-items: center; justify-content: center; padding: 3.5rem .5rem 1rem; }
+.photo-viewer img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px; touch-action: pinch-zoom; }
+.pv-bar { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: space-between; padding: .5rem .75rem; color: #fff; }
+.pv-close { min-height: 44px; padding: .4rem 1.1rem; border: 1px solid rgba(255,255,255,.6); border-radius: 8px; background: rgba(0,0,0,.4); color: #fff; font: inherit; font-weight: 600; cursor: pointer; margin-left: auto; }
+.pv-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 48px; height: 64px; border: 0; border-radius: 8px; background: rgba(0,0,0,.45); color: #fff; font-size: 2.2rem; line-height: 1; cursor: pointer; }
+.pv-prev { left: .4rem; } .pv-next { right: .4rem; }
+@media print { .photo-viewer { display: none; } }

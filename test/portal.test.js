@@ -2538,3 +2538,14 @@ test('tasks can be given to a whole profile, to everyone, or to people picked on
   assert.deepEqual(got('Sneaky group'), []);
   db.prepare('DELETE FROM tasks').run();
 });
+
+test('photos open in the page viewer: no link sends the app to a bare image in a new window', async () => {
+  const fs2 = require('fs'); const path2 = require('path');
+  const dir = path2.join(__dirname, '..', 'app', 'views');
+  const all = fs2.readdirSync(dir, { recursive: true }).filter((f) => String(f).endsWith('.ejs')).map((f) => fs2.readFileSync(path2.join(dir, String(f)), 'utf8')).join('\n');
+  const photoLinks = all.match(/<a [^>]*href="[^"]*\/photo\/[^>]*>/g) || [];
+  assert.ok(photoLinks.length >= 4);
+  for (const link of photoLinks) assert.doesNotMatch(link, /target=/, link);
+  const js = (await new Client().get('/site.js')).text;
+  assert.match(js, /photo-viewer/); assert.match(js, /popstate/);        // the viewer, and Back closing it
+});
