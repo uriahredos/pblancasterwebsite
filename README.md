@@ -223,7 +223,7 @@ On a phone it is one column with the buttons first; on a wider screen the newsle
 
 Something one person asks another to do, with an optional due date.
 
-- **Assigning** (Admin > Assign tasks): say what needs doing, add details and a due date if you like, and tick who it is for. Ticking several people gives each their own copy. Needs the **Assign tasks** permission; a manager can assign to their own people only.
+- **Assigning** (Admin > Assign tasks): say what needs doing, add details and a due date if you like, then choose who it is for. Tap a group button to give it to **Everyone** or to everyone on a profile (for example all Technicians), or type a name in the search box to pick particular people; you can mix both. Each person gets their own copy, and the form says how many people that will be before you send it. Needs the **Assign tasks** permission; a manager can assign to their own people only.
 - **For the person**: every open task appears in their notification bell by name with when it is due ("Due tomorrow", "Overdue by 2 days"), overdue first, and counts toward the bell's number. **Tasks** in the menu lists them with the details and a **Mark as done** button with an optional note.
 - **Following up**: the Tasks page for assigners shows open, overdue and done tasks, who each is for, and any note left when it was done. You can edit, reassign, mark done on someone's behalf, reopen or remove a task.
 - The person is emailed when a task is assigned if they have an email address and email is set up.

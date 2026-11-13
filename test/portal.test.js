@@ -2496,3 +2496,45 @@ test('push alerts: sent for the chosen events, to the right people, and each per
   db.prepare('DELETE FROM push_subscriptions').run(); db.prepare('DELETE FROM tasks').run();
   push.setSender(async () => {});
 });
+
+test('tasks can be given to a whole profile, to everyone, or to people picked one by one', async () => {
+  const owner = await loggedIn('owner');
+  const page = '/admin/tasks';
+  db.prepare('DELETE FROM tasks').run();
+  const got = (title) => db.prepare('SELECT u.username FROM tasks t JOIN users u ON u.id = t.assigned_to WHERE t.title = ? ORDER BY u.username').all(title).map((r) => r.username);
+  const onProfile = (name) => db.prepare('SELECT u.username FROM users u JOIN profiles p ON p.id = u.profile_id WHERE p.name = ? AND u.active = 1 ORDER BY u.username').all(name).map((r) => r.username);
+
+  // The form offers each profile with how many people are on it, and Everyone.
+  const form = (await owner.get(page)).text;
+  assert.match(form, new RegExp(`name="group" value="${profileId('Warehouse')}"[^>]*><span>Warehouse \\(${onProfile('Warehouse').length}\\)`));
+  assert.match(form, /name="group" value="all"[^>]*><span>Everyone \(\d+\)/);
+  assert.match(form, /id="person-search"/);
+
+  // A whole profile: every active person on it gets their own copy, and disabled accounts are left out.
+  await owner.post(page, [['title', 'Group task'], ['group', String(profileId('Warehouse'))]], { page });
+  assert.deepEqual(got('Group task'), onProfile('Warehouse'));
+  assert.ok(got('Group task').length >= 1);
+
+  // A profile plus one extra person; someone in both is not given it twice.
+  await owner.post(page, [['title', 'Mixed task'], ['group', String(profileId('Warehouse'))], ['to', String(userId('tech1'))], ['to', String(userId('wh1'))]], { page });
+  assert.deepEqual(got('Mixed task'), [...new Set([...onProfile('Warehouse'), 'tech1'])].sort());
+
+  // Everyone.
+  await owner.post(page, [['title', 'All hands'], ['group', 'all']], { page });
+  assert.equal(got('All hands').length, db.prepare('SELECT COUNT(*) n FROM users WHERE active = 1').get().n);
+  assert.match(db.prepare("SELECT detail FROM activity_log WHERE action = 'Task assigned' ORDER BY id DESC").get().detail, /"All hands" to \d+ people/);
+
+  // Nothing chosen is still an error, and a made-up group gives nobody.
+  assert.equal((await owner.post(page, [['title', 'Nobody'], ['group', '99999']], { page })).status, 400);
+
+  // A manager's groups are their own people only: "Everyone" means everyone they manage.
+  const mgr = await loggedIn('mgr1');
+  const mform = (await mgr.get(page)).text;
+  assert.match(mform, /<span>Everyone \(2\)/);                                 // the manager and Terry Tech
+  assert.doesNotMatch(mform, /<span>Warehouse \(/);
+  await mgr.post(page, [['title', 'Team only'], ['group', 'all']], { page });
+  assert.deepEqual(got('Team only'), ['mgr1', 'tech1']);
+  await mgr.post(page, [['title', 'Sneaky group'], ['group', String(profileId('Warehouse'))]], { page });
+  assert.deepEqual(got('Sneaky group'), []);
+  db.prepare('DELETE FROM tasks').run();
+});

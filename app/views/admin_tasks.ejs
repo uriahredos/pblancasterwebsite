@@ -46,12 +46,22 @@
   <label>What needs doing <input name="title" value="<%= values.title || '' %>" required maxlength="150" autocomplete="off" placeholder="e.g. Restock truck 309 batteries"></label>
   <label>Details <span class="hint">Optional</span> <textarea name="details" rows="3" maxlength="2000"><%= values.details || '' %></textarea></label>
   <label>Due by <span class="hint">Optional</span> <input type="date" name="due_on" value="<%= values.due_on || '' %>"></label>
-  <fieldset>
-    <legend>Who is it for? <span class="hint">Tick more than one to give each person their own copy.</span></legend>
-    <div class="check-grid">
-      <% people.forEach(function (u) { %><label class="choice"><input type="checkbox" name="to" value="<%= u.id %>" <%= values.to.indexOf(String(u.id)) >= 0 ? 'checked' : '' %>> <%= u.display_name %><%= u.id === user.id ? ' (me)' : '' %></label><% }) %>
+  <fieldset id="assign-to">
+    <legend>Who is it for?</legend>
+    <p class="mini">A whole group</p>
+    <div class="chips pick-groups">
+      <label class="chip-check"><input type="checkbox" name="group" value="all" <%= values.groups.indexOf('all') >= 0 ? 'checked' : '' %>><span>Everyone (<%= people.length %>)</span></label>
+      <% groups.forEach(function (g) { %><label class="chip-check"><input type="checkbox" name="group" value="<%= g.id %>" <%= values.groups.indexOf(String(g.id)) >= 0 ? 'checked' : '' %>><span><%= g.name %> (<%= g.count %>)</span></label><% }) %>
     </div>
+    <p class="mini spaced-top">Or particular people</p>
+    <input type="search" id="person-search" placeholder="Type a name to find someone" autocomplete="off" hidden>
+    <div class="chips" id="picked" hidden></div>
+    <div class="check-grid person-list" id="person-list">
+      <% people.forEach(function (u) { %><label class="choice" data-name="<%= u.display_name.toLowerCase() %>" data-group="<%= u.profile_id || '' %>"><input type="checkbox" name="to" value="<%= u.id %>" <%= values.to.indexOf(String(u.id)) >= 0 ? 'checked' : '' %>> <span><%= u.display_name %><%= u.id === user.id ? ' (me)' : '' %> <span class="hint"><%= u.profile_name || '' %></span></span></label><% }) %>
+    </div>
+    <p class="hint" id="assign-count" aria-live="polite">Each person gets their own copy of the task.</p>
   </fieldset>
   <button class="btn primary" type="submit">Assign task</button>
 </form>
+<script src="/assign.js?v=<%= assetV %>" defer></script>
 <%- include('partials/footer') %>

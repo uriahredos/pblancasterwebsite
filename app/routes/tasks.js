@@ -45,7 +45,20 @@ router.post('/tasks/:id/done', requireLogin, (req, res) => {
 /** People this person may give a task to: everyone, or their own team (and themselves). */
 function assignable(viewer) {
   const ids = access.visibleUserIds(viewer);
-  return db.prepare('SELECT id, display_name FROM users WHERE active = 1 ORDER BY display_name COLLATE NOCASE').all().filter((u) => !ids || ids.includes(u.id));
+  return db.prepare(
+    `SELECT u.id, u.display_name, u.profile_id, p.name AS profile_name FROM users u LEFT JOIN profiles p ON p.id = u.profile_id
+     WHERE u.active = 1 ORDER BY u.display_name COLLATE NOCASE`).all().filter((u) => !ids || ids.includes(u.id));
+}
+
+/** The profiles those people are on, with how many of them, for "give it to everyone on this profile". */
+function groups(people) {
+  const map = new Map();
+  for (const u of people) {
+    if (!u.profile_id) continue;
+    const g = map.get(u.profile_id) || { id: u.profile_id, name: u.profile_name, count: 0 };
+    g.count++; map.set(u.profile_id, g);
+  }
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /** Tasks this person may see and manage: any for their people, plus any they assigned. */
@@ -72,7 +85,7 @@ function listPage(req, res, extra = {}) {
   const counts = { open: rows.filter((t) => !t.done_at).length, overdue: rows.filter((t) => t.overdue).length, done: rows.filter((t) => t.done_at).length };
   const shown = rows.filter((t) => (show === 'all' ? true : show === 'done' ? t.done_at : show === 'overdue' ? t.overdue : !t.done_at));
   res.status(extra.errors ? 400 : 200).render('admin_tasks', {
-    title: 'Tasks', rows: shown, counts, show, person, people: assignable(req.user), errors: [], values: { to: [] }, ...extra,
+    title: 'Tasks', rows: shown, counts, show, person, people: assignable(req.user), groups: groups(assignable(req.user)), errors: [], values: { to: [], groups: [] }, ...extra,
   });
 }
 
@@ -81,16 +94,19 @@ router.get('/admin/tasks', assign, (req, res) => listPage(req, res));
 router.post('/admin/tasks', assign, (req, res) => {
   const { values, errors } = readForm(req.body);
   const allowed = assignable(req.user);
+  // People ticked one by one, plus everyone on any profile that was ticked (or simply everyone).
   const picked = [...new Set([].concat(req.body.to || []).map(String))];
-  const to = allowed.filter((u) => picked.includes(String(u.id)));
-  values.to = picked;
+  const pickedGroups = [...new Set([].concat(req.body.group || []).map(String))];
+  const everyone = pickedGroups.includes('all');
+  const to = allowed.filter((u) => everyone || picked.includes(String(u.id)) || pickedGroups.includes(String(u.profile_id)));
+  values.to = picked; values.groups = pickedGroups;
   if (!to.length) errors.unshift('Choose who the task is for.');
   if (errors.length) return listPage(req, res, { errors, values });
 
   const now = new Date().toISOString();
   const add = db.prepare('INSERT INTO tasks (title, details, assigned_to, assigned_by, due_on, created_at) VALUES (?, ?, ?, ?, ?, ?)');
   db.transaction(() => { for (const u of to) add.run(values.title, values.details || null, u.id, req.user.id, values.due_on || null, now); })();
-  activity.log(req.user, 'Task assigned', `"${values.title}" to ${to.map((u) => u.display_name).join(', ')}${values.due_on ? ', due ' + fmtDate(values.due_on) : ''}`);
+  activity.log(req.user, 'Task assigned', `"${values.title}" to ${to.length > 6 ? to.length + ' people' : to.map((u) => u.display_name).join(', ')}${values.due_on ? ', due ' + fmtDate(values.due_on) : ''}`);
   push.notify(to.filter((u) => u.id !== req.user.id).map((u) => u.id), 'task_assigned',
     { title: `New task: ${values.title}`, body: `From ${req.user.display_name}. ${values.due_on ? 'Due ' + fmtDate(values.due_on) : 'No due date'}.`, url: '/tasks' });
   // Tell each person by email if they have one (the bell tells them either way).
