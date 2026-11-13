@@ -1,0 +1,14 @@
+<%- include('partials/header', { wide: true }) %>
+<div class="title-row"><h1>Newsletters</h1><% if (can('newsletters.manage')) { %><a class="btn small" href="/admin/newsletters">Upload or manage</a><% } %></div>
+<p class="lede">The Monthly Barker, newest first.</p>
+<% if (!issues.length) { %><p class="empty">No newsletter has been posted yet.</p><% } %>
+<div class="issue-grid">
+  <% issues.forEach(function (n, i) { %>
+  <a class="issue-card" href="/newsletters/<%= n.id %>">
+    <% if (n.pages.length) { %><img src="/newsletters/<%= n.id %>/page/1" alt="" <%- i > 3 ? 'loading="lazy"' : '' %> width="1100" height="1424"><% } else { %><span class="cover-blank"><span><%= n.month.split(' ')[0] %></span><%= n.month.split(' ')[1] %></span><% } %>
+    <strong><%= n.month %></strong>
+    <% if (i === 0) { %><span class="tag new">Latest</span><% } %>
+  </a>
+  <% }) %>
+</div>
+<%- include('partials/footer') %>

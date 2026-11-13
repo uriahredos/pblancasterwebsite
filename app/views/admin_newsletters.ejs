@@ -1,0 +1,38 @@
+<%- include('partials/header', { wide: true }) %>
+<p><a href="/newsletters">&larr; Newsletters</a></p>
+<h1>Newsletters</h1>
+<p class="lede">The newest issue shows on everyone's home page, with the earlier ones beside it.</p>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Issue</th><th>Title</th><th>Pages</th><th>Uploaded</th><th></th></tr></thead>
+  <tbody>
+  <% issues.forEach(function (n) { %>
+  <tr>
+    <td class="nowrap"><strong><%= n.month %></strong></td>
+    <td><a href="/newsletters/<%= n.id %>"><%= n.title %></a></td>
+    <td><%= n.pages.length || 'PDF only' %></td>
+    <td class="nowrap"><%= n.author %>, <%= fmtDateTime(n.created_at) %></td>
+    <td><form method="post" action="/admin/newsletters/<%= n.id %>/delete" data-confirm="Remove the <%= n.month %> newsletter?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Remove</button></form></td>
+  </tr>
+  <% }) %>
+  <% if (!issues.length) { %><tr><td colspan="5" class="empty">Nothing uploaded yet.</td></tr><% } %>
+  </tbody>
+</table>
+</div>
+<h2>Upload a newsletter</h2>
+<%- include('partials/errors') %>
+<form method="post" action="/admin/newsletters" enctype="multipart/form-data" class="card stack narrow-form">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Month <input type="month" name="issue_month" value="<%= values.issue_month || '' %>" required placeholder="2026-10" pattern="\d{4}-\d{2}"></label>
+  <label>Newsletter PDF <span class="hint">Up to 25 MB. Each page is turned into a picture so it reads well on a phone.</span>
+    <input type="file" name="pdf" accept="application/pdf,.pdf" required>
+  </label>
+  <label>Title <span class="hint">Optional. Left blank it is named after the month, for example "October 2026 newsletter".</span>
+    <input name="title" value="<%= values.title || '' %>" maxlength="120" autocomplete="off">
+  </label>
+  <label>Highlights <span class="hint">Optional. Up to four short lines shown beside the cover on the home page, one per line.</span>
+    <textarea name="highlights" rows="4" maxlength="600"><%= values.highlights || '' %></textarea>
+  </label>
+  <button class="btn primary" type="submit">Post newsletter</button>
+</form>
+<%- include('partials/footer') %>

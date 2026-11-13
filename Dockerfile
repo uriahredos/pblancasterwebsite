@@ -8,6 +8,8 @@ RUN npm ci --omit=dev
 FROM node:22-bookworm-slim
 ENV NODE_ENV=production DATA_DIR=/data PORT=3000
 WORKDIR /app
+# pdftoppm turns each page of an uploaded newsletter into a picture.
+RUN apt-get update && apt-get install -y --no-install-recommends poppler-utils && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/node_modules ./node_modules
 COPY package.json ./
 COPY app ./app

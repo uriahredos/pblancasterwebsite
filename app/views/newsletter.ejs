@@ -1,0 +1,14 @@
+<%- include('partials/header') %>
+<p><a href="/newsletters">&larr; All newsletters</a></p>
+<div class="title-row"><h1><%= n.title %></h1><a class="btn small" href="/newsletters/<%= n.id %>/pdf" target="_blank" rel="noopener">Open the PDF</a></div>
+<p class="lede"><%= n.month %> · <%= n.pages.length %> <%= n.pages.length === 1 ? 'page' : 'pages' %></p>
+<div class="pages">
+  <% n.pages.forEach(function (f, i) { %>
+  <img src="/newsletters/<%= n.id %>/page/<%= i + 1 %>" alt="<%= n.title %>, page <%= i + 1 %>" <%- i ? 'loading="lazy"' : '' %> width="1100" height="1424">
+  <% }) %>
+</div>
+<div class="pager">
+  <% if (older) { %><a class="btn small" href="/newsletters/<%= older.id %>">&larr; Older issue</a><% } else { %><span></span><% } %>
+  <% if (newer) { %><a class="btn small" href="/newsletters/<%= newer.id %>">Newer issue &rarr;</a><% } %>
+</div>
+<%- include('partials/footer') %>

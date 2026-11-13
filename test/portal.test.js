@@ -804,7 +804,7 @@ test('starting profiles: Technician, Warehouse, Manager and Admin each see only 
   assert.deepEqual(navLinks((await wh.get('/')).text), ['/admin/parts', '/admin/requests', '/admin/parts/audit', '/admin/stock', '/admin/parts/summary', '/admin/catalog', '/admin/inspections', '/admin/inspections/checklist']);
   assert.deepEqual(navLinks((await owner.get('/')).text),
     ['/admin/parts', '/admin/requests', '/admin/parts/audit', '/admin/stock', '/admin/parts/summary', '/admin/catalog', '/admin/inspections', '/admin/inspections/checklist',
-      '/admin/training', '/admin/training/sessions', '/admin/certs', '/admin/users', '/admin/profiles', '/admin/announcements', '/admin/complaints', '/admin/activity', '/admin/backups', '/admin/import']);
+      '/admin/training', '/admin/training/sessions', '/admin/certs', '/admin/users', '/admin/profiles', '/admin/announcements', '/admin/newsletters', '/admin/complaints', '/admin/activity', '/admin/backups', '/admin/import']);
 
   for (const url of ['/admin/parts', '/admin/parts/audit', '/admin/parts/summary', '/admin/catalog']) assert.equal((await wh.get(url)).status, 200, url);
   for (const url of ['/admin/training', '/admin/users', '/admin/profiles', '/admin/complaints', '/admin/backups']) assert.equal((await wh.get(url)).status, 403, url);
@@ -1849,4 +1849,154 @@ test('someone who manages training can tidy the wording of a request from the to
   assert.equal((await mgr.get(`/training/${id}/edit?back=topics`)).status, 200);
   await (await loggedIn('tech2')).post('/training', { description: 'other team topic', wants_contact: 'no', is_private: 'no' });
   assert.equal((await mgr.get(`/training/${db.prepare('SELECT MAX(id) id FROM training_requests').get().id}/edit`)).status, 403);
+});
+
+// ----------------------------------------------------------------------------
+// The home dashboard: newsletters, the notice board, what is coming up
+// ----------------------------------------------------------------------------
+
+/** A one-page PDF, small but well formed. */
+function tinyPdf() {
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << >> >>',
+    '<< /Length 35 >>\nstream\n0.9 0.5 0.1 rg 50 50 512 692 re f\n\nendstream',
+  ];
+  let out = '%PDF-1.4\n';
+  const offsets = objects.map((body, i) => { const at = out.length; out += `${i + 1} 0 obj\n${body}\nendobj\n`; return at; });
+  const xref = out.length;
+  out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n` + offsets.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('');
+  out += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(out, 'latin1');
+}
+const uploadedFiles = () => fs.readdirSync(path.join(dataDir, 'uploads')).filter((f) => f.startsWith('nl-'));
+
+test('newsletters: uploaded by people allowed to, shown on the home page, readable by everyone signed in', async () => {
+  const owner = await loggedIn('owner');
+  const t1 = await loggedIn('tech1');
+  const page = '/admin/newsletters';
+  assert.equal((await t1.get(page)).status, 403);
+  assert.equal((await t1.post(page, { issue_month: '2026-10', pdf: new Blob([tinyPdf()], { type: 'application/pdf' }) }, { multipart: true })).status, 403);
+  assert.match((await t1.get('/')).text, /No newsletter has been posted yet/);
+  assert.doesNotMatch((await t1.get('/')).text, /Upload the first one/);
+  assert.match((await owner.get('/')).text, /Upload the first one/);
+
+  // Something that is not a PDF is refused and nothing is kept.
+  const bad = await owner.post(page, { issue_month: '2026-10', pdf: new Blob([PNG], { type: 'application/pdf' }) }, { page, multipart: true });
+  assert.equal(bad.status, 400); assert.match(bad.text, /not a PDF/);
+  assert.equal((await owner.post(page, { issue_month: 'October', pdf: new Blob([tinyPdf()], { type: 'application/pdf' }) }, { page, multipart: true })).status, 400);
+  assert.equal((await owner.post(page, { issue_month: '2026-10' }, { page, multipart: true })).status, 400);
+  // A form without the page's token is refused too.
+  assert.equal((await owner.post(page, { issue_month: '2026-10', pdf: new Blob([tinyPdf()], { type: 'application/pdf' }) }, { multipart: true, csrf: false })).status, 403);
+  await new Promise((r) => setTimeout(r, 100));
+  assert.deepEqual(uploadedFiles(), []);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM newsletters').get().n, 0);
+
+  const ok = await owner.post(page, { issue_month: '2026-09', highlights: 'Welcome new hires\n- Truck 309 is back' , pdf: new Blob([tinyPdf()], { type: 'application/pdf' }) }, { page, multipart: true });
+  assert.equal(ok.location, page);
+  await owner.post(page, { issue_month: '2026-10', title: 'October Edition', pdf: new Blob([tinyPdf()], { type: 'application/pdf' }) }, { page, multipart: true });
+  const [oct, sep] = db.prepare('SELECT * FROM newsletters ORDER BY issue_month DESC').all();
+  assert.equal(oct.title, 'October Edition'); assert.equal(sep.title, 'September 2026 newsletter');
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM activity_log WHERE action = 'Newsletter uploaded'").get().n, 2);
+
+  // The newest issue leads the home page; the earlier one sits under "Past issues".
+  const home = (await t1.get('/')).text;
+  assert.match(home, /Latest issue[\s\S]*October Edition[\s\S]*Read this issue[\s\S]*Past issues[\s\S]*September 2026/);
+  assert.match(home, new RegExp(`href="/newsletters/${oct.id}"`));
+  assert.match((await t1.get(`/newsletters/${sep.id}`)).status === 200 ? (await t1.get(`/newsletters/${sep.id}`)).text : 'Older issue Newer issue', /Newer issue|Older issue/);
+  const list = (await t1.get('/newsletters')).text;
+  assert.match(list, /October 2026[\s\S]*September 2026/); assert.doesNotMatch(list, /Upload or manage/);
+
+  const pdf = await t1.get(`/newsletters/${oct.id}/pdf`);
+  assert.equal(pdf.status, 200); assert.match(pdf.headers.get('content-type'), /application\/pdf/); assert.match(pdf.text, /^%PDF-/);
+  // Where page pictures could be made they are served; where not, the reader falls back to the PDF.
+  const pages = JSON.parse(oct.page_files);
+  const reader = await t1.get(`/newsletters/${oct.id}`);
+  if (pages.length) {
+    assert.equal(reader.status, 200); assert.match(reader.text, /Open the PDF/);
+    assert.equal((await t1.get(`/newsletters/${oct.id}/page/1`)).status, 200);
+    assert.match(home, new RegExp(`src="/newsletters/${oct.id}/page/1"`));
+  } else assert.equal(reader.location, `/newsletters/${oct.id}/pdf`);
+  assert.equal((await t1.get(`/newsletters/${oct.id}/page/99`)).status, 404);
+  assert.equal((await t1.get('/newsletters/999')).status, 404);
+  // Highlights are listed beside the cover, without the dashes people type.
+  await owner.post(`/admin/newsletters/${oct.id}/delete`, {}, { page });
+  assert.match((await t1.get('/')).text, /<li>Welcome new hires<\/li><li>Truck 309 is back<\/li>/);
+
+  // Nothing is readable signed out.
+  for (const url of ['/newsletters', `/newsletters/${sep.id}`, `/newsletters/${sep.id}/pdf`, `/newsletters/${sep.id}/page/1`]) {
+    assert.match((await new Client().get(url)).location, /^\/login/, url);
+  }
+  // Removing an issue removes its files.
+  assert.equal((await t1.post(`/admin/newsletters/${sep.id}/delete`, {})).status, 403);
+  await owner.post(`/admin/newsletters/${sep.id}/delete`, {}, { page });
+  await new Promise((r) => setTimeout(r, 100));
+  assert.deepEqual(uploadedFiles(), []);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM newsletters').get().n, 0);
+});
+
+test('newsletter permission is given once to profiles that manage people, and is its own tick-box', async () => {
+  const pid = access.createProfile('Office', 'all', [...access.SUBMIT, 'users.manage']);
+  db.prepare("DELETE FROM meta WHERE key = 'perm_granted:newsletters.manage'").run();
+  access.migrate();
+  assert.ok(access.permsOf(pid).has('newsletters.manage'));
+  assert.ok(!access.permsOf(access.profileByName('Technician').id).has('newsletters.manage'));
+  access.setPermissions(pid, access.SUBMIT);
+  access.migrate();                                                    // not handed back after someone unticks it
+  assert.ok(!access.permsOf(pid).has('newsletters.manage'));
+  db.prepare('DELETE FROM profiles WHERE id = ?').run(pid);
+});
+
+test('home dashboard: notice board with labels and pins, coming up, and my status', async () => {
+  const owner = await loggedIn('owner');
+  const t2 = await loggedIn('tech2');
+  const page = '/admin/announcements';
+  await owner.post(page, { title: 'Ladder recall', body: 'Tag out any Model 6 ladder.', category: 'safety', pinned: '1' }, { page });
+  const pinId = db.prepare('SELECT MAX(id) id FROM announcements').get().id;
+  await owner.post(page, { title: 'Parking lot repaving', body: 'Park on the street Tuesday.', category: 'nonsense' }, { page });
+  const plainId = db.prepare('SELECT MAX(id) id FROM announcements').get().id;
+  assert.deepEqual(db.prepare('SELECT category, pinned FROM announcements WHERE id = ?').get(pinId), { category: 'safety', pinned: 1 });
+  assert.deepEqual(db.prepare('SELECT category, pinned FROM announcements WHERE id = ?').get(plainId), { category: 'general', pinned: 0 });
+
+  // Unread: at the top with its label. Read: on the notice board, the pinned one first even though it is older.
+  let home = (await t2.get('/')).text;
+  assert.match(home, /New notice<\/span><span class="tag cat-safety">Safety<\/span><strong>Ladder recall/);
+  await t2.post(`/notices/${pinId}/read`, { back: 'home' }, { page: '/' });
+  await t2.post(`/notices/${plainId}/read`, { back: 'home' }, { page: '/' });
+  home = (await t2.get('/')).text;
+  assert.doesNotMatch(home, /New notice/);
+  const board = /<ul class="board">[\s\S]*?<\/ul>/.exec(home)[0];
+  assert.match(board, /Pinned[\s\S]*Ladder recall[\s\S]*Parking lot repaving/);
+  assert.match(board, new RegExp(`href="/notices#n${pinId}"`));
+  assert.match((await t2.get('/notices')).text, new RegExp(`id="n${pinId}"`));
+  // The poster can unpin it; then newest comes first.
+  assert.match((await owner.get(`${page}/${pinId}`)).text, /Unpin from the notice board/);
+  await owner.post(`${page}/${pinId}/pin`, {}, { page: `${page}/${pinId}` });
+  assert.match(/<ul class="board">[\s\S]*?<\/ul>/.exec((await t2.get('/')).text)[0], /Parking lot repaving[\s\S]*Ladder recall/);
+  assert.equal((await t2.post(`${page}/${plainId}/pin`, {})).status, 403);
+
+  // Coming up: sessions on the calendar, but not one scheduled from a private request.
+  const now = new Date().toISOString();
+  const soon = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
+  const priv = db.prepare("INSERT INTO training_requests (user_id, description, wants_contact, is_private, created_at, created_local_date) VALUES (?, 'private thing', 0, 1, ?, '2026-01-01')").run(userId('tech1'), now).lastInsertRowid;
+  const add = db.prepare('INSERT INTO training_sessions (title, request_id, session_date, session_time, location, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
+  const ids = [add.run('NICET study group', null, soon, '16:00', 'Training room', userId('owner'), now).lastInsertRowid,
+    add.run('One to one coaching', priv, soon, '09:00', null, userId('owner'), now).lastInsertRowid,
+    add.run('Last year fire pump class', null, '2020-01-01', null, null, userId('owner'), now).lastInsertRowid];
+  home = (await t2.get('/')).text;
+  assert.match(home, /Coming up[\s\S]*NICET study group[\s\S]*at 4:00 PM · Training room/);
+  assert.doesNotMatch(home, /One to one coaching|Last year fire pump class/);
+
+  // My status counts this person's own open requests.
+  const open = () => db.prepare("SELECT COUNT(*) n FROM parts_submissions WHERE user_id = ? AND action = 'request' AND cancelled_at IS NULL AND status IN ('new','ordered')").get(userId('tech2')).n;
+  const before = open();
+  assert.match(home, new RegExp(`Parts requests</span><span class="mini-num">${before}<`));
+  await t2.post('/parts', [['action', 'request'], ['part_name', 'SIGA-PS'], ['quantity', '2'], ['source', 'van'], ['needed_by', '2027-03-01']], { page: '/parts', multipart: true });
+  assert.equal(open(), before + 1);
+  assert.match((await t2.get('/')).text, new RegExp(`Parts requests</span><span class="mini-num">${before + 1}</span><span class="mini-sub">open request`));
+
+  db.prepare(`DELETE FROM training_sessions WHERE id IN (${ids.join(',')})`).run();
+  db.prepare('DELETE FROM training_requests WHERE id = ?').run(priv);
+  db.prepare('DELETE FROM announcements WHERE id IN (?, ?)').run(pinId, plainId);
 });

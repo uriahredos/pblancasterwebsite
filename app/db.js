@@ -262,6 +262,24 @@ CREATE TABLE IF NOT EXISTS announcement_reads (
   PRIMARY KEY (announcement_id, user_id)
 );
 `);
+// ---- Newsletters, and a category and pin for announcements ----
+db.exec(`
+-- A monthly newsletter: the PDF as uploaded, plus a picture of each page for reading on a phone.
+CREATE TABLE IF NOT EXISTS newsletters (
+  id INTEGER PRIMARY KEY,
+  title TEXT NOT NULL,
+  issue_month TEXT NOT NULL,           -- YYYY-MM
+  highlights TEXT,                     -- one per line, shown on the home page
+  pdf_path TEXT NOT NULL,
+  page_files TEXT NOT NULL DEFAULT '[]', -- JSON list of page pictures, first page first
+  created_by INTEGER NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS newsletters_month ON newsletters(issue_month);
+`);
+addColumn('announcements', 'category', "TEXT NOT NULL DEFAULT 'general'");
+addColumn('announcements', 'pinned', 'INTEGER NOT NULL DEFAULT 0');
+
 if (db.prepare('SELECT COUNT(*) AS n FROM inspection_items').get().n === 0) {
   const add = db.prepare('INSERT INTO inspection_items (label, sort) VALUES (?, ?)');
   ['Tires and wheels', 'Lights and turn signals', 'Brakes', 'No fluid leaks', 'Windshield, wipers and mirrors', 'Horn and backup alarm',

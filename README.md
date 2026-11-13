@@ -173,11 +173,33 @@ Record each person's licenses and certifications with an optional issuer, number
 - **Edit the checklist**: add, reword, reorder or remove items. Inspections already sent keep the wording they were answered with.
 - Sending needs **Send truck inspections**; viewing needs **See truck inspections**; marking fixed and editing the checklist need **Mark inspection problems as fixed**.
 
+## Home page
+
+The home page is a dashboard. From the top:
+
+- **Needs your attention**: announcements the person has not read yet, and their certifications that are expired or expire within 30 days.
+- **What do you need to do?**: the forms their profile allows, as buttons.
+- **The Monthly Barker**: the newest newsletter with its cover and highlights, and the three before it.
+- **Notice board**: the latest announcements they have already read, pinned ones first.
+- **Coming up**: the next training sessions on the calendar. Sessions scheduled from a private request are not shown.
+- **My status**: their open parts and training requests, days since their last truck inspection, and their certifications.
+
+On a phone it is one column with the buttons first; on a wider screen the newsletter and notice board sit on the left.
+
+## Newsletters (`/newsletters`, `/admin/newsletters`)
+
+- Anyone with **Upload and remove the monthly newsletters** uploads a PDF (up to 25 MB) under **Admin > Newsletters**, choosing its month. A title and up to four highlight lines are optional.
+- Each page (up to 12) is turned into a picture so it reads well on a phone; **Open the PDF** gives the original. This uses `pdftoppm` from poppler-utils, which the `Dockerfile` installs. Without it, people open the PDF itself.
+- Everyone signed in can read every issue at `/newsletters`. Nothing is visible signed out.
+- After an update, the permission is given once to profiles that already manage people. Tick it on any other profile that should have it.
+- The files live in `/data/uploads` with the photos, so **Download all photos** on the Backups page includes them.
+
 ## Announcements (`/notices`, `/admin/announcements`)
 
 - Anyone with **Post announcements** can post a title and message, with an optional "show until" date.
 - Someone who sees everyone posts to **everyone**. A manager posts to **their own people**.
-- It shows at the top of each person's home page until they press **I have read this**, and stays on their Notices page afterwards. The menu shows how many are unread.
+- It shows at the top of each person's home page until they press **I have read this**, then stays on the home page notice board and their Notices page. The menu shows how many are unread.
+- **About** adds a small label (HR, Training, Safety or Event). **Pin** keeps it at the top of the notice board; pin or unpin later from the announcement's own page.
 - The poster sees "7 of 12 read", and a page listing who has read it (with the time) and who has not.
 
 ## Deleting records
@@ -301,7 +323,7 @@ A reply typed with a status change is shown to the submitter (under My submissio
 app/server.js        starts the site
 app/app.js           security headers, sessions, routes
 app/db.js            database tables
-app/routes/          one file per area: auth, home, parts, training, complaints, admin, catalog, backups
+app/routes/          one file per area: auth, home, parts, training, complaints, admin, catalog, backups, newsletters
 app/permissions.js   profiles, permission list, manager scoping, master account
 app/backup.js        nightly backups
 app/changes.js       edit/cancel rules and history

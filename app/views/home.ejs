@@ -1,8 +1,27 @@
 <%- include('partials/header') %>
-<h1>Hi, <%= user.display_name %></h1>
+<%
+  // Small line icons for the quick actions.
+  var icons = {
+    take: '<path d="M4 9.5 12 5l8 4.5v8L12 22l-8-4.5z"/><path d="M4 9.5 12 14l8-4.5M12 14v8"/><path d="M12 9V2m0 0L9.5 4.5M12 2l2.5 2.5"/>',
+    back: '<path d="M4 9.5 12 5l8 4.5v8L12 22l-8-4.5z"/><path d="M4 9.5 12 14l8-4.5M12 14v8"/><path d="M12 2v7m0 0L9.5 6.5M12 9l2.5-2.5"/>',
+    request: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M12 9.5v6M9 12.5h6"/>',
+    training: '<path d="M2.5 9 12 4.5 21.5 9 12 13.5z"/><path d="M6.5 11v4.5c1.6 1.5 3.4 2.2 5.5 2.2s3.9-.7 5.5-2.2V11M21.5 9v5.5"/>',
+    truck: '<path d="M2.5 6.5h11v10h-11zM13.5 10h4l3 3v3.5h-7z"/><circle cx="7" cy="17.5" r="1.9"/><circle cx="17" cy="17.5" r="1.9"/>',
+    complaint: '<path d="M4 5h16v11H10l-4.5 3.5V16H4z"/><path d="M8 9.5h8M8 12.5h5"/>',
+    mine: '<path d="M9 6.5h11M9 12h11M9 17.5h11"/><path d="m3.5 6.5 1.2 1.2 2-2.4M3.5 12l1.2 1.2 2-2.4M3.5 17.5l1.2 1.2 2-2.4"/>'
+  };
+  var icon = function (name) { return '<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + icons[name] + '</svg>'; };
+%>
+<div class="dash-hello">
+  <h1>Hi, <%= user.display_name %></h1>
+  <p class="dash-date"><%= dateLine %></p>
+</div>
+
+<% if (notices.length || myCerts.length) { %>
+<section class="attention" aria-label="Needs your attention">
 <% notices.forEach(function (n) { %>
-<div class="card notice-card">
-  <div class="rec-head"><span class="tag new">New notice</span><strong><%= n.title %></strong><time><%= n.author %>, <%= fmtDateTime(n.created_at) %></time></div>
+<div class="card notice-card cat-<%= n.category %>">
+  <div class="rec-head"><span class="tag new">New notice</span><% if (n.category !== 'general') { %><span class="tag cat-<%= n.category %>"><%= categories[n.category] %></span><% } %><strong><%= n.title %></strong><time><%= n.author %>, <%= fmtDateTime(n.created_at) %></time></div>
   <p class="pre"><%= n.body %></p>
   <form method="post" action="/notices/<%= n.id %>/read"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="back" value="home"><button class="btn primary small" type="submit">I have read this</button></form>
 </div>
@@ -10,23 +29,111 @@
 <% myCerts.forEach(function (c) { %>
 <p class="flash <%= c.status === 'expired' ? 'err' : 'warn' %>"><strong><%= c.name %></strong> <%= c.status === 'expired' ? 'expired on ' + fmtDate(c.expires_on) : c.days === 0 ? 'expires today' : 'expires in ' + c.days + (c.days === 1 ? ' day' : ' days') + ', on ' + fmtDate(c.expires_on) %>. Tell your manager when it is renewed.</p>
 <% }) %>
-<p class="lede">What do you need to do?</p>
-<div class="tiles">
-  <% if (can('parts.submit')) { %>
-  <a class="tile" href="/parts?action=take"><strong>Take parts</strong><span>Sign out parts for a job or van stock</span></a>
-  <a class="tile" href="/parts?action=return"><strong>Return parts</strong><span>Bring parts back, with an optional photo</span></a>
-  <a class="tile" href="/parts?action=request"><strong>Request parts</strong><span>Ask for parts to be ordered</span></a>
-  <% } %>
-  <% if (can('training.submit')) { %>
-  <a class="tile" href="/training"><strong>Training request</strong><span>Ask for training on a topic</span></a>
-  <% } %>
-  <% if (can('inspections.submit')) { %>
-  <a class="tile" href="/inspection"><strong>Truck inspection</strong><span>Checklist and photos for your truck</span></a>
-  <% } %>
-  <% if (can('complaints.submit')) { %>
-  <a class="tile quiet" href="/complaint"><strong>Anonymous complaint</strong><span>Your name is not recorded</span></a>
-  <% } %>
-  <a class="tile quiet" href="/my"><strong>My submissions</strong><span>See what you sent and its status</span></a>
+</section>
+<% } %>
+
+<div class="dash">
+  <div class="dash-main">
+    <section class="panel news" aria-labelledby="news-h">
+      <div class="panel-head"><h2 id="news-h">The Monthly Barker</h2><% if (issue) { %><a href="/newsletters">All issues</a><% } %></div>
+      <% if (issue) { %>
+      <div class="issue">
+        <a class="issue-cover" href="/newsletters/<%= issue.id %>" aria-label="Read the <%= issue.month %> newsletter">
+          <% if (issue.pages.length) { %><img src="/newsletters/<%= issue.id %>/page/1" alt="" width="1100" height="1424"><% } else { %><span class="cover-blank"><span><%= issue.month.split(' ')[0] %></span><%= issue.month.split(' ')[1] %></span><% } %>
+        </a>
+        <div class="issue-body">
+          <p class="eyebrow">Latest issue</p>
+          <h3><%= issue.title %></h3>
+          <% if (issue.highlightList.length) { %>
+          <ul class="highlights"><% issue.highlightList.slice(0, 4).forEach(function (h) { %><li><%= h %></li><% }) %></ul>
+          <% } else { %><p class="meta">Birthdays, anniversaries, branch news and this month's spotlight.</p><% } %>
+          <a class="btn primary" href="/newsletters/<%= issue.id %>">Read this issue</a>
+        </div>
+      </div>
+      <% if (pastIssues.length) { %>
+      <div class="past">
+        <p class="eyebrow">Past issues</p>
+        <div class="past-row">
+          <% pastIssues.forEach(function (p) { %>
+          <a class="past-issue" href="/newsletters/<%= p.id %>">
+            <% if (p.pages.length) { %><img src="/newsletters/<%= p.id %>/page/1" alt="" loading="lazy" width="1100" height="1424"><% } else { %><span class="cover-blank small"><span><%= p.month.split(' ')[0].slice(0, 3) %></span><%= p.month.split(' ')[1] %></span><% } %>
+            <span><%= p.month %></span>
+          </a>
+          <% }) %>
+        </div>
+      </div>
+      <% } %>
+      <% } else { %>
+      <p class="empty">No newsletter has been posted yet.<% if (can('newsletters.manage')) { %> <a href="/admin/newsletters">Upload the first one</a>.<% } %></p>
+      <% } %>
+    </section>
+
+    <section class="panel" aria-labelledby="board-h">
+      <div class="panel-head"><h2 id="board-h">Notice board</h2><a href="/notices">All notices</a></div>
+      <% if (!board.length) { %><p class="empty"><%= notices.length ? 'Nothing else posted right now.' : 'No notices right now.' %></p><% } %>
+      <ul class="board">
+        <% board.forEach(function (n) { %>
+        <li class="cat-<%= n.category %>">
+          <a href="/notices#n<%= n.id %>">
+            <span class="board-top"><% if (n.pinned) { %><span class="tag pin">Pinned</span><% } %><% if (n.category !== 'general') { %><span class="tag cat-<%= n.category %>"><%= categories[n.category] %></span><% } %><strong><%= n.title %></strong></span>
+            <span class="board-body"><%= n.body %></span>
+            <span class="board-meta"><%= n.author %> · <%= dateOnly(n.created_at) %></span>
+          </a>
+        </li>
+        <% }) %>
+      </ul>
+    </section>
+  </div>
+
+  <div class="dash-side">
+    <section class="panel actions" aria-labelledby="act-h">
+      <div class="panel-head"><h2 id="act-h">What do you need to do?</h2></div>
+      <div class="quick">
+        <% if (can('parts.submit')) { %>
+        <a href="/parts?action=take"><%- icon('take') %><span>Take parts</span></a>
+        <a href="/parts?action=return"><%- icon('back') %><span>Return parts</span></a>
+        <a href="/parts?action=request"><%- icon('request') %><span>Request parts</span></a>
+        <% } %>
+        <% if (can('training.submit')) { %>
+        <a href="/training"><%- icon('training') %><span>Training request</span></a>
+        <% } %>
+        <% if (can('inspections.submit')) { %>
+        <a href="/inspection"><%- icon('truck') %><span>Truck inspection</span></a>
+        <% } %>
+        <% if (can('complaints.submit')) { %>
+        <a class="quiet" href="/complaint"><%- icon('complaint') %><span>Anonymous complaint</span></a>
+        <% } %>
+        <a class="quiet" href="/my"><%- icon('mine') %><span>My submissions</span></a>
+      </div>
+    </section>
+
+    <% if (upcoming.length) { %>
+    <section class="panel" aria-labelledby="up-h">
+      <div class="panel-head"><h2 id="up-h">Coming up</h2><% if (can('training.submit')) { %><a href="/training/topics">Training topics</a><% } %></div>
+      <ul class="agenda">
+        <% upcoming.forEach(function (s) { %>
+        <li>
+          <span class="cal" aria-hidden="true"><span><%= s.month %></span><%= s.day %></span>
+          <span class="agenda-body"><strong><%= s.title %></strong>
+            <span class="meta"><%= s.weekday %>, <%= s.month %> <%= s.day %><%= s.time ? ' at ' + s.time : '' %><%= s.location ? ' · ' + s.location : '' %></span>
+            <span class="meta"><%= s.when %></span></span>
+        </li>
+        <% }) %>
+      </ul>
+    </section>
+    <% } %>
+
+    <% if (status.length) { %>
+    <section class="panel" aria-labelledby="st-h">
+      <div class="panel-head"><h2 id="st-h">My status</h2><a href="/my">My submissions</a></div>
+      <div class="mini-stats">
+        <% status.forEach(function (s) { %>
+        <a href="/my" class="<%= s.warn ? 'warn' : '' %>"><span class="mini-label"><%= s.label %></span><span class="mini-num"><%= s.value %></span><span class="mini-sub"><%= s.sub %></span></a>
+        <% }) %>
+      </div>
+    </section>
+    <% } %>
+  </div>
 </div>
 <p class="hint spaced"><a href="/account/password">Change my password</a></p>
 <%- include('partials/footer') %>
