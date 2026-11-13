@@ -4,7 +4,8 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const db = require('../db');
 const config = require('../config');
-const { requireLogin, requireReviewer, flash } = require('../auth');
+const { requireLogin, requirePerm, flash } = require('../auth');
+const requireReviewer = requirePerm('complaints.review');
 const { clean, localDate, labels } = require('../util');
 
 const router = express.Router();
@@ -44,11 +45,11 @@ const lookupLimiter = rateLimit({
   }),
 });
 
-router.get('/complaint', requireLogin, (req, res) => {
+router.get('/complaint', requirePerm('complaints.submit'), (req, res) => {
   res.render('complaint', { title: 'Anonymous complaint', values: {}, errors: [] });
 });
 
-router.post('/complaint', requireLogin, (req, res) => {
+router.post('/complaint', requirePerm('complaints.submit'), (req, res) => {
   const values = {
     category: req.body.category,
     description: clean(req.body.description, 6000),

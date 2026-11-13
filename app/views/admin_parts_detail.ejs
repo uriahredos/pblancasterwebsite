@@ -26,13 +26,13 @@
   <% }) %>
 </ul>
 <% } %>
-<% if (!s.cancelled_at) { %>
+<% if (!s.cancelled_at && can('parts.manage')) { %>
 <div class="rec-actions spaced">
   <a class="btn small" href="/parts/<%= s.id %>/edit">Edit</a>
   <form method="post" action="/parts/<%= s.id %>/cancel" data-confirm="Cancel this?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn small" type="submit">Cancel it</button></form>
 </div>
 <% } %>
-<% if (s.action === 'request' && !s.cancelled_at) { %>
+<% if (s.action === 'request' && !s.cancelled_at && can('parts.manage')) { %>
 <h2>Status</h2>
 <form method="post" action="/admin/parts/<%= s.id %>/status" class="card stack">
   <input type="hidden" name="_csrf" value="<%= csrf %>">

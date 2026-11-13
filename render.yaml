@@ -40,3 +40,5 @@ services:
         sync: false
       - key: BACKUP_EMAIL_TO
         sync: false
+      - key: MASTER_USERNAME
+        sync: false

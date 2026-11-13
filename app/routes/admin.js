@@ -8,12 +8,24 @@ const { clean, isYmd, labels, fmtDateTime, localDate } = require('../util');
 const { history } = require('../changes');
 
 const router = express.Router();
-const { requireAdmin, flash } = auth;
+const access = require('../permissions');
+const { requirePerm, forbidden, flash } = auth;
 
-const userList = () => db.prepare('SELECT id, display_name FROM users ORDER BY display_name COLLATE NOCASE').all();
+/** People this viewer may pick in a "Person" filter: everyone, or just their own team. */
+function userList(viewer) {
+  const ids = access.visibleUserIds(viewer);
+  const all = db.prepare('SELECT id, display_name FROM users ORDER BY display_name COLLATE NOCASE').all();
+  return ids ? all.filter((u) => ids.includes(u.id)) : all;
+}
+
+/** SQL that keeps a team-scoped viewer to their own people. Ids are integers from the database. */
+function scopeSql(viewer, column) {
+  const ids = access.visibleUserIds(viewer);
+  return ids ? `${column} IN (${ids.map(Number).join(',')})` : null;
+}
 
 /** Turn the filter boxes into a WHERE clause. `t` is the table alias. */
-function buildFilter(query, t, { statuses, textCols, action = false }) {
+function buildFilter(query, t, { statuses, textCols, action = false }, viewer) {
   const f = {
     from: isYmd(query.from) ? query.from : '',
     to: isYmd(query.to) ? query.to : '',
@@ -24,6 +36,8 @@ function buildFilter(query, t, { statuses, textCols, action = false }) {
   };
   const where = [];
   const params = [];
+  const scope = scopeSql(viewer, `${t}.user_id`);
+  if (scope) where.push(scope);
   if (f.from) { where.push(`${t}.created_local_date >= ?`); params.push(f.from); }
   if (f.to) { where.push(`${t}.created_local_date <= ?`); params.push(f.to); }
   if (f.user) { where.push(`${t}.user_id = ?`); params.push(Number(f.user)); }
@@ -45,23 +59,29 @@ const PARTS_TEXT = [
   's.job_number', 's.note', 'u.display_name',
   '(SELECT group_concat(i.part_name, \' \') FROM parts_items i WHERE i.submission_id = s.id)',
 ];
-const partsFilter = (query) => buildFilter(query, 's', { statuses: labels.partsStatus, textCols: PARTS_TEXT, action: true });
+const partsFilter = (query, viewer) => buildFilter(query, 's', { statuses: labels.partsStatus, textCols: PARTS_TEXT, action: true }, viewer);
 
-router.get('/admin', requireAdmin, (req, res) => res.redirect('/admin/parts'));
+// Send people to the first admin page their profile allows.
+router.get('/admin', auth.requireLogin, (req, res) => {
+  const pages = [['parts.view', '/admin/parts'], ['parts.audit', '/admin/parts/audit'], ['training.view', '/admin/training'],
+    ['catalog.manage', '/admin/catalog'], ['users.manage', '/admin/users'], ['profiles.manage', '/admin/profiles'], ['complaints.review', '/admin/complaints']];
+  const first = pages.find(([perm]) => access.can(req.user, perm));
+  return first ? res.redirect(first[1]) : forbidden(res);
+});
 
-router.get('/admin/parts', requireAdmin, (req, res) => {
-  const { f, sql, params } = partsFilter(req.query);
+router.get('/admin/parts', requirePerm('parts.view'), (req, res) => {
+  const { f, sql, params } = partsFilter(req.query, req.user);
   const rows = db.prepare(
     `SELECT s.*, u.display_name,
             (SELECT group_concat(i.quantity || ' × ' || i.part_name, char(10))
              FROM parts_items i WHERE i.submission_id = s.id) AS items
      FROM parts_submissions s JOIN users u ON u.id = s.user_id
      ${sql} ORDER BY s.id DESC LIMIT 501`).all(...params);
-  res.render('admin_parts', { title: 'Parts log', rows: rows.slice(0, 500), more: rows.length > 500, f, qs: qs(f), users: userList() });
+  res.render('admin_parts', { title: 'Parts log', rows: rows.slice(0, 500), more: rows.length > 500, f, qs: qs(f), users: userList(req.user) });
 });
 
-router.get('/admin/parts.csv', requireAdmin, (req, res) => {
-  const { sql, params } = partsFilter(req.query);
+router.get('/admin/parts.csv', requirePerm('parts.view'), (req, res) => {
+  const { sql, params } = partsFilter(req.query, req.user);
   const rows = db.prepare(
     `SELECT s.*, u.display_name, u.username, i.part_name, i.quantity
      FROM parts_submissions s JOIN users u ON u.id = s.user_id
@@ -90,10 +110,12 @@ function auditRange(query) {
   };
 }
 
-function auditData(query) {
+function auditData(query, viewer) {
   const f = auditRange(query);
   const where = ['s.created_local_date >= ?', 's.created_local_date <= ?'];
   const params = [f.from, f.to];
+  const scope = scopeSql(viewer, 's.user_id');
+  if (scope) where.push(scope);
   if (f.user) { where.push('s.user_id = ?'); params.push(Number(f.user)); }
   if (f.show === 'unchecked') where.push('s.audited_at IS NULL AND s.cancelled_at IS NULL');
   const rows = db.prepare(
@@ -124,8 +146,8 @@ function auditData(query) {
   return { f, sections, rows };
 }
 
-router.get('/admin/parts/audit', requireAdmin, (req, res) => {
-  const data = auditData(req.query);
+router.get('/admin/parts/audit', requirePerm('parts.audit'), (req, res) => {
+  const data = auditData(req.query, req.user);
   const today = localDate();
   const d = new Date(today + 'T12:00:00Z');
   const ymd = (x) => x.toISOString().slice(0, 10);
@@ -134,7 +156,7 @@ router.get('/admin/parts/audit', requireAdmin, (req, res) => {
   const weekStart = new Date(d); weekStart.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); // Monday
   const week = new Date(d); week.setUTCDate(d.getUTCDate() - 6);
   res.render('admin_audit', {
-    title: 'Parts audit', ...data, qs: qs(data.f), users: userList(),
+    title: 'Parts audit', ...data, qs: qs(data.f), users: userList(req.user),
     presets: [
       ['Today', today, today],
       ['This week', ymd(weekStart), today],
@@ -145,8 +167,8 @@ router.get('/admin/parts/audit', requireAdmin, (req, res) => {
   });
 });
 
-router.get('/admin/parts/audit.csv', requireAdmin, (req, res) => {
-  const { f, rows } = auditData(req.query);
+router.get('/admin/parts/audit.csv', requirePerm('parts.audit'), (req, res) => {
+  const { f, rows } = auditData(req.query, req.user);
   sendCsv(res, `parts-audit-${f.from}-to-${f.to}.csv`,
     ['Entry', 'Submitted', 'Action', 'Name', 'Part', 'Description', 'Quantity', 'Van stock or job', 'Job number', 'Needed by',
       'Status', 'Note', 'Edited', 'Cancelled', 'Checked', 'Checked by'],
@@ -158,8 +180,9 @@ router.get('/admin/parts/audit.csv', requireAdmin, (req, res) => {
 const auditBack = (body) => '/admin/parts/audit' + (typeof body.qs === 'string' && body.qs ? '?' + qs(auditRange(Object.fromEntries(new URLSearchParams(body.qs)))) : '');
 
 // Tick (or untick) one entry as checked.
-router.post('/admin/parts/:id/audit', requireAdmin, (req, res) => {
-  const row = db.prepare('SELECT id, audited_at, cancelled_at FROM parts_submissions WHERE id = ?').get(req.params.id);
+router.post('/admin/parts/:id/audit', requirePerm('parts.audit'), (req, res) => {
+  const row = db.prepare('SELECT id, user_id, audited_at, cancelled_at FROM parts_submissions WHERE id = ?').get(req.params.id);
+  if (row && !access.canSee(req.user, row.user_id)) return forbidden(res);
   if (row && !row.cancelled_at) {
     if (row.audited_at) db.prepare('UPDATE parts_submissions SET audited_at = NULL, audited_by = NULL WHERE id = ?').run(row.id);
     else db.prepare('UPDATE parts_submissions SET audited_at = ?, audited_by = ? WHERE id = ?').run(new Date().toISOString(), req.user.id, row.id);
@@ -168,10 +191,12 @@ router.post('/admin/parts/:id/audit', requireAdmin, (req, res) => {
 });
 
 // Tick everything in the chosen range that is not checked yet.
-router.post('/admin/parts/audit/check-all', requireAdmin, (req, res) => {
+router.post('/admin/parts/audit/check-all', requirePerm('parts.audit'), (req, res) => {
   const f = auditRange(Object.fromEntries(new URLSearchParams(String(req.body.qs || ''))));
   const where = ['created_local_date >= ?', 'created_local_date <= ?', 'audited_at IS NULL', 'cancelled_at IS NULL'];
   const params = [f.from, f.to];
+  const scope = scopeSql(req.user, 'user_id');
+  if (scope) where.push(scope);
   if (f.user) { where.push('user_id = ?'); params.push(Number(f.user)); }
   if (labels.action[req.body.action]) { where.push('action = ?'); params.push(req.body.action); }
   const info = db.prepare(`UPDATE parts_submissions SET audited_at = ?, audited_by = ? WHERE ${where.join(' AND ')}`)
@@ -181,9 +206,9 @@ router.post('/admin/parts/audit/check-all', requireAdmin, (req, res) => {
 });
 
 // What was used: totals per part, per person and per job. Cancelled entries are left out.
-function summaryData(query) {
+function summaryData(query, viewer) {
   const { f, sql, params } = buildFilter({ from: query.from, to: query.to, user: query.user, q: query.q }, 's',
-    { statuses: {}, textCols: ['i.part_name', 's.job_number'] });
+    { statuses: {}, textCols: ['i.part_name', 's.job_number'] }, viewer);
   const where = (sql ? sql + ' AND ' : 'WHERE ') + 's.cancelled_at IS NULL';
   const sums = `SUM(CASE WHEN s.action = 'take' THEN i.quantity ELSE 0 END) AS taken,
                 SUM(CASE WHEN s.action = 'return' THEN i.quantity ELSE 0 END) AS returned,
@@ -202,28 +227,31 @@ function summaryData(query) {
   return { f, byPart, byPerson, byJob };
 }
 
-router.get('/admin/parts/summary', requireAdmin, (req, res) => {
-  const data = summaryData(req.query);
-  res.render('admin_summary', { title: 'Parts usage', ...data, qs: qs(data.f), users: userList() });
+router.get('/admin/parts/summary', requirePerm('parts.view'), (req, res) => {
+  const data = summaryData(req.query, req.user);
+  res.render('admin_summary', { title: 'Parts usage', ...data, qs: qs(data.f), users: userList(req.user) });
 });
 
-router.get('/admin/parts/summary.csv', requireAdmin, (req, res) => {
-  const { byPart } = summaryData(req.query);
+router.get('/admin/parts/summary.csv', requirePerm('parts.view'), (req, res) => {
+  const { byPart } = summaryData(req.query, req.user);
   sendCsv(res, `parts-usage-${localDate()}.csv`,
     ['Part', 'Description', 'Taken', 'Returned', 'Net used', 'Requested', 'Entries'],
     byPart.map((r) => [r.part, r.description, r.taken, r.returned, r.taken - r.returned, r.requested, r.entries]));
 });
 
-router.get('/admin/parts/:id', requireAdmin, (req, res) => {
+router.get('/admin/parts/:id', requirePerm('parts.view'), (req, res) => {
   const s = db.prepare(
     `SELECT s.*, u.display_name FROM parts_submissions s JOIN users u ON u.id = s.user_id WHERE s.id = ?`).get(req.params.id);
   if (!s) return res.status(404).render('error', { title: 'Page not found', message: 'That entry does not exist.' });
+  if (!access.canSee(req.user, s.user_id)) return forbidden(res);
   const items = db.prepare('SELECT part_name, quantity FROM parts_items WHERE submission_id = ? ORDER BY id').all(s.id);
   res.render('admin_parts_detail', { title: `Parts entry ${s.id}`, s, items, history: history('parts', s.id) });
 });
 
-router.post('/admin/parts/:id/status', requireAdmin, (req, res) => {
-  if (labels.partsStatus[req.body.status]) {
+router.post('/admin/parts/:id/status', requirePerm('parts.manage'), (req, res) => {
+  const row = db.prepare('SELECT user_id FROM parts_submissions WHERE id = ?').get(req.params.id);
+  if (row && !access.canSee(req.user, row.user_id)) return forbidden(res);
+  if (row && labels.partsStatus[req.body.status]) {
     db.prepare("UPDATE parts_submissions SET status = ?, admin_note = ? WHERE id = ? AND action = 'request'")
       .run(req.body.status, clean(req.body.admin_note, 1000) || null, req.params.id);
     flash(req, 'ok', 'Request updated.');
@@ -233,18 +261,18 @@ router.post('/admin/parts/:id/status', requireAdmin, (req, res) => {
 
 // ---- Training -------------------------------------------------------------
 
-const trainingFilter = (query) => buildFilter(query, 't', { statuses: labels.trainingStatus, textCols: ['t.description', 'u.display_name'] });
+const trainingFilter = (query, viewer) => buildFilter(query, 't', { statuses: labels.trainingStatus, textCols: ['t.description', 'u.display_name'] }, viewer);
 
-router.get('/admin/training', requireAdmin, (req, res) => {
-  const { f, sql, params } = trainingFilter(req.query);
+router.get('/admin/training', requirePerm('training.view'), (req, res) => {
+  const { f, sql, params } = trainingFilter(req.query, req.user);
   const rows = db.prepare(
     `SELECT t.*, u.display_name FROM training_requests t JOIN users u ON u.id = t.user_id
      ${sql} ORDER BY t.id DESC LIMIT 501`).all(...params);
-  res.render('admin_training', { title: 'Training requests', rows: rows.slice(0, 500), more: rows.length > 500, f, qs: qs(f), users: userList() });
+  res.render('admin_training', { title: 'Training requests', rows: rows.slice(0, 500), more: rows.length > 500, f, qs: qs(f), users: userList(req.user) });
 });
 
-router.get('/admin/training.csv', requireAdmin, (req, res) => {
-  const { sql, params } = trainingFilter(req.query);
+router.get('/admin/training.csv', requirePerm('training.view'), (req, res) => {
+  const { sql, params } = trainingFilter(req.query, req.user);
   const rows = db.prepare(
     `SELECT t.*, u.display_name, u.username FROM training_requests t JOIN users u ON u.id = t.user_id
      ${sql} ORDER BY t.id`).all(...params);
@@ -255,15 +283,18 @@ router.get('/admin/training.csv', requireAdmin, (req, res) => {
       fmtDateTime(r.edited_at), fmtDateTime(r.cancelled_at)]));
 });
 
-router.get('/admin/training/:id', requireAdmin, (req, res) => {
+router.get('/admin/training/:id', requirePerm('training.view'), (req, res) => {
   const t = db.prepare(
     'SELECT t.*, u.display_name, u.email FROM training_requests t JOIN users u ON u.id = t.user_id WHERE t.id = ?').get(req.params.id);
   if (!t) return res.status(404).render('error', { title: 'Page not found', message: 'That request does not exist.' });
+  if (!access.canSee(req.user, t.user_id)) return forbidden(res);
   res.render('admin_training_detail', { title: `Training request ${t.id}`, t, history: history('training', t.id) });
 });
 
-router.post('/admin/training/:id/status', requireAdmin, (req, res) => {
-  if (labels.trainingStatus[req.body.status]) {
+router.post('/admin/training/:id/status', requirePerm('training.manage'), (req, res) => {
+  const row = db.prepare('SELECT user_id FROM training_requests WHERE id = ?').get(req.params.id);
+  if (row && !access.canSee(req.user, row.user_id)) return forbidden(res);
+  if (row && labels.trainingStatus[req.body.status]) {
     db.prepare('UPDATE training_requests SET status = ?, admin_note = ? WHERE id = ?')
       .run(req.body.status, clean(req.body.admin_note, 1000) || null, req.params.id);
     flash(req, 'ok', 'Request updated.');
@@ -273,65 +304,129 @@ router.post('/admin/training/:id/status', requireAdmin, (req, res) => {
 
 // ---- Users ----------------------------------------------------------------
 
-const renderUsers = (req, res, extra = {}) => res.status(extra.errors ? 400 : 200).render('admin_users', {
-  title: 'Users', errors: [], values: {}, created: null,
-  users: db.prepare('SELECT * FROM users ORDER BY active DESC, display_name COLLATE NOCASE').all(),
-  ...extra,
-});
+const allProfiles = () => db.prepare('SELECT * FROM profiles ORDER BY name COLLATE NOCASE').all();
+const getUser = (id) => (/^\d+$/.test(String(id)) ? db.prepare('SELECT * FROM users WHERE id = ?').get(id) : null);
 
-router.get('/admin/users', requireAdmin, (req, res) => {
+/** Profiles this person is allowed to hand out: only ones that hold nothing they lack themselves. */
+const grantableProfiles = (actor) => allProfiles().filter((p) => access.canGrant(actor, access.permsOf(p.id)));
+
+/**
+ * May `actor` change `target`'s account? Never the master account (except the
+ * master themselves), never someone outside their team, and never someone
+ * whose profile can do more than their own.
+ */
+function mayManage(actor, target) {
+  if (!target) return false;
+  if (target.is_master) return Boolean(actor.is_master);
+  if (!access.canSee(actor, target.id)) return false;
+  return !target.profile_id || access.canGrant(actor, access.permsOf(target.profile_id));
+}
+
+function renderUsers(req, res, extra = {}) {
+  const ids = access.visibleUserIds(req.user);
+  const users = db.prepare(
+    `SELECT u.*, p.name AS profile_name, p.scope AS profile_scope,
+            (SELECT group_concat(m.display_name, ', ') FROM user_managers um JOIN users m ON m.id = um.manager_id WHERE um.user_id = u.id) AS managers,
+            (SELECT COUNT(*) FROM user_managers um WHERE um.manager_id = u.id) AS team_size
+     FROM users u LEFT JOIN profiles p ON p.id = u.profile_id
+     ORDER BY u.active DESC, u.display_name COLLATE NOCASE`).all()
+    .filter((u) => !ids || ids.includes(u.id))
+    .map((u) => ({ ...u, manageable: mayManage(req.user, u) }));
+  res.status(extra.errors ? 400 : 200).render('admin_users', {
+    title: 'Users', errors: [], values: {}, created: null, users,
+    profiles: grantableProfiles(req.user), canAdd: req.user.scope === 'all', ...extra,
+  });
+}
+
+router.get('/admin/users', requirePerm('users.manage'), (req, res) => {
   const created = req.session.created || null; // temp password, shown once
   delete req.session.created;
   renderUsers(req, res, { created });
 });
 
-router.post('/admin/users', requireAdmin, (req, res) => {
-  const values = {
-    username: clean(req.body.username, 40), display_name: clean(req.body.display_name, 80),
-    email: clean(req.body.email, 120), role: req.body.role === 'admin' ? 'admin' : 'user',
-    reviewer: req.body.reviewer === '1',
-  };
+function readPerson(body, exceptId) {
+  const values = { username: clean(body.username, 40), display_name: clean(body.display_name, 80), email: clean(body.email, 120) };
   const errors = [];
   if (!/^[a-zA-Z0-9._-]{3,40}$/.test(values.username)) errors.push('Username: 3-40 letters, numbers, dot, dash or underscore.');
-  else if (db.prepare('SELECT 1 FROM users WHERE username = ?').get(values.username)) errors.push('That username is already taken.');
+  else if (db.prepare('SELECT 1 FROM users WHERE username = ? AND id <> ?').get(values.username, exceptId || 0)) errors.push('That username is already taken.');
   if (!values.display_name) errors.push('Enter the person\'s name.');
   if (values.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)) errors.push('That email address does not look right.');
+  return { values, errors };
+}
+
+router.post('/admin/users', requirePerm('users.manage'), (req, res) => {
+  if (req.user.scope !== 'all') return forbidden(res); // team managers do not create accounts
+  const { values, errors } = readPerson(req.body);
+  const profile = grantableProfiles(req.user).find((p) => String(p.id) === String(req.body.profile_id));
+  values.profile_id = req.body.profile_id;
+  if (!profile) errors.push('Choose a profile.');
   if (errors.length) return renderUsers(req, res, { errors, values });
 
   const password = auth.tempPassword();
-  auth.createUser({ username: values.username, displayName: values.display_name, email: values.email, password, role: values.role, reviewer: values.reviewer });
+  auth.createUser({ username: values.username, displayName: values.display_name, email: values.email, password, profile: profile.id });
   req.session.created = { username: values.username, password, what: 'created' };
   res.redirect('/admin/users');
 });
 
-// Change a person's name, username or email after the account exists.
-router.get('/admin/users/:id/edit', requireAdmin, (req, res) => {
-  const target = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
+function editPage(req, res, target, extra = {}) {
+  const profile = target.profile_id ? db.prepare('SELECT * FROM profiles WHERE id = ?').get(target.profile_id) : null;
+  const fullAccess = req.user.scope === 'all';
+  res.status(extra.errors ? 400 : 200).render('admin_user_edit', {
+    title: 'Edit person', target, values: target, errors: [], profile,
+    profiles: grantableProfiles(req.user),
+    // Changing someone's profile or team is for people who see everyone; nobody changes their own profile.
+    canSetProfile: fullAccess && !target.is_master && target.id !== req.user.id,
+    canSetTeam: Boolean(fullAccess && profile && profile.scope === 'team' && !target.is_master),
+    people: db.prepare('SELECT id, display_name, active FROM users WHERE id <> ? ORDER BY display_name COLLATE NOCASE').all(target.id),
+    team: db.prepare('SELECT user_id FROM user_managers WHERE manager_id = ?').all(target.id).map((r) => r.user_id),
+    ...extra,
+  });
+}
+
+// Change a person's name, username, email, profile, and (for managers) who they look after.
+router.get('/admin/users/:id/edit', requirePerm('users.manage'), (req, res) => {
+  const target = getUser(req.params.id);
   if (!target) return res.redirect('/admin/users');
-  res.render('admin_user_edit', { title: 'Edit person', target, values: target, errors: [] });
+  if (!mayManage(req.user, target)) return forbidden(res);
+  editPage(req, res, target);
 });
 
-router.post('/admin/users/:id/edit', requireAdmin, (req, res) => {
-  const target = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
+router.post('/admin/users/:id/edit', requirePerm('users.manage'), (req, res) => {
+  const target = getUser(req.params.id);
   if (!target) return res.redirect('/admin/users');
-  const values = { username: clean(req.body.username, 40), display_name: clean(req.body.display_name, 80), email: clean(req.body.email, 120) };
-  const errors = [];
-  if (!/^[a-zA-Z0-9._-]{3,40}$/.test(values.username)) errors.push('Username: 3-40 letters, numbers, dot, dash or underscore.');
-  else if (db.prepare('SELECT 1 FROM users WHERE username = ? AND id <> ?').get(values.username, target.id)) errors.push('That username is already taken.');
-  if (!values.display_name) errors.push('Enter the person\'s name.');
-  if (values.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)) errors.push('That email address does not look right.');
-  if (errors.length) return res.status(400).render('admin_user_edit', { title: 'Edit person', target, values, errors });
-  db.prepare('UPDATE users SET username = ?, display_name = ?, email = ? WHERE id = ?')
-    .run(values.username, values.display_name, values.email || null, target.id);
+  if (!mayManage(req.user, target)) return forbidden(res);
+  const { values, errors } = readPerson(req.body, target.id);
+  const fullAccess = req.user.scope === 'all';
+
+  let profileId = target.profile_id;
+  if (fullAccess && !target.is_master && target.id !== req.user.id && req.body.profile_id !== undefined) {
+    const chosen = grantableProfiles(req.user).find((p) => String(p.id) === String(req.body.profile_id));
+    if (!chosen) errors.push('Choose a profile.');
+    else profileId = chosen.id;
+  }
+  if (errors.length) return editPage(req, res, target, { errors, values: { ...target, ...values } });
+
+  db.transaction(() => {
+    db.prepare('UPDATE users SET username = ?, display_name = ?, email = ?, profile_id = ? WHERE id = ?')
+      .run(values.username, values.display_name, values.email || null, profileId, target.id);
+    const newProfile = profileId ? db.prepare('SELECT scope FROM profiles WHERE id = ?').get(profileId) : null;
+    if (fullAccess && req.body.team_form === '1' && newProfile && newProfile.scope === 'team') {
+      const picked = [].concat(req.body.team || []).filter((v) => /^\d+$/.test(v)).map(Number).filter((id) => id !== target.id);
+      db.prepare('DELETE FROM user_managers WHERE manager_id = ?').run(target.id);
+      const add = db.prepare('INSERT OR IGNORE INTO user_managers (manager_id, user_id) SELECT ?, id FROM users WHERE id = ?');
+      for (const id of picked) add.run(target.id, id);
+    }
+  })();
   flash(req, 'ok', `${values.display_name} updated.`);
-  res.redirect('/admin/users');
+  // After moving someone onto a manager profile, go straight to choosing their people.
+  const becameManager = profileId !== target.profile_id && db.prepare("SELECT 1 FROM profiles WHERE id = ? AND scope = 'team'").get(profileId);
+  res.redirect(becameManager ? `/admin/users/${target.id}/edit` : '/admin/users');
 });
 
-router.post('/admin/users/:id/:op', requireAdmin, (req, res) => {
-  const target = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
+router.post('/admin/users/:id/:op', requirePerm('users.manage'), (req, res) => {
+  const target = getUser(req.params.id);
   if (!target) return res.redirect('/admin/users');
-  const self = target.id === req.user.id;
-  const set = (col, val) => db.prepare(`UPDATE users SET ${col} = ? WHERE id = ?`).run(val, target.id);
+  if (!mayManage(req.user, target)) return forbidden(res);
   switch (req.params.op) {
     case 'reset-password': {
       const password = auth.tempPassword();
@@ -340,19 +435,88 @@ router.post('/admin/users/:id/:op', requireAdmin, (req, res) => {
       break;
     }
     case 'toggle-active':
-      if (self) flash(req, 'err', 'You cannot disable your own account.');
-      else set('active', target.active ? 0 : 1);
-      break;
-    case 'toggle-admin':
-      if (self) flash(req, 'err', 'You cannot remove your own admin access.');
-      else set('role', target.role === 'admin' ? 'user' : 'admin');
-      break;
-    case 'toggle-reviewer':
-      set('can_review_complaints', target.can_review_complaints ? 0 : 1);
+      if (target.id === req.user.id) flash(req, 'err', 'You cannot disable your own account.');
+      else if (target.is_master) flash(req, 'err', 'The master account cannot be disabled.');
+      else db.prepare('UPDATE users SET active = ? WHERE id = ?').run(target.active ? 0 : 1, target.id);
       break;
     default:
   }
   res.redirect('/admin/users');
+});
+
+// ---- Profiles: what each kind of account may do ----------------------------
+
+const getProfile = (id) => (/^\d+$/.test(String(id)) ? db.prepare('SELECT * FROM profiles WHERE id = ?').get(id) : null);
+const profileRows = () => db.prepare(
+  `SELECT p.*, (SELECT COUNT(*) FROM users u WHERE u.profile_id = p.id) AS people,
+          (SELECT COUNT(*) FROM profile_permissions pp WHERE pp.profile_id = p.id) AS perm_count
+   FROM profiles p ORDER BY p.name COLLATE NOCASE`).all();
+
+router.get('/admin/profiles', requirePerm('profiles.manage'), (req, res) => {
+  res.render('admin_profiles', { title: 'Profiles', profiles: profileRows(), total: access.ALL.length, errors: [], values: {} });
+});
+
+router.post('/admin/profiles', requirePerm('profiles.manage'), (req, res) => {
+  const name = clean(req.body.name, 40);
+  const errors = [];
+  if (name.length < 2) errors.push('Enter a name for the profile.');
+  else if (access.profileByName(name) || name.toLowerCase() === 'master') errors.push('There is already a profile with that name.');
+  if (errors.length) {
+    return res.status(400).render('admin_profiles', { title: 'Profiles', profiles: profileRows(), total: access.ALL.length, errors, values: { name } });
+  }
+  // A new profile starts with the three "send a form" boxes ticked (where the creator has them).
+  const id = access.createProfile(name, 'all', access.SUBMIT.filter((p) => access.can(req.user, p)));
+  res.redirect(`/admin/profiles/${id}`);
+});
+
+function profilePage(req, res, profile, extra = {}) {
+  res.status(extra.errors ? 400 : 200).render('admin_profile_edit', {
+    title: `Profile: ${profile.name}`, profile, groups: access.GROUPS, held: access.permsOf(profile.id),
+    people: db.prepare('SELECT display_name FROM users WHERE profile_id = ? ORDER BY display_name COLLATE NOCASE').all(profile.id),
+    errors: [], values: profile, ...extra,
+  });
+}
+
+router.get('/admin/profiles/:id', requirePerm('profiles.manage'), (req, res) => {
+  const profile = getProfile(req.params.id);
+  if (!profile) return res.redirect('/admin/profiles');
+  profilePage(req, res, profile);
+});
+
+router.post('/admin/profiles/:id', requirePerm('profiles.manage'), (req, res) => {
+  const profile = getProfile(req.params.id);
+  if (!profile) return res.redirect('/admin/profiles');
+  const name = clean(req.body.name, 40);
+  const scope = req.body.scope === 'team' ? 'team' : 'all';
+  const errors = [];
+  const clash = access.profileByName(name);
+  if (name.length < 2) errors.push('Enter a name for the profile.');
+  else if ((clash && clash.id !== profile.id) || name.toLowerCase() === 'master') errors.push('There is already a profile with that name.');
+  if (errors.length) return profilePage(req, res, profile, { errors, values: { ...profile, name, scope } });
+
+  // You can only tick or untick boxes you hold yourself; the rest stay as they were.
+  const ticked = new Set([].concat(req.body.perms || []));
+  const held = access.permsOf(profile.id);
+  const perms = access.ALL.filter((p) => (access.can(req.user, p) ? ticked.has(p) : held.has(p)));
+  // Do not let someone lock themselves out of this page by unticking it on their own profile.
+  if (!req.user.is_master && req.user.profile_id === profile.id && !perms.includes('profiles.manage')) perms.push('profiles.manage');
+
+  db.transaction(() => {
+    db.prepare('UPDATE profiles SET name = ?, scope = ? WHERE id = ?').run(name, scope, profile.id);
+    access.setPermissions(profile.id, perms);
+  })();
+  flash(req, 'ok', `${name} saved. It applies to everyone on that profile straight away.`);
+  res.redirect('/admin/profiles');
+});
+
+router.post('/admin/profiles/:id/delete', requirePerm('profiles.manage'), (req, res) => {
+  const profile = getProfile(req.params.id);
+  if (!profile) return res.redirect('/admin/profiles');
+  const { n } = db.prepare('SELECT COUNT(*) AS n FROM users WHERE profile_id = ?').get(profile.id);
+  if (n > 0) flash(req, 'err', `${profile.name} is still used by ${n} ${n === 1 ? 'person' : 'people'}. Move them to another profile first.`);
+  else if (!access.canGrant(req.user, access.permsOf(profile.id))) flash(req, 'err', 'You cannot delete a profile that can do more than your own.');
+  else { db.prepare('DELETE FROM profiles WHERE id = ?').run(profile.id); flash(req, 'ok', `${profile.name} deleted.`); }
+  res.redirect('/admin/profiles');
 });
 
 module.exports = router;

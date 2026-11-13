@@ -15,7 +15,8 @@ router.get('/my', requireLogin, (req, res) => {
      FROM parts_submissions s WHERE s.user_id = ? ORDER BY s.id DESC LIMIT 200`).all(req.user.id);
   const training = db.prepare(
     'SELECT * FROM training_requests WHERE user_id = ? ORDER BY id DESC LIMIT 200').all(req.user.id);
-  for (const row of [...parts, ...training]) row.can_change = canChange(row, req.user) && row.user_id === req.user.id;
+  for (const row of parts) row.can_change = canChange(row, req.user, 'parts');
+  for (const row of training) row.can_change = canChange(row, req.user, 'training');
   res.render('my', { title: 'My submissions', parts, training });
 });
 

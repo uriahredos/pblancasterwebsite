@@ -2,7 +2,8 @@
 const express = require('express');
 const multer = require('multer');
 const db = require('../db');
-const { requireAdmin, verifyCsrf, flash } = require('../auth');
+const { requirePerm, verifyCsrf, flash } = require('../auth');
+const requireAdmin = requirePerm('catalog.manage');
 const { clean } = require('../util');
 
 const router = express.Router();

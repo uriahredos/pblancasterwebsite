@@ -60,8 +60,20 @@ class Client {
   }
 }
 
+const access = require('../app/permissions');
+// Shorthand kept from before profiles existed: { role: 'admin' } and { reviewer: true } pick the matching profile.
+function profileFor({ role, reviewer, profile } = {}) {
+  if (profile) return profile;
+  if (role === 'admin' && reviewer) return 'Admin';
+  if (role === 'admin') {
+    access.ensureProfile('Admin (no complaints)', 'all', access.ALL.filter((p) => p !== 'complaints.review' && p !== 'backups'));
+    return 'Admin (no complaints)';
+  }
+  if (reviewer) { access.ensureProfile('Complaint reviewer', 'all', [...access.SUBMIT, 'complaints.review']); return 'Complaint reviewer'; }
+  return 'Technician';
+}
 function makeUser(username, displayName, opts = {}) {
-  const id = auth.createUser({ username, displayName, password: 'correct horse battery', ...opts });
+  const id = auth.createUser({ username, displayName, password: 'correct horse battery', profile: profileFor(opts), master: opts.master });
   db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?').run(id);
   return id;
 }
@@ -266,7 +278,9 @@ test('admin user management: create with one-time temp password, reset, disable,
   const admin = await loggedIn('admin');
   const page = '/admin/users';
   assert.equal((await admin.post(page, { username: 'tech1', display_name: 'Dup' }, { page })).status, 400);
-  assert.equal((await admin.post(page, { username: 'kyle.o', display_name: 'Kyle O', role: 'user' }, { page })).status, 302);
+  assert.equal((await admin.post(page, { username: 'kyle.o', display_name: 'Kyle O' }, { page })).status, 400); // a profile is required
+  const techProfile = access.profileByName('Technician').id;
+  assert.equal((await admin.post(page, { username: 'kyle.o', display_name: 'Kyle O', profile_id: techProfile }, { page })).status, 302);
   const shown = (await admin.get(page)).text;
   const temp = /<p class="code">([a-z0-9-]+)<\/p>/.exec(shown)[1];
   assert.doesNotMatch((await admin.get(page)).text, new RegExp(temp)); // shown once only
@@ -279,10 +293,11 @@ test('admin user management: create with one-time temp password, reset, disable,
   assert.equal((await new Client().post('/login', { username: 'kyle.o', password: temp }, { page: '/login' })).status, 401);
 
   const me = db.prepare("SELECT id FROM users WHERE username = 'admin'").get().id;
+  const myProfile = db.prepare('SELECT profile_id FROM users WHERE id = ?').get(me).profile_id;
   await admin.post(`/admin/users/${me}/toggle-active`, {}, { page });
-  await admin.post(`/admin/users/${me}/toggle-admin`, {}, { page });
-  const row = db.prepare('SELECT active, role FROM users WHERE id = ?').get(me);
-  assert.deepEqual(row, { active: 1, role: 'admin' });
+  await admin.post(`/admin/users/${me}/edit`, { username: 'admin', display_name: 'Ada Admin', profile_id: techProfile }, { page: `/admin/users/${me}/edit` });
+  const row = db.prepare('SELECT active, profile_id FROM users WHERE id = ?').get(me);
+  assert.deepEqual({ ...row }, { active: 1, profile_id: myProfile }); // cannot disable or demote yourself
 });
 
 test('anonymous complaint: nothing identifying is stored, logged or emailed', async () => {
@@ -617,19 +632,39 @@ test('a database from the first release is upgraded in place without losing data
     CREATE TABLE training_requests (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, description TEXT NOT NULL, wants_contact INTEGER NOT NULL,
       is_private INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'new', admin_note TEXT, created_at TEXT NOT NULL, created_local_date TEXT NOT NULL);
     INSERT INTO users (username, display_name, password_hash, created_at) VALUES ('old', 'Old User', 'x', '2026-01-01');
+    INSERT INTO users (username, display_name, password_hash, role, can_review_complaints, created_at) VALUES
+      ('boss', 'First Admin', 'x', 'admin', 1, '2026-01-02'), ('second', 'Second Admin', 'x', 'admin', 1, '2026-01-03'),
+      ('plainadmin', 'Admin No Complaints', 'x', 'admin', 0, '2026-01-04'), ('rev', 'Reviewer Only', 'x', 'user', 1, '2026-01-05');
     INSERT INTO parts_submissions (user_id, action, source, created_at, created_local_date) VALUES (1, 'take', 'van', '2026-01-01T00:00:00Z', '2026-01-01');
   `);
   old.close();
   const out = execFileSync(process.execPath, ['-e', `
     const db = require('./app/db'); require('./app/db');
+    const access = require('./app/permissions'); access.migrate(); // running it twice changes nothing
+    const who = db.prepare('SELECT u.username, p.name AS profile, u.is_master FROM users u JOIN profiles p ON p.id = u.profile_id ORDER BY u.id').all();
+    const perms = (name) => [...access.permsOf(access.profileByName(name).id)].sort();
     const cols = (t) => db.prepare("SELECT name FROM pragma_table_info('" + t + "')").all().map((c) => c.name);
     console.log(JSON.stringify({ parts: cols('parts_submissions'), training: cols('training_requests'),
-      rows: db.prepare('SELECT COUNT(*) n FROM parts_submissions').get().n, catalog: cols('parts_catalog').length }));
+      rows: db.prepare('SELECT COUNT(*) n FROM parts_submissions').get().n, catalog: cols('parts_catalog').length,
+      who, adminPerms: perms('Admin').length, all: access.ALL.length, plain: perms('Admin (no complaints)'), rev: perms('Complaint reviewer'),
+      profiles: db.prepare('SELECT name FROM profiles ORDER BY name').all().map((p) => p.name) }));
   `], { cwd: path.join(__dirname, '..'), env: { ...process.env, DATA_DIR: dir } });
   const r = JSON.parse(out.toString());
   for (const t of [r.parts, r.training]) { assert.ok(t.includes('edited_at')); assert.ok(t.includes('cancelled_at')); }
   assert.equal(r.rows, 1);
   assert.ok(r.catalog > 0);
+  // Everyone keeps exactly the access they had, and the first admin becomes the master account.
+  assert.deepEqual(r.who, [
+    { username: 'old', profile: 'Technician', is_master: 0 },
+    { username: 'boss', profile: 'Admin', is_master: 1 },
+    { username: 'second', profile: 'Admin', is_master: 0 },
+    { username: 'plainadmin', profile: 'Admin (no complaints)', is_master: 0 },
+    { username: 'rev', profile: 'Complaint reviewer', is_master: 0 },
+  ]);
+  assert.equal(r.adminPerms, r.all);
+  assert.ok(!r.plain.includes('complaints.review') && !r.plain.includes('backups') && r.plain.includes('users.manage'));
+  assert.ok(r.rev.includes('complaints.review') && !r.rev.includes('parts.view'));
+  assert.deepEqual(r.profiles, ['Admin', 'Admin (no complaints)', 'Complaint reviewer', 'Manager', 'Technician', 'Warehouse']);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -748,4 +783,216 @@ test('an admin can change a person\'s name, username and email after the account
   await loggedIn('uredos');
   assert.equal((await user.get(page)).status, 403);
   assert.equal((await user.post(page, { username: 'x', display_name: 'Hacked' })).status, 403);
+});
+
+// ---------------------------------------------------------------------------
+// Profiles, permission tick-boxes, managers and the master account
+// ---------------------------------------------------------------------------
+
+const userId = (username) => db.prepare('SELECT id FROM users WHERE username = ?').get(username).id;
+const profileId = (name) => access.profileByName(name).id;
+const navLinks = (html) => [...html.matchAll(/<a href="(\/admin\/[a-z/]+)"/g)].map((m) => m[1]).filter((v, i, a) => a.indexOf(v) === i);
+
+test('starting profiles: Technician, Warehouse, Manager and Admin each see only what they should', async () => {
+  makeUser('wh1', 'Wanda Warehouse', { profile: 'Warehouse' });
+  const tech = await loggedIn('tech1');
+  const wh = await loggedIn('wh1');
+  const owner = await loggedIn('owner');
+
+  assert.deepEqual(navLinks((await tech.get('/')).text), []); // a technician has no admin menu at all
+  assert.deepEqual(navLinks((await wh.get('/')).text), ['/admin/parts', '/admin/parts/audit', '/admin/catalog']);
+  assert.deepEqual(navLinks((await owner.get('/')).text),
+    ['/admin/parts', '/admin/parts/audit', '/admin/training', '/admin/catalog', '/admin/users', '/admin/profiles', '/admin/complaints']);
+
+  for (const url of ['/admin/parts', '/admin/parts/audit', '/admin/parts/summary', '/admin/catalog']) assert.equal((await wh.get(url)).status, 200, url);
+  for (const url of ['/admin/training', '/admin/users', '/admin/profiles', '/admin/complaints', '/admin/backups']) assert.equal((await wh.get(url)).status, 403, url);
+  assert.equal((await wh.get('/admin')).location, '/admin/parts');
+  assert.equal((await tech.get('/admin')).status, 403);
+  // Warehouse sees everyone's parts, and can act on a request.
+  const req = db.prepare("SELECT id FROM parts_submissions WHERE action = 'request' AND cancelled_at IS NULL ORDER BY id DESC").get();
+  assert.equal((await wh.post(`/admin/parts/${req.id}/status`, { status: 'fulfilled', admin_note: 'On the shelf' }, { page: `/admin/parts/${req.id}` })).status, 302);
+  assert.equal(db.prepare('SELECT status FROM parts_submissions WHERE id = ?').get(req.id).status, 'fulfilled');
+});
+
+test('a manager sees and manages only the people assigned to them', async () => {
+  makeUser('mgr1', 'Mona Manager', { profile: 'Manager' });
+  const owner = await loggedIn('owner');
+  const mgr = await loggedIn('mgr1');
+  const t1 = await loggedIn('tech1');
+  const t2 = await loggedIn('tech2');
+  await t1.post('/parts', [['action', 'take'], ['part_name', 'TEAM-ONE'], ['quantity', '3'], ['source', 'van']], { multipart: true });
+  const mine = lastParts().id;
+  await t2.post('/parts', [['action', 'take'], ['part_name', 'TEAM-TWO'], ['quantity', '8'], ['source', 'van']], { multipart: true });
+  const theirs = lastParts().id;
+  await t1.post('/training', { description: 'Team one training', wants_contact: 'no', is_private: 'no' });
+  const myTraining = db.prepare('SELECT MAX(id) id FROM training_requests').get().id;
+  await t2.post('/training', { description: 'Team two training', wants_contact: 'no', is_private: 'no' });
+  const theirTraining = db.prepare('SELECT MAX(id) id FROM training_requests').get().id;
+
+  // With nobody assigned a manager sees only their own (empty) entries.
+  assert.doesNotMatch((await mgr.get('/admin/parts')).text, /TEAM-ONE|TEAM-TWO/);
+
+  // An admin assigns tech1 to the manager on the manager's edit page.
+  const page = `/admin/users/${userId('mgr1')}/edit`;
+  assert.match((await owner.get(page)).text, /People Mona Manager manages/);
+  await owner.post(page, [['username', 'mgr1'], ['display_name', 'Mona Manager'], ['profile_id', String(profileId('Manager'))], ['team_form', '1'], ['team', String(userId('tech1'))]], { page });
+  assert.deepEqual(db.prepare('SELECT user_id FROM user_managers WHERE manager_id = ?').all(userId('mgr1')).map((r) => r.user_id), [userId('tech1')]);
+  assert.match((await owner.get('/admin/users')).text.replace(/\s+/g, ' '), /Terry Tech.*?<td>Mona Manager<\/td>/);
+
+  // Parts log, exports, summary and audit are limited to that person.
+  for (const url of ['/admin/parts', '/admin/parts.csv', '/admin/parts/summary', '/admin/parts/summary.csv', '/admin/parts/audit', '/admin/parts/audit.csv']) {
+    const text = (await mgr.get(url)).text;
+    assert.match(text, /TEAM-ONE/, url);
+    assert.doesNotMatch(text, /TEAM-TWO|Uma Tech/, url);
+  }
+  assert.doesNotMatch((await mgr.get(`/admin/parts?user=${userId('tech2')}`)).text, /TEAM-TWO/); // asking for someone else gets nothing
+  assert.equal((await mgr.get(`/admin/parts/${mine}`)).status, 200);
+  assert.equal((await mgr.get(`/admin/parts/${theirs}`)).status, 403);
+  assert.equal((await mgr.get(`/parts/${theirs}/edit`)).status, 403);
+  assert.equal((await mgr.post(`/parts/${theirs}/cancel`, {})).status, 403);
+  assert.equal((await mgr.post(`/admin/parts/${theirs}/audit`, {})).status, 403);
+  assert.equal((await mgr.post(`/admin/parts/${theirs}/status`, { status: 'declined' })).status, 403);
+  assert.equal((await mgr.get(`/parts/${mine}/edit`)).status, 200);
+  assert.equal((await mgr.post(`/admin/parts/${mine}/audit`, {})).status, 302);
+  // "Mark all as checked" cannot reach outside the team either.
+  await mgr.post('/admin/parts/audit/check-all', { qs: 'from=2020-01-01&to=2099-01-01' }, { page: '/admin/parts/audit' });
+  assert.equal(db.prepare('SELECT audited_at FROM parts_submissions WHERE id = ?').get(theirs).audited_at, null);
+  assert.ok(db.prepare('SELECT audited_at FROM parts_submissions WHERE id = ?').get(mine).audited_at);
+
+  // Training the same way.
+  const training = (await mgr.get('/admin/training')).text;
+  assert.match(training, /Team one training/); assert.doesNotMatch(training, /Team two training/);
+  assert.doesNotMatch((await mgr.get('/admin/training.csv')).text, /Team two training/);
+  assert.equal((await mgr.get(`/admin/training/${theirTraining}`)).status, 403);
+  assert.equal((await mgr.post(`/admin/training/${theirTraining}/status`, { status: 'declined' })).status, 403);
+  assert.equal((await mgr.post(`/admin/training/${myTraining}/status`, { status: 'reviewed', admin_note: '' }, { page: `/admin/training/${myTraining}` })).status, 302);
+
+  // The manager profile has no people-management, profiles, catalog or complaints.
+  for (const url of ['/admin/users', '/admin/profiles', '/admin/catalog', '/admin/complaints', '/admin/backups']) assert.equal((await mgr.get(url)).status, 403, url);
+});
+
+test('a manager profile given "manage people" can only touch their own people, and cannot add accounts or change profiles', async () => {
+  access.setPermissions(profileId('Manager'), [...access.permsOf(profileId('Manager')), 'users.manage']);
+  const mgr = await loggedIn('mgr1');
+  const list = (await mgr.get('/admin/users')).text;
+  assert.match(list, /Your people/); assert.match(list, /Terry Tech/);
+  assert.doesNotMatch(list, /Uma Tech|Olive Owner|Add a person/);
+  assert.equal((await mgr.post('/admin/users', { username: 'sneaky', display_name: 'Sneaky', profile_id: profileId('Technician') })).status, 403);
+  const t1 = `/admin/users/${userId('tech1')}`;
+  const edit = (await mgr.get(`${t1}/edit`)).text;
+  assert.doesNotMatch(edit, /name="profile_id"/);
+  await mgr.post(`${t1}/edit`, { username: 'tech1', display_name: 'Terry Tech', profile_id: profileId('Manager') }, { page: `${t1}/edit` });
+  assert.equal(db.prepare('SELECT profile_id FROM users WHERE id = ?').get(userId('tech1')).profile_id, profileId('Technician')); // ignored
+  assert.equal((await mgr.post(`${t1}/reset-password`, {}, { page: '/admin/users' })).status, 302);
+  db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?').run(auth.hashPassword('correct horse battery'), userId('tech1'));
+  for (const other of ['tech2', 'owner', 'admin']) {
+    assert.equal((await mgr.get(`/admin/users/${userId(other)}/edit`)).status, 403, other);
+    assert.equal((await mgr.post(`/admin/users/${userId(other)}/reset-password`, {})).status, 403, other);
+    assert.equal((await mgr.post(`/admin/users/${userId(other)}/toggle-active`, {})).status, 403, other);
+  }
+  access.setPermissions(profileId('Manager'), [...access.permsOf(profileId('Manager'))].filter((p) => p !== 'users.manage'));
+});
+
+test('the master account can do everything and cannot be edited, disabled or reset by anyone else', async () => {
+  makeUser('master', 'Max Master', { profile: 'Technician', master: true }); // master overrides whatever the profile says
+  const master = await loggedIn('master');
+  const owner = await loggedIn('owner'); // a full Admin
+  const mid = userId('master');
+
+  for (const url of ['/admin/parts', '/admin/parts/audit', '/admin/training', '/admin/catalog', '/admin/users', '/admin/profiles', '/admin/complaints', '/admin/backups']) {
+    assert.equal((await master.get(url)).status, 200, url);
+  }
+  const list = (await owner.get('/admin/users')).text.replace(/\s+/g, ' ');
+  assert.match(list, /Max Master.*?class="tag master">Master<.*?Protected/);
+  assert.equal((await owner.get(`/admin/users/${mid}/edit`)).status, 403);
+  assert.equal((await owner.post(`/admin/users/${mid}/edit`, { username: 'master', display_name: 'Hacked', profile_id: profileId('Technician') })).status, 403);
+  assert.equal((await owner.post(`/admin/users/${mid}/reset-password`, {})).status, 403);
+  assert.equal((await owner.post(`/admin/users/${mid}/toggle-active`, {})).status, 403);
+  const row = db.prepare('SELECT display_name, active, is_master FROM users WHERE id = ?').get(mid);
+  assert.deepEqual({ ...row }, { display_name: 'Max Master', active: 1, is_master: 1 });
+  await new Client().login('master', 'correct horse battery'); // password untouched
+
+  // The master can edit their own name, and manage any admin.
+  const page = `/admin/users/${mid}/edit`;
+  assert.match((await master.get(page)).text, /This is the master account/);
+  await master.post(page, { username: 'master', display_name: 'Maxine Master', profile_id: profileId('Technician') }, { page });
+  assert.equal(db.prepare('SELECT display_name, is_master FROM users WHERE id = ?').get(mid).display_name, 'Maxine Master');
+  assert.equal((await master.post(`/admin/users/${mid}/toggle-active`, {}, { page: '/admin/users' })).status, 302);
+  assert.equal(db.prepare('SELECT active FROM users WHERE id = ?').get(mid).active, 1); // cannot disable itself either
+  assert.equal((await master.get(`/admin/users/${userId('owner')}/edit`)).status, 200);
+  // No profile can be called Master.
+  assert.equal((await master.post('/admin/profiles', { name: 'master' }, { page: '/admin/profiles' })).status, 400);
+});
+
+test('profiles: add a new one, tick permissions, and it takes effect straight away', async () => {
+  const owner = await loggedIn('owner');
+  const r = await owner.post('/admin/profiles', { name: 'Dispatcher' }, { page: '/admin/profiles' });
+  const pid = profileId('Dispatcher');
+  assert.equal(r.location, `/admin/profiles/${pid}`);
+  assert.deepEqual([...access.permsOf(pid)].sort(), [...access.SUBMIT].sort()); // starts with the three "send a form" boxes
+  assert.equal((await owner.post('/admin/profiles', { name: 'dispatcher' }, { page: '/admin/profiles' })).status, 400);
+
+  const form = (await owner.get(`/admin/profiles/${pid}`)).text;
+  for (const key of access.ALL) assert.match(form, new RegExp(`name="perms" value="${key.replace('.', '\\.')}"`));
+
+  makeUser('disp1', 'Dina Dispatcher', { profile: 'Dispatcher' });
+  const disp = await loggedIn('disp1');
+  assert.equal((await disp.get('/admin/training')).status, 403);
+  await owner.post(`/admin/profiles/${pid}`, [['name', 'Dispatcher'], ['scope', 'all'], ['perms', 'parts.submit'], ['perms', 'training.view'], ['perms', 'made.up']], { page: `/admin/profiles/${pid}` });
+  assert.deepEqual([...access.permsOf(pid)].sort(), ['parts.submit', 'training.view']);
+  assert.equal((await disp.get('/admin/training')).status, 200);     // gained on the very next request
+  assert.equal((await disp.get('/training')).status, 403);            // and lost the unticked ones
+  assert.equal((await disp.get('/complaint')).status, 403);
+  assert.equal((await disp.post('/admin/training/1/status', { status: 'declined' })).status, 403); // view is not manage
+  const home = (await disp.get('/')).text;
+  assert.match(home, /Take parts/); assert.doesNotMatch(home, /Training request|Anonymous complaint/);
+
+  // A profile in use cannot be deleted; an empty one can.
+  await owner.post(`/admin/profiles/${pid}/delete`, {}, { page: '/admin/profiles' });
+  assert.ok(access.profileByName('Dispatcher'));
+  await owner.post('/admin/profiles', { name: 'Temp' }, { page: '/admin/profiles' });
+  await owner.post(`/admin/profiles/${profileId('Temp')}/delete`, {}, { page: '/admin/profiles' });
+  assert.equal(access.profileByName('Temp'), undefined);
+
+  for (const who of ['tech1', 'wh1', 'mgr1']) {
+    const c = await loggedIn(who);
+    assert.equal((await c.get('/admin/profiles')).status, 403, who);
+    assert.equal((await c.post(`/admin/profiles/${pid}`, { name: 'Dispatcher', perms: 'profiles.manage' })).status, 403, who);
+  }
+});
+
+test('nobody can hand out more access than they have themselves', async () => {
+  const limited = await loggedIn('admin'); // "Admin (no complaints)": everything except complaints and backups
+  const techProfile = profileId('Technician');
+
+  // Editing a profile: boxes they do not hold are locked and stay exactly as they were.
+  await limited.post(`/admin/profiles/${techProfile}`, [['name', 'Technician'], ['scope', 'all'], ...access.ALL.map((p) => ['perms', p])], { page: `/admin/profiles/${techProfile}` });
+  const tech = access.permsOf(techProfile);
+  assert.ok(tech.has('users.manage') && !tech.has('complaints.review') && !tech.has('backups'));
+  const adminProfile = profileId('Admin');
+  await limited.post(`/admin/profiles/${adminProfile}`, [['name', 'Admin'], ['scope', 'all'], ['perms', 'parts.submit']], { page: `/admin/profiles/${adminProfile}` });
+  const full = access.permsOf(adminProfile);
+  assert.ok(full.has('complaints.review') && full.has('backups')); // could not strip what they lack
+  access.setPermissions(adminProfile, access.ALL);
+  access.setPermissions(techProfile, access.SUBMIT);
+
+  // Assigning a profile: only ones no stronger than their own are offered or accepted.
+  const t2 = `/admin/users/${userId('tech2')}/edit`;
+  assert.doesNotMatch((await limited.get(t2)).text, new RegExp(`<option value="${adminProfile}"`));
+  assert.equal((await limited.post(t2, { username: 'tech2', display_name: 'Uma Tech', profile_id: adminProfile }, { page: t2 })).status, 400);
+  assert.equal(db.prepare('SELECT profile_id FROM users WHERE id = ?').get(userId('tech2')).profile_id, techProfile);
+  assert.equal((await limited.post('/admin/users', { username: 'newadmin', display_name: 'New Admin', profile_id: adminProfile }, { page: '/admin/users' })).status, 400);
+
+  // And they cannot edit, reset or disable someone whose profile can do more than theirs.
+  const oid = userId('owner');
+  assert.match((await limited.get('/admin/users')).text, /Has more access than you/);
+  assert.equal((await limited.get(`/admin/users/${oid}/edit`)).status, 403);
+  assert.equal((await limited.post(`/admin/users/${oid}/reset-password`, {})).status, 403);
+  assert.equal((await limited.post(`/admin/users/${oid}/toggle-active`, {})).status, 403);
+
+  // Unticking "manage profiles" on your own profile is ignored, so you cannot lock yourself out.
+  const own = profileId('Admin (no complaints)');
+  await limited.post(`/admin/profiles/${own}`, [['name', 'Admin (no complaints)'], ['scope', 'all'], ['perms', 'parts.view'], ['perms', 'users.manage']], { page: `/admin/profiles/${own}` });
+  assert.ok(access.permsOf(own).has('profiles.manage'));
+  access.setPermissions(own, access.ALL.filter((p) => p !== 'complaints.review' && p !== 'backups'));
 });

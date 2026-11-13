@@ -1,14 +1,17 @@
 'use strict';
 const db = require('./db');
 const config = require('./config');
+const access = require('./permissions');
 
 /**
- * Admins may edit or cancel any live entry. The person who sent it may do so
- * for a limited time, and only while nobody has acted on it yet.
+ * The person who sent an entry may edit or cancel it for a limited time, and
+ * only while nobody has acted on it. Someone whose profile allows managing
+ * that kind of entry (and who is allowed to see that person) may do it any time.
+ * kind: 'parts' or 'training'.
  */
-function canChange(row, user) {
+function canChange(row, user, kind) {
   if (!row || row.cancelled_at) return false;
-  if (user.role === 'admin') return true;
+  if (access.can(user, `${kind}.manage`) && access.canSee(user, row.user_id)) return true;
   if (row.user_id !== user.id) return false;
   if (row.status && row.status !== 'new') return false;
   const ageMs = Date.now() - new Date(row.created_at).getTime();

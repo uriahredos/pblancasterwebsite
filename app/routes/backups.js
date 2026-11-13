@@ -4,16 +4,13 @@ const { spawn } = require('child_process');
 const express = require('express');
 const config = require('../config');
 const backup = require('../backup');
-const { requireAdmin, forbidden, flash } = require('../auth');
+const { requirePerm, flash } = require('../auth');
 const { localDate } = require('../util');
 
 const router = express.Router();
 
-// A backup holds the whole database, complaints included, so it is limited to
-// admins who are also allowed to read complaints.
-function requireBackupAccess(req, res, next) {
-  requireAdmin(req, res, () => (req.user.can_review_complaints ? next() : forbidden(res)));
-}
+// A backup holds the whole database, complaints included, so it has its own permission.
+const requireBackupAccess = requirePerm('backups');
 
 router.get('/admin/backups', requireBackupAccess, (req, res) => {
   res.render('admin_backups', {

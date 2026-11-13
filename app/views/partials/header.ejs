@@ -39,21 +39,21 @@
   <% if (user && !user.must_change_password) { %>
   <div class="navbar">
     <nav class="nav" aria-label="Main">
-      <a href="/parts" <%- path === '/parts' ? 'aria-current="page"' : '' %>>Parts</a>
-      <a href="/training" <%- path === '/training' ? 'aria-current="page"' : '' %>>Training</a>
-      <a href="/complaint" <%- path.startsWith('/complaint') ? 'aria-current="page"' : '' %>>Complaint</a>
+      <% if (can('parts.submit')) { %><a href="/parts" <%- path === '/parts' ? 'aria-current="page"' : '' %>>Parts</a><% } %>
+      <% if (can('training.submit')) { %><a href="/training" <%- path === '/training' ? 'aria-current="page"' : '' %>>Training</a><% } %>
+      <% if (can('complaints.submit')) { %><a href="/complaint" <%- path.startsWith('/complaint') ? 'aria-current="page"' : '' %>>Complaint</a><% } %>
       <a href="/my" <%- path === '/my' ? 'aria-current="page"' : '' %>>My submissions</a>
-      <% if (user.role === 'admin') { %>
-      <span class="nav-sep" aria-hidden="true"></span>
-      <a href="/admin/parts" <%- path.startsWith('/admin/parts') && !path.startsWith('/admin/parts/audit') ? 'aria-current="page"' : '' %>>Parts log</a>
-      <a href="/admin/parts/audit" <%- path.startsWith('/admin/parts/audit') ? 'aria-current="page"' : '' %>>Audit</a>
-      <a href="/admin/training" <%- path.startsWith('/admin/training') ? 'aria-current="page"' : '' %>>Training log</a>
-      <a href="/admin/catalog" <%- path.startsWith('/admin/catalog') ? 'aria-current="page"' : '' %>>Catalog</a>
-      <a href="/admin/users" <%- path.startsWith('/admin/users') ? 'aria-current="page"' : '' %>>Users</a>
-      <% } %>
-      <% if (user.can_review_complaints) { %>
-      <a href="/admin/complaints" <%- path.startsWith('/admin/complaints') ? 'aria-current="page"' : '' %>>Complaints</a>
-      <% } %>
+      <% var adminLinks = [
+        ['parts.view', '/admin/parts', 'Parts log', path.startsWith('/admin/parts') && !path.startsWith('/admin/parts/audit')],
+        ['parts.audit', '/admin/parts/audit', 'Audit', path.startsWith('/admin/parts/audit')],
+        ['training.view', '/admin/training', 'Training log', path.startsWith('/admin/training')],
+        ['catalog.manage', '/admin/catalog', 'Catalog', path.startsWith('/admin/catalog')],
+        ['users.manage', '/admin/users', 'Users', path.startsWith('/admin/users')],
+        ['profiles.manage', '/admin/profiles', 'Profiles', path.startsWith('/admin/profiles')],
+        ['complaints.review', '/admin/complaints', 'Complaints', path.startsWith('/admin/complaints')]
+      ].filter(function (l) { return can(l[0]); }); %>
+      <% if (adminLinks.length) { %><span class="nav-sep" aria-hidden="true"></span><% } %>
+      <% adminLinks.forEach(function (l) { %><a href="<%= l[1] %>" <%- l[3] ? 'aria-current="page"' : '' %>><%= l[2] %></a><% }) %>
     </nav>
   </div>
   <% } %>

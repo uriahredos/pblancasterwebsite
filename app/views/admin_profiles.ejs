@@ -1,0 +1,33 @@
+<%- include('partials/header') %>
+<p><a href="/admin/users">&larr; Users</a></p>
+<h1>Profiles</h1>
+<p class="lede">A profile is a set of permissions. Each person has one profile, chosen on the Users page. Changing a profile here changes it for everyone who has it.</p>
+<%- include('partials/errors') %>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Profile</th><th>Sees</th><th class="num">Permissions</th><th class="num">People</th><th></th></tr></thead>
+  <tbody>
+  <tr><td><span class="tag master">Master</span></td><td>Everyone</td><td class="num"><%= total %> of <%= total %></td><td class="num">1</td><td><span class="hint">Always everything. Cannot be changed.</span></td></tr>
+  <% profiles.forEach(function (p) { %>
+  <tr>
+    <td><a href="/admin/profiles/<%= p.id %>"><strong><%= p.name %></strong></a></td>
+    <td><%= p.scope === 'team' ? 'Only their own people' : 'Everyone' %></td>
+    <td class="num"><%= p.perm_count %> of <%= total %></td>
+    <td class="num"><%= p.people %></td>
+    <td class="row-actions">
+      <a href="/admin/profiles/<%= p.id %>">Edit</a>
+      <% if (!p.people) { %><form method="post" action="/admin/profiles/<%= p.id %>/delete" data-confirm="Delete the <%= p.name %> profile?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Delete</button></form><% } %>
+    </td>
+  </tr>
+  <% }) %>
+  </tbody>
+</table>
+</div>
+
+<h2>Add a profile</h2>
+<form method="post" action="/admin/profiles" class="filters card">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label class="grow">Name <input name="name" value="<%= values.name || '' %>" required maxlength="40" autocomplete="off" placeholder="e.g. Dispatcher"></label>
+  <div class="filter-actions"><button class="btn primary small" type="submit">Add and choose permissions</button></div>
+</form>
+<%- include('partials/footer') %>

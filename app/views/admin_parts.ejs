@@ -1,5 +1,5 @@
 <%- include('partials/header', { wide: true }) %>
-<div class="title-row"><h1>Parts log</h1><span class="filter-actions"><a class="btn small" href="/admin/parts/audit">Audit</a><a class="btn small" href="/admin/parts/summary">Usage summary</a></span></div>
+<div class="title-row"><h1>Parts log</h1><span class="filter-actions"><% if (can('parts.audit')) { %><a class="btn small" href="/admin/parts/audit">Audit</a><% } %><a class="btn small" href="/admin/parts/summary">Usage summary</a></span></div>
 <%- include('partials/filters', { base: '/admin/parts', statuses: labels.partsStatus, showAction: true, searchHint: 'Part, job number, name' }) %>
 <p class="count"><%= rows.length %> <%= rows.length === 1 ? 'entry' : 'entries' %><% if (more) { %> shown (newest 500). Narrow the filter or download the CSV for everything.<% } %></p>
 <div class="table-wrap">

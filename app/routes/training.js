@@ -2,7 +2,8 @@
 const express = require('express');
 const db = require('../db');
 const mail = require('../mail');
-const { requireLogin, forbidden, flash } = require('../auth');
+const { requireLogin, requirePerm, forbidden, flash } = require('../auth');
+const access = require('../permissions');
 const { clean, localDate } = require('../util');
 const config = require('../config');
 const { canChange, logChange } = require('../changes');
@@ -22,11 +23,11 @@ function readForm(body) {
   return { values, errors };
 }
 
-router.get('/training', requireLogin, (req, res) => {
+router.get('/training', requirePerm('training.submit'), (req, res) => {
   res.render('training', { title: 'Training request', values: {}, errors: [], editing: null });
 });
 
-router.post('/training', requireLogin, (req, res) => {
+router.post('/training', requirePerm('training.submit'), (req, res) => {
   const { values, errors } = readForm(req.body);
   if (errors.length) return res.status(400).render('training', { title: 'Training request', values, errors, editing: null });
 
@@ -52,8 +53,9 @@ const backTo = (user, row) => (user.id === row.user_id ? '/my' : `/admin/trainin
 function loadChangeable(req, res) {
   const row = /^\d+$/.test(req.params.id) ? db.prepare('SELECT * FROM training_requests WHERE id = ?').get(req.params.id) : null;
   if (!row) { res.status(404).render('error', { title: 'Page not found', message: 'That request does not exist.' }); return null; }
-  if (row.user_id !== req.user.id && req.user.role !== 'admin') { forbidden(res); return null; }
-  if (!canChange(row, req.user)) {
+  const mayManage = access.can(req.user, 'training.manage') && access.canSee(req.user, row.user_id);
+  if (row.user_id !== req.user.id && !mayManage) { forbidden(res); return null; }
+  if (!canChange(row, req.user, 'training')) {
     res.status(403).render('error', {
       title: 'This request can no longer be changed',
       message: `Requests can be changed for ${config.editWindowHours} hours, and only until someone has acted on them. Ask an admin to correct it.`,

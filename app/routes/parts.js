@@ -7,7 +7,8 @@ const multer = require('multer');
 const db = require('../db');
 const config = require('../config');
 const mail = require('../mail');
-const { requireLogin, verifyCsrf, forbidden, flash } = require('../auth');
+const { requireLogin, requirePerm, verifyCsrf, forbidden, flash } = require('../auth');
+const access = require('../permissions');
 const { clean, localDate, isYmd } = require('../util');
 const { canChange, logChange } = require('../changes');
 
@@ -79,12 +80,12 @@ function readForm(body) {
   return { values, errors };
 }
 
-router.get('/parts', requireLogin, (req, res) => {
+router.get('/parts', requirePerm('parts.submit'), (req, res) => {
   const action = ['take', 'return', 'request'].includes(req.query.action) ? req.query.action : '';
   res.render('parts', { title: 'Parts', values: { action, items: [] }, errors: [], editing: null });
 });
 
-router.post('/parts', requireLogin, parseUpload, verifyCsrf, (req, res) => {
+router.post('/parts', requirePerm('parts.submit'), parseUpload, verifyCsrf, (req, res) => {
   const { values, errors } = readForm(req.body);
   let photo = req.file || null;
   if (req.photoError) errors.push(req.photoError);
@@ -123,7 +124,7 @@ router.post('/parts', requireLogin, parseUpload, verifyCsrf, (req, res) => {
 });
 
 // Suggestions while typing a part: the catalog first, then names people have used before.
-router.get('/parts/suggest', requireLogin, (req, res) => {
+router.get('/parts/suggest', requirePerm('parts.submit'), (req, res) => {
   const q = clean(req.query.q, 60);
   if (q.length < 2) return res.json([]);
   const esc = q.replace(/[\\%_]/g, '\\$&');
@@ -155,8 +156,9 @@ const backTo = (user, row) => (user.id === row.user_id ? '/my' : `/admin/parts/$
 function loadChangeable(req, res) {
   const row = /^\d+$/.test(req.params.id) ? getEntry(req.params.id) : null;
   if (!row) { res.status(404).render('error', { title: 'Page not found', message: 'That entry does not exist.' }); return null; }
-  if (row.user_id !== req.user.id && req.user.role !== 'admin') { forbidden(res); return null; }
-  if (!canChange(row, req.user)) {
+  const mayManage = access.can(req.user, 'parts.manage') && access.canSee(req.user, row.user_id);
+  if (row.user_id !== req.user.id && !mayManage) { forbidden(res); return null; }
+  if (!canChange(row, req.user, 'parts')) {
     res.status(403).render('error', {
       title: 'This entry can no longer be changed',
       message: `Entries can be changed for ${config.editWindowHours} hours, and only until someone has acted on them. Ask an admin to correct it.`,
@@ -221,7 +223,7 @@ router.post('/parts/:id/cancel', requireLogin, (req, res) => {
 router.get('/parts/photo/:id', requireLogin, (req, res) => {
   const row = db.prepare('SELECT user_id, photo_path FROM parts_submissions WHERE id = ?').get(req.params.id);
   if (!row || !row.photo_path) return res.status(404).render('error', { title: 'Page not found', message: 'No photo here.' });
-  if (row.user_id !== req.user.id && req.user.role !== 'admin') return forbidden(res);
+  if (row.user_id !== req.user.id && !(access.can(req.user, 'parts.view') && access.canSee(req.user, row.user_id))) return forbidden(res);
   res.sendFile(path.basename(row.photo_path), { root: uploadDir, headers: { 'Cache-Control': 'private, no-store' } });
 });
 

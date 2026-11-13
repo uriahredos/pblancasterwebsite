@@ -21,12 +21,13 @@
   <% }) %>
 </ul>
 <% } %>
-<% if (!t.cancelled_at) { %>
+<% if (!t.cancelled_at && can('training.manage')) { %>
 <div class="rec-actions spaced">
   <a class="btn small" href="/training/<%= t.id %>/edit">Edit</a>
   <form method="post" action="/training/<%= t.id %>/cancel" data-confirm="Cancel this?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn small" type="submit">Cancel it</button></form>
 </div>
 <% } %>
+<% if (can('training.manage')) { %>
 <h2>Status</h2>
 <form method="post" action="/admin/training/<%= t.id %>/status" class="card stack">
   <input type="hidden" name="_csrf" value="<%= csrf %>">
@@ -38,4 +39,5 @@
   </label>
   <button class="btn primary" type="submit">Save</button>
 </form>
+<% } %>
 <%- include('partials/footer') %>

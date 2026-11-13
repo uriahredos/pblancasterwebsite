@@ -243,3 +243,12 @@ table.audit tfoot td { font-weight: 700; border-top: 2px solid var(--line); bord
   a { color: inherit; text-decoration: none; }
   .check .box { color: #000; background: #fff !important; border-color: #000 !important; }
 }
+
+/* Profiles */
+.tag.master { background: var(--pb-navy); color: #fff; border-color: var(--pb-navy); letter-spacing: .04em; }
+:root[data-theme="dark"] .tag.master { background: var(--green); color: #052012; border-color: var(--green); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .tag.master { background: var(--green); color: #052012; border-color: var(--green); } }
+.choice.locked { opacity: .6; cursor: not-allowed; }
+.choice .hint { display: inline; }
+.check-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: .5rem; }
+.check-grid .choice { margin: 0; }

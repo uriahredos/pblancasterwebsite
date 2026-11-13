@@ -12,10 +12,10 @@ if (n === 0 && process.env.BOOTSTRAP_ADMIN_USERNAME && process.env.BOOTSTRAP_ADM
     username: process.env.BOOTSTRAP_ADMIN_USERNAME.trim(),
     displayName: process.env.BOOTSTRAP_ADMIN_USERNAME.trim(),
     password: process.env.BOOTSTRAP_ADMIN_PASSWORD,
-    role: 'admin',
-    reviewer: true,
+    profile: 'Admin',
+    master: true,
   });
-  console.log(`Created first admin "${process.env.BOOTSTRAP_ADMIN_USERNAME.trim()}". They must change the password at first sign-in.`);
+  console.log(`Created the master account "${process.env.BOOTSTRAP_ADMIN_USERNAME.trim()}". They must change the password at first sign-in.`);
 } else if (n === 0) {
   console.log('No users yet. Run "npm run create-admin -- <username>" to create the first admin.');
 }

@@ -53,7 +53,7 @@
     <% sec.entries.forEach(function (e) { e.items.forEach(function (it, i) { %>
     <tr class="<%= e.cancelled_at ? 'off' : '' %> <%= i === 0 ? 'entry-start' : '' %>" <%- i === 0 ? 'id="e' + e.id + '"' : '' %>>
       <% if (i === 0) { %>
-      <td class="nowrap" rowspan="<%= e.items.length %>"><a href="/admin/parts/<%= e.id %>"><%= fmtDateTime(e.created_at) %></a><% if (e.edited_at) { %><br><span class="hint">edited</span><% } %></td>
+      <td class="nowrap" rowspan="<%= e.items.length %>"><% if (can('parts.view')) { %><a href="/admin/parts/<%= e.id %>"><%= fmtDateTime(e.created_at) %></a><% } else { %><%= fmtDateTime(e.created_at) %><% } %><% if (e.edited_at) { %><br><span class="hint">edited</span><% } %></td>
       <td rowspan="<%= e.items.length %>"><%= e.display_name %></td>
       <% } %>
       <td class="items"><%= it.part_name %></td>

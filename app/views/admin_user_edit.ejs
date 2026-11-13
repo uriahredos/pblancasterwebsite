@@ -1,6 +1,6 @@
 <%- include('partials/header') %>
 <p><a href="/admin/users">&larr; Users</a></p>
-<h1>Edit <%= target.display_name %></h1>
+<h1>Edit <%= target.display_name %><% if (target.is_master) { %> <span class="tag master">Master</span><% } %></h1>
 <%- include('partials/errors') %>
 <form method="post" action="/admin/users/<%= target.id %>/edit" class="card stack">
   <input type="hidden" name="_csrf" value="<%= csrf %>">
@@ -13,7 +13,32 @@
   <label>Email <span class="hint">Optional</span>
     <input name="email" type="email" value="<%= values.email || '' %>" maxlength="120" autocomplete="off">
   </label>
+
+  <% if (target.is_master) { %>
+  <p class="notice">This is the master account. It can do everything, and nobody else can edit it, disable it or change what it can do.</p>
+  <% } else if (canSetProfile) { %>
+  <label>Profile <span class="hint">Decides what this person can do.<% if (can('profiles.manage')) { %> Change what a profile allows on the <a href="/admin/profiles">Profiles</a> page.<% } %></span>
+    <select name="profile_id" required>
+      <% if (!profiles.some(function (p) { return p.id === target.profile_id; })) { %><option value=""><%= profile ? profile.name : 'Choose one' %></option><% } %>
+      <% profiles.forEach(function (p) { %><option value="<%= p.id %>" <%= p.id === target.profile_id ? 'selected' : '' %>><%= p.name %></option><% }) %>
+    </select>
+  </label>
+  <% } else { %>
+  <p class="meta">Profile: <strong><%= profile ? profile.name : 'None' %></strong><% if (target.id === user.id) { %>. You cannot change your own profile.<% } %></p>
+  <% } %>
+
+  <% if (canSetTeam) { %>
+  <fieldset>
+    <legend>People <%= target.display_name %> manages</legend>
+    <p class="hint">The <%= profile.name %> profile only sees its own people. Tick everyone <%= target.display_name %> should see and manage.</p>
+    <input type="hidden" name="team_form" value="1">
+    <div class="check-grid">
+      <% people.forEach(function (p) { %>
+      <label class="choice"><input type="checkbox" name="team" value="<%= p.id %>" <%= team.indexOf(p.id) >= 0 ? 'checked' : '' %>> <%= p.display_name %><% if (!p.active) { %> <span class="hint">(disabled)</span><% } %></label>
+      <% }) %>
+    </div>
+  </fieldset>
+  <% } %>
   <button class="btn primary" type="submit">Save</button>
 </form>
-<p class="hint spaced">Password, admin access and complaint access are changed from the Users list.</p>
 <%- include('partials/footer') %>

@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const db = require('./db');
 const config = require('./config');
+const access = require('./permissions');
 
 const userById = db.prepare('SELECT * FROM users WHERE id = ?');
 const userByName = db.prepare('SELECT * FROM users WHERE username = ?');
@@ -24,11 +25,17 @@ function tempPassword() {
   return `${pick()}-${pick()}-${pick()}`;
 }
 
-function createUser({ username, displayName, email, password, role = 'user', reviewer = false }) {
+/**
+ * profile: a profile name or id. The very first account, and any account made
+ * with master: true, becomes the master account.
+ */
+function createUser({ username, displayName, email, password, profile = 'Technician', master = false }) {
+  const profileId = typeof profile === 'number' ? profile : (access.profileByName(profile) || {}).id;
+  if (!profileId) throw new Error(`Unknown profile: ${profile}`);
   const info = db.prepare(
-    `INSERT INTO users (username, display_name, email, password_hash, role, can_review_complaints, created_at)
+    `INSERT INTO users (username, display_name, email, password_hash, profile_id, is_master, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`
-  ).run(username, displayName, email || null, hashPassword(password), role, reviewer ? 1 : 0, new Date().toISOString());
+  ).run(username, displayName, email || null, hashPassword(password), profileId, master ? 1 : 0, new Date().toISOString());
   return info.lastInsertRowid;
 }
 
@@ -37,10 +44,11 @@ function loadUser(req, res, next) {
   req.user = null;
   if (req.session.userId) {
     const user = userById.get(req.session.userId);
-    if (user && user.active) req.user = user;
+    if (user && user.active) req.user = access.loadAccess(user);
     else delete req.session.userId;
   }
   res.locals.user = req.user;
+  res.locals.can = (perm) => access.can(req.user, perm);
   next();
 }
 
@@ -57,12 +65,9 @@ function forbidden(res) {
   res.status(403).render('error', { title: 'Not allowed', message: 'You do not have access to this page.' });
 }
 
-function requireAdmin(req, res, next) {
-  requireLogin(req, res, () => (req.user.role === 'admin' ? next() : forbidden(res)));
-}
-
-function requireReviewer(req, res, next) {
-  requireLogin(req, res, () => (req.user.can_review_complaints ? next() : forbidden(res)));
+/** Route guard: signed in, and their profile includes this permission. */
+function requirePerm(perm) {
+  return (req, res, next) => requireLogin(req, res, () => (access.can(req.user, perm) ? next() : forbidden(res)));
 }
 
 function newCsrfToken() {
@@ -89,5 +94,5 @@ function flash(req, type, text) {
 
 module.exports = {
   hashPassword, checkLogin, tempPassword, createUser, loadUser,
-  requireLogin, requireAdmin, requireReviewer, forbidden, newCsrfToken, verifyCsrf, flash,
+  requireLogin, requirePerm, forbidden, newCsrfToken, verifyCsrf, flash,
 };

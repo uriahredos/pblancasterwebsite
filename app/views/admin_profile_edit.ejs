@@ -1,0 +1,32 @@
+<%- include('partials/header') %>
+<p><a href="/admin/profiles">&larr; Profiles</a></p>
+<h1><%= profile.name %> profile</h1>
+<p class="lede"><% if (people.length) { %>Used by <%= people.map(function (p) { return p.display_name; }).join(', ') %>.<% } else { %>Nobody has this profile yet.<% } %> Changes apply as soon as you save.</p>
+<%- include('partials/errors') %>
+<form method="post" action="/admin/profiles/<%= profile.id %>" class="card stack">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Name
+    <input name="name" value="<%= values.name %>" required maxlength="40" autocomplete="off">
+  </label>
+
+  <fieldset>
+    <legend>Whose submissions can this profile see?</legend>
+    <p class="hint">Applies to the parts log, audit, training log and Users page, where the boxes below allow them.</p>
+    <label class="choice"><input type="radio" name="scope" value="all" <%= values.scope !== 'team' ? 'checked' : '' %>> Everyone</label>
+    <label class="choice"><input type="radio" name="scope" value="team" <%= values.scope === 'team' ? 'checked' : '' %>> <span>Only the people assigned to them <span class="hint">(a manager). You choose their people on the Users page.</span></span></label>
+  </fieldset>
+
+  <% groups.forEach(function (g) { %>
+  <fieldset>
+    <legend><%= g.title %></legend>
+    <% g.items.forEach(function (item) { var locked = !can(item[0]); %>
+    <label class="choice <%= locked ? 'locked' : '' %>">
+      <input type="checkbox" name="perms" value="<%= item[0] %>" <%= held.has(item[0]) ? 'checked' : '' %> <%= locked ? 'disabled' : '' %>>
+      <span><%= item[1] %><% if (locked) { %> <span class="hint">(you do not have this yourself, so you cannot change it)</span><% } %></span>
+    </label>
+    <% }) %>
+  </fieldset>
+  <% }) %>
+  <button class="btn primary" type="submit">Save profile</button>
+</form>
+<%- include('partials/footer') %>
