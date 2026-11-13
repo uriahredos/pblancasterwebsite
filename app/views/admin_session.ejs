@@ -1,0 +1,29 @@
+<%- include('partials/header') %>
+<p><a href="/admin/training/sessions">&larr; Training sessions</a></p>
+<h1><%= session.title %> <% if (session.completed_at) { %><span class="tag return">Held</span><% } else { %><span class="tag request">Planned</span><% } %></h1>
+<p class="lede"><%= fmtDate(session.session_date) %><%= session.session_time ? ' at ' + session.session_time : '' %><%= session.location ? ' · ' + session.location : '' %></p>
+<% if (session.notes) { %><p class="pre"><%= session.notes %></p><% } %>
+<% if (request) { %><p class="meta">For training request: <a href="/admin/training/<%= request.id %>"><%= request.description.slice(0, 80) %></a></p><% } %>
+<form method="post" action="/admin/training/sessions/<%= session.id %>" class="card stack">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <fieldset>
+    <legend><%= session.completed_at ? 'Who attended' : 'Who is expected' %> <span class="hint">(<%= attending.size %>)</span></legend>
+    <% if (others) { %><p class="hint"><%= others %> more outside your team are not shown.</p><% } %>
+    <div class="check-grid">
+      <% people.forEach(function (p) { %>
+      <label class="choice"><input type="checkbox" name="people" value="<%= p.id %>" <%= attending.has(p.id) ? 'checked' : '' %> <%= canManage ? '' : 'disabled' %>> <%= p.display_name %></label>
+      <% }) %>
+    </div>
+  </fieldset>
+  <% if (canManage) { %>
+  <div class="rec-actions">
+    <button class="btn" type="submit" name="held" value="">Save ticks</button>
+    <% if (!session.completed_at) { %><button class="btn primary" type="submit" name="held" value="1">Mark as held: these people attended</button>
+    <% } else { %><button class="btn" type="submit" name="held" value="0">Mark as not held yet</button><% } %>
+  </div>
+  <% } %>
+</form>
+<% if (canManage) { %>
+<form method="post" action="/admin/training/sessions/<%= session.id %>/delete" class="spaced" data-confirm="Delete this session and its attendance?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Delete this session</button></form>
+<% } %>
+<%- include('partials/footer') %>

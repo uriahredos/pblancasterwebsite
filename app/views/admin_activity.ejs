@@ -1,0 +1,18 @@
+<%- include('partials/header', { wide: true }) %>
+<p><a href="/admin/users">&larr; Users</a></p>
+<h1>Activity log</h1>
+<p class="lede">Changes to people, profiles, the catalog, stock, training sessions and backups. Anonymous complaints are never recorded here.</p>
+<form method="get" class="filters card">
+  <label class="grow">Search <input type="search" name="q" value="<%= q %>" placeholder="Name, action or detail"></label>
+  <div class="filter-actions"><button class="btn primary small" type="submit">Search</button><a class="btn small" href="/admin/activity">Clear</a></div>
+</form>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>When</th><th>Who</th><th>What</th><th>Detail</th></tr></thead>
+  <tbody>
+  <% rows.forEach(function (r) { %><tr><td class="nowrap"><%= fmtDateTime(r.at) %></td><td><%= r.display_name || 'System' %></td><td class="nowrap"><%= r.action %></td><td><%= r.detail %></td></tr><% }) %>
+  <% if (!rows.length) { %><tr><td colspan="4" class="empty">Nothing recorded<%= q ? ' that matches' : ' yet' %>.</td></tr><% } %>
+  </tbody>
+</table>
+</div>
+<%- include('partials/footer') %>

@@ -1,0 +1,40 @@
+<%- include('partials/header', { wide: true }) %>
+<p><a href="/admin/training">&larr; Training requests</a></p>
+<div class="title-row"><h1>Training sessions</h1><a class="btn small" href="/admin/training/sessions.csv">Download attendance CSV</a></div>
+<form method="get" class="filters card">
+  <label>Show sessions attended by
+    <select name="user"><option value="">Everyone</option>
+      <% users.forEach(function (u) { %><option value="<%= u.id %>" <%= u.id === person ? 'selected' : '' %>><%= u.display_name %></option><% }) %>
+    </select>
+  </label>
+  <div class="filter-actions"><button class="btn primary small" type="submit">Show</button></div>
+</form>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Date</th><th>Session</th><th>Where</th><th class="num">People</th><th>Held?</th><th></th></tr></thead>
+  <tbody>
+  <% sessions.forEach(function (s) { %>
+  <tr><td class="nowrap"><%= fmtDate(s.session_date) %><%= s.session_time ? ' ' + s.session_time : '' %></td><td><a href="/admin/training/sessions/<%= s.id %>"><strong><%= s.title %></strong></a></td><td><%= s.location %></td><td class="num"><%= s.people %></td>
+    <td><% if (s.completed_at) { %><span class="tag return">Held</span><% } else { %><span class="tag request">Planned</span><% } %></td><td><a href="/admin/training/sessions/<%= s.id %>">Attendance</a></td></tr>
+  <% }) %>
+  <% if (!sessions.length) { %><tr><td colspan="6" class="empty">No sessions<%= person ? ' for this person' : ' yet' %>.</td></tr><% } %>
+  </tbody>
+</table>
+</div>
+<% if (canManage) { %>
+<h2 id="add">Schedule a session</h2>
+<%- include('partials/errors') %>
+<form method="post" action="/admin/training/sessions" class="card stack">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <% if (values.request_id) { %><input type="hidden" name="request_id" value="<%= values.request_id %>"><p class="notice">This session is for training request <%= values.request_id %>. The person who asked, and everyone who added their name, will be listed to attend, and the request will show as Scheduled.</p><% } %>
+  <label>What it covers <input name="title" value="<%= values.title || '' %>" required maxlength="150" autocomplete="off"></label>
+  <div class="filters">
+    <label>Date <input type="date" name="session_date" value="<%= values.session_date || '' %>" required></label>
+    <label>Time <span class="hint">Optional</span> <input type="time" name="session_time" value="<%= values.session_time || '' %>"></label>
+    <label class="grow">Where <span class="hint">Optional</span> <input name="location" value="<%= values.location || '' %>" maxlength="150" autocomplete="off"></label>
+  </div>
+  <label>Notes <span class="hint">Optional</span> <textarea name="notes" rows="2" maxlength="1000"><%= values.notes || '' %></textarea></label>
+  <button class="btn primary" type="submit">Add session</button>
+</form>
+<% } %>
+<%- include('partials/footer') %>

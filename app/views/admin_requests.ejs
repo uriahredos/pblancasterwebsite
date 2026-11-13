@@ -1,0 +1,31 @@
+<%- include('partials/header', { wide: true }) %>
+<h1>Parts requests</h1>
+<p class="lede"><%= rows.length %> open<% if (overdue) { %>, <strong><%= overdue %> overdue</strong><% } %>. Soonest needed first. The person who asked is told when you change the status.</p>
+<% if (!rows.length) { %><p class="card empty">Nothing waiting. Fulfilled and declined requests are in the <a href="/admin/parts?action=request">parts log</a>.</p><% } %>
+<ul class="records">
+<% rows.forEach(function (s) { %>
+  <li class="card request <%= s.due %>">
+    <div class="rec-head">
+      <span class="status s-<%= s.status %>"><%= labels.partsStatus[s.status] %></span>
+      <% if (s.due === 'overdue') { %><span class="tag overdue">Overdue</span><% } else if (s.due === 'soon') { %><span class="tag request">Due soon</span><% } %>
+      <strong><%= s.display_name %></strong>
+      <time>Needed by <%= fmtDate(s.needed_by) %></time>
+    </div>
+    <p class="items"><%= s.items %></p>
+    <p class="meta"><%= s.source === 'job' ? 'Job ' + s.job_number : 'Van stock' %><% if (s.truck) { %> · Truck <%= s.truck %><% } %> · Asked <%= fmtDateTime(s.created_at) %><% if (s.note) { %> · Note: <%= s.note %><% } %></p>
+    <% if (s.admin_note) { %><p class="reply"><strong>Reply:</strong> <%= s.admin_note %></p><% } %>
+    <div class="rec-actions">
+      <% if (can('parts.manage')) { %>
+      <% [['ordered', 'Ordered'], ['fulfilled', 'Fulfilled'], ['declined', 'Decline']].forEach(function (b) { if (b[0] !== s.status) { %>
+      <form method="post" action="/admin/parts/<%= s.id %>/status" <%- b[0] === 'declined' ? 'data-confirm="Decline this request?"' : '' %>>
+        <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="status" value="<%= b[0] %>"><input type="hidden" name="back" value="requests">
+        <button class="btn small <%= b[0] === 'fulfilled' ? 'primary' : '' %>" type="submit"><%= b[1] %></button>
+      </form>
+      <% } }) %>
+      <% } %>
+      <a href="/admin/parts/<%= s.id %>">Open / add a reply</a>
+    </div>
+  </li>
+<% }) %>
+</ul>
+<%- include('partials/footer') %>

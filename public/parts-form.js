@@ -91,6 +91,36 @@
   });
   items.addEventListener('focusout', function () { setTimeout(closeSuggest, 150); });
 
+  // Put a part into the first empty row (adding a row if they are all used), then move to its quantity.
+  function addPart(name) {
+    var rows = items.querySelectorAll('.item-row');
+    var target = null;
+    rows.forEach(function (row) { if (!target && !row.querySelector('input[name="part_name"]').value.trim()) target = row; });
+    if (!target) {
+      if (rows.length >= MAX_ROWS) return;
+      addBtn.click();
+      target = items.querySelector('.item-row:last-child');
+    }
+    var input = target.querySelector('input[name="part_name"]');
+    input.value = name;
+    closeSuggest();
+    form.dispatchEvent(new Event('input', { bubbles: true })); // so the saved draft picks it up
+    var qty = target.querySelector('input[name="quantity"]');
+    qty.focus();
+    qty.scrollIntoView({ block: 'center' });
+  }
+  window.partsForm = { addPart: addPart };
+
+  // One-tap buttons for the parts this person uses most.
+  var frequent = document.getElementById('frequent');
+  if (frequent) {
+    frequent.hidden = false;
+    frequent.addEventListener('click', function (e) {
+      var chip = e.target.closest('.chip');
+      if (chip) addPart(chip.getAttribute('data-part'));
+    });
+  }
+
   form.addEventListener('change', refresh);
   refresh();
 })();

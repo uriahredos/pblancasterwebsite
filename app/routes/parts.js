@@ -9,6 +9,7 @@ const config = require('../config');
 const mail = require('../mail');
 const { requireLogin, requirePerm, verifyCsrf, forbidden, flash } = require('../auth');
 const access = require('../permissions');
+const stock = require('../stock');
 const { clean, localDate, isYmd } = require('../util');
 const { canChange, logChange } = require('../changes');
 
@@ -71,6 +72,7 @@ function readForm(body) {
   const values = {
     action: body.action, source: body.source, items,
     job_number: clean(body.job_number, 60), note: clean(body.note, 1000), needed_by: clean(body.needed_by, 10),
+    truck: clean(body.truck, 20),
   };
   if (!['take', 'return', 'request'].includes(values.action)) errors.unshift('Choose what you would like to do.');
   if (items.length === 0) errors.push('Add at least one part.');
@@ -80,9 +82,18 @@ function readForm(body) {
   return { values, errors };
 }
 
+/** The parts this person uses most, for one-tap buttons on the form. */
+function frequentParts(userId) {
+  return db.prepare(
+    `SELECT MIN(i.part_name) AS name, COUNT(*) AS uses, MAX(s.id) AS last FROM parts_items i
+     JOIN parts_submissions s ON s.id = i.submission_id
+     WHERE s.user_id = ? AND s.cancelled_at IS NULL
+     GROUP BY UPPER(i.part_name) ORDER BY uses DESC, last DESC LIMIT 8`).all(userId).map((r) => r.name);
+}
+
 router.get('/parts', requirePerm('parts.submit'), (req, res) => {
   const action = ['take', 'return', 'request'].includes(req.query.action) ? req.query.action : '';
-  res.render('parts', { title: 'Parts', values: { action, items: [] }, errors: [], editing: null });
+  res.render('parts', { title: 'Parts', values: { action, items: [], truck: req.user.default_truck || '' }, errors: [], editing: null, frequent: frequentParts(req.user.id) });
 });
 
 router.post('/parts', requirePerm('parts.submit'), parseUpload, verifyCsrf, (req, res) => {
@@ -94,7 +105,7 @@ router.post('/parts', requirePerm('parts.submit'), parseUpload, verifyCsrf, (req
 
   if (errors.length) {
     removeFile(photo);
-    return res.status(400).render('parts', { title: 'Parts', values, errors, editing: null });
+    return res.status(400).render('parts', { title: 'Parts', values, errors, editing: null, frequent: frequentParts(req.user.id) });
   }
 
   const now = new Date();
@@ -102,16 +113,26 @@ router.post('/parts', requirePerm('parts.submit'), parseUpload, verifyCsrf, (req
   const id = db.transaction(() => {
     const info = db.prepare(
       `INSERT INTO parts_submissions
-         (user_id, action, source, job_number, note, needed_by, photo_path, status, created_at, created_local_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         (user_id, action, source, job_number, note, needed_by, photo_path, status, truck, created_at, created_local_date)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(req.user.id, values.action, values.source, values.source === 'job' ? values.job_number : null,
       values.note || null, isRequest ? values.needed_by : null, photo ? photo.filename : null,
-      isRequest ? 'new' : null, now.toISOString(), localDate(now));
+      isRequest ? 'new' : null, values.truck || null, now.toISOString(), localDate(now));
+    // Remember the truck so it is filled in next time.
+    if (values.truck) db.prepare('UPDATE users SET default_truck = ? WHERE id = ?').run(values.truck, req.user.id);
     const add = db.prepare('INSERT INTO parts_items (submission_id, part_name, quantity) VALUES (?, ?, ?)');
     for (const it of values.items) add.run(info.lastInsertRowid, it.part_name, Number(it.quantity));
     return info.lastInsertRowid;
   })();
 
+  // Taking parts may have pushed something to or below its minimum: tell the people who order.
+  if (values.action === 'take') {
+    const taken = {};
+    for (const it of values.items) taken[it.part_name.toUpperCase()] = (taken[it.part_name.toUpperCase()] || 0) + Number(it.quantity);
+    const crossed = stock.forNames(Object.keys(taken)).filter((p) => p.min_level !== null && p.on_hand <= p.min_level &&
+      p.on_hand + taken[p.part_number.toUpperCase()] > p.min_level);
+    if (crossed.length) mail.notifyLowStock(crossed);
+  }
   if (isRequest) {
     mail.notifyPartsRequest({
       id, name: req.user.display_name, items: values.items, source: values.source,
@@ -172,7 +193,7 @@ router.get('/parts/:id/edit', requireLogin, (req, res) => {
   const row = loadChangeable(req, res);
   if (!row) return;
   const items = getItems(row.id).map((i) => ({ part_name: i.part_name, quantity: String(i.quantity) }));
-  res.render('parts', { title: 'Edit parts entry', values: { ...row, items }, errors: [], editing: row });
+  res.render('parts', { title: 'Edit parts entry', values: { ...row, items }, errors: [], editing: row, frequent: [] });
 });
 
 router.post('/parts/:id/edit', requireLogin, parseUpload, verifyCsrf, (req, res) => {
@@ -186,18 +207,18 @@ router.post('/parts/:id/edit', requireLogin, parseUpload, verifyCsrf, (req, res)
   if (photo && !looksLikeImage(photo.path)) errors.push('The photo must be a JPEG, PNG, WebP or GIF image.');
   if (errors.length) {
     removeFile(photo);
-    return res.status(400).render('parts', { title: 'Edit parts entry', values: { ...values, photo_path: row.photo_path }, errors, editing: row });
+    return res.status(400).render('parts', { title: 'Edit parts entry', values: { ...values, photo_path: row.photo_path }, errors, editing: row, frequent: [] });
   }
 
   db.transaction(() => {
     logChange('parts', row.id, req.user.id, 'edited', {
-      items: getItems(row.id), source: row.source, job_number: row.job_number, note: row.note, needed_by: row.needed_by,
+      items: getItems(row.id), source: row.source, job_number: row.job_number, note: row.note, needed_by: row.needed_by, truck: row.truck,
     });
     db.prepare(
-      `UPDATE parts_submissions SET source = ?, job_number = ?, note = ?, needed_by = ?, photo_path = ?, edited_at = ?,
+      `UPDATE parts_submissions SET source = ?, job_number = ?, note = ?, needed_by = ?, photo_path = ?, truck = ?, edited_at = ?,
          audited_at = NULL, audited_by = NULL WHERE id = ?` // an edited entry needs checking again
     ).run(values.source, values.source === 'job' ? values.job_number : null, values.note || null,
-      row.action === 'request' ? values.needed_by : null, photo ? photo.filename : row.photo_path,
+      row.action === 'request' ? values.needed_by : null, photo ? photo.filename : row.photo_path, values.truck || null,
       new Date().toISOString(), row.id);
     db.prepare('DELETE FROM parts_items WHERE submission_id = ?').run(row.id);
     const add = db.prepare('INSERT INTO parts_items (submission_id, part_name, quantity) VALUES (?, ?, ?)');

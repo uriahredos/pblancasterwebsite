@@ -31,7 +31,16 @@
       </div>
       <% }) %>
     </div>
-    <button type="button" class="btn small" id="add-row" hidden>+ Add another part</button>
+    <div class="filter-actions">
+      <button type="button" class="btn small" id="add-row" hidden>+ Add another part</button>
+      <button type="button" class="btn small" id="scan-btn" hidden>Scan barcode</button>
+    </div>
+    <% if (frequent && frequent.length) { %>
+    <div class="chips" id="frequent" hidden>
+      <span class="mini">Your usual parts. Tap to add:</span>
+      <% frequent.forEach(function (name) { %><button type="button" class="chip" data-part="<%= name %>"><%= name %></button><% }) %>
+    </div>
+    <% } %>
     <noscript><p class="hint">To enter more than one part, send the form once per part.</p></noscript>
   </fieldset>
 
@@ -44,6 +53,10 @@
     </label>
   </fieldset>
 
+  <label>Truck <span class="hint">Optional. Remembered for next time.</span>
+    <input name="truck" value="<%= values.truck || '' %>" maxlength="20" autocomplete="off" placeholder="e.g. 309">
+  </label>
+
   <label data-show-action="request">Needed by
     <input type="date" name="needed_by" value="<%= values.needed_by || '' %>">
   </label>
@@ -52,12 +65,21 @@
     <input type="file" name="photo" accept="image/jpeg,image/png,image/webp,image/gif">
   </label>
 
-  <label>Note <span class="hint">Optional. Truck number, where it was left, anything useful.</span>
+  <label>Note <span class="hint">Optional. Where it was left, anything useful.</span>
     <textarea name="note" rows="2" maxlength="1000"><%= values.note || '' %></textarea>
   </label>
 
   <p class="flash err" id="offline-msg" role="alert" hidden>No connection right now, so this was not sent. What you typed is saved on this phone. Try again when you have signal.</p>
   <button class="btn primary" type="submit"><%= editing ? 'Save changes' : 'Submit' %></button>
 </form>
+<div class="scan-overlay" id="scan-overlay" hidden>
+  <div class="scan-box card">
+    <p><strong>Point the camera at the barcode</strong></p>
+    <div id="scan-view"></div>
+    <p class="hint" id="scan-msg">Starting the camera…</p>
+    <button type="button" class="btn" id="scan-close">Close</button>
+  </div>
+</div>
 <script src="/parts-form.js" defer></script>
+<script src="/scan.js" defer></script>
 <%- include('partials/footer') %>

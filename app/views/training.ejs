@@ -5,6 +5,7 @@
 <% } else { %>
 <p class="lede">Submitting as <strong><%= user.display_name %></strong>.</p>
 <% } %>
+<% if (!editing) { %><p><a href="/training/topics">See what others have asked for</a> and add your name to a topic you want too.</p><% } %>
 <%- include('partials/errors') %>
 <form method="post" action="<%= editing ? '/training/' + editing.id + '/edit' : '/training' %>" class="card stack" <%- editing ? '' : 'data-draft="training:' + user.id + '"' %> <%- !editing && !errors.length ? 'data-draft-restore' : '' %> data-offline-guard>
   <input type="hidden" name="_csrf" value="<%= csrf %>">

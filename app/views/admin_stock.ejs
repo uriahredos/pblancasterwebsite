@@ -1,0 +1,49 @@
+<%- include('partials/header', { wide: true }) %>
+<h1>Stock</h1>
+<p class="lede"><%= total %> <%= total === 1 ? 'part' : 'parts' %> tracked<% if (lowTotal) { %>, <strong><%= lowTotal %> at or below minimum</strong><% } %>. On hand is the last count, plus deliveries and returns, minus parts taken since.</p>
+<%- include('partials/errors') %>
+<form method="get" class="filters card">
+  <label class="grow">Search <input type="search" name="q" value="<%= q %>" placeholder="Part number or description"></label>
+  <label class="choice"><input type="checkbox" name="low" value="1" <%= low ? 'checked' : '' %>> Low stock only</label>
+  <div class="filter-actions"><button class="btn primary small" type="submit">Show</button><a class="btn small" href="/admin/stock">Clear</a></div>
+</form>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Part</th><th>Description</th><th class="num">On hand</th><th class="num">Minimum</th><th>Level</th><th>Last counted</th><th></th></tr></thead>
+  <tbody>
+  <% rows.forEach(function (p) { %>
+  <tr>
+    <td><a href="/admin/stock/<%= p.id %>"><strong><%= p.part_number %></strong></a></td>
+    <td><%= p.description %></td>
+    <td class="num"><strong><%= p.on_hand %></strong></td>
+    <td class="num"><%= p.min_level === null ? '' : p.min_level %></td>
+    <td><% if (p.on_hand <= 0) { %><span class="tag overdue">Out</span><% } else if (p.low) { %><span class="tag request">Low</span><% } else { %><span class="tag return">OK</span><% } %></td>
+    <td class="nowrap"><%= fmtDateTime(p.count_at) %></td>
+    <td><a href="/admin/stock/<%= p.id %>"><%= can('stock.manage') ? 'Update' : 'Open' %></a></td>
+  </tr>
+  <% }) %>
+  <% if (!rows.length) { %><tr><td colspan="7" class="empty"><%= total ? 'No parts match.' : 'No parts are being tracked yet. Add one below, or upload a count.' %></td></tr><% } %>
+  </tbody>
+</table>
+</div>
+
+<% if (can('stock.manage')) { %>
+<h2>Start tracking a part</h2>
+<form method="post" action="/admin/stock" class="filters card">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Part number <input name="part_number" value="<%= values.part_number || '' %>" required maxlength="100" autocomplete="off"></label>
+  <label>On the shelf now <input name="count" value="<%= values.count || '' %>" inputmode="numeric" required maxlength="6" autocomplete="off"></label>
+  <label>Minimum <span class="hint">Optional. Flagged when at or below this.</span> <input name="min_level" value="<%= values.min_level || '' %>" inputmode="numeric" maxlength="6" autocomplete="off"></label>
+  <div class="filter-actions"><button class="btn primary small" type="submit">Track it</button></div>
+</form>
+
+<h2>Upload a count</h2>
+<form method="post" action="/admin/stock/import" enctype="multipart/form-data" class="filters card">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label class="grow">CSV file <span class="hint">Columns: Part Number, On hand, and optionally Minimum. Each part listed is set to that count as of now.</span>
+    <input type="file" name="file" accept=".csv,.txt,text/csv" required>
+  </label>
+  <div class="filter-actions"><button class="btn primary small" type="submit">Upload count</button></div>
+</form>
+<% } %>
+<%- include('partials/footer') %>

@@ -100,6 +100,50 @@ Reached from the **Usage summary** button on the parts log. For a date range (an
 
 The banner uses the Pye-Barker logo (`public/logo.png`) and the colors are taken from it; they are set at the top of `public/styles.css`. The button at the top right switches between light and dark. The choice is remembered on that device; until someone uses the button, the site follows the device's own light/dark setting.
 
+## Stock (`/admin/stock`)
+
+Tracks how many of a part are on the shelf. A part is tracked once you give it a count.
+
+- **On hand** = the last count, plus deliveries and returns, minus parts taken since that count. Requests do not move stock. Cancelling an entry puts its parts back.
+- **Start tracking**: enter a part number, how many are on the shelf now, and optionally a minimum. Or **upload a count**: a CSV with Part Number, On hand and optionally Minimum.
+- Open a part to record a **delivery or correction** (20 for a delivery, -2 for damaged), do a **recount**, or change the **minimum**.
+- A part at or below its minimum shows **Low**; at zero it shows **Out**. "Low stock only" filters to those.
+- When taking parts pushes one to or below its minimum, an email goes to `NOTIFY_TO` once (needs email set up).
+- Entries are matched to stock by part number, ignoring upper/lower case. A part typed differently from its catalog number is not counted, which is one reason the form suggests catalog numbers.
+- Viewing needs the parts log permission; changing counts needs **Manage stock**.
+
+## Parts requests queue (`/admin/requests`)
+
+Open requests (New or Ordered), soonest needed-by first, with overdue ones marked. **Ordered**, **Fulfilled** and **Decline** buttons change the status in one tap; use "Open / add a reply" to write a note. The menu shows how many are open. Managers see only their own people's requests.
+
+When someone else changes the status or reply on a person's request (parts or training), that person sees an **Updated** marker and a number beside "My submissions" until they look, and is emailed if they have an email address and email is set up.
+
+## Trucks, usual parts and barcode scanning
+
+- **Truck**: an optional field on the parts form. It is remembered for that person, and shown in the parts log, audit, exports and a "By truck" table in the usage summary. Admins can set someone's usual truck on their Edit page.
+- **Usual parts**: the form shows the person's most-used parts as buttons; tapping one adds it.
+- **Scan barcode**: opens the phone camera and puts the scanned code into the next part row. The barcode must contain the part number as it appears in the catalog. It needs camera permission and a secure (https) address.
+
+## Training topics, sessions and attendance
+
+- **Topics** (`/training/topics`): everyone who can send training requests sees the open, non-private requests and can tap **I want this too**. The most wanted rise to the top, and the admin training log shows the count.
+- **Sessions** (`/admin/training/sessions`, from the Training log): schedule a session with a date, time and place. Scheduling one from a training request lists the requester and everyone who added their name, and sets the request to Scheduled.
+- On the day, tick who came and press **Mark as held**; the linked request becomes Completed.
+- Each person sees **Training attended** under My submissions. The sessions page can filter by person and export attendance as CSV.
+- Managers can tick attendance for their own people only.
+
+## Weekly summary (`/admin/weekly`)
+
+Totals for the last seven days: taken, returned, requested, by person, most-taken parts, open requests and entries not yet checked in the audit. Managers see their own people only. The same summary is emailed on Monday morning to everyone whose profile has **Receive the weekly parts summary email** ticked and who has an email address (needs email set up).
+
+## Forgot password
+
+The sign-in page has a **Forgot your password?** link. It emails a link that works once and expires in an hour. It needs email set up on the site and an email address on the person's account; people add their own on the Change password page, or an admin adds it on their Edit page. Without email set up, the page tells people to ask an admin.
+
+## Activity log (`/admin/activity`)
+
+Linked from the Users page. Records who added or edited a person, reset a password, disabled an account, changed a profile's tick-boxes (listing what was added and removed), imported the catalog, changed stock, ran or downloaded a backup, or added a training session. Needs the **See the activity log** permission. Anonymous complaints are never recorded there.
+
 ## Editing and cancelling
 
 - A person can edit or cancel their own parts entry or training request from **My submissions** for 24 hours (`EDIT_WINDOW_HOURS`), as long as nobody has acted on it (a request that is no longer "New" is locked).
@@ -119,7 +163,7 @@ The banner uses the Pye-Barker logo (`public/logo.png`) and the colors are taken
 
 Set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` and `MAIL_FROM` to an account the site may send from, then:
 
-- `NOTIFY_TO`: who is emailed about each new **parts request** and **training request**. Take and return entries do not send email. A training request marked private sends only "a private request was submitted", without the text or the name.
+- `NOTIFY_TO`: who is emailed about each new **parts request**, **training request** and **low stock** crossing. Take and return entries do not send email. A training request marked private sends only "a private request was submitted", without the text or the name.
 - `COMPLAINT_NOTIFY_TO`: who gets the complaint notice. This is sent **once a day** (at `COMPLAINT_DIGEST_HOUR`, default 5 pm) and says only how many new complaints there are. It is not sent the moment a complaint arrives, because the arrival time could point to who wrote it.
 
 With no SMTP settings the site works normally and skips email.
@@ -153,7 +197,7 @@ A profile is a set of permissions. Each person has exactly one profile, and what
 - **Add a person**: username, name and a profile. The site generates a temporary password and shows it once; the person chooses their own at first sign-in.
 - **Edit**: name, username, email and profile.
 - **Managers**: when a person's profile is a "sees only their own people" profile, their Edit page lists everyone with tick-boxes. Tick the people they manage. The Users list shows who manages whom.
-- **Reset password**: a new temporary password, shown once. There is no "forgot password" email.
+- **Reset password**: a new temporary password, shown once. People can also use "Forgot your password?" if email is set up.
 - **Disable**: signed out at once and cannot sign in; their past submissions stay.
 
 ### The master account
@@ -208,4 +252,4 @@ scripts/create-admin.js
 test/portal.test.js  automated tests
 ```
 
-Not in this prototype: Microsoft/Outlook sign-in, stock counts, importing the old Microsoft Forms history.
+Not in this prototype: Microsoft/Outlook sign-in, importing the old Microsoft Forms history.

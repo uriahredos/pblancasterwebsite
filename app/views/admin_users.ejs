@@ -55,5 +55,6 @@
   </tbody>
 </table>
 </div>
+<% if (can('activity.view')) { %><p class="hint spaced"><a href="/admin/activity">Activity log</a>: who changed what.</p><% } %>
 <% if (can('backups')) { %><p class="hint spaced"><a href="/admin/backups">Backups</a>: download a copy of the site's data.</p><% } %>
 <%- include('partials/footer') %>

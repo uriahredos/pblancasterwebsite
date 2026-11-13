@@ -1,0 +1,21 @@
+<%- include('partials/header') %>
+<div class="narrow">
+<h1>Forgot password</h1>
+<% if (error) { %><p class="flash err" role="alert"><%= error %></p><% } %>
+<% if (!available) { %>
+<p class="notice">Password emails are not set up on this site yet. Ask your branch admin to reset your password; they can give you a temporary one.</p>
+<% } else if (sent) { %>
+<p class="flash ok">If that account exists and has an email address on it, a reset link is on its way. It works once and expires in an hour.</p>
+<p class="hint">Nothing arrived? Your account may have no email address on it. Ask your branch admin to reset your password.</p>
+<% } else { %>
+<form method="post" action="/forgot" class="card stack">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Username or email
+    <input name="who" autocapitalize="none" autocorrect="off" spellcheck="false" required autofocus>
+  </label>
+  <button class="btn primary" type="submit">Email me a reset link</button>
+</form>
+<% } %>
+<p class="hint"><a href="/login">Back to sign in</a></p>
+</div>
+<%- include('partials/footer') %>

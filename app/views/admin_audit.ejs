@@ -60,7 +60,7 @@
       <td><%= it.description %></td>
       <td class="num"><%= it.quantity %></td>
       <% if (i === 0) { %>
-      <td rowspan="<%= e.items.length %>"><%= e.source === 'job' ? 'Job ' + e.job_number : 'Van stock' %><% if (e.note) { %><br><span class="hint"><%= e.note %></span><% } %></td>
+      <td rowspan="<%= e.items.length %>"><%= e.source === 'job' ? 'Job ' + e.job_number : 'Van stock' %><% if (e.truck) { %><br><span class="hint">Truck <%= e.truck %></span><% } %><% if (e.note) { %><br><span class="hint"><%= e.note %></span><% } %></td>
       <% if (isReq) { %>
       <td class="nowrap" rowspan="<%= e.items.length %>"><%= fmtDate(e.needed_by) %></td>
       <td rowspan="<%= e.items.length %>"><% if (!e.cancelled_at && e.status) { %><span class="status s-<%= e.status %>"><%= labels.partsStatus[e.status] %></span><% } %></td>

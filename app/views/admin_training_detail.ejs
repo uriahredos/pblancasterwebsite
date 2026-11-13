@@ -8,7 +8,10 @@
     <dt>Keep private</dt><dd><%= t.is_private ? 'Yes. Do not share who asked.' : 'No' %></dd>
   </dl>
   <p class="pre"><%= t.description %></p>
+  <% if (voters.length) { %><p class="meta"><strong><%= voters.length %> more want this:</strong> <%= voters.map(function (v) { return v.display_name; }).join(', ') %></p><% } %>
+  <% sessions.forEach(function (s) { %><p class="meta">Session: <a href="/admin/training/sessions/<%= s.id %>"><%= s.title %></a>, <%= fmtDate(s.session_date) %><%= s.completed_at ? ' (held)' : '' %></p><% }) %>
 </div>
+<% if (can('training.manage') && !t.cancelled_at) { %><p class="spaced"><a class="btn small" href="/admin/training/sessions?request=<%= t.id %>#add">Schedule a session for this</a></p><% } %>
 
 <% if (history.length) { %>
 <h2>Changes</h2>

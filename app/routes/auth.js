@@ -4,6 +4,9 @@ const rateLimit = require('express-rate-limit');
 const db = require('../db');
 const config = require('../config');
 const auth = require('../auth');
+const crypto = require('crypto');
+const mail = require('../mail');
+const { clean } = require('../util');
 
 const router = express.Router();
 
@@ -42,6 +45,69 @@ router.post('/login', loginLimiter, (req, res, next) => {
     req.session.afterPassword = target;
     res.redirect(user.must_change_password ? '/account/password' : target);
   });
+});
+
+// ---- Forgot password --------------------------------------------------------
+
+const resetLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, limit: config.loginRateLimit, standardHeaders: true, legacyHeaders: false,
+  handler: (req, res) => res.status(429).render('forgot', { title: 'Forgot password', sent: false, available: true, error: 'Too many attempts. Wait 15 minutes and try again.' }),
+});
+const hashToken = (t) => crypto.createHash('sha256').update(String(t)).digest('hex');
+const findReset = (token) => db.prepare(
+  'SELECT r.user_id, u.username FROM password_resets r JOIN users u ON u.id = r.user_id WHERE r.token_hash = ? AND r.expires_at > ? AND u.active = 1'
+).get(hashToken(token), new Date().toISOString());
+
+router.get('/forgot', (req, res) => {
+  res.render('forgot', { title: 'Forgot password', sent: false, available: mail.isConfigured(), error: null });
+});
+
+router.post('/forgot', resetLimiter, (req, res) => {
+  const who = clean(req.body.who, 120);
+  // Same answer whether or not the account exists, so this page cannot be used to find usernames.
+  const user = who ? db.prepare('SELECT * FROM users WHERE (username = ? OR email = ? COLLATE NOCASE) AND active = 1').get(who, who) : null;
+  if (user && user.email && mail.isConfigured()) {
+    const token = crypto.randomBytes(32).toString('hex');
+    db.prepare('DELETE FROM password_resets WHERE user_id = ? OR expires_at <= ?').run(user.id, new Date().toISOString());
+    db.prepare('INSERT INTO password_resets (token_hash, user_id, expires_at) VALUES (?, ?, ?)')
+      .run(hashToken(token), user.id, new Date(Date.now() + 60 * 60 * 1000).toISOString());
+    mail.send([user.email], 'Reset your password',
+      `Hi ${user.display_name},\n\nUse this link to choose a new password. It works once and expires in one hour.\n\n` +
+      `${config.baseUrl}/reset/${token}\n\nIf you did not ask for this, ignore this email; your password has not changed.\n`);
+  }
+  res.render('forgot', { title: 'Forgot password', sent: true, available: mail.isConfigured(), error: null });
+});
+
+router.get('/reset/:token', (req, res) => {
+  const found = findReset(req.params.token);
+  res.status(found ? 200 : 404).render('reset', { title: 'Choose a new password', valid: Boolean(found), token: req.params.token, error: null });
+});
+
+router.post('/reset/:token', resetLimiter, (req, res) => {
+  const found = findReset(req.params.token);
+  if (!found) return res.status(404).render('reset', { title: 'Choose a new password', valid: false, token: '', error: null });
+  const { password = '', confirm = '' } = req.body;
+  let error = null;
+  if (password.length < config.minPasswordLength) error = `The password must be at least ${config.minPasswordLength} characters.`;
+  else if (password.length > 200) error = 'The password is too long.';
+  else if (password !== confirm) error = 'The two passwords do not match.';
+  if (error) return res.status(400).render('reset', { title: 'Choose a new password', valid: true, token: req.params.token, error });
+  db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?').run(auth.hashPassword(password), found.user_id);
+  db.prepare('DELETE FROM password_resets WHERE user_id = ?').run(found.user_id);
+  auth.flash(req, 'ok', 'Password changed. Sign in with your new password.');
+  res.redirect('/login');
+});
+
+// The address password-reset links and status updates are sent to.
+router.post('/account/email', (req, res) => {
+  if (!req.user) return res.redirect('/login');
+  const email = clean(req.body.email, 120);
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) auth.flash(req, 'err', 'That email address does not look right.');
+  else {
+    db.prepare('UPDATE users SET email = ? WHERE id = ?').run(email || null, req.user.id);
+    auth.flash(req, 'ok', email ? 'Email saved.' : 'Email removed.');
+  }
+  res.redirect('/account/password');
 });
 
 router.post('/logout', (req, res) => {

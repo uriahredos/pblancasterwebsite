@@ -5,6 +5,7 @@
   <dl class="facts">
     <dt>Submitted</dt><dd><%= fmtDateTime(s.created_at) %></dd>
     <dt>For</dt><dd><%= s.source === 'job' ? 'Job ' + s.job_number : 'Van stock' %></dd>
+    <% if (s.truck) { %><dt>Truck</dt><dd><%= s.truck %></dd><% } %>
     <% if (s.needed_by) { %><dt>Needed by</dt><dd><%= fmtDate(s.needed_by) %></dd><% } %>
     <% if (s.note) { %><dt>Note</dt><dd class="pre"><%= s.note %></dd><% } %>
   </dl>

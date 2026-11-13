@@ -14,6 +14,10 @@
     <input name="email" type="email" value="<%= values.email || '' %>" maxlength="120" autocomplete="off">
   </label>
 
+  <label>Usual truck <span class="hint">Optional. Filled in for them on the parts form.</span>
+    <input name="default_truck" value="<%= values.default_truck || '' %>" maxlength="20" autocomplete="off">
+  </label>
+
   <% if (target.is_master) { %>
   <p class="notice">This is the master account. It can do everything, and nobody else can edit it, disable it or change what it can do.</p>
   <% } else if (canSetProfile) { %>

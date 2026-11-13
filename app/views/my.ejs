@@ -8,11 +8,12 @@
   <li class="card <%= s.cancelled_at ? 'cancelled' : '' %>">
     <div class="rec-head">
       <span class="tag <%= s.action %>"><%= labels.action[s.action] %></span>
+      <% if (s.unseen) { %><span class="tag new">Updated</span><% } %>
       <% if (s.cancelled_at) { %><span class="tag off">Cancelled</span><% } else if (s.status) { %><span class="status s-<%= s.status %>"><%= labels.partsStatus[s.status] %></span><% } %>
       <time><%= fmtDateTime(s.created_at) %></time>
     </div>
     <p class="items"><%= s.items %></p>
-    <p class="meta"><%= s.source === 'job' ? 'Job ' + s.job_number : 'Van stock' %><% if (s.needed_by) { %> · Needed by <%= fmtDate(s.needed_by) %><% } %><% if (s.photo_path) { %> · <a href="/parts/photo/<%= s.id %>">Photo</a><% } %></p>
+    <p class="meta"><%= s.source === 'job' ? 'Job ' + s.job_number : 'Van stock' %><% if (s.truck) { %> · Truck <%= s.truck %><% } %><% if (s.needed_by) { %> · Needed by <%= fmtDate(s.needed_by) %><% } %><% if (s.photo_path) { %> · <a href="/parts/photo/<%= s.id %>">Photo</a><% } %></p>
     <% if (s.note) { %><p class="meta">Note: <%= s.note %></p><% } %>
     <% if (s.admin_note) { %><p class="reply"><strong>Reply:</strong> <%= s.admin_note %></p><% } %>
     <% if (s.edited_at && !s.cancelled_at) { %><p class="meta">Edited <%= fmtDateTime(s.edited_at) %></p><% } %>
@@ -32,6 +33,7 @@
 <% training.forEach(function (t) { %>
   <li class="card <%= t.cancelled_at ? 'cancelled' : '' %>">
     <div class="rec-head">
+      <% if (t.unseen) { %><span class="tag new">Updated</span><% } %>
       <% if (t.cancelled_at) { %><span class="tag off">Cancelled</span><% } else { %><span class="status s-<%= t.status %>"><%= labels.trainingStatus[t.status] %></span><% } %>
       <% if (t.is_private) { %><span class="tag private">Private</span><% } %>
       <time><%= fmtDateTime(t.created_at) %></time>
@@ -48,5 +50,11 @@
   </li>
 <% }) %>
 </ul>
+<% if (attended.length) { %>
+<h2>Training attended</h2>
+<ul class="records">
+  <% attended.forEach(function (a) { %><li class="card"><div class="rec-head"><strong><%= a.title %></strong><time><%= fmtDate(a.session_date) %></time></div><% if (a.location) { %><p class="meta"><%= a.location %></p><% } %></li><% }) %>
+</ul>
+<% } %>
 <p class="hint">You can edit or cancel a submission for <%= editWindowHours %> hours after sending it, until someone has acted on it. Anonymous complaints never appear here. Use your tracking code on the <a href="/complaint/status">complaint status page</a>.</p>
 <%- include('partials/footer') %>

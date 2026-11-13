@@ -5,6 +5,7 @@ const db = require('../db');
 const { requirePerm, verifyCsrf, flash } = require('../auth');
 const requireAdmin = requirePerm('catalog.manage');
 const { clean } = require('../util');
+const activity = require('../activity');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024, files: 1 } }).single('file');
@@ -103,6 +104,7 @@ router.post('/admin/catalog', requireAdmin, (req, res) => {
   if (errors.length) return render(req, res, { errors, values });
   db.prepare('INSERT INTO parts_catalog (part_number, description, manufacturer, category, created_at) VALUES (?, ?, ?, ?, ?)')
     .run(values.part_number, values.description, values.manufacturer || null, values.category || null, new Date().toISOString());
+  activity.log(req.user, 'Catalog part added', values.part_number);
   flash(req, 'ok', `${values.part_number} added.`);
   res.redirect('/admin/catalog');
 });
@@ -118,6 +120,7 @@ router.post('/admin/catalog/import', requireAdmin, (req, res, next) => upload(re
   }
   const result = importRows(parseCsv(req.file.buffer.toString('utf8')));
   if (result.error) return render(req, res, { errors: [result.error] });
+  activity.log(req.user, 'Catalog import', `${result.added} added, ${result.updated} updated`);
   flash(req, 'ok', `Import finished: ${result.added} added, ${result.updated} updated, ${result.unchanged} unchanged` +
     (result.skipped ? `, ${result.skipped} rows skipped (no part number).` : '.'));
   res.redirect('/admin/catalog');

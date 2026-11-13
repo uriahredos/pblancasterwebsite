@@ -532,7 +532,8 @@ test('parts catalog: import ignores prices, re-import updates, suggestions work'
   assert.match((await admin.get(page)).text, /3 added, 0 updated, 0 unchanged, 1 rows skipped/);
 
   const cols = db.prepare("SELECT name FROM pragma_table_info('parts_catalog')").all().map((c) => c.name).sort();
-  assert.deepEqual(cols, ['active', 'category', 'created_at', 'description', 'id', 'manufacturer', 'part_number']);
+  assert.deepEqual(cols, ['active', 'category', 'count_at', 'count_qty', 'created_at', 'description', 'id', 'manufacturer', 'min_level', 'part_number', 'stocked']);
+  assert.ok(!cols.some((c) => /price|cost/i.test(c)));
   const stored = JSON.stringify(db.prepare('SELECT * FROM parts_catalog').all());
   for (const price of ['41.17', '55.25', '9.99']) assert.ok(!stored.includes(price), price);
   assert.equal(db.prepare("SELECT description FROM parts_catalog WHERE part_number = 'siga-ct2'").get().description, 'Dual input module, Class B');
@@ -800,9 +801,9 @@ test('starting profiles: Technician, Warehouse, Manager and Admin each see only 
   const owner = await loggedIn('owner');
 
   assert.deepEqual(navLinks((await tech.get('/')).text), []); // a technician has no admin menu at all
-  assert.deepEqual(navLinks((await wh.get('/')).text), ['/admin/parts', '/admin/parts/audit', '/admin/catalog']);
+  assert.deepEqual(navLinks((await wh.get('/')).text), ['/admin/parts', '/admin/requests', '/admin/parts/audit', '/admin/stock', '/admin/catalog']);
   assert.deepEqual(navLinks((await owner.get('/')).text),
-    ['/admin/parts', '/admin/parts/audit', '/admin/training', '/admin/catalog', '/admin/users', '/admin/profiles', '/admin/complaints']);
+    ['/admin/parts', '/admin/requests', '/admin/parts/audit', '/admin/stock', '/admin/training', '/admin/catalog', '/admin/users', '/admin/profiles', '/admin/complaints']);
 
   for (const url of ['/admin/parts', '/admin/parts/audit', '/admin/parts/summary', '/admin/catalog']) assert.equal((await wh.get(url)).status, 200, url);
   for (const url of ['/admin/training', '/admin/users', '/admin/profiles', '/admin/complaints', '/admin/backups']) assert.equal((await wh.get(url)).status, 403, url);
@@ -995,4 +996,382 @@ test('nobody can hand out more access than they have themselves', async () => {
   await limited.post(`/admin/profiles/${own}`, [['name', 'Admin (no complaints)'], ['scope', 'all'], ['perms', 'parts.view'], ['perms', 'users.manage']], { page: `/admin/profiles/${own}` });
   assert.ok(access.permsOf(own).has('profiles.manage'));
   access.setPermissions(own, access.ALL.filter((p) => p !== 'complaints.review' && p !== 'backups'));
+});
+
+// ---------------------------------------------------------------------------
+// Stock, requests queue, notifications, password reset, activity log, trucks,
+// favorites, barcode scanning, training topics and sessions, weekly summary
+// ---------------------------------------------------------------------------
+
+const stockLib = require('../app/stock');
+const onHand = (pn) => stockLib.list().find((r) => r.part_number === pn).on_hand;
+const takeParts = (client, items, extra = []) => client.post('/parts', [['action', 'take'], ...items.flatMap(([n, q]) => [['part_name', n], ['quantity', String(q)]]), ['source', 'van'], ...extra], { multipart: true });
+
+test('stock: on hand follows the count, takes, returns, cancellations, deliveries and recounts', async () => {
+  const wh = await loggedIn('wh1');
+  const tech = await loggedIn('tech1');
+  const page = '/admin/stock';
+  assert.equal((await wh.post(page, { part_number: 'STK-1', count: 'ten' }, { page })).status, 400);
+  assert.equal((await wh.post(page, { part_number: 'STK-1', count: '20', min_level: '5' }, { page })).status, 302); // not in the catalog: added
+  assert.equal(onHand('STK-1'), 20);
+  await new Promise((r) => setTimeout(r, 5)); // entries made after the count
+
+  await takeParts(tech, [['stk-1', 6]]);                 // case does not matter
+  assert.equal(onHand('STK-1'), 14);
+  await tech.post('/parts', [['action', 'return'], ['part_name', 'STK-1'], ['quantity', '2'], ['source', 'van']], { multipart: true });
+  assert.equal(onHand('STK-1'), 16);
+  await tech.post('/parts', [['action', 'request'], ['part_name', 'STK-1'], ['quantity', '50'], ['source', 'van'], ['needed_by', '2027-02-01']], { multipart: true });
+  assert.equal(onHand('STK-1'), 16);                      // a request does not move stock
+  await takeParts(tech, [['STK-1', 9]]);
+  assert.equal(onHand('STK-1'), 7);
+  await tech.post(`/parts/${lastParts().id}/cancel`, {}); // cancelling puts them back
+  assert.equal(onHand('STK-1'), 16);
+
+  const id = db.prepare("SELECT id FROM parts_catalog WHERE part_number = 'STK-1'").get().id;
+  const part = `/admin/stock/${id}`;
+  await wh.post(`${part}/adjust`, { quantity: '30', reason: 'PO 1234' }, { page: part });
+  await wh.post(`${part}/adjust`, { quantity: '-1', reason: 'damaged' }, { page: part });
+  assert.equal(onHand('STK-1'), 45);
+  assert.equal((await wh.post(`${part}/adjust`, { quantity: 'lots' }, { page: part })).status, 302);
+  assert.equal(onHand('STK-1'), 45);
+  const detail = (await wh.get(part)).text;
+  assert.match(detail, /PO 1234/); assert.match(detail, /Take parts/);
+
+  await wh.post(`${part}/count`, { count: '40' }, { page: part }); // a recount is the new starting point
+  assert.equal(onHand('STK-1'), 40);
+  await wh.post(`${part}/min`, { min_level: '' }, { page: part });
+  assert.equal(db.prepare('SELECT min_level FROM parts_catalog WHERE id = ?').get(id).min_level, null);
+
+  // Bulk count from a file.
+  const csv = 'Part Number,On hand,Minimum,Cost\nSIGA-CT2,12,4,41.17\nSTK-2,3,,9\n,5,,\nBAD,x,,\n';
+  assert.equal((await wh.post('/admin/stock/import', [['file', new File([csv], 'count.csv', { type: 'text/csv' })]], { multipart: true, page })).status, 302);
+  assert.match((await wh.get(page)).text, /Counts set for 2 parts, 1 of them new to the catalog\. 2 rows skipped/);
+  assert.equal(onHand('SIGA-CT2'), 12);
+  assert.ok(!JSON.stringify(db.prepare('SELECT * FROM parts_catalog WHERE stocked = 1').all()).includes('41.17'));
+
+  // Who may do what.
+  const mgr = await loggedIn('mgr1');                      // sees the parts log but does not manage stock
+  assert.equal((await mgr.get(page)).status, 200);
+  assert.doesNotMatch((await mgr.get(page)).text, /Start tracking a part/);
+  assert.equal((await mgr.post(`${part}/adjust`, { quantity: '5' })).status, 403);
+  assert.equal((await mgr.post(page, { part_number: 'X', count: '1' })).status, 403);
+  assert.equal((await tech.get(page)).status, 403);
+  await wh.post(`${part}/stop`, {}, { page: part });
+  assert.ok(!stockLib.list().some((r) => r.part_number === 'STK-1'));
+});
+
+test('stock: low level is flagged, and an email goes out once when a take crosses the minimum', async () => {
+  const wh = await loggedIn('wh1');
+  const tech = await loggedIn('tech1');
+  await wh.post('/admin/stock', { part_number: 'LOW-1', count: '10', min_level: '4' }, { page: '/admin/stock' });
+  await wh.get('/admin/stock'); // shows the "now tracked" message once
+  await new Promise((r) => setTimeout(r, 5));
+  sent.length = 0;
+  await takeParts(tech, [['LOW-1', 3]]);                   // 7 left: fine
+  assert.equal(sent.length, 0);
+  assert.doesNotMatch((await wh.get('/admin/stock?low=1')).text, /LOW-1/);
+  await takeParts(tech, [['LOW-1', 3]]);                   // 4 left: at the minimum
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].to, 'boss@example.com');
+  assert.match(sent[0].subject, /Low stock: LOW-1/);
+  assert.match(sent[0].text, /4 on hand \(minimum 4\)/);
+  await takeParts(tech, [['LOW-1', 1]]);                   // already low: no second email
+  assert.equal(sent.length, 1);
+  const low = (await wh.get('/admin/stock?low=1')).text;
+  assert.match(low, /LOW-1/); assert.match(low, /1 at or below minimum/);
+  await takeParts(tech, [['LOW-1', 3]]);
+  assert.match((await wh.get('/admin/stock?q=LOW-1')).text, />Out</);
+});
+
+test('requests queue: open requests by due date, one-tap status, and the sender is told', async () => {
+  const tech = await loggedIn('tech1');
+  const wh = await loggedIn('wh1');
+  db.prepare("UPDATE parts_submissions SET status = 'fulfilled' WHERE action = 'request'").run(); // clear earlier tests' requests
+  db.prepare("UPDATE users SET email = 'terry@example.com' WHERE username = 'tech1'").run();
+  const ask = (part, due) => tech.post('/parts', [['action', 'request'], ['part_name', part], ['quantity', '1'], ['source', 'van'], ['needed_by', due]], { multipart: true });
+  await ask('Q-LATER', '2031-06-01'); const later = lastParts().id;
+  await ask('Q-OVERDUE', '2020-01-01'); const overdue = lastParts().id;
+
+  const queue = (await wh.get('/admin/requests')).text;
+  assert.match(queue, /2 open, <strong>1 overdue<\/strong>/);
+  assert.ok(queue.indexOf('Q-OVERDUE') < queue.indexOf('Q-LATER')); // soonest first
+  assert.match((await wh.get('/')).text, /Requests <span class="badge">2<\/span>/);
+
+  // A note written on the detail page survives a one-tap status change from the queue.
+  await wh.post(`/admin/parts/${overdue}/status`, { status: 'new', admin_note: 'Checking with the supplier' }, { page: `/admin/parts/${overdue}` });
+  sent.length = 0;
+  const r = await wh.post(`/admin/parts/${overdue}/status`, { status: 'ordered', back: 'requests' }, { page: '/admin/requests' });
+  assert.equal(r.location, '/admin/requests');
+  const row = db.prepare('SELECT status, admin_note, unseen FROM parts_submissions WHERE id = ?').get(overdue);
+  assert.deepEqual({ ...row }, { status: 'ordered', admin_note: 'Checking with the supplier', unseen: 1 });
+
+  // The technician is emailed and sees a badge until they look.
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].to, 'terry@example.com');
+  assert.match(sent[0].subject, /Your parts request is now: Ordered/);
+  assert.match(sent[0].text, /Checking with the supplier/);
+  assert.match((await tech.get('/')).text, /My submissions <span class="badge"[^>]*>2<\/span>/); // the note, then the status
+  const mine = (await tech.get('/my')).text;
+  assert.match(mine, /class="tag new">Updated</);
+  assert.doesNotMatch((await tech.get('/my')).text, /class="tag new">Updated</); // seen now
+  assert.doesNotMatch((await tech.get('/')).text, /My submissions <span class="badge"/);
+
+  await wh.post(`/admin/parts/${overdue}/status`, { status: 'fulfilled', back: 'requests' }, { page: '/admin/requests' });
+  const after = (await wh.get('/admin/requests')).text;
+  assert.doesNotMatch(after, /Q-OVERDUE/); assert.match(after, /Q-LATER/);
+
+  // A manager's queue holds only their own people; a technician has no queue.
+  await (await loggedIn('tech2')).post('/parts', [['action', 'request'], ['part_name', 'Q-OTHER-TEAM'], ['quantity', '1'], ['source', 'van'], ['needed_by', '2031-06-02']], { multipart: true });
+  const mq = (await (await loggedIn('mgr1')).get('/admin/requests')).text;
+  assert.match(mq, /Q-LATER/); assert.doesNotMatch(mq, /Q-OTHER-TEAM/);
+  assert.equal((await tech.get('/admin/requests')).status, 403);
+  // Changing your own request's status does not notify yourself.
+  const owner = await loggedIn('owner');
+  await owner.post('/parts', [['action', 'request'], ['part_name', 'Q-SELF'], ['quantity', '1'], ['source', 'van'], ['needed_by', '2031-06-03']], { multipart: true });
+  await owner.post(`/admin/parts/${lastParts().id}/status`, { status: 'ordered', back: 'requests' }, { page: '/admin/requests' });
+  assert.equal(db.prepare('SELECT unseen FROM parts_submissions WHERE id = ?').get(lastParts().id).unseen, 0);
+  void later;
+});
+
+test('forgot password: emailed link works once, expires, and gives nothing away', async () => {
+  const c = new Client();
+  sent.length = 0;
+  const ask = (who) => c.post('/forgot', { who }, { page: '/forgot' });
+  const same = /If that account exists and has an email address on it/;
+  assert.match((await ask('nobody-here')).text, same);
+  assert.match((await ask('tech2')).text, same);           // real account, no email on it
+  assert.equal(sent.length, 0);
+  assert.match((await ask('TERRY@example.com')).text, same); // by email, any case
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].to, 'terry@example.com');
+  const token = /\/reset\/([0-9a-f]{64})/.exec(sent[0].text)[1];
+  assert.ok(!JSON.stringify(db.prepare('SELECT * FROM password_resets').all()).includes(token)); // only a hash is stored
+
+  const page = `/reset/${token}`;
+  assert.equal((await c.get(page)).status, 200);
+  assert.equal((await c.post(page, { password: 'short', confirm: 'short' }, { page })).status, 400);
+  assert.equal((await c.post(page, { password: 'a brand new password', confirm: 'different password!' }, { page })).status, 400);
+  assert.equal((await c.post(page, { password: 'a brand new password', confirm: 'a brand new password' }, { page })).location, '/login');
+  assert.equal((await c.get(page)).status, 404);           // used
+  assert.equal((await new Client().post('/login', { username: 'tech1', password: 'correct horse battery' }, { page: '/login' })).status, 401);
+  await new Client().login('tech1', 'a brand new password');
+
+  await ask('tech1');                                       // a fresh link, then let it expire
+  const t2 = /\/reset\/([0-9a-f]{64})/.exec(sent[1].text)[1];
+  db.prepare('UPDATE password_resets SET expires_at = ?').run(new Date(Date.now() - 1000).toISOString());
+  assert.equal((await c.get(`/reset/${t2}`)).status, 404);
+  assert.equal((await c.post(`/reset/${t2}`, { password: 'another new password', confirm: 'another new password' }, { page: '/forgot' })).status, 404);
+  assert.equal((await c.get('/reset/not-a-token')).status, 404);
+  db.prepare('UPDATE users SET password_hash = ? WHERE username = ?').run(auth.hashPassword('correct horse battery'), 'tech1');
+
+  // People set their own email on the change-password page.
+  const t = await loggedIn('tech2');
+  await t.post('/account/email', { email: 'not-an-email' });
+  assert.equal(db.prepare("SELECT email FROM users WHERE username = 'tech2'").get().email, null);
+  await t.post('/account/email', { email: 'uma@example.com' });
+  assert.equal(db.prepare("SELECT email FROM users WHERE username = 'tech2'").get().email, 'uma@example.com');
+  assert.match((await new Client().get('/login')).text, /href="\/forgot"/);
+});
+
+test('activity log records admin-side changes and never anything about complaints', async () => {
+  const owner = await loggedIn('owner');
+  db.prepare('DELETE FROM activity_log').run();
+  await owner.post('/admin/users', { username: 'logme', display_name: 'Log Me', profile_id: profileId('Technician') }, { page: '/admin/users' });
+  const id = userId('logme');
+  await owner.post(`/admin/users/${id}/edit`, { username: 'logme', display_name: 'Logan Me', profile_id: profileId('Warehouse') }, { page: `/admin/users/${id}/edit` });
+  await owner.post(`/admin/users/${id}/reset-password`, {}, { page: '/admin/users' });
+  await owner.post(`/admin/users/${id}/toggle-active`, {}, { page: '/admin/users' });
+  const dp = profileId('Dispatcher');
+  await owner.post(`/admin/profiles/${dp}`, [['name', 'Dispatcher'], ['scope', 'team'], ['perms', 'parts.submit'], ['perms', 'parts.view']], { page: `/admin/profiles/${dp}` });
+  await owner.post('/admin/stock', { part_number: 'ACT-1', count: '5' }, { page: '/admin/stock' });
+  // Complaint activity must leave no trace here.
+  await (await loggedIn('wh1')).post('/complaint', { category: 'other', description: 'activity log secrecy check' }, { page: '/complaint' });
+  const cid = db.prepare("SELECT id FROM complaints WHERE description = 'activity log secrecy check'").get().id;
+  await owner.post(`/admin/complaints/${cid}`, { status: 'resolved', reviewer_reply: 'noted' }, { page: `/admin/complaints/${cid}` });
+
+  const log = db.prepare('SELECT a.action, a.detail, u.username FROM activity_log a JOIN users u ON u.id = a.user_id ORDER BY a.id').all();
+  assert.deepEqual(log.map((r) => r.action), ['Person added', 'Person edited', 'Password reset', 'Account disabled', 'Profile changed', 'Stock count']);
+  assert.ok(log.every((r) => r.username === 'owner'));
+  assert.match(log[1].detail, /name Log Me → Logan Me, profile → Warehouse/);
+  assert.match(log[4].detail, /now sees only their own people; added: parts\.view; removed: training\.view/);
+  assert.ok(!/complaint|secrecy/i.test(JSON.stringify(log)));
+  assert.ok(!JSON.stringify(log).includes('correct horse')); // never a password
+
+  const page = (await owner.get('/admin/activity')).text;
+  assert.match(page, /Logan Me: name Log Me/);
+  assert.doesNotMatch((await owner.get('/admin/activity?q=stock')).text, /Logan Me/);
+  for (const who of ['tech1', 'wh1', 'mgr1']) assert.equal((await (await loggedIn(who)).get('/admin/activity')).status, 403, who);
+});
+
+test('trucks: remembered per person, shown in the logs, exports and summary', async () => {
+  const tech = await loggedIn('tech2');
+  assert.match((await tech.get('/parts')).text, /name="truck" value=""/);
+  await takeParts(tech, [['TRK-PART', 2]], [['truck', '309']]);
+  const id = lastParts().id;
+  assert.equal(lastParts().truck, '309');
+  assert.equal(db.prepare("SELECT default_truck FROM users WHERE username = 'tech2'").get().default_truck, '309');
+  assert.match((await tech.get('/parts')).text, /name="truck" value="309"/); // filled in next time
+  await takeParts(tech, [['TRK-PART', 1]]);                                  // left blank: stored blank, default kept
+  assert.equal(lastParts().truck, null);
+  assert.match((await tech.get('/my')).text, /Truck 309/);
+
+  const owner = await loggedIn('owner');
+  assert.match((await owner.get('/admin/parts?q=TRK-PART')).text, /Truck 309/);
+  assert.match((await owner.get('/admin/parts.csv?q=TRK-PART')).text, /TRK-PART,2,Van stock,,309,/);
+  const summary = (await owner.get('/admin/parts/summary?q=TRK-PART')).text.replace(/\s+/g, ' ');
+  assert.match(summary, /By truck.*<td>309<\/td><td class="num">2<\/td>/);
+  await tech.post(`/parts/${id}/edit`, [['part_name', 'TRK-PART'], ['quantity', '2'], ['source', 'van'], ['truck', '310']], { multipart: true, page: `/parts/${id}/edit` });
+  assert.equal(db.prepare('SELECT truck FROM parts_submissions WHERE id = ?').get(id).truck, '310');
+});
+
+test('the parts form offers the person\'s most-used parts and a barcode scanner', async () => {
+  makeUser('fav1', 'Fay Favorite');
+  const c = await loggedIn('fav1');
+  assert.doesNotMatch((await c.get('/parts')).text, /class="chip"/); // nothing used yet
+  await takeParts(c, [['FAV-B', 1]]);
+  await takeParts(c, [['FAV-A', 1], ['fav-a', 2]]);
+  await takeParts(c, [['FAV-A', 1]]);
+  await takeParts(c, [['FAV-GONE', 1]]);
+  await c.post(`/parts/${lastParts().id}/cancel`, {});
+  const html = (await c.get('/parts')).text;
+  assert.deepEqual([...html.matchAll(/class="chip" data-part="([^"]+)"/g)].map((m) => m[1]), ['FAV-A', 'FAV-B']); // most used first, cancelled left out
+  assert.match(html, /id="scan-btn"/);
+  assert.match(html, /src="\/scan\.js"/);
+  const lib = await new Client().get('/vendor/html5-qrcode.min.js');
+  assert.equal(lib.status, 200);
+  assert.ok(lib.text.includes('Html5Qrcode'));
+  assert.equal((await new Client().get('/scan.js')).status, 200);
+});
+
+test('training topics: others can add their name; private requests stay hidden', async () => {
+  const t1 = await loggedIn('tech1');
+  const t2 = await loggedIn('tech2');
+  await t1.post('/training', { description: 'TOPIC ground fault tracing', wants_contact: 'no', is_private: 'no' });
+  const open = db.prepare('SELECT MAX(id) id FROM training_requests').get().id;
+  await t1.post('/training', { description: 'TOPIC private thing', wants_contact: 'no', is_private: 'yes' });
+  const priv = db.prepare('SELECT MAX(id) id FROM training_requests').get().id;
+
+  const page = (await t2.get('/training/topics')).text;
+  assert.match(page, /TOPIC ground fault tracing/); assert.doesNotMatch(page, /TOPIC private thing/);
+  const votes = () => db.prepare('SELECT COUNT(*) n FROM training_votes WHERE request_id = ?').get(open).n;
+  await t2.post(`/training/topics/${open}/vote`, {}, { page: '/training/topics' });
+  assert.equal(votes(), 1);
+  assert.match((await t2.get('/training/topics')).text, /Take my name off/);
+  await t1.post(`/training/topics/${open}/vote`, {}, { page: '/training/topics' });   // your own request: no effect
+  await t2.post(`/training/topics/${priv}/vote`, {}, { page: '/training/topics' });   // private: no effect
+  assert.equal(votes(), 1);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM training_votes WHERE request_id = ?').get(priv).n, 0);
+
+  const owner = await loggedIn('owner');
+  assert.match((await owner.get(`/admin/training/${open}`)).text, /1 more want this:<\/strong> Uma Tech/);
+  await t2.post(`/training/topics/${open}/vote`, {}, { page: '/training/topics' });   // tap again to undo
+  assert.equal(votes(), 0);
+  await t2.post(`/training/topics/${open}/vote`, {}, { page: '/training/topics' });
+  assert.equal((await (await loggedIn('disp1')).get('/training/topics')).status, 403);  // profile without "send training requests"
+});
+
+test('training sessions: scheduled from a request, attendance recorded, history kept', async () => {
+  const owner = await loggedIn('owner');
+  const t1 = await loggedIn('tech1');
+  const req = db.prepare("SELECT id FROM training_requests WHERE description = 'TOPIC ground fault tracing'").get().id;
+  const list = '/admin/training/sessions';
+  assert.match((await owner.get(`${list}?request=${req}`)).text, /value="TOPIC ground fault tracing"/); // prefilled
+  assert.equal((await owner.post(list, { title: '', session_date: 'soon' }, { page: list })).status, 400);
+  const r = await owner.post(list, { title: 'Ground fault tracing', session_date: '2031-07-04', session_time: '07:30', location: 'Shop', request_id: String(req) }, { page: list });
+  const sid = db.prepare('SELECT MAX(id) id FROM training_sessions').get().id;
+  assert.equal(r.location, `${list}/${sid}`);
+  // The requester and the person who added their name are expected; the request shows as Scheduled and the requester is told.
+  const expected = () => db.prepare('SELECT user_id FROM training_attendance WHERE session_id = ? ORDER BY user_id').all(sid).map((x) => x.user_id);
+  assert.deepEqual(expected(), [userId('tech1'), userId('tech2')].sort((a, b) => a - b));
+  assert.deepEqual({ ...db.prepare('SELECT status, unseen FROM training_requests WHERE id = ?').get(req) }, { status: 'scheduled', unseen: 1 });
+  assert.match((await t1.get('/training/topics')).text.replace(/\s+/g, ' '), /Coming up.*Ground fault tracing.*7\/4\/2031 at 07:30/);
+  assert.doesNotMatch((await t1.get('/my')).text, /Training attended/); // not held yet
+
+  // On the day: tick who came and mark it held.
+  const page = `${list}/${sid}`;
+  await owner.post(page, [['people', String(userId('tech1'))], ['people', String(userId('wh1'))], ['held', '1']], { page });
+  assert.deepEqual(expected(), [userId('tech1'), userId('wh1')].sort((a, b) => a - b));
+  assert.ok(db.prepare('SELECT completed_at FROM training_sessions WHERE id = ?').get(sid).completed_at);
+  assert.equal(db.prepare('SELECT status FROM training_requests WHERE id = ?').get(req).status, 'completed');
+  assert.match((await t1.get('/my')).text.replace(/\s+/g, ' '), /Training attended.*Ground fault tracing.*7\/4\/2031/);
+  assert.doesNotMatch((await (await loggedIn('tech2')).get('/my')).text, /Training attended/);
+
+  // History per person, and the export.
+  assert.match((await owner.get(`${list}?user=${userId('wh1')}`)).text, /Ground fault tracing/);
+  assert.doesNotMatch((await owner.get(`${list}?user=${userId('tech2')}`)).text, /Ground fault tracing/);
+  const csv = (await owner.get(`${list}.csv`)).text;
+  assert.match(csv, /Ground fault tracing,2031-07-04,Shop,Yes,Terry Tech,tech1/);
+
+  // A manager can tick only their own people and leaves everyone else's ticks alone.
+  const mgr = await loggedIn('mgr1');
+  const seen = (await mgr.get(page)).text;
+  assert.match(seen, /Terry Tech/); assert.doesNotMatch(seen, /Wanda Warehouse/); assert.match(seen, /1 more outside your team/);
+  await mgr.post(page, [['people', String(userId('tech2'))], ['held', '']], { page }); // unticks tech1; tech2 is not theirs
+  assert.deepEqual(expected(), [userId('wh1')]);
+  assert.doesNotMatch((await mgr.get(`${list}.csv`)).text, /Wanda Warehouse/);
+  assert.equal((await mgr.post(`${page}/delete`, {})).status, 403);
+  for (const url of [list, page, `${list}.csv`]) assert.equal((await t1.get(url)).status, 403, url);
+  assert.equal((await (await loggedIn('wh1')).post(list, { title: 'x', session_date: '2031-01-01' })).status, 403);
+  await owner.post(`${page}/delete`, {}, { page });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM training_sessions WHERE id = ?').get(sid).n, 0);
+});
+
+test('weekly summary: right numbers, right people, once, on Monday morning', async () => {
+  const digest = require('../app/digest');
+  const monday = new Date('2032-03-08T14:00:00Z');  // Monday 9am Eastern
+  const mgrRow = () => access.loadAccess(db.prepare("SELECT * FROM users WHERE username = 'mgr1'").get());
+  // Last week's entries: tech1 (the manager's person) and tech2 (not theirs).
+  const put = (who, action, part, qty, day) => {
+    const info = db.prepare(`INSERT INTO parts_submissions (user_id, action, source, status, created_at, created_local_date)
+                             VALUES (?, ?, 'van', ?, ?, ?)`).run(userId(who), action, action === 'request' ? 'new' : null, day + 'T15:00:00Z', day);
+    db.prepare('INSERT INTO parts_items (submission_id, part_name, quantity) VALUES (?, ?, ?)').run(info.lastInsertRowid, part, qty);
+  };
+  put('tech1', 'take', 'WK-A', 5, '2032-03-02'); put('tech1', 'take', 'WK-B', 2, '2032-03-05'); put('tech1', 'return', 'WK-A', 1, '2032-03-07');
+  put('tech1', 'request', 'WK-C', 4, '2032-03-01'); put('tech2', 'take', 'WK-A', 100, '2032-03-03');
+  put('tech1', 'take', 'WK-A', 50, '2032-02-29');   // the day before the week starts
+  put('tech1', 'take', 'WK-A', 50, '2032-03-08');   // today is not part of last week
+
+  const d = digest.build(mgrRow(), monday);
+  assert.deepEqual(d.range, { from: '2032-03-01', to: '2032-03-07' });
+  assert.deepEqual(d.totals, { taken: 7, returned: 1, requested: 4, entries: 4 });
+  assert.deepEqual(d.byPerson.map((r) => [r.name, r.taken]), [['Terry Tech', 7]]);
+  assert.deepEqual(d.topParts.map((r) => [r.part, r.taken]), [['WK-A', 5], ['WK-B', 2]]);
+  assert.equal(d.unchecked, 4);
+  const all = digest.build(access.loadAccess(db.prepare("SELECT * FROM users WHERE username = 'owner'").get()), monday);
+  assert.equal(all.totals.taken, 107);
+
+  // Who gets it: the profile must have the tick-box, and the account an email address.
+  db.prepare("UPDATE users SET email = 'mona@example.com' WHERE username = 'mgr1'").run();
+  db.prepare("UPDATE users SET email = 'olive@example.com' WHERE username = 'owner'").run();
+  access.setPermissions(profileId('Admin'), access.ALL.filter((p) => p !== 'digest.weekly'));
+  assert.ok(access.permsOf(profileId('Manager')).has('digest.weekly'));
+  sent.length = 0;
+  assert.equal(await digest.runWeekly(new Date('2032-03-07T14:00:00Z')), 0); // Sunday
+  assert.equal(await digest.runWeekly(new Date('2032-03-08T09:00:00Z')), 0); // Monday, before 7am local
+  assert.equal(await digest.runWeekly(monday), 1);
+  assert.equal(await digest.runWeekly(monday), 0);                           // only once
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].to, 'mona@example.com');
+  assert.match(sent[0].text, /Taken:\s+7 units/);
+  assert.match(sent[0].text, /Terry Tech: 7 \/ 1 \/ 4/);
+  assert.doesNotMatch(sent[0].text, /Uma Tech|100/);
+  access.setPermissions(profileId('Admin'), access.ALL);
+
+  const page = await (await loggedIn('mgr1')).get('/admin/weekly');
+  assert.equal(page.status, 200);
+  assert.match(page.text, /your people only/);
+  assert.equal((await (await loggedIn('tech1')).get('/admin/weekly')).status, 403);
+});
+
+test('permissions added in an update are given once to the profiles that held the closest one', async () => {
+  const id = access.createProfile('Legacy Stores', 'all', ['parts.view', 'catalog.manage']);
+  const teamLead = access.createProfile('Legacy Lead', 'team', ['parts.view']);
+  db.prepare("DELETE FROM meta WHERE key LIKE 'perm_granted:%'").run(); // as if the update had not run yet
+  access.migrate();
+  assert.ok(access.permsOf(id).has('stock.manage'));
+  assert.ok(!access.permsOf(id).has('activity.view'));
+  assert.ok(access.permsOf(teamLead).has('digest.weekly'));
+  access.setPermissions(id, ['parts.view', 'catalog.manage']);            // an admin later unticks it
+  access.migrate();
+  assert.ok(!access.permsOf(id).has('stock.manage'));                      // and it stays unticked
 });

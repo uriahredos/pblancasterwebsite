@@ -49,6 +49,20 @@ function loadUser(req, res, next) {
   }
   res.locals.user = req.user;
   res.locals.can = (perm) => access.can(req.user, perm);
+  res.locals.badges = { updates: 0, requests: 0 };
+  if (req.user) {
+    // "My submissions": status changes this person has not looked at yet.
+    res.locals.badges.updates =
+      db.prepare('SELECT COUNT(*) AS n FROM parts_submissions WHERE user_id = ? AND unseen = 1').get(req.user.id).n +
+      db.prepare('SELECT COUNT(*) AS n FROM training_requests WHERE user_id = ? AND unseen = 1').get(req.user.id).n;
+    // "Requests": open parts requests waiting on someone who can act on them.
+    if (access.can(req.user, 'parts.manage')) {
+      const ids = access.visibleUserIds(req.user);
+      res.locals.badges.requests = db.prepare(
+        `SELECT COUNT(*) AS n FROM parts_submissions WHERE action = 'request' AND cancelled_at IS NULL AND status IN ('new','ordered')
+         ${ids ? `AND user_id IN (${ids.map(Number).join(',')})` : ''}`).get().n;
+    }
+  }
   next();
 }
 

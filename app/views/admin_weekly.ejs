@@ -1,0 +1,23 @@
+<%- include('partials/header') %>
+<h1>Weekly summary</h1>
+<p class="lede"><strong><%= fmtDate(data.range.from) %> to <%= fmtDate(data.range.to) %></strong><%= data.team ? ', your people only' : '' %>. This is what the Monday morning email contains.</p>
+<p class="notice"><% if (!mailOn) { %>Email is not set up on this site yet, so the Monday email is not being sent to anyone.<% } else if (!emailed) { %>Your profile does not have the weekly summary email ticked, so you will not be emailed this.<% } else if (!hasEmail) { %>Your account has no email address, so this cannot be emailed to you. Add one on the <a href="/account/password">change password</a> page.<% } else { %>You will be emailed this every Monday morning.<% } %></p>
+<div class="stats">
+  <div class="stat take"><span class="stat-label">Taken</span><span class="stat-num"><%= data.totals.taken %></span><span class="stat-sub">units</span></div>
+  <div class="stat return"><span class="stat-label">Returned</span><span class="stat-num"><%= data.totals.returned %></span><span class="stat-sub">units</span></div>
+  <div class="stat request"><span class="stat-label">Requested</span><span class="stat-num"><%= data.totals.requested %></span><span class="stat-sub">units</span></div>
+</div>
+<p><a href="/admin/requests"><strong><%= data.openRequests %></strong> open parts <%= data.openRequests === 1 ? 'request' : 'requests' %></a> · <a href="/admin/parts/audit?from=<%= data.range.from %>&amp;to=<%= data.range.to %>&amp;show=unchecked"><strong><%= data.unchecked %></strong> <%= data.unchecked === 1 ? 'entry' : 'entries' %> not yet checked in the audit</a></p>
+<h2>By person</h2>
+<div class="table-wrap"><table>
+  <thead><tr><th>Name</th><th class="num">Taken</th><th class="num">Returned</th><th class="num">Requested</th></tr></thead>
+  <tbody><% data.byPerson.forEach(function (r) { %><tr><td><%= r.name %></td><td class="num"><%= r.taken %></td><td class="num"><%= r.returned %></td><td class="num"><%= r.requested %></td></tr><% }) %>
+  <% if (!data.byPerson.length) { %><tr><td colspan="4" class="empty">Nothing that week.</td></tr><% } %></tbody>
+</table></div>
+<h2>Most taken parts</h2>
+<div class="table-wrap"><table>
+  <thead><tr><th>Part</th><th class="num">Taken</th></tr></thead>
+  <tbody><% data.topParts.forEach(function (r) { %><tr><td><%= r.part %></td><td class="num"><%= r.taken %></td></tr><% }) %>
+  <% if (!data.topParts.length) { %><tr><td colspan="2" class="empty">Nothing taken that week.</td></tr><% } %></tbody>
+</table></div>
+<%- include('partials/footer') %>

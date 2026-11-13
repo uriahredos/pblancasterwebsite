@@ -60,6 +60,7 @@ p { margin: 0 0 .75rem; }
 .stripe { height: 5px; background: linear-gradient(105deg, var(--pb-green) 0 38%, var(--pb-blue) 38% 100%); }
 .navbar { max-width: 1200px; margin: 0 auto; padding: .35rem 16px; }
 .nav { display: flex; gap: .25rem; overflow-x: auto; margin: 0 -16px; padding: 0 16px; scrollbar-width: none; }
+@media (min-width: 900px) { .nav { flex-wrap: wrap; overflow: visible; row-gap: .15rem; } }
 .nav::-webkit-scrollbar { display: none; }
 .nav a { color: #c9d9e8; text-decoration: none; white-space: nowrap; padding: .45rem .7rem; border-radius: 8px; font-size: .95rem; }
 .nav a:hover { background: rgba(255,255,255,.08); color: #fff; }
@@ -252,3 +253,19 @@ table.audit tfoot td { font-weight: 700; border-top: 2px solid var(--line); bord
 .choice .hint { display: inline; }
 .check-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: .5rem; }
 .check-grid .choice { margin: 0; }
+
+/* Badges, chips, requests queue, barcode scanner */
+.badge { display: inline-block; min-width: 1.35em; padding: 0 .4em; border-radius: 999px; background: var(--green); color: #052012; font-size: .75rem; font-weight: 700; line-height: 1.35em; text-align: center; vertical-align: 1px; }
+.tag.new { background: var(--green); color: #052012; border-color: var(--green); }
+.tag.overdue { background: var(--err-bg); color: var(--err); border-color: var(--err); }
+.card.request.overdue { border-left: 5px solid var(--err); }
+.card.request.soon { border-left: 5px solid var(--warn); }
+.chips { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin-top: .75rem; }
+.chips .mini { flex-basis: 100%; margin: 0; }
+.chip { font: inherit; font-size: .9rem; min-height: 40px; padding: .3rem .8rem; border: 1px solid var(--field-line); border-radius: 999px; background: var(--surface); color: var(--ink); cursor: pointer; }
+.chip:hover { border-color: var(--accent); background: var(--accent-soft); }
+.scan-overlay { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.scan-box { width: 100%; max-width: 460px; max-height: 100%; overflow: auto; }
+#scan-view { width: 100%; min-height: 200px; background: #000; border-radius: 8px; overflow: hidden; margin-bottom: .6rem; }
+#scan-view video { display: block; width: 100% !important; }
+.stats > div.stat { cursor: default; }

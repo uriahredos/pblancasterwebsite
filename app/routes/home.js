@@ -17,7 +17,13 @@ router.get('/my', requireLogin, (req, res) => {
     'SELECT * FROM training_requests WHERE user_id = ? ORDER BY id DESC LIMIT 200').all(req.user.id);
   for (const row of parts) row.can_change = canChange(row, req.user, 'parts');
   for (const row of training) row.can_change = canChange(row, req.user, 'training');
-  res.render('my', { title: 'My submissions', parts, training });
+  const attended = db.prepare(
+    `SELECT t.title, t.session_date, t.location FROM training_attendance a JOIN training_sessions t ON t.id = a.session_id
+     WHERE a.user_id = ? AND t.completed_at IS NOT NULL ORDER BY t.session_date DESC LIMIT 100`).all(req.user.id);
+  res.render('my', { title: 'My submissions', parts, training, attended });
+  // They have now seen any status changes.
+  db.prepare('UPDATE parts_submissions SET unseen = 0 WHERE user_id = ? AND unseen = 1').run(req.user.id);
+  db.prepare('UPDATE training_requests SET unseen = 0 WHERE user_id = ? AND unseen = 1').run(req.user.id);
 });
 
 module.exports = router;

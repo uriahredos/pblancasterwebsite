@@ -1,0 +1,46 @@
+<%- include('partials/header') %>
+<p><a href="/admin/stock">&larr; Stock</a></p>
+<h1><%= part.part_number %></h1>
+<p class="lede"><%= part.description %></p>
+<div class="stats">
+  <div class="stat <%= part.low ? 'request' : 'return' %>"><span class="stat-label">On hand</span><span class="stat-num"><%= part.on_hand %></span><span class="stat-sub"><%= part.on_hand <= 0 ? 'Out of stock' : part.low ? 'At or below minimum' : 'OK' %></span></div>
+  <div class="stat"><span class="stat-label">Minimum</span><span class="stat-num"><%= part.min_level === null ? '–' : part.min_level %></span><span class="stat-sub">Last counted: <%= part.count_qty %> on <%= fmtDateTime(part.count_at) %></span></div>
+</div>
+
+<% if (can('stock.manage')) { %>
+<h2>Delivery or correction</h2>
+<form method="post" action="/admin/stock/<%= part.id %>/adjust" class="filters card">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Quantity <span class="hint">e.g. 20 for a delivery, -2 for damaged</span> <input name="quantity" inputmode="text" required maxlength="7" autocomplete="off"></label>
+  <label class="grow">Reason <span class="hint">Optional</span> <input name="reason" maxlength="200" autocomplete="off" placeholder="PO 1234 received"></label>
+  <div class="filter-actions"><button class="btn primary small" type="submit">Save</button></div>
+</form>
+<h2>Recount</h2>
+<form method="post" action="/admin/stock/<%= part.id %>/count" class="filters card">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Counted on the shelf now <input name="count" inputmode="numeric" required maxlength="6" autocomplete="off"></label>
+  <div class="filter-actions"><button class="btn small" type="submit">Set count</button></div>
+</form>
+<h2>Minimum level</h2>
+<form method="post" action="/admin/stock/<%= part.id %>/min" class="filters card">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Flag when at or below <span class="hint">Leave blank for no minimum</span> <input name="min_level" value="<%= part.min_level === null ? '' : part.min_level %>" inputmode="numeric" maxlength="6" autocomplete="off"></label>
+  <div class="filter-actions"><button class="btn small" type="submit">Save minimum</button></div>
+</form>
+<% } %>
+
+<h2>Since the last count</h2>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>When</th><th>What</th><th class="num">Change</th><th>Who</th></tr></thead>
+  <tbody>
+  <% history.forEach(function (h) { %><tr><td class="nowrap"><%= fmtDateTime(h.created_at) %></td><td><%= h.quantity > 0 ? 'Delivery / added' : 'Correction' %><% if (h.reason) { %> <span class="hint"><%= h.reason %></span><% } %></td><td class="num"><%= h.quantity > 0 ? '+' : '' %><%= h.quantity %></td><td><%= h.display_name %></td></tr><% }) %>
+  <% moves.forEach(function (m) { %><tr><td class="nowrap"><%= fmtDateTime(m.created_at) %></td><td><%= labels.action[m.action] %></td><td class="num"><%= m.action === 'take' ? '-' : '+' %><%= m.quantity %></td><td><%= m.display_name %></td></tr><% }) %>
+  <% if (!history.length && !moves.length) { %><tr><td colspan="4" class="empty">Nothing yet.</td></tr><% } %>
+  </tbody>
+</table>
+</div>
+<% if (can('stock.manage')) { %>
+<form method="post" action="/admin/stock/<%= part.id %>/stop" class="spaced" data-confirm="Stop tracking <%= part.part_number %>?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Stop tracking this part</button></form>
+<% } %>
+<%- include('partials/footer') %>

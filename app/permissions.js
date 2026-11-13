@@ -16,6 +16,7 @@ const GROUPS = [
     ['parts.manage', 'Update parts requests; edit or cancel other people\'s entries'],
     ['parts.audit', 'Use the audit page and tick entries as checked'],
     ['catalog.manage', 'Manage the parts catalog'],
+    ['stock.manage', 'Manage stock: counts, deliveries, minimum levels'],
   ] },
   { title: 'Training', items: [
     ['training.view', 'See training requests and exports'],
@@ -24,6 +25,10 @@ const GROUPS = [
   { title: 'People', items: [
     ['users.manage', 'Add people, edit them, reset passwords, disable accounts, choose their profile and who manages them'],
     ['profiles.manage', 'Create profiles and change what each profile can do'],
+    ['activity.view', 'See the activity log (who changed what)'],
+  ] },
+  { title: 'Email', items: [
+    ['digest.weekly', 'Receive the weekly parts summary email (needs an email address on their account)'],
   ] },
   { title: 'Sensitive', items: [
     ['complaints.review', 'Read and answer anonymous complaints'],
@@ -36,8 +41,8 @@ const SUBMIT = ['parts.submit', 'training.submit', 'complaints.submit'];
 // Starting profiles. After the first start they are ordinary profiles: change them on the Profiles page.
 const DEFAULTS = [
   { name: 'Technician', scope: 'all', perms: SUBMIT },
-  { name: 'Warehouse', scope: 'all', perms: [...SUBMIT, 'parts.view', 'parts.manage', 'parts.audit', 'catalog.manage'] },
-  { name: 'Manager', scope: 'team', perms: [...SUBMIT, 'parts.view', 'parts.manage', 'parts.audit', 'training.view', 'training.manage'] },
+  { name: 'Warehouse', scope: 'all', perms: [...SUBMIT, 'parts.view', 'parts.manage', 'parts.audit', 'catalog.manage', 'stock.manage'] },
+  { name: 'Manager', scope: 'team', perms: [...SUBMIT, 'parts.view', 'parts.manage', 'parts.audit', 'training.view', 'training.manage', 'digest.weekly'] },
   { name: 'Admin', scope: 'all', perms: ALL },
 ];
 
@@ -104,6 +109,22 @@ function migrate() {
       else if (u.reviewer) profileId = ensureProfile('Complaint reviewer', 'all', [...SUBMIT, 'complaints.review']);
       else profileId = ensureProfile('Technician', 'all', SUBMIT);
       db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(profileId, u.id);
+    }
+    // Permissions added in a later release: give each one, once, to the profiles that already
+    // hold the closest existing permission, so nobody has to re-tick boxes after an update.
+    const INHERIT = { 'stock.manage': 'catalog.manage', 'activity.view': 'profiles.manage' };
+    for (const [perm, from] of Object.entries(INHERIT)) {
+      const key = `perm_granted:${perm}`;
+      if (db.prepare('SELECT 1 FROM meta WHERE key = ?').get(key)) continue;
+      db.prepare(`INSERT OR IGNORE INTO profile_permissions (profile_id, permission)
+                  SELECT profile_id, ? FROM profile_permissions WHERE permission = ?`).run(perm, from);
+      db.prepare("INSERT INTO meta (key, value) VALUES (?, '1')").run(key);
+    }
+    if (!db.prepare("SELECT 1 FROM meta WHERE key = 'perm_granted:digest.weekly'").get()) {
+      db.prepare(`INSERT OR IGNORE INTO profile_permissions (profile_id, permission)
+                  SELECT p.id, 'digest.weekly' FROM profiles p
+                  WHERE p.scope = 'team' AND EXISTS (SELECT 1 FROM profile_permissions x WHERE x.profile_id = p.id AND x.permission = 'parts.view')`).run();
+      db.prepare("INSERT INTO meta (key, value) VALUES ('perm_granted:digest.weekly', '1')").run();
     }
     // The master account: MASTER_USERNAME if set, otherwise the first admin ever created.
     const named = process.env.MASTER_USERNAME && db.prepare('SELECT id FROM users WHERE username = ?').get(process.env.MASTER_USERNAME.trim());

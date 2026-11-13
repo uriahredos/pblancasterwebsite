@@ -1,23 +1,24 @@
 <%- include('partials/header', { wide: true }) %>
-<h1>Training requests</h1>
+<div class="title-row"><h1>Training requests</h1><a class="btn small" href="/admin/training/sessions">Sessions and attendance</a></div>
 <%- include('partials/filters', { base: '/admin/training', statuses: labels.trainingStatus, searchHint: 'Topic or name' }) %>
 <p class="count"><%= rows.length %> <%= rows.length === 1 ? 'request' : 'requests' %><% if (more) { %> shown (newest 500).<% } %></p>
 <div class="table-wrap">
 <table>
-  <thead><tr><th>Submitted</th><th>Name</th><th>Training description</th><th>Contact?</th><th>Private?</th><th>Status</th><th></th></tr></thead>
+  <thead><tr><th>Submitted</th><th>Name</th><th>Training description</th><th class="num">Also want it</th><th>Contact?</th><th>Private?</th><th>Status</th><th></th></tr></thead>
   <tbody>
   <% rows.forEach(function (t) { %>
   <tr class="<%= t.cancelled_at ? 'off' : '' %>">
     <td class="nowrap"><%= fmtDateTime(t.created_at) %></td>
     <td><%= t.display_name %></td>
     <td class="items clamp"><%= t.description %></td>
+    <td class="num"><%= t.votes || '' %></td>
     <td><%= t.wants_contact ? 'Yes' : 'No' %></td>
     <td><% if (t.is_private) { %><span class="tag private">Private</span><% } else { %>No<% } %></td>
     <td><% if (t.cancelled_at) { %><span class="tag off">Cancelled</span><% } else { %><span class="status s-<%= t.status %>"><%= labels.trainingStatus[t.status] %></span><% } %></td>
     <td><a href="/admin/training/<%= t.id %>">Open</a></td>
   </tr>
   <% }) %>
-  <% if (!rows.length) { %><tr><td colspan="7" class="empty">No requests match.</td></tr><% } %>
+  <% if (!rows.length) { %><tr><td colspan="8" class="empty">No requests match.</td></tr><% } %>
   </tbody>
 </table>
 </div>

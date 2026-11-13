@@ -121,6 +121,71 @@ for (const table of ['parts_submissions', 'training_requests']) {
 }
 
 addColumn('parts_catalog', 'category', 'TEXT');
+
+// ---- Added with stock, trucks, notifications, training sessions and the activity log ----
+db.exec(`
+-- Manual stock changes: deliveries received, write-offs, corrections.
+CREATE TABLE IF NOT EXISTS stock_adjustments (
+  id INTEGER PRIMARY KEY,
+  catalog_id INTEGER NOT NULL REFERENCES parts_catalog(id),
+  quantity INTEGER NOT NULL,
+  reason TEXT,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS stock_adj_part ON stock_adjustments(catalog_id);
+
+-- Who did what on the admin side. Complaints are never written here.
+CREATE TABLE IF NOT EXISTS activity_log (
+  id INTEGER PRIMARY KEY,
+  at TEXT NOT NULL,
+  user_id INTEGER REFERENCES users(id),
+  action TEXT NOT NULL,
+  detail TEXT
+);
+
+CREATE TABLE IF NOT EXISTS password_resets (
+  token_hash TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  expires_at TEXT NOT NULL
+);
+
+-- "I want this training too"
+CREATE TABLE IF NOT EXISTS training_votes (
+  request_id INTEGER NOT NULL REFERENCES training_requests(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  PRIMARY KEY (request_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS training_sessions (
+  id INTEGER PRIMARY KEY,
+  title TEXT NOT NULL,
+  request_id INTEGER REFERENCES training_requests(id),
+  session_date TEXT NOT NULL,
+  session_time TEXT,
+  location TEXT,
+  notes TEXT,
+  completed_at TEXT,
+  created_by INTEGER NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS training_attendance (
+  session_id INTEGER NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  PRIMARY KEY (session_id, user_id)
+);
+`);
+// Stock: a part is tracked once it has a count. On hand = count + deliveries/corrections - taken + returned since the count.
+db.exec('CREATE INDEX IF NOT EXISTS items_part_name ON parts_items(part_name COLLATE NOCASE)');
+addColumn('parts_catalog', 'stocked', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('parts_catalog', 'count_qty', 'INTEGER');
+addColumn('parts_catalog', 'count_at', 'TEXT');
+addColumn('parts_catalog', 'min_level', 'INTEGER');
+addColumn('parts_submissions', 'truck', 'TEXT');
+addColumn('users', 'default_truck', 'TEXT');
+// Set when someone else changes the status, cleared when the sender opens "My submissions".
+addColumn('parts_submissions', 'unseen', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('training_requests', 'unseen', 'INTEGER NOT NULL DEFAULT 0');
 // Audit: who confirmed an entry against the shelf / paperwork, and when.
 addColumn('parts_submissions', 'audited_at', 'TEXT');
 addColumn('parts_submissions', 'audited_by', 'INTEGER');

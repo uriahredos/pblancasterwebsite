@@ -1,0 +1,21 @@
+<%- include('partials/header') %>
+<div class="narrow">
+<h1>Choose a new password</h1>
+<% if (!valid) { %>
+<p class="flash err" role="alert">This reset link has been used or has expired.</p>
+<p><a class="btn" href="/forgot">Ask for a new link</a></p>
+<% } else { %>
+<% if (error) { %><p class="flash err" role="alert"><%= error %></p><% } %>
+<form method="post" action="/reset/<%= token %>" class="card stack">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>New password <span class="hint">At least <%= minPasswordLength %> characters</span>
+    <input name="password" type="password" autocomplete="new-password" minlength="<%= minPasswordLength %>" required autofocus>
+  </label>
+  <label>New password again
+    <input name="confirm" type="password" autocomplete="new-password" minlength="<%= minPasswordLength %>" required>
+  </label>
+  <button class="btn primary" type="submit">Save password</button>
+</form>
+<% } %>
+</div>
+<%- include('partials/footer') %>

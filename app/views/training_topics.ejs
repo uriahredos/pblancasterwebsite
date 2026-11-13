@@ -1,0 +1,31 @@
+<%- include('partials/header') %>
+<h1>Training topics</h1>
+<p class="lede">What people have asked for. Add your name to anything you want too; the most wanted topics rise to the top. Private requests are not shown.</p>
+<% if (upcoming.length) { %>
+<h2>Coming up</h2>
+<ul class="records">
+  <% upcoming.forEach(function (s) { %><li class="card"><div class="rec-head"><strong><%= s.title %></strong><time><%= fmtDate(s.session_date) %><%= s.session_time ? ' at ' + s.session_time : '' %></time></div><% if (s.location) { %><p class="meta"><%= s.location %></p><% } %></li><% }) %>
+</ul>
+<% } %>
+<h2>Requested</h2>
+<% if (!topics.length) { %><p class="empty">No open requests. <a href="/training">Ask for one</a>.</p><% } %>
+<ul class="records">
+<% topics.forEach(function (t) { %>
+  <li class="card" id="t<%= t.id %>">
+    <div class="rec-head">
+      <span class="tag take"><%= t.votes + 1 %> <%= t.votes ? 'people' : 'person' %></span>
+      <% if (t.status === 'scheduled') { %><span class="status s-scheduled">Scheduled</span><% } %>
+      <time>Asked by <%= t.display_name %></time>
+    </div>
+    <p class="items"><%= t.description %></p>
+    <div class="rec-actions">
+      <% if (t.user_id === user.id) { %><span class="hint">Your request</span>
+      <% } else { %>
+      <form method="post" action="/training/topics/<%= t.id %>/vote"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn small <%= t.mine ? '' : 'primary' %>" type="submit"><%= t.mine ? 'Take my name off' : 'I want this too' %></button></form>
+      <% } %>
+    </div>
+  </li>
+<% }) %>
+</ul>
+<p class="spaced"><a class="btn" href="/training">Ask for something else</a></p>
+<%- include('partials/footer') %>

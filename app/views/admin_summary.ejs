@@ -1,5 +1,5 @@
 <%- include('partials/header', { wide: true }) %>
-<p><a href="/admin/parts">&larr; Parts log</a></p>
+<p><a href="/admin/parts">&larr; Parts log</a> · <a href="/admin/weekly">Weekly summary</a></p>
 <h1>Parts usage</h1>
 <p class="lede">Totals for the dates you choose. Cancelled entries are not counted. Net used is taken minus returned.</p>
 <form method="get" class="filters card">
@@ -53,6 +53,19 @@
   <tr><td><%= r.job %></td><td class="num"><%= r.taken %></td><td class="num"><%= r.returned %></td><td class="num"><%= r.entries %></td><td><a href="/admin/parts?q=<%= encodeURIComponent(r.job) %>">Entries</a></td></tr>
   <% }) %>
   <% if (!byJob.length) { %><tr><td colspan="5" class="empty">No job entries in this range.</td></tr><% } %>
+  </tbody>
+</table>
+</div>
+
+<h2>By truck</h2>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Truck</th><th class="num">Taken</th><th class="num">Returned</th><th class="num">Requested</th><th class="num">Entries</th></tr></thead>
+  <tbody>
+  <% byTruck.forEach(function (r) { %>
+  <tr><td><%= r.truck %></td><td class="num"><%= r.taken %></td><td class="num"><%= r.returned %></td><td class="num"><%= r.requested %></td><td class="num"><%= r.entries %></td></tr>
+  <% }) %>
+  <% if (!byTruck.length) { %><tr><td colspan="5" class="empty">No entries with a truck in this range.</td></tr><% } %>
   </tbody>
 </table>
 </div>

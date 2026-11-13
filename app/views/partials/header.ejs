@@ -42,10 +42,12 @@
       <% if (can('parts.submit')) { %><a href="/parts" <%- path === '/parts' ? 'aria-current="page"' : '' %>>Parts</a><% } %>
       <% if (can('training.submit')) { %><a href="/training" <%- path === '/training' ? 'aria-current="page"' : '' %>>Training</a><% } %>
       <% if (can('complaints.submit')) { %><a href="/complaint" <%- path.startsWith('/complaint') ? 'aria-current="page"' : '' %>>Complaint</a><% } %>
-      <a href="/my" <%- path === '/my' ? 'aria-current="page"' : '' %>>My submissions</a>
+      <a href="/my" <%- path === '/my' ? 'aria-current="page"' : '' %>>My submissions<% if (badges.updates) { %> <span class="badge" title="Updates you have not seen"><%= badges.updates %></span><% } %></a>
       <% var adminLinks = [
         ['parts.view', '/admin/parts', 'Parts log', path.startsWith('/admin/parts') && !path.startsWith('/admin/parts/audit')],
+        ['parts.view', '/admin/requests', 'Requests', path.startsWith('/admin/requests'), badges.requests],
         ['parts.audit', '/admin/parts/audit', 'Audit', path.startsWith('/admin/parts/audit')],
+        ['parts.view', '/admin/stock', 'Stock', path.startsWith('/admin/stock')],
         ['training.view', '/admin/training', 'Training log', path.startsWith('/admin/training')],
         ['catalog.manage', '/admin/catalog', 'Catalog', path.startsWith('/admin/catalog')],
         ['users.manage', '/admin/users', 'Users', path.startsWith('/admin/users')],
@@ -53,7 +55,7 @@
         ['complaints.review', '/admin/complaints', 'Complaints', path.startsWith('/admin/complaints')]
       ].filter(function (l) { return can(l[0]); }); %>
       <% if (adminLinks.length) { %><span class="nav-sep" aria-hidden="true"></span><% } %>
-      <% adminLinks.forEach(function (l) { %><a href="<%= l[1] %>" <%- l[3] ? 'aria-current="page"' : '' %>><%= l[2] %></a><% }) %>
+      <% adminLinks.forEach(function (l) { %><a href="<%= l[1] %>" <%- l[3] ? 'aria-current="page"' : '' %>><%= l[2] %><% if (l[4]) { %> <span class="badge"><%= l[4] %></span><% } %></a><% }) %>
     </nav>
   </div>
   <% } %>

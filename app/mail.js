@@ -16,6 +16,7 @@ if (config.smtp.host) {
 
 /** Tests (or another mail service) can swap in anything with sendMail(). */
 function setTransport(t) { transport = t; }
+const isConfigured = () => Boolean(transport);
 
 /** Never throws: a mail problem must not break a form submission. */
 async function send(to, subject, text, attachments) {
@@ -77,4 +78,17 @@ function startComplaintDigest() {
   timer.unref();
 }
 
-module.exports = { setTransport, send, notifyPartsRequest, notifyTraining, runComplaintDigest, startComplaintDigest };
+function notifyLowStock(parts) {
+  const lines = parts.map((p) => `  ${p.part_number}  ${p.description || ''}  -  ${p.on_hand} on hand (minimum ${p.min_level})`).join('\n');
+  return send(config.notifyTo, parts.length === 1 ? `Low stock: ${parts[0].part_number}` : `Low stock: ${parts.length} parts`,
+    `These parts are now at or below their minimum:\n\n${lines}\n\n${config.baseUrl}/admin/stock?low=1\n`);
+}
+
+/** Tell the person who sent a parts request or training request that someone acted on it. */
+function notifyStatus(user, what, status, note, link) {
+  if (!user || !user.email) return Promise.resolve(false);
+  return send([user.email], `Your ${what} is now: ${status}`,
+    `Hi ${user.display_name},\n\nYour ${what} was updated.\n\nStatus: ${status}\n${note ? 'Reply: ' + note + '\n' : ''}\n${config.baseUrl}${link}\n`);
+}
+
+module.exports = { isConfigured, notifyLowStock, notifyStatus, setTransport, send, notifyPartsRequest, notifyTraining, runComplaintDigest, startComplaintDigest };
