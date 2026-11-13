@@ -13,6 +13,11 @@
   </label>
   <button class="btn primary" type="submit">Sign in</button>
 </form>
+<p class="flash err" id="passkey-error" role="alert" hidden></p>
+<div id="passkey-login" data-next="<%= next %>" hidden>
+  <p class="or">or</p>
+  <button class="btn big" type="button" id="passkey-go">Sign in with Face ID or fingerprint</button>
+</div>
 <p class="hint"><a href="/forgot">Forgot your password?</a> No account yet? Ask your branch admin.</p>
 </div>
 <%- include('partials/footer') %>

@@ -1,0 +1,26 @@
+<%- include('partials/header') %>
+<div class="narrow lock-screen">
+<p class="lock-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg></p>
+<h1>Welcome back, <%= user.display_name.split(' ')[0] %></h1>
+<p class="lede">The site locks when it is closed or left for a few minutes. Confirm it is you to carry on.</p>
+<% if (error) { %><p class="flash err" role="alert"><%= error %></p><% } %>
+<p class="flash err" id="passkey-error" role="alert" hidden></p>
+<% if (hasPasskey) { %>
+<div class="card stack" id="passkey-unlock" data-next="<%= next %>" data-user="<%= user.id %>" hidden>
+  <button class="btn primary big" type="button" id="passkey-go">Unlock with Face ID or fingerprint</button>
+</div>
+<p class="or" id="passkey-or" hidden>or use your password</p>
+<% } %>
+<form method="post" action="/unlock" class="card stack">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <input type="hidden" name="next" value="<%= next %>">
+  <input type="text" name="username" value="<%= user.username %>" autocomplete="username" hidden>
+  <label>Password
+    <input name="password" type="password" autocomplete="current-password" required <%= hasPasskey ? '' : 'autofocus' %>>
+  </label>
+  <button class="btn <%= hasPasskey ? '' : 'primary' %>" type="submit">Unlock</button>
+</form>
+<% if (!hasPasskey) { %><p class="hint" id="passkey-hint" hidden>Tip: once you are in, turn on Face ID or fingerprint under <strong>Password and Face ID</strong> so you do not have to type your password each time.</p><% } %>
+<form method="post" action="/logout" class="lock-out"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Not <%= user.display_name %>? Sign out</button></form>
+</div>
+<%- include('partials/footer') %>

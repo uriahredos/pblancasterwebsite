@@ -1,9 +1,10 @@
 <!doctype html>
-<html lang="en">
+<% var isLocked = typeof locked !== 'undefined' && locked; var signedIn = Boolean(user) && !isLocked; %><html lang="en"<%- signedIn ? ' data-in data-lock-after="' + lockAfterMs + '"' : '' %><%- signedIn && typeof fresh !== 'undefined' && fresh ? ' data-fresh' : '' %>>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
+<meta name="csrf" content="<%= typeof csrf !== 'undefined' ? csrf : '' %>">
 <title><%= title %> · Pye-Barker Lancaster Branch</title>
 <meta name="theme-color" content="#09324f">
 <script src="/theme.js?v=<%= assetV %>"></script>
@@ -14,8 +15,9 @@
 <meta name="apple-mobile-web-app-title" content="PB Lancaster">
 <link rel="stylesheet" href="/styles.css?v=<%= assetV %>">
 <script src="/site.js?v=<%= assetV %>" defer></script>
+<script src="/passkey.js?v=<%= assetV %>" defer></script>
 </head>
-<body class="<%= user && !user.must_change_password ? 'has-tabbar' : '' %>">
+<body class="<%= user && !user.must_change_password && !isLocked ? 'has-tabbar' : '' %>">
 <header class="top">
   <div class="banner">
     <div class="banner-in">
@@ -24,11 +26,11 @@
         <span class="branch">Lancaster Branch</span>
       </a>
       <div class="who">
-        <% if (user) { %>
-        <a class="who-name" href="/account/password" title="Change password"><%= user.display_name %></a>
+        <% if (user && !isLocked) { %>
+        <a class="who-name" href="/account/password" title="Password and Face ID"><%= user.display_name %></a>
         <form method="post" action="/logout" class="who-out"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Sign out</button></form>
         <% } %>
-        <% if (user && !user.must_change_password) { var alertTotal = alerts.reduce(function (n, a) { return n + a[0]; }, 0) + badges.tasks; %>
+        <% if (user && !user.must_change_password && !isLocked) { var alertTotal = alerts.reduce(function (n, a) { return n + a[0]; }, 0) + badges.tasks; %>
         <details class="bell" id="bell">
           <summary aria-label="Notifications<%= alertTotal ? ', ' + alertTotal + ' waiting' : ', none' %>" title="Notifications">
             <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 2.5a6.5 6.5 0 0 0-6.5 6.5v3.2c0 .7-.25 1.38-.7 1.9L3.6 15.5a1.25 1.25 0 0 0 .95 2.06h14.9a1.25 1.25 0 0 0 .95-2.06l-1.2-1.4a2.9 2.9 0 0 1-.7-1.9V9A6.5 6.5 0 0 0 12 2.5zM9.6 19.3a2.5 2.5 0 0 0 4.8 0z"/></svg>
@@ -48,7 +50,7 @@
     </div>
   </div>
   <div class="stripe" aria-hidden="true"></div>
-  <% if (user && !user.must_change_password) {
+  <% if (user && !user.must_change_password && !isLocked) {
     // The menu: a few plain links, then groups. Each entry is [permission or null, link, label, is-current, badge].
     var is = function (prefix) { return path === prefix || path.indexOf(prefix + '/') === 0; };
     var groups = [
@@ -132,7 +134,7 @@
       <div class="nav-account">
         <span class="nav-sep" aria-hidden="true"></span>
         <a href="/settings/notifications">Notification settings</a>
-        <a href="/account/password">Change password<span class="hint-light"><%= user.display_name %></span></a>
+        <a href="/account/password">Password and Face ID<span class="hint-light"><%= user.display_name %></span></a>
         <form method="post" action="/logout"><input type="hidden" name="_csrf" value="<%= csrf %>"><button type="submit">Sign out</button></form>
       </div>
     </nav>

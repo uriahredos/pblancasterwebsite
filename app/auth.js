@@ -154,11 +154,17 @@ function verifyCsrf(req, res, next) {
 function endSessions(userId, exceptSid) {
   return db.prepare("DELETE FROM sessions WHERE json_extract(data, '$.userId') = ? AND sid <> ?").run(userId, exceptSid || '').changes;
 }
+/** Mark this session as just opened by its owner (after a password, Face ID or fingerprint). */
+function unlock(req) {
+  req.session.locked = false;
+  req.session.seenAt = Date.now();
+  req.session.fresh = true;
+}
 function flash(req, type, text) {
   req.session.flash = { type, text };
 }
 
 module.exports = {
   hashPassword, checkLogin, tempPassword, createUser, loadUser,
-  requireLogin, requirePerm, forbidden, newCsrfToken, verifyCsrf, flash, endSessions,
+  requireLogin, requirePerm, forbidden, newCsrfToken, verifyCsrf, flash, endSessions, unlock,
 };

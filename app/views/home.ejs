@@ -32,6 +32,13 @@
 </section>
 <% } %>
 
+<% if (!hasPasskey) { %>
+<div class="card tip-card" id="passkey-tip" hidden>
+  <p><strong>Get in with your face or fingerprint.</strong> The site now locks when you close it. Set up Face ID or fingerprint so you do not have to type your password each time.</p>
+  <span class="tip-actions"><a class="btn primary small" href="/account/password#face-id">Set it up</a><button type="button" class="link" id="passkey-tip-no">Not now</button></span>
+</div>
+<% } %>
+
 <% if (branch.length) { %>
 <section class="panel branch-panel" aria-labelledby="branch-h">
   <div class="panel-head"><h2 id="branch-h"><%= branchTitle %></h2></div>

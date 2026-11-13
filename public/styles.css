@@ -639,3 +639,21 @@ table.audit .check-cell form { display: block; margin: 0 0 .2rem; }
 .branch-stats a.warn { background: var(--warn-bg); border-color: var(--warn); }
 .branch-stats a.bad { background: var(--err-bg); border-color: var(--err); }
 .branch-stats a.bad .mini-num { color: var(--err); }
+
+/* The lock screen, and Face ID / fingerprint sign-in */
+.checking body { visibility: hidden; }
+.lock-screen { text-align: center; }
+.lock-screen form.card, .lock-screen .card { text-align: left; }
+.lock-icon { margin: .5rem 0 .25rem; color: var(--accent); }
+.btn.big { width: 100%; min-height: 52px; font-size: 1.05rem; }
+.or { margin: .75rem 0; text-align: center; color: var(--muted); font-size: .9rem; }
+.lock-out { margin-top: 1.25rem; }
+.plain { margin: 0; }
+.plain-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+.plain-list li { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .6rem .75rem; border: 1px solid var(--line); border-radius: 10px; }
+.plain-list .meta { display: block; font-size: .85rem; }
+.link.danger { color: var(--err); }
+.tip-card { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; border-left: 5px solid var(--accent); margin-bottom: 1rem; }
+.tip-card[hidden] { display: none; }
+.tip-card p { margin: 0; flex: 1 1 14rem; }
+.tip-card .tip-actions { display: flex; align-items: center; gap: .9rem; }

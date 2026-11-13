@@ -70,10 +70,40 @@ router.post('/login', loginLimiter, (req, res, next) => {
   req.session.regenerate((err) => {
     if (err) return next(err);
     req.session.userId = user.id;
+    req.session.seenAt = Date.now();
+    req.session.fresh = true;
     req.session.csrf = auth.newCsrfToken();
     req.session.afterPassword = target;
     res.redirect(user.must_change_password ? '/account/password' : target);
   });
+});
+
+// ---- Lock and unlock --------------------------------------------------------
+// The page calls this when it finds the site was closed and opened again.
+router.post('/lock', (req, res) => {
+  if (req.user) req.session.locked = true;
+  res.status(204).end();
+});
+
+const passkeyCount = (userId) => db.prepare('SELECT COUNT(*) AS n FROM passkeys WHERE user_id = ?').get(userId).n;
+
+router.get('/unlock', (req, res) => {
+  if (!req.user) return res.redirect('/login');
+  const target = safeNext(req.query.next);
+  if (!req.session.locked) return res.redirect(target);
+  res.render('unlock', { title: 'Welcome back', next: target, error: null, hasPasskey: passkeyCount(req.user.id) > 0 });
+});
+
+router.post('/unlock', (req, res) => {
+  if (!req.user) return res.redirect('/login');
+  const target = safeNext(req.body.next);
+  if (!req.session.locked) return res.redirect(target);
+  const page = (status, error) => res.status(status).render('unlock', { title: 'Welcome back', next: target, error, hasPasskey: passkeyCount(req.user.id) > 0 });
+  if (lockedOut(req.user.username)) return page(429, 'Too many wrong passwords. Wait 15 minutes and try again, or ask an admin to reset it.');
+  if (!auth.checkLogin(req.user.username, req.body.password)) { noteFailure(req.user.username); return page(401, 'That password is not right.'); }
+  FAILS.delete(nameKey(req.user.username));
+  auth.unlock(req);
+  res.redirect(target);
 });
 
 // ---- Forgot password --------------------------------------------------------
@@ -150,7 +180,7 @@ router.post('/logout', (req, res) => {
 
 router.get('/account/password', (req, res) => {
   if (!req.user) return res.redirect('/login?next=/account/password');
-  res.render('password', { title: 'Change password', error: null });
+  res.render('password', { title: 'Change password', error: null, passkeys: require('./passkeys').listFor(req.user.id) });
 });
 
 router.post('/account/password', (req, res) => {
@@ -162,7 +192,7 @@ router.post('/account/password', (req, res) => {
   else if (password.length > 200) error = 'New password is too long.';
   else if (password !== confirm) error = 'The two new passwords do not match.';
   else if (password === current) error = 'Choose a password different from the current one.';
-  if (error) return res.status(400).render('password', { title: 'Change password', error });
+  if (error) return res.status(400).render('password', { title: 'Change password', error, passkeys: require('./passkeys').listFor(req.user.id) });
 
   db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?')
     .run(auth.hashPassword(password), req.user.id);
@@ -174,4 +204,5 @@ router.post('/account/password', (req, res) => {
 });
 
 module.exports = router;
+module.exports.safeNext = safeNext;
 module.exports.clearLoginFailures = () => FAILS.clear();

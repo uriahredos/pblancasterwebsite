@@ -1692,7 +1692,7 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
   for (const name of ['Announcements', 'My activity', 'Anonymous complaint', 'Parts requests', 'Truck inspection', 'Manage tasks', 'Post announcements', 'Certifications']) assert.match(ownerNav, new RegExp(`>${name}(<| <span)`), name);
   for (const old of ['Notices', 'My submissions', 'Assign tasks', '>Complaint<', '>Requests<', 'New inspection']) assert.ok(!ownerNav.includes(old), old);
   assert.doesNotMatch(owner, /id="menu-toggle"/);                          // the old phone Menu button is gone
-  assert.match(owner, /class="nav-account">[\s\S]*Change password[\s\S]*Sign out/); // account links are in the menu for phones
+  assert.match(owner, /class="nav-account">[\s\S]*Password and Face ID[\s\S]*Sign out/); // account links are in the menu for phones
 
   // A technician: no Team or Setup; Trucks has one thing, so it is a plain "Truck inspection" link.
   const tech = (await (await loggedIn('tech1')).get('/')).text;
@@ -2731,4 +2731,177 @@ test('security: a changed password signs other devices out, guesses are limited 
   try { await new Client().get('/reset/' + 'ab'.repeat(32)); await new Promise((r) => setTimeout(r, 30)); } finally { console.log = log; }
   assert.ok(lines.some((l) => l.includes('/reset/…')));
   assert.ok(!lines.some((l) => l.includes('abab')));
+});
+
+// ---- The lock, and Face ID / fingerprint sign-in --------------------------------
+// A software stand-in for a phone's fingerprint sensor: it makes a key pair for the site and
+// signs the site's challenge, exactly as a real device does.
+const nodeCrypto = require('crypto');
+const b64u = (buf) => Buffer.from(buf).toString('base64url');
+function cbor(v) {
+  const head = (major, n) => (n < 24 ? Buffer.from([(major << 5) | n]) : n < 256 ? Buffer.from([(major << 5) | 24, n]) : Buffer.from([(major << 5) | 25, n >> 8, n & 255]));
+  if (typeof v === 'number') return v >= 0 ? head(0, v) : head(1, -1 - v);
+  if (Buffer.isBuffer(v)) return Buffer.concat([head(2, v.length), v]);
+  if (typeof v === 'string') return Buffer.concat([head(3, Buffer.byteLength(v)), Buffer.from(v)]);
+  return Buffer.concat([head(5, v.size), ...[...v].flatMap(([k, x]) => [cbor(k), cbor(x)])]);
+}
+class FakeDevice {
+  constructor(origin) {
+    this.origin = origin; this.rpHash = nodeCrypto.createHash('sha256').update(new URL(origin).hostname).digest();
+    this.keys = nodeCrypto.generateKeyPairSync('ec', { namedCurve: 'P-256' }); this.id = nodeCrypto.randomBytes(20); this.counter = 0;
+  }
+  client(type, challenge, origin = this.origin) { return Buffer.from(JSON.stringify({ type, challenge, origin, crossOrigin: false })); }
+  create(options) {
+    const jwk = this.keys.publicKey.export({ format: 'jwk' });
+    const cose = cbor(new Map([[1, 2], [3, -7], [-1, 1], [-2, Buffer.from(jwk.x, 'base64url')], [-3, Buffer.from(jwk.y, 'base64url')]]));
+    const len = Buffer.alloc(2); len.writeUInt16BE(this.id.length);
+    const authData = Buffer.concat([this.rpHash, Buffer.from([0x45]), Buffer.alloc(4), Buffer.alloc(16), len, this.id, cose]);
+    const attestationObject = cbor(new Map([['fmt', 'none'], ['attStmt', new Map()], ['authData', authData]]));
+    return { id: b64u(this.id), rawId: b64u(this.id), type: 'public-key', clientExtensionResults: {},
+      response: { clientDataJSON: b64u(this.client('webauthn.create', options.challenge)), attestationObject: b64u(attestationObject), transports: ['internal'] } };
+  }
+  get(options, { origin, verified = true } = {}) {
+    const count = Buffer.alloc(4); count.writeUInt32BE(++this.counter);
+    const authData = Buffer.concat([this.rpHash, Buffer.from([verified ? 0x05 : 0x01]), count]);
+    const clientData = this.client('webauthn.get', options.challenge, origin);
+    const signature = nodeCrypto.sign('sha256', Buffer.concat([authData, nodeCrypto.createHash('sha256').update(clientData).digest()]), this.keys.privateKey);
+    return { id: b64u(this.id), rawId: b64u(this.id), type: 'public-key', clientExtensionResults: {},
+      response: { clientDataJSON: b64u(clientData), authenticatorData: b64u(authData), signature: b64u(signature) } };
+  }
+}
+async function sendJson(client, url, data = {}, page = '/account/password') {
+  const _csrf = await client.csrf(page);
+  const res = await fetch(base + url, { method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/json', cookie: client.cookie }, body: JSON.stringify({ _csrf, ...data }) });
+  const set = res.headers.getSetCookie();
+  if (set.length) client.cookie = set.map((c) => c.split(';')[0]).join('; ');
+  return { status: res.status, body: await res.json().catch(() => ({})) };
+}
+
+test('the lock: closing the site or leaving it idle asks for Face ID, fingerprint or the password again', async () => {
+  makeUser('lock1', 'Lena Lock');
+  const c = await loggedIn('lock1');
+  const sid = () => db.prepare("SELECT sid FROM sessions WHERE json_extract(data, '$.userId') = ? ORDER BY expires DESC").get(userId('lock1')).sid;
+  const home = (await c.get('/')).text;
+  assert.match(home, /<html lang="en" data-in data-lock-after="300000" data-fresh>/);    // just signed in: the page marks this tab as open
+  assert.doesNotMatch((await c.get('/')).text, /data-fresh/);                             // once only
+
+  // The page reports that the site was closed and reopened. Everything is shut until they unlock.
+  assert.equal((await c.post('/lock', {}, { page: '/' })).status, 204);
+  for (const url of ['/', '/my', '/parts', '/tasks', '/alerts', '/account/password', '/settings/notifications']) {
+    const r = await c.get(url);
+    assert.equal(r.status, 302, url); assert.equal(r.location, '/unlock?next=' + encodeURIComponent(url), url);
+  }
+  const screen = (await c.get('/unlock?next=%2Fmy')).text;
+  assert.match(screen, /Welcome back, Lena/); assert.match(screen, /name="next" value="\/my"/);
+  assert.doesNotMatch(screen, /class="tabbar|<nav class="nav"|class="bell"|data-in/);     // no menu, no counts, nothing of the site
+  assert.doesNotMatch(screen, /passkey-unlock/);                                           // no Face ID button until it is set up
+  // Sending a form while locked does nothing but bring up the lock screen.
+  const before = db.prepare('SELECT COUNT(*) n FROM training_requests').get().n;
+  const blocked = await c.post('/training', { description: 'Sneaked in while locked', wants_contact: 'no', is_private: 'no' }, { page: '/unlock' });
+  assert.equal(blocked.location, '/unlock');
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM training_requests').get().n, before);
+  assert.equal((await sendJson(c, '/passkey/register/options', {}, '/unlock')).status, 302);   // cannot add a device from a locked session
+
+  // A wrong password keeps it shut; the right one opens it where they were going. Off-site addresses are ignored.
+  const wrong = await c.post('/unlock', { password: 'not it', next: '/my' }, { page: '/unlock' });
+  assert.equal(wrong.status, 401); assert.match(wrong.text, /That password is not right/);
+  assert.equal((await c.post('/unlock', { password: 'correct horse battery', next: '//evil.example' }, { page: '/unlock' })).location, '/');
+  assert.equal((await c.get('/my')).status, 200);
+  assert.equal((await c.get('/unlock?next=%2Ftasks')).location, '/tasks');               // not locked: straight through
+
+  // Left unused for longer than the limit: locked by the server, whatever the page does.
+  db.prepare("UPDATE sessions SET data = json_set(data, '$.seenAt', ?) WHERE sid = ?").run(Date.now() - 6 * 60 * 1000, sid());
+  assert.equal((await c.get('/my')).location, '/unlock?next=%2Fmy');
+  await c.post('/unlock', { password: 'correct horse battery' }, { page: '/unlock' });
+  db.prepare("UPDATE sessions SET data = json_set(data, '$.seenAt', ?) WHERE sid = ?").run(Date.now() - 4 * 60 * 1000, sid());
+  assert.equal((await c.get('/my')).status, 200);                                         // within the limit: still open
+
+  // Signing out works from the lock screen, and wrong unlock passwords count toward the username's limit.
+  await c.post('/lock', {}, { page: '/' });
+  require('../app/routes/auth').clearLoginFailures();
+  for (let i = 0; i < 10; i++) await c.post('/unlock', { password: `guess ${i}` }, { page: '/unlock' });
+  assert.equal((await c.post('/unlock', { password: 'correct horse battery' }, { page: '/unlock' })).status, 429);
+  require('../app/routes/auth').clearLoginFailures();
+  assert.equal((await c.post('/logout', {}, { page: '/unlock' })).location, '/login');
+  assert.equal((await new Client().get('/unlock')).location, '/login');
+  const js = (await new Client().get('/site.js')).text; const early = (await new Client().get('/theme.js')).text;
+  assert.match(early, /sessionStorage/); assert.match(js, /portal-open/); assert.match(js, /\/lock/);
+});
+
+test('Face ID / fingerprint: set up on a device, used to unlock and to sign in, and only by its owner', async () => {
+  makeUser('face1', 'Fiona Face'); makeUser('face2', 'Otto Other');
+  const c = await loggedIn('face1');
+  const phone = new FakeDevice(base);
+  const count = (u) => db.prepare('SELECT COUNT(*) n FROM passkeys WHERE user_id = ?').get(userId(u)).n;
+
+  // Setting up: the site hands out a one-time challenge and stores only the device's public key.
+  assert.match((await c.get('/')).text, /id="passkey-tip"/);                              // offered on the home page until it is set up
+  const page = (await c.get('/account/password')).text;
+  assert.match(page, /Face ID or fingerprint/); assert.match(page, /id="passkey-add"/);
+  let opts = (await sendJson(c, '/passkey/register/options')).body.options;
+  assert.equal(opts.authenticatorSelection.userVerification, 'required'); assert.equal(opts.authenticatorSelection.authenticatorAttachment, 'platform');
+  assert.equal(opts.rp.id, '127.0.0.1');
+  const made = phone.create(opts);
+  const saved = await sendJson(c, '/passkey/register/verify', { response: made, device: 'Fiona iPhone (Safari)' });
+  assert.deepEqual(saved, { status: 200, body: { ok: true } });
+  assert.equal(count('face1'), 1);
+  assert.equal((await sendJson(c, '/passkey/register/verify', { response: made, device: 'again' })).status, 400);   // a challenge works once
+  assert.match((await c.get('/account/password')).text, /<strong>Fiona iPhone \(Safari\)<\/strong><span class="meta">Set up [^<]* · not used yet/);
+  assert.doesNotMatch((await c.get('/')).text, /id="passkey-tip"/);
+  assert.match(db.prepare("SELECT detail FROM activity_log WHERE action LIKE 'Face ID%set up' ORDER BY id DESC").get().detail, /Fiona iPhone/);
+
+  // Unlocking with it.
+  await c.post('/lock', {}, { page: '/' });
+  assert.match((await c.get('/unlock')).text, /id="passkey-unlock"[^>]*data-user="\d+"/);
+  opts = (await sendJson(c, '/passkey/auth/options', {}, '/unlock')).body.options;
+  assert.equal(opts.allowCredentials.length, 1); assert.equal(opts.userVerification, 'required');
+  // Things that must not open it: a page on another address, a device that did not check the face, a made-up signature, a reused answer.
+  assert.equal((await sendJson(c, '/passkey/auth/verify', { response: phone.get(opts, { origin: 'https://evil.example' }) }, '/unlock')).status, 401);
+  opts = (await sendJson(c, '/passkey/auth/options', {}, '/unlock')).body.options;
+  assert.equal((await sendJson(c, '/passkey/auth/verify', { response: phone.get(opts, { verified: false }) }, '/unlock')).status, 401);
+  opts = (await sendJson(c, '/passkey/auth/options', {}, '/unlock')).body.options;
+  const forged = phone.get(opts); forged.response.signature = b64u(nodeCrypto.randomBytes(70));
+  assert.equal((await sendJson(c, '/passkey/auth/verify', { response: forged }, '/unlock')).status, 401);
+  assert.equal((await c.get('/my')).location, '/unlock?next=%2Fmy');                      // still locked after all that
+  opts = (await sendJson(c, '/passkey/auth/options', {}, '/unlock')).body.options;
+  const answer = phone.get(opts);
+  assert.deepEqual(await sendJson(c, '/passkey/auth/verify', { response: answer, next: '/my' }, '/unlock'), { status: 200, body: { ok: true, next: '/my' } });
+  assert.equal((await c.get('/my')).status, 200);
+  await c.post('/lock', {}, { page: '/' });
+  assert.equal((await sendJson(c, '/passkey/auth/verify', { response: answer }, '/unlock')).status, 400);          // the same answer again: no
+  assert.equal((await c.get('/my')).status, 302);
+
+  // Someone else's locked session cannot be opened with Fiona's phone.
+  const otto = await loggedIn('face2');
+  await otto.post('/lock', {}, { page: '/' });
+  assert.equal((await sendJson(otto, '/passkey/auth/options', {}, '/unlock')).status, 400);                         // Otto has none set up
+  await otto.post('/logout', {}, { page: '/unlock' });
+
+  // Signing in from scratch with the device alone, on the sign-in page.
+  const fresh = new Client();
+  assert.match((await fresh.get('/login')).text, /id="passkey-login"/);
+  opts = (await sendJson(fresh, '/passkey/auth/options', {}, '/login')).body.options;
+  assert.equal((opts.allowCredentials || []).length, 0);                                  // the device says who it is; no usernames are given away
+  assert.deepEqual((await sendJson(fresh, '/passkey/auth/verify', { response: phone.get(opts), next: '/tasks' }, '/login')).body, { ok: true, next: '/tasks' });
+  assert.match((await fresh.get('/')).text, /Hi, Fiona Face/);
+  assert.ok(db.prepare('SELECT last_used_at FROM passkeys WHERE user_id = ?').get(userId('face1')).last_used_at);
+
+  // A disabled account cannot use it; an unknown device is refused.
+  db.prepare('UPDATE users SET active = 0 WHERE id = ?').run(userId('face1'));
+  const off = new Client(); opts = (await sendJson(off, '/passkey/auth/options', {}, '/login')).body.options;
+  assert.equal((await sendJson(off, '/passkey/auth/verify', { response: phone.get(opts) }, '/login')).status, 401);
+  db.prepare('UPDATE users SET active = 1 WHERE id = ?').run(userId('face1'));
+  const stranger = new FakeDevice(base); opts = (await sendJson(off, '/passkey/auth/options', {}, '/login')).body.options;
+  assert.equal((await sendJson(off, '/passkey/auth/verify', { response: stranger.get(opts) }, '/login')).status, 401);
+  assert.equal((await off.get('/')).status, 302);
+
+  // Only the owner can remove a device; an admin resetting the password removes them all (the lost-phone case).
+  const pid = db.prepare('SELECT id FROM passkeys WHERE user_id = ?').get(userId('face1')).id;
+  const o2 = await loggedIn('face2');
+  await o2.post(`/passkey/${pid}/delete`, {}, { page: '/account/password' });
+  assert.equal(count('face1'), 1);
+  const owner = await loggedIn('owner');
+  await owner.post(`/admin/users/${userId('face1')}/reset-password`, {}, { page: '/admin/users' });
+  assert.equal(count('face1'), 0);
+  assert.equal((await fresh.get('/')).status, 302);                                       // and Fiona is signed out everywhere
 });

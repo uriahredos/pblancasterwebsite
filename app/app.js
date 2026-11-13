@@ -24,7 +24,7 @@ Object.assign(app.locals, {
   dateOnly: (iso) => util.fmtDateTime(iso).split(', ')[0], timeOnly: (iso) => util.fmtDateTime(iso).split(', ')[1] || '',
   // Changes on every start, so browsers fetch fresh styles and scripts after an update.
   assetV: Date.now().toString(36),
-  minPasswordLength: config.minPasswordLength, editWindowHours: config.editWindowHours,
+  lockAfterMs: config.lockAfterMs, minPasswordLength: config.minPasswordLength, editWindowHours: config.editWindowHours,
 });
 
 app.use(helmet({
@@ -66,6 +66,7 @@ app.use(session({
 }));
 
 app.use(express.urlencoded({ extended: false, limit: '200kb' }));
+app.use(express.json({ limit: '60kb' }));   // Face ID / fingerprint sign-in talks to the server in JSON
 
 app.use(auth.loadUser);
 
@@ -82,7 +83,29 @@ app.use((req, res, next) => {
   auth.verifyCsrf(req, res, next);
 });
 
+// The lock. Someone stays remembered on their device for 30 days, but the site locks when it is
+// closed (the page tells us, see site.js) or left unused for a few minutes, and then nothing
+// opens until they prove who they are again with Face ID, a fingerprint or their password.
+const WHILE_LOCKED = /^\/(unlock|lock|logout|passkey\/auth\/(options|verify))$/;
+app.use((req, res, next) => {
+  res.locals.locked = false;
+  res.locals.fresh = false;
+  if (!req.user) return next();
+  const s = req.session;
+  const now = Date.now();
+  if (!s.locked && config.lockAfterMs && s.seenAt && now - s.seenAt > config.lockAfterMs) s.locked = true;
+  if (!s.locked) {
+    s.seenAt = now;
+    if (s.fresh && req.method === 'GET') { res.locals.fresh = true; delete s.fresh; }
+    return next();
+  }
+  res.locals.locked = true;
+  if (WHILE_LOCKED.test(req.path)) return next();
+  res.redirect(req.method === 'GET' ? '/unlock?next=' + encodeURIComponent(req.originalUrl) : '/unlock');
+});
+
 app.use(require('./routes/auth'));
+app.use(require('./routes/passkeys'));
 app.use(require('./routes/home'));
 app.use(require('./routes/training'));
 app.use(require('./routes/parts'));

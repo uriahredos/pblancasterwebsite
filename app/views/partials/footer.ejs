@@ -1,5 +1,5 @@
 </main>
-<% if (user && !user.must_change_password) {
+<% if (user && !user.must_change_password && !(typeof locked !== 'undefined' && locked)) {
   // Phones: five fixed buttons along the bottom. Everything else is behind More.
   var at = function () { return Array.prototype.some.call(arguments, function (p) { return path === p || path.indexOf(p + '/') === 0; }); };
   var alertCount = alerts.reduce(function (n, a) { return n + a[0]; }, 0);

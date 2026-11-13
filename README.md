@@ -392,6 +392,18 @@ test/portal.test.js  automated tests
 
 Not in this prototype: Microsoft/Outlook sign-in.
 
+## The lock, and Face ID / fingerprint sign-in
+
+- **The site locks itself** when it is closed and reopened, and after 5 minutes without use (`LOCK_AFTER_MINUTES`; 0 switches the timer off, closing still locks). A locked site shows only a lock screen with the person's name: nothing else opens, and forms sent while locked are not accepted, until they confirm who they are.
+- **To get back in**: Face ID, a fingerprint, Windows Hello or the device's screen-lock code if that is set up on the device, or the password. On a device where it is set up the phone asks for the face or fingerprint straight away.
+- **Setting it up**: each person does it once per phone or computer under **Password and Face ID** (More on a phone, their name at the top on a computer), with **Set up on this device**. The home page offers it until they have. Devices are listed there and can be removed.
+- **Signing in from scratch** (after Sign out, or on the sign-in page) also works with **Sign in with Face ID or fingerprint**, with no username or password typed.
+- The face or fingerprint never leaves the device and the site never sees it. The device holds a key made for this site alone (a "passkey") and the site stores only the matching public key. It works only on the site's real address, so a look-alike site cannot use it.
+- **Lost phone**: an admin presses **Reset password** for that person. That signs them out everywhere and removes all their Face ID / fingerprint devices; they set it up again after signing in with the temporary password.
+- People stay remembered on a device for 30 days, so the lock screen knows who they are; **Sign out** on the lock screen is for a shared device.
+- Short trips out of the site (taking a photo for a form, checking a text) do not lock it unless they last longer than the limit. Unsent parts, training and inspection forms keep their draft.
+- Changing the site's address (for example to a custom domain) means everyone sets up Face ID again; passwords are not affected.
+
 ## Security notes
 
 - **Signing in**: passwords are stored only as bcrypt hashes. Wrong guesses are limited two ways: 10 per connection per 15 minutes, and 10 per username per 15 minutes wherever they come from. Resetting the password by email lifts the wait.
@@ -402,4 +414,5 @@ Not in this prototype: Microsoft/Outlook sign-in.
 - **Uploads** are stored outside the public folder under random names, checked to really be images (or a PDF for newsletters), and only served to people allowed to see the entry they belong to.
 - **Push alerts** are only ever sent to Google's, Apple's, Mozilla's or Microsoft's alert services.
 - **Password-reset links** work once, expire in an hour, are stored hashed, and are left out of the server log.
-- Not included: two-step sign-in. The site is as strong as people's passwords.
+- **The lock**: see above. A phone left on a desk or a browser left open does not leave the site open.
+- Not included: a required second step on top of the password. Face ID / fingerprint is offered, not forced, so the site is still as strong as people's passwords.

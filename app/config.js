@@ -36,6 +36,9 @@ module.exports = {
   backupHour: env.BACKUP_HOUR === undefined ? 2 : Number(env.BACKUP_HOUR),
   backupKeep: Number(env.BACKUP_KEEP) || 14,
   backupEmailTo: list(env.BACKUP_EMAIL_TO),
+  // The site locks (Face ID, fingerprint or password to get back in) after this long without use.
+  // Closing the site locks it at once. 0 switches the timer off.
+  lockAfterMs: (env.LOCK_AFTER_MINUTES === undefined ? 5 : Math.max(0, Number(env.LOCK_AFTER_MINUTES) || 0)) * 60 * 1000,
   maxPhotoBytes: 10 * 1024 * 1024,
   minPasswordLength: 10,
 };

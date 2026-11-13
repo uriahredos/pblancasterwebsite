@@ -83,6 +83,44 @@
       });
     }
 
+    // The lock. A tab that was open a moment ago carries a marker that vanishes when the site is
+    // closed. No marker means the site was closed and reopened, so lock it and ask who is there.
+    // (A second tab opened from one that is still open is let in: the open one vouches for it.)
+    (function () {
+      var root = document.documentElement;
+      if (!root.hasAttribute('data-in')) return;
+      var chan = null;
+      try { chan = window.BroadcastChannel ? new BroadcastChannel('portal-open') : null; } catch (e) {}
+      var mine = !root.classList.contains('checking');
+      if (chan) chan.onmessage = function (e) {
+        if (e.data === 'anyone?' && mine) chan.postMessage('yes');
+        else if (e.data === 'locked') location.reload();
+      };
+      function lock() {
+        var token = (document.querySelector('meta[name="csrf"]') || {}).content || '';
+        var go = function () { if (chan) chan.postMessage('locked'); location.replace('/unlock?next=' + encodeURIComponent(location.pathname + location.search)); };
+        fetch('/lock', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: '_csrf=' + encodeURIComponent(token) }).then(go, go);
+      }
+      if (!mine) {
+        var settled = false;
+        var letIn = function () { if (settled) return; settled = true; mine = true; try { sessionStorage.setItem('open', '1'); } catch (e) {} root.classList.remove('checking'); };
+        if (!chan) lock();
+        else {
+          var prev = chan.onmessage;
+          chan.onmessage = function (e) { if (e.data === 'yes') letIn(); else prev(e); };
+          chan.postMessage('anyone?');
+          setTimeout(function () { if (!settled) { settled = true; lock(); } }, 250);
+        }
+      }
+      // Coming back to a tab that sat in the background: reload so the server can lock it if it was away too long.
+      var hiddenAt = 0;
+      var after = Number(root.getAttribute('data-lock-after') || 0);
+      document.addEventListener('visibilitychange', function () {
+        if (document.hidden) hiddenAt = Date.now();
+        else if (after && hiddenAt && Date.now() - hiddenAt > after) location.reload();
+      });
+    })();
+
     // Menu: one drop-down open at a time; close on a click elsewhere or Escape.
     var menus = Array.prototype.slice.call(document.querySelectorAll('details.menu, details.bell'));
     var navbar = document.getElementById('navbar');

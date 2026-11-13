@@ -523,6 +523,7 @@ router.post('/admin/users/:id/:op', requirePerm('users.manage'), (req, res) => {
       const password = auth.tempPassword();
       db.prepare('UPDATE users SET password_hash = ?, must_change_password = 1 WHERE id = ?').run(auth.hashPassword(password), target.id);
       auth.endSessions(target.id, req.sessionID);
+      db.prepare('DELETE FROM passkeys WHERE user_id = ?').run(target.id);   // a lost phone's Face ID sign-in goes too
       req.session.created = { username: target.username, password, what: 'reset' };
       activity.log(req.user, 'Password reset', target.display_name);
       break;
