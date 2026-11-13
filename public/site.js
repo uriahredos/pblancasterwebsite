@@ -84,7 +84,7 @@
     }
 
     // Menu: one drop-down open at a time; close on a click elsewhere or Escape.
-    var menus = Array.prototype.slice.call(document.querySelectorAll('details.menu'));
+    var menus = Array.prototype.slice.call(document.querySelectorAll('details.menu, details.bell'));
     var navbar = document.getElementById('navbar');
     var menuToggle = document.getElementById('menu-toggle');
     function closeMenus(except) { menus.forEach(function (m) { if (m !== except) m.open = false; }); }
@@ -93,7 +93,7 @@
       m.addEventListener('toggle', function () { if (m.open) closeMenus(m); });
     });
     document.addEventListener('click', function (e) {
-      if (!e.target.closest('details.menu')) closeMenus(null);
+      if (!e.target.closest('details.menu, details.bell')) closeMenus(null);
     });
     document.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape') return;

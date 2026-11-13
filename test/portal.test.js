@@ -815,7 +815,7 @@ test('an admin can change a person\'s name, username and email after the account
 
 const userId = (username) => db.prepare('SELECT id FROM users WHERE username = ?').get(username).id;
 const profileId = (name) => access.profileByName(name).id;
-const navLinks = (html) => [...html.matchAll(/<a href="(\/admin\/[a-z/]+)"/g)].map((m) => m[1]).filter((v, i, a) => a.indexOf(v) === i);
+const navLinks = (html) => [...(/<nav class="nav"[\s\S]*?<\/nav>/.exec(html) || [''])[0].matchAll(/<a href="(\/admin\/[a-z/]+)"/g)].map((m) => m[1]).filter((v, i, a) => a.indexOf(v) === i);
 
 test('starting profiles: Technician, Warehouse, Manager and Admin each see only what they should', async () => {
   makeUser('wh1', 'Wanda Warehouse', { profile: 'Warehouse' });
@@ -2205,4 +2205,63 @@ test('discussions: a double tap on Post makes one thread and one reply, not two'
   await t1.post(`${tp}/reply`, { body: 'And one more thing.' }, { page: tp, multipart: true });
   assert.equal(db.prepare('SELECT reply_count FROM forum_threads WHERE id = ?').get(Number(tp.split('/').pop())).reply_count, 2);
   db.prepare("DELETE FROM forum_threads WHERE title = 'Terry T.'").run();
+});
+
+test('notification bell at the top right gathers what is waiting; light/dark moved into the menu', async () => {
+  const bellOf = (html) => { const m = /<details class="bell"[\s\S]*?<\/details>/.exec(html); return m ? m[0].replace(/\s+/g, ' ') : null; };
+  const banner = (html) => /<div class="banner">[\s\S]*?<div class="stripe"/.exec(html)[0];
+  const nav = (html) => /<nav class="nav"[\s\S]*?<\/nav>/.exec(html)[0];
+
+  // Signed out there is no bell, and the light/dark button stays in the banner because there is no menu.
+  const login = (await new Client().get('/login')).text;
+  assert.equal(bellOf(login), null);
+  assert.match(banner(login), /id="theme-toggle"/);
+
+  // Signed in: the bell is in the banner, the light/dark switch is in the menu, and there is exactly one of each.
+  makeUser('bell1', 'Bella Bell');
+  const c = await loggedIn('bell1');
+  const home = (await c.get('/')).text;
+  assert.ok(bellOf(home));
+  assert.match(banner(home), /class="bell"/);
+  assert.doesNotMatch(banner(home), /id="theme-toggle"/);
+  assert.match(nav(home), /id="theme-toggle"[\s\S]*Dark mode[\s\S]*Light mode/);
+  assert.equal((home.match(/id="theme-toggle"/g) || []).length, 1);
+  assert.equal((home.match(/class="bell"/g) || []).length, 1);
+
+  // Count what is waiting for this person right now, then add one of each kind and watch the bell follow.
+  const total = (html) => { const m = /class="bell-count">(\d+)/.exec(html); return m ? Number(m[1]) : 0; };
+  const before = total(home);
+  const owner = await loggedIn('owner');
+  await owner.post('/admin/announcements', { title: 'Bell test notice', body: 'Read me.' }, { page: '/admin/announcements' });
+  await c.post('/parts', [['action', 'request'], ['part_name', 'BELL-PART'], ['quantity', '1'], ['source', 'van'], ['needed_by', '2031-09-01']], { multipart: true });
+  const reqId = lastParts().id;
+  await owner.post(`/admin/parts/${reqId}/status`, { status: 'ordered', back: 'requests' }, { page: '/admin/requests' });
+
+  const after = (await c.get('/')).text;
+  assert.equal(total(after), before + 2);
+  const bell = bellOf(after);
+  assert.match(bell, /aria-label="Notifications, \d+ waiting"/);
+  assert.match(bell, /href="\/notices"><span class="bell-n">\d+<\/span><span>unread notices?<\/span>/);
+  assert.match(bell, /href="\/my"><span class="bell-n">1<\/span><span>update on your requests<\/span>/);
+  assert.doesNotMatch(bell, /admin\//);                                   // a technician is not shown management items
+
+  // Looking at them clears them from the bell.
+  await c.get('/my');
+  assert.doesNotMatch(bellOf((await c.get('/')).text), /update on your requests/);
+  const aid = db.prepare("SELECT id FROM announcements WHERE title = 'Bell test notice'").get().id;
+  await c.post(`/notices/${aid}/read`, {}, { page: '/notices' });
+  assert.equal(total((await c.get('/')).text), before);
+
+  // Someone who manages parts also sees the work waiting on them.
+  const ob = bellOf((await owner.get('/')).text);
+  assert.match(ob, /href="\/admin\/requests"><span class="bell-n">\d+<\/span><span>open parts requests?<\/span>/);
+  await owner.post(`/admin/parts/${reqId}/status`, { status: 'fulfilled', back: 'requests' }, { page: '/admin/requests' });
+
+  // Nothing waiting says so plainly.
+  makeUser('bell2', 'Quiet Person');
+  db.prepare('INSERT OR IGNORE INTO announcement_reads (announcement_id, user_id, read_at) SELECT id, ?, ? FROM announcements').run(userId('bell2'), new Date().toISOString());
+  const quiet = bellOf((await (await loggedIn('bell2')).get('/')).text);
+  assert.match(quiet, /aria-label="Notifications, none"/);
+  assert.match(quiet, /Nothing waiting/);
+  assert.doesNotMatch(quiet, /bell-count/);
 });

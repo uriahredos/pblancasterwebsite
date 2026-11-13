@@ -19,7 +19,7 @@
 <header class="top">
   <div class="banner">
     <div class="banner-in">
-      <% if (user && !user.must_change_password) { %><button type="button" class="menu-toggle" id="menu-toggle" aria-expanded="false" aria-controls="navbar"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg><span>Menu</span><% if (badges.notices + badges.updates + badges.forum) { %><span class="badge"><%= badges.notices + badges.updates + badges.forum %></span><% } %></button><% } %>
+      <% if (user && !user.must_change_password) { %><button type="button" class="menu-toggle" id="menu-toggle" aria-expanded="false" aria-controls="navbar"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg><span>Menu</span></button><% } %>
       <a class="brand" href="/">
         <span class="logo-plate"><img src="/logo.png" alt="Pye-Barker Fire &amp; Safety" width="640" height="168"></span>
         <span class="branch">Lancaster Branch</span>
@@ -29,10 +29,35 @@
         <a class="who-name" href="/account/password" title="Change password"><%= user.display_name %></a>
         <form method="post" action="/logout" class="who-out"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Sign out</button></form>
         <% } %>
+        <% if (user && !user.must_change_password) {
+          // Everything waiting on this person, in one place. [count, link, one, many]
+          var alerts = [
+            [badges.notices, '/notices', 'unread notice', 'unread notices'],
+            [badges.forum, '/discussions', 'discussion with new replies', 'discussions with new replies'],
+            [badges.updates, '/my', 'update on your requests', 'updates on your requests'],
+            [badges.requests, '/admin/requests', 'open parts request', 'open parts requests'],
+            [badges.inspections, '/admin/inspections?show=open', 'truck problem not fixed', 'truck problems not fixed'],
+            [badges.certs, '/admin/certs?show=attention', 'certification expired or expiring', 'certifications expired or expiring']
+          ].filter(function (a) { return a[0] > 0; });
+          var alertTotal = alerts.reduce(function (n, a) { return n + a[0]; }, 0);
+        %>
+        <details class="bell" id="bell">
+          <summary aria-label="Notifications<%= alertTotal ? ', ' + alertTotal + ' waiting' : ', none' %>" title="Notifications">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 2.5a6.5 6.5 0 0 0-6.5 6.5v3.2c0 .7-.25 1.38-.7 1.9L3.6 15.5a1.25 1.25 0 0 0 .95 2.06h14.9a1.25 1.25 0 0 0 .95-2.06l-1.2-1.4a2.9 2.9 0 0 1-.7-1.9V9A6.5 6.5 0 0 0 12 2.5zM9.6 19.3a2.5 2.5 0 0 0 4.8 0z"/></svg>
+            <% if (alertTotal) { %><span class="bell-count"><%= alertTotal > 99 ? '99+' : alertTotal %></span><% } %>
+          </summary>
+          <div class="bell-list">
+            <p class="bell-title">Notifications</p>
+            <% alerts.forEach(function (a) { %><a href="<%= a[1] %>"><span class="bell-n"><%= a[0] %></span><span><%= a[0] === 1 ? a[2] : a[3] %></span></a><% }) %>
+            <% if (!alerts.length) { %><p class="bell-empty">Nothing waiting. You are all caught up.</p><% } %>
+          </div>
+        </details>
+        <% } else { %>
         <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Switch between light and dark mode" title="Light / dark mode">
           <svg class="icon-moon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M20.4 14.6A8.5 8.5 0 0 1 9.4 3.6a.75.75 0 0 0-.98-.93A10 10 0 1 0 21.33 15.6a.75.75 0 0 0-.93-1z"/></svg>
           <svg class="icon-sun" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></g></svg>
         </button>
+        <% } %>
       </div>
     </div>
   </div>
@@ -108,6 +133,11 @@
       </details>
       <% } %>
       <% }) %>
+      <button type="button" class="theme-toggle nav-theme" id="theme-toggle" title="Switch between light and dark mode">
+        <span class="icon-moon">Dark mode</span><span class="icon-sun">Light mode</span>
+        <svg class="icon-moon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M20.4 14.6A8.5 8.5 0 0 1 9.4 3.6a.75.75 0 0 0-.98-.93A10 10 0 1 0 21.33 15.6a.75.75 0 0 0-.93-1z"/></svg>
+          <svg class="icon-sun" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></g></svg>
+      </button>
       <div class="nav-account">
         <span class="nav-sep" aria-hidden="true"></span>
         <a href="/account/password">Change password<span class="hint-light"><%= user.display_name %></span></a>

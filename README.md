@@ -106,6 +106,8 @@ Reached from the **Usage summary** button on the parts log. For a date range (an
 
 - **Always in the bar:** Home, Notices, My submissions, Complaint.
 - **Drop-downs:** Parts, Trucks, Training and Admin. Each holds the forms first, then the pages for managing that area. People only see the items their profile allows; a group with a single item shows as a plain link.
+- **Notification bell** at the top right: a red number for everything waiting on you, and a list when you press it: unread notices, discussions with new replies, updates on your requests and, for people who manage them, open parts requests, truck problems and expiring certifications. Each line goes to the right page, and the number drops as you deal with them.
+- **Light / dark** is in the menu: at the right end of the bar on a computer, near the bottom of the Menu on a phone. On the sign-in page, where there is no menu, it stays at the top right.
 - **On a phone** the whole menu sits behind the Menu button at the top left, with Change password and Sign out at the bottom of it.
 - A number beside a group is the total of what needs attention inside it (open requests, truck problems, expiring certifications).
 
