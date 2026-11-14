@@ -45,4 +45,20 @@
   <% } %>
   <button class="btn primary" type="submit">Save</button>
 </form>
+<h2 id="welcome">Announce as a new hire</h2>
+<form method="post" action="/admin/users/<%= target.id %>/welcome" class="card stack">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <p class="plain"><% if (welcome) { %>Announced on <%= fmtDateTime(welcome.created_at) %>. It shows on everyone's home page for 14 days from then, with a button to say welcome.<% } else { %>Puts <%= target.display_name %> on everyone's home page for 14 days, with a button for people to say welcome.<% } %></p>
+  <div class="two">
+    <label>Job title <input name="job_title" value="<%= target.job_title || '' %>" maxlength="80" autocomplete="off"></label>
+    <label>Start date <input type="date" name="started_on" value="<%= target.started_on || '' %>"></label>
+  </div>
+  <label>A few words about them <span class="hint">Optional. Where they came from, what they will be doing.</span>
+    <textarea name="intro" rows="3" maxlength="600"><%= welcome ? welcome.intro || '' : '' %></textarea>
+  </label>
+  <div class="filter-actions">
+    <button class="btn primary" type="submit"><%= welcome ? 'Save announcement' : 'Announce' %></button>
+    <% if (welcome) { %><button class="btn" type="submit" name="remove" value="1">Take it down</button><% } %>
+  </div>
+</form>
 <%- include('partials/footer') %>

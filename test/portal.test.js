@@ -1676,8 +1676,8 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
   const barLinks = (html) => { const nav = /<nav class="nav"[\s\S]*?<\/nav>/.exec(html)[0].replace(/<details[\s\S]*?<\/details>/g, '').replace(/<div class="nav-account">[\s\S]*?<\/div>/, ''); return [...nav.matchAll(/<a href="([^"]+)"/g)].map((m) => m[1]); };
 
   const owner = (await (await loggedIn('owner')).get('/admin/users')).text;
-  assert.deepEqual(groupsOf(owner), ['Parts', 'Trucks', 'Training', 'Team', 'Setup']);
-  assert.deepEqual(barLinks(owner), ['/', '/notices', '/discussions', '/tasks', '/my']);
+  assert.deepEqual(groupsOf(owner), ['Community', 'Parts', 'Trucks', 'Training', 'Team', 'Setup']);
+  assert.deepEqual(barLinks(owner), ['/', '/notices', '/tasks', '/my']);
   // What used to be one long Admin list is two: Team (people and what goes out to them) and Setup (the site itself).
   const team = /<summary[^>]*>Team[\s\S]*?<\/details>/.exec(owner)[0];
   const setup = /<summary[^>]*>Setup[\s\S]*?<\/details>/.exec(owner)[0];
@@ -1696,16 +1696,16 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
 
   // A technician: no Team or Setup; Trucks has one thing, so it is a plain "Truck inspection" link.
   const tech = (await (await loggedIn('tech1')).get('/')).text;
-  assert.deepEqual(groupsOf(tech), ['Parts', 'Training']);
-  assert.deepEqual(barLinks(tech), ['/', '/notices', '/discussions', '/tasks', '/my', '/inspection', '/complaint']); // one-item groups show as plain links
+  assert.deepEqual(groupsOf(tech), ['Community', 'Parts', 'Training']);
+  assert.deepEqual(barLinks(tech), ['/', '/notices', '/tasks', '/my', '/inspection', '/complaint']); // one-item groups show as plain links
   assert.doesNotMatch(tech, /href="\/admin\//);
   assert.match(tech, /<a href="\/inspection"[^>]*>Truck inspection<\/a>/);
   assert.doesNotMatch(/<summary[^>]*>Parts[\s\S]*?<\/details>/.exec(tech)[0], /<hr>/); // no stray divider
 
   // A manager's Team group holds only what their profile allows, and they have no Setup group.
   const mgr = (await (await loggedIn('mgr1')).get('/')).text;
-  assert.deepEqual(groupsOf(mgr), ['Parts', 'Trucks', 'Training', 'Team']);           // Manage tasks and Post announcements
-  assert.deepEqual(barLinks(mgr), ['/', '/notices', '/discussions', '/tasks', '/my']);
+  assert.deepEqual(groupsOf(mgr), ['Community', 'Parts', 'Trucks', 'Training', 'Team']);           // Manage tasks and Post announcements
+  assert.deepEqual(barLinks(mgr), ['/', '/notices', '/tasks', '/my']);
   assert.doesNotMatch(mgr, /admin\/(users|profiles|complaints|backups|activity)"/);
 
   // Styles and scripts carry a version so a new release is not shown with old files.
@@ -2626,7 +2626,7 @@ test('home page: tasks first, then the form buttons, then announcements; branch 
   assert.match(/<section class="panel p-board"[\s\S]*?<\/section>/.exec(home)[0], /<span class="tag new">New<\/span><strong>Home order news[\s\S]*I have read this/);
   assert.match(/<section class="panel p-status"[\s\S]*?<\/section>/.exec(home)[0], /<a href="\/tasks" class="warn"><span class="mini-label">Tasks<\/span><span class="mini-num">2<\/span><span class="mini-sub">1 overdue/);
   const css = (await new Client().get('/styles.css')).text;
-  assert.match(css, /\.dash \.p-tasks \{ order: 1; \} \.dash \.p-actions \{ order: 2; \} \.dash \.p-board \{ order: 3; \}/);
+  assert.match(css, /\.dash \.p-tasks \{ order: 1; \} \.dash \.p-actions \{ order: 2; \} \.dash \.p-daily \{ order: 3; \} \.dash \.p-welcome \{ order: 4; \} \.dash \.p-board \{ order: 5; \}/);
   assert.doesNotMatch(home, /class="panel branch-panel"/);                                   // nothing about the branch for a technician
   assert.doesNotMatch(home, /href="\/admin\//);
 
@@ -2904,4 +2904,176 @@ test('Face ID / fingerprint: set up on a device, used to unlock and to sign in, 
   await owner.post(`/admin/users/${userId('face1')}/reset-password`, {}, { page: '/admin/users' });
   assert.equal(count('face1'), 0);
   assert.equal((await fresh.get('/')).status, 302);                                       // and Fiona is signed out everywhere
+});
+
+// ---- Community: profiles, welcoming new people, the daily question ---------------
+
+test('profiles: people fill in their own, others find them by name, job or skill, and contact details show only if chosen', async () => {
+  makeUser('prof1', 'Penny Profile'); makeUser('prof2', 'Quinn Quiet');
+  db.prepare("UPDATE users SET email = 'penny@example.com' WHERE username = 'prof1'").run();
+  const penny = await loggedIn('prof1'); const quinn = await loggedIn('prof2');
+  const pid = userId('prof1');
+
+  // An empty profile is nudged on the home page and says so plainly on its own page.
+  assert.match((await penny.get('/')).text, /id="profile-tip"/);
+  assert.match((await penny.get(`/people/${pid}`)).text, /Your profile is empty/);
+  assert.match((await quinn.get(`/people/${pid}`)).text, /Penny has not filled in a profile yet/);
+
+  const save = (fields, file) => penny.post('/profile', [...Object.entries(fields), ...(file ? [['photo', file]] : [])], { multipart: true, page: '/profile' });
+  // Bad input is refused with the reason.
+  assert.match((await save({ started_on: '2999-01-01' })).text, /start date does not look right/);
+  assert.match((await save({ phone: 'call me maybe' })).text, /phone number does not look right/);
+  assert.match((await save({}, new File(['not an image'], 'me.png', { type: 'image/png' }))).text, /must be a JPEG, PNG, WebP or GIF/);
+  assert.equal((await new Client().get('/profile')).status, 302);
+
+  const ok = await save({ job_title: 'Sprinkler Fitter', started_on: '2020-02-03', about: 'From Lititz.\n<b>Likes</b> fishing.', skills: 'Viking, backflow , Viking\nfire pumps', phone: '(717) 555-0100' }, new File([PNG], 'me.png', { type: 'image/png' }));
+  assert.equal(ok.location, `/people/${pid}`);
+  const row = db.prepare('SELECT * FROM users WHERE id = ?').get(pid);
+  assert.equal(row.skills, 'Viking, backflow, fire pumps');                              // tidied, repeats dropped
+  assert.match(row.photo_path, /^[0-9a-f]{32}\.png$/);
+  const page = (await quinn.get(`/people/${pid}`)).text;
+  assert.match(page, /Sprinkler Fitter · Lancaster branch/); assert.match(page, /\d+ years with us · started 2\/3\/2020/);
+  assert.match(page, /From Lititz\.\n&lt;b&gt;Likes&lt;\/b&gt; fishing\./);                 // typed text is shown as text, never run as code
+  assert.match(page, /<a class="skill" href="\/people\?q=backflow">backflow<\/a>/);
+  assert.match(page, new RegExp(`src="/people/photo/${pid}\\?v=`));
+  assert.doesNotMatch(page, /555-0100|penny@example\.com/);                               // contact details are off until ticked
+  assert.equal((await quinn.get(`/people/photo/${pid}`)).headers.get('content-type'), 'image/png');
+  assert.equal((await new Client().get(`/people/photo/${pid}`)).status, 302);            // signed in only
+  assert.doesNotMatch((await penny.get('/')).text, /id="profile-tip"/);
+
+  await save({ job_title: 'Sprinkler Fitter', skills: row.skills, phone: '(717) 555-0100', show_phone: '1', show_email: '1' });
+  const shown = (await quinn.get(`/people/${pid}`)).text;
+  assert.match(shown, /href="tel:7175550100">\(717\) 555-0100/); assert.match(shown, /href="mailto:penny@example\.com"/);
+  assert.equal(db.prepare('SELECT photo_path FROM users WHERE id = ?').get(pid).photo_path, row.photo_path);   // saving without a new photo keeps the old one
+
+  // Certifications on file show by name only.
+  db.prepare("INSERT INTO certifications (user_id, name, expires_on, created_at) VALUES (?, 'NICET Water-Based II', '2020-01-01', ?)").run(pid, new Date().toISOString());
+  const withCert = (await quinn.get(`/people/${pid}`)).text;
+  assert.match(withCert, /<li>NICET Water-Based II<\/li>/); assert.doesNotMatch(withCert, /1\/1\/2020|expired/i);
+
+  // The directory: everyone active, searchable by name, job and skill.
+  const all = (await quinn.get('/people')).text;
+  assert.match(all, /Penny Profile/); assert.match(all, /Quinn Quiet/); assert.match(all, /<span class="skill">Viking<\/span>/);
+  const hits = async (q) => [...(await quinn.get('/people?q=' + encodeURIComponent(q))).text.matchAll(/<strong>([^<]+)<\/strong>\s*<span class="meta">/g)].map((m) => m[1]);
+  assert.deepEqual(await hits('fire pump'), ['Penny Profile']);
+  assert.deepEqual(await hits('sprinkler fit'), ['Penny Profile']);
+  assert.deepEqual(await hits('quinn'), ['Quinn Quiet']);
+  assert.deepEqual(await hits("' OR 1=1 --"), []);
+  db.prepare('UPDATE users SET active = 0 WHERE id = ?').run(userId('prof2'));
+  assert.doesNotMatch((await penny.get('/people')).text, /Quinn Quiet/);                   // disabled accounts drop out
+  assert.equal((await penny.get(`/people/${userId('prof2')}`)).status, 404);
+  db.prepare('UPDATE users SET active = 1 WHERE id = ?').run(userId('prof2'));
+
+  // Removing the photo takes the file away too.
+  await save({ remove_photo: '1' });
+  assert.equal(db.prepare('SELECT photo_path FROM users WHERE id = ?').get(pid).photo_path, null);
+  assert.equal((await quinn.get(`/people/photo/${pid}`)).status, 404);
+  assert.match((await quinn.get(`/people/${pid}`)).text, /class="avatar xl hue\d"[^>]*>PP</);   // initials instead
+  db.prepare('DELETE FROM certifications WHERE user_id = ?').run(pid);
+});
+
+test('new hires: announced on everyone\'s home page for two weeks, and people say welcome', async () => {
+  makeUser('hire1', 'Nora Newhire');
+  const owner = await loggedIn('owner'); const t1 = await loggedIn('tech1'); const nora = await loggedIn('hire1');
+  const nid = userId('hire1');
+  assert.doesNotMatch((await t1.get('/')).text, /id="welcome"/);
+
+  // Only someone who manages people can announce.
+  assert.equal((await t1.post(`/admin/users/${nid}/welcome`, { intro: 'x' }, { page: '/' })).status, 403);
+  assert.match((await owner.get(`/admin/users/${nid}/edit`)).text, /Announce as a new hire/);
+  await owner.post(`/admin/users/${nid}/welcome`, { job_title: 'Apprentice', started_on: '2026-11-09', intro: 'Nora is joining the alarm team.' }, { page: `/admin/users/${nid}/edit` });
+  const wid = db.prepare('SELECT id FROM welcomes WHERE user_id = ?').get(nid).id;
+  assert.deepEqual(db.prepare('SELECT job_title, started_on FROM users WHERE id = ?').get(nid), { job_title: 'Apprentice', started_on: '2026-11-09' });
+
+  const home = (await t1.get('/')).text.replace(/\s+/g, ' ');
+  const panel = /<section class="panel p-welcome"[\s\S]*?<\/section>/.exec(home)[0];
+  assert.match(panel, /Nora Newhire<\/strong><span class="meta">Apprentice · Lancaster branch/); assert.match(panel, /Nora is joining the alarm team\./);
+  assert.match(panel, /Be the first to say welcome/); assert.match(panel, /Say welcome<\/button>/);
+
+  // A wave from the home page, then a message from her profile. One note per person: the message updates it.
+  assert.equal((await t1.post(`/welcome/${wid}/wave`, { back: 'home' }, { page: '/' })).location, '/#welcome');
+  await t1.post(`/welcome/${wid}/wave`, { message: 'Welcome <i>aboard</i>!' }, { page: `/people/${nid}` });
+  await owner.post(`/welcome/${wid}/wave`, {}, { page: '/' });
+  await nora.post(`/welcome/${wid}/wave`, { message: 'hi me' }, { page: '/' });            // you cannot welcome yourself
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM welcome_notes WHERE welcome_id = ?').get(wid).n, 2);
+  assert.match((await t1.get('/')).text, /2 people have said welcome[\s\S]*You said welcome/);
+  const hers = (await nora.get('/')).text;
+  assert.match(hers, /See your messages/);
+  const profile = (await nora.get(`/people/${nid}`)).text.replace(/\s+/g, ' ');
+  assert.match(profile, /Terry Tech<\/strong><\/a> Welcome &lt;i&gt;aboard&lt;\/i&gt;!/); assert.match(profile, /Olive Owner<\/strong><\/a> said welcome/);
+  assert.doesNotMatch(profile, /action="\/welcome\/\d+\/wave"/);                            // no button to welcome yourself
+
+  // After two weeks it leaves the home page but the messages stay on her profile. It can also be taken down.
+  db.prepare('UPDATE welcomes SET created_at = ? WHERE id = ?').run(new Date(Date.now() - 15 * 86400000).toISOString(), wid);
+  assert.doesNotMatch((await t1.get('/')).text, /id="welcome"/);
+  assert.match((await t1.get(`/people/${nid}`)).text, /Welcome messages/);
+  await owner.post(`/admin/users/${nid}/welcome`, { remove: '1' }, { page: `/admin/users/${nid}/edit` });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM welcomes').get().n + db.prepare('SELECT COUNT(*) n FROM welcome_notes').get().n, 0);
+});
+
+test('daily question: one a day for everyone, results after you answer, suggestions approved before they run', async () => {
+  const dailyLib = require('../app/daily');
+  // Weekends keep Friday's question.
+  assert.equal(dailyLib.questionDay(new Date('2026-11-14T17:00:00Z')), '2026-11-13');     // a Saturday
+  assert.equal(dailyLib.questionDay(new Date('2026-11-15T17:00:00Z')), '2026-11-13');     // a Sunday
+  assert.equal(dailyLib.questionDay(new Date('2026-11-16T17:00:00Z')), '2026-11-16');     // Monday
+  assert.ok(db.prepare("SELECT COUNT(*) n FROM daily_questions WHERE source = 'builtin'").get().n >= 100);
+
+  const t1 = await loggedIn('tech1'); const t2 = await loggedIn('tech2'); const owner = await loggedIn('owner');
+  const card = (html) => /<section class="panel p-daily[\s\S]*?<\/section>/.exec(html.replace(/\s+/g, ' '))[0];
+  const first = card((await t1.get('/')).text);
+  const q = dailyLib.forDay();
+  assert.equal(dailyLib.forDay().id, q.id);                                               // the same one all day, for everyone
+  assert.ok(card((await t2.get('/')).text).includes(`name="question_id" value="${q.id}"`));
+  assert.match(first, /name="choice" value="0"/); assert.match(first, /name="choice" value="1"/);
+  assert.doesNotMatch(first, /daily-results/);                                            // no peeking before you answer
+
+  assert.equal((await t1.post('/daily/answer', { question_id: q.id, choice: '0', back: 'home' }, { page: '/' })).location, '/#daily');
+  await t2.post('/daily/answer', { question_id: q.id, choice: '1' }, { page: '/daily' });
+  await owner.post('/daily/answer', { question_id: q.id, choice: '1' }, { page: '/daily' });
+  for (const bad of [{ question_id: q.id, choice: '7' }, { question_id: q.id, choice: '-1' }, { question_id: '999999', choice: '0' }, { question_id: q.id, choice: 'x' }]) await owner.post('/daily/answer', bad, { page: '/daily' });
+  const mine = card((await t1.get('/')).text);
+  assert.match(mine, /<li class="mine"> <div class="daily-line"><strong>[^<]+<\/strong><span>33%<\/span>/);
+  assert.match(mine, />You<\/a>/); assert.match(mine, /67%[\s\S]*Uma Tech<\/a>, <a href="\/people\/\d+">Olive Owner/);
+  // Changing your mind moves your answer; it does not add one.
+  await t1.post('/daily/answer', { question_id: q.id, choice: '1' }, { page: '/daily' });
+  assert.deepEqual(db.prepare('SELECT choice, COUNT(*) n FROM daily_answers WHERE question_id = ? GROUP BY choice').all(q.id), [{ choice: 1, n: 3 }]);
+
+  // Anyone can suggest; it waits for approval and only people who run the daily question can approve.
+  assert.match((await t2.post('/daily/suggest', { prompt: 'Only one choice?', a: 'Yes' }, { page: '/daily' })).text, /at least two choices/);
+  await t2.post('/daily/suggest', { prompt: 'Best lunch spot?', a: 'The diner', b: 'The <b>deli</b>', d: 'Gas station' }, { page: '/daily' });
+  const sid = db.prepare("SELECT id FROM daily_questions WHERE prompt = 'Best lunch spot?'").get().id;
+  assert.deepEqual(db.prepare('SELECT status, source, c, d FROM daily_questions WHERE id = ?').get(sid), { status: 'pending', source: 'suggested', c: 'Gas station', d: null });
+  assert.match((await t2.get('/daily')).text, /Waiting for approval<\/span><strong>Best lunch spot\?/);
+  assert.doesNotMatch((await t2.get('/daily')).text, /Run the daily question/);
+  assert.equal((await t2.post(`/admin/daily/${sid}/approve`, {}, { page: '/daily' })).status, 403);
+  assert.equal((await t2.post('/admin/daily', { prompt: 'x', a: 'y', b: 'z' }, { page: '/daily' })).status, 403);
+  const manage = (await owner.get('/daily')).text;
+  assert.match(manage, /Suggestions to approve[\s\S]*Best lunch spot\?[\s\S]*Uma Tech[\s\S]*The &lt;b&gt;deli&lt;\/b&gt;/);
+  await owner.post(`/admin/daily/${sid}/approve`, {}, { page: '/daily' });
+  assert.match((await t2.get('/daily')).text, /Approved, coming up<\/span><strong>Best lunch spot\?/);
+
+  // Tomorrow: an approved suggestion goes ahead of the built-in list, unless a question is set for that very day.
+  const day = (n) => { const d = new Date(`${q.used_on}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  assert.equal(dailyLib.forDay(day(1)).id, sid);
+  assert.match((await owner.post('/admin/daily', { prompt: 'Past?', a: 'a', b: 'b', scheduled_on: '2020-01-01' }, { page: '/daily' })).text, /today or a later day/);
+  await owner.post('/admin/daily', { prompt: 'Holiday special?', a: 'Turkey', b: 'Ham', c: 'Both' }, { page: '/daily' });
+  await owner.post('/admin/daily', { prompt: 'Set for a day?', a: 'Yes', b: 'No', scheduled_on: day(400) }, { page: '/daily' });
+  assert.match((await owner.post('/admin/daily', { prompt: 'Same day?', a: 'Yes', b: 'No', scheduled_on: day(400) }, { page: '/daily' })).text, /already has a question/);
+  assert.equal(dailyLib.forDay(day(400)).prompt, 'Set for a day?');
+  assert.equal(dailyLib.forDay(day(2)).prompt, 'Holiday special?');
+  assert.equal(dailyLib.optionsOf(dailyLib.forDay(day(2))).length, 3);
+
+  // Earlier questions stay on the Daily question page with who picked what; a declined suggestion never runs.
+  db.prepare('UPDATE daily_questions SET used_on = ? WHERE id = ?').run(day(-3), q.id);
+  const page = (await t1.get('/daily')).text;
+  assert.match(page, /Earlier questions[\s\S]*Terry Tech|Earlier questions[\s\S]*>You</);
+  await t1.post('/daily/suggest', { prompt: 'Decline me?', a: 'a', b: 'b' }, { page: '/daily' });
+  const no = db.prepare("SELECT id FROM daily_questions WHERE prompt = 'Decline me?'").get().id;
+  await owner.post(`/admin/daily/${no}/reject`, {}, { page: '/daily' });
+  assert.match((await t1.get('/daily')).text, /Not used<\/span><strong>Decline me\?/);
+  for (let i = 5; i < 12; i++) assert.notEqual(dailyLib.forDay(day(i)).id, no);
+  assert.equal((await new Client().get('/daily')).status, 302);
+  db.prepare("DELETE FROM daily_questions WHERE source <> 'builtin'").run();
+  db.prepare("UPDATE daily_questions SET used_on = NULL").run(); db.prepare('DELETE FROM daily_answers').run();
 });

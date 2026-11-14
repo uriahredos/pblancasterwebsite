@@ -1,0 +1,38 @@
+<%- include('partials/header') %>
+<p><a href="/people/<%= user.id %>">&larr; My profile</a></p>
+<h1>My profile</h1>
+<p class="lede">This is what other people at the company see about you. Everything here is optional.</p>
+<%- include('partials/errors') %>
+<form method="post" action="/profile" enctype="multipart/form-data" class="card stack" id="profile-form">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <div class="photo-pick">
+    <span id="photo-preview"><%- include('partials/avatar', { who: { id: user.id, display_name: user.display_name, photo_path: values.photo_path }, size: 'xl' }) %></span>
+    <label>Photo <span class="hint">A clear picture of your face works best.</span>
+      <input type="file" name="photo" id="photo-input" accept="image/jpeg,image/png,image/webp">
+    </label>
+  </div>
+  <% if (values.photo_path) { %><label class="choice"><input type="checkbox" name="remove_photo" value="1"> Remove my photo</label><% } %>
+  <label>Job title <span class="hint">For example Fire Alarm Technician, Inspector, Warehouse.</span>
+    <input name="job_title" value="<%= values.job_title || '' %>" maxlength="80" autocomplete="organization-title">
+  </label>
+  <label>Start date with the company
+    <input type="date" name="started_on" value="<%= values.started_on || '' %>">
+  </label>
+  <label>About me <span class="hint">Where you are from, what you do outside work, anything you would tell someone on your first day.</span>
+    <textarea name="about" rows="5" maxlength="1000"><%= values.about || '' %></textarea>
+  </label>
+  <label>What I know about <span class="hint">Systems, brands and kinds of work, separated by commas. People search these to find who can help. Example: EST3, Notifier, sprinklers, kitchen hoods</span>
+    <textarea name="skills" rows="3" maxlength="800"><%= values.skills || '' %></textarea>
+  </label>
+  <fieldset>
+    <legend>Contact details</legend>
+    <p class="hint">Only shown to other people if you tick the box.</p>
+    <label>Phone <input name="phone" type="tel" value="<%= values.phone || '' %>" maxlength="30" autocomplete="tel"></label>
+    <label class="choice"><input type="checkbox" name="show_phone" value="1" <%= values.show_phone ? 'checked' : '' %>> Show my phone number on my profile</label>
+    <label class="choice"><input type="checkbox" name="show_email" value="1" <%= values.show_email ? 'checked' : '' %>> Show my email address on my profile<%= me.email ? ' (' + me.email + ')' : '' %></label>
+    <% if (!me.email) { %><p class="hint">You have no email address on your account. Add one under <a href="/account/password">Password and Face ID</a>.</p><% } %>
+  </fieldset>
+  <button class="btn primary" type="submit">Save profile</button>
+</form>
+<script src="/profile.js?v=<%= assetV %>" defer></script>
+<%- include('partials/footer') %>

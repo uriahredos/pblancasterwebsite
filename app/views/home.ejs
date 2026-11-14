@@ -9,6 +9,7 @@
     truck: '<path d="M2.5 6.5h11v10h-11zM13.5 10h4l3 3v3.5h-7z"/><circle cx="7" cy="17.5" r="1.9"/><circle cx="17" cy="17.5" r="1.9"/>',
     complaint: '<path d="M4 5h16v11H10l-4.5 3.5V16H4z"/><path d="M8 9.5h8M8 12.5h5"/>',
     talk: '<path d="M3.5 5h11v8h-6l-3 2.5V13h-2z"/><path d="M17 9h3.5v8h-2v2.5l-3-2.5h-5v-2"/>',
+    people: '<circle cx="9" cy="8.5" r="3.2"/><path d="M3 19.5c.6-3.2 2.9-5 6-5s5.4 1.8 6 5"/><circle cx="17" cy="9.5" r="2.4"/><path d="M16.5 14.6c2.4.2 4 1.7 4.5 4.4"/>',
     mine: '<path d="M9 6.5h11M9 12h11M9 17.5h11"/><path d="m3.5 6.5 1.2 1.2 2-2.4M3.5 12l1.2 1.2 2-2.4M3.5 17.5l1.2 1.2 2-2.4"/>'
   };
   var icon = function (name) { return '<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + icons[name] + '</svg>'; };
@@ -36,6 +37,13 @@
 <div class="card tip-card" id="passkey-tip" hidden>
   <p><strong>Get in with your face or fingerprint.</strong> The site now locks when you close it. Set up Face ID or fingerprint so you do not have to type your password each time.</p>
   <span class="tip-actions"><a class="btn primary small" href="/account/password#face-id">Set it up</a><button type="button" class="link" id="passkey-tip-no">Not now</button></span>
+</div>
+<% } %>
+
+<% if (profileEmpty) { %>
+<div class="card tip-card" id="profile-tip">
+  <p><strong>Tell people who you are.</strong> Add a photo, your job and what you know about, so people across the company can put a face to your name.</p>
+  <span class="tip-actions"><a class="btn primary small" href="/profile">Fill in my profile</a></span>
 </div>
 <% } %>
 
@@ -79,6 +87,28 @@
         <% }) %>
       </ul>
       <% if (badges.tasks > myTasks.length) { %><p class="panel-foot"><a href="/tasks">and <%= badges.tasks - myTasks.length %> more</a></p><% } %>
+    </section>
+    <% } %>
+    <% if (welcomes.length) { %>
+    <section class="panel p-welcome" aria-labelledby="welcome-h" id="welcome">
+      <div class="panel-head"><h2 id="welcome-h">Welcome aboard</h2><a href="/people">Everyone</a></div>
+      <ul class="hires">
+        <% welcomes.forEach(function (w) { %>
+        <li>
+          <a class="hire" href="/people/<%= w.user_id %>">
+            <%- include('partials/avatar', { who: { id: w.user_id, display_name: w.display_name, photo_path: w.photo_path }, size: 'lg' }) %>
+            <span class="person-text"><strong><%= w.display_name %></strong><span class="meta"><%= [w.job_title, w.branch ? w.branch + ' branch' : ''].filter(Boolean).join(' · ') || 'New to the team' %></span></span>
+          </a>
+          <% if (w.intro) { %><p class="hire-intro"><%= w.intro %></p><% } %>
+          <div class="hire-foot">
+            <span class="meta"><%= w.waves ? w.waves + (w.waves === 1 ? ' person has' : ' people have') + ' said welcome' : 'Be the first to say welcome' %></span>
+            <% if (w.user_id === user.id) { %><a class="btn small" href="/people/<%= w.user_id %>#welcome">See your messages</a>
+            <% } else if (w.waved) { %><a class="btn small" href="/people/<%= w.user_id %>#welcome">You said welcome ✓</a>
+            <% } else { %><form method="post" action="/welcome/<%= w.id %>/wave"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="back" value="home"><button class="btn primary small" type="submit">👋 Say welcome</button></form><% } %>
+          </div>
+        </li>
+        <% }) %>
+      </ul>
     </section>
     <% } %>
     <section class="panel p-board" aria-labelledby="board-h">
@@ -176,12 +206,20 @@
         <% if (can('forum.use')) { %>
         <a href="/discussions"><%- icon('talk') %><span>Discussions</span></a>
         <% } %>
+        <a href="/people"><%- icon('people') %><span>People</span></a>
         <% if (can('complaints.submit')) { %>
         <a class="quiet" href="/complaint"><%- icon('complaint') %><span>Anonymous complaint</span></a>
         <% } %>
         <a class="quiet" href="/my"><%- icon('mine') %><span>My activity</span></a>
       </div>
     </section>
+
+    <% if (dailyCard) { %>
+    <section class="panel p-daily daily" aria-labelledby="daily-h" id="daily">
+      <div class="panel-head"><h2 id="daily-h">Today's question</h2><a href="/daily">Earlier ones</a></div>
+      <%- include('partials/daily_card', { d: dailyCard, back: 'home' }) %>
+    </section>
+    <% } %>
 
     <% if (upcoming.length) { %>
     <section class="panel p-up" aria-labelledby="up-h">

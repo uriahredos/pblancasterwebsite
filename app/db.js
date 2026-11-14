@@ -360,6 +360,65 @@ CREATE TABLE IF NOT EXISTS tasks (
 CREATE INDEX IF NOT EXISTS tasks_assignee ON tasks(assigned_to, done_at);
 `);
 
+// ---- Community: branches, personal profiles, new-hire welcomes, the daily question ----
+db.exec(`
+CREATE TABLE IF NOT EXISTS branches (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS welcomes (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  intro TEXT,
+  created_by INTEGER NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS welcome_notes (
+  welcome_id INTEGER NOT NULL REFERENCES welcomes(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  message TEXT,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (welcome_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS daily_questions (
+  id INTEGER PRIMARY KEY,
+  prompt TEXT NOT NULL,
+  a TEXT NOT NULL, b TEXT NOT NULL, c TEXT, d TEXT,
+  source TEXT NOT NULL DEFAULT 'builtin' CHECK (source IN ('builtin','custom','suggested')),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','pending','rejected')),
+  suggested_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  scheduled_on TEXT UNIQUE,      -- asked on this day in particular
+  used_on TEXT UNIQUE,           -- the day it was the question
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS daily_answers (
+  question_id INTEGER NOT NULL REFERENCES daily_questions(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  choice INTEGER NOT NULL,
+  answered_at TEXT NOT NULL,
+  PRIMARY KEY (question_id, user_id)
+);
+`);
+if (!db.prepare('SELECT 1 FROM branches').get()) db.prepare("INSERT INTO branches (name, created_at) VALUES ('Lancaster', ?)").run(new Date().toISOString());
+addColumn('users', 'branch_id', 'INTEGER');
+addColumn('users', 'job_title', 'TEXT');
+addColumn('users', 'started_on', 'TEXT');
+addColumn('users', 'about', 'TEXT');
+addColumn('users', 'skills', 'TEXT');
+addColumn('users', 'phone', 'TEXT');
+addColumn('users', 'show_phone', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('users', 'show_email', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('users', 'photo_path', 'TEXT');
+db.prepare('UPDATE users SET branch_id = (SELECT MIN(id) FROM branches) WHERE branch_id IS NULL').run();
+if (!db.prepare("SELECT 1 FROM meta WHERE key = 'daily_seed_1'").get()) {
+  const add = db.prepare("INSERT INTO daily_questions (prompt, a, b, source, status, created_at) VALUES (?, ?, ?, 'builtin', 'active', ?)");
+  db.transaction(() => {
+    for (const [prompt, a, b] of require('./daily_questions')) add.run(prompt, a, b, new Date().toISOString());
+    db.prepare("INSERT INTO meta (key, value) VALUES ('daily_seed_1', '1')").run();
+  })();
+}
+
 // ---- Face ID / fingerprint sign-in (passkeys) ----
 db.exec(`
 CREATE TABLE IF NOT EXISTS passkeys (

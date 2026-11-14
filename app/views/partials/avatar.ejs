@@ -1,0 +1,3 @@
+<%# A person's photo, or their initials when they have none. Pass `who` ({ id, display_name, photo_path }) and optionally `size`. %>
+<% var initials = String(who.display_name || '?').split(/\s+/).map(function (w) { return w.charAt(0); }).join('').slice(0, 2).toUpperCase(); var sz = typeof size !== 'undefined' ? size : ''; %>
+<% if (who.photo_path) { %><img class="avatar <%= sz %>" src="/people/photo/<%= who.id %>?v=<%= String(who.photo_path).slice(0, 8) %>" alt="" loading="lazy" width="96" height="96"><% } else { %><span class="avatar <%= sz %> hue<%= who.id % 6 %>" aria-hidden="true"><%= initials %></span><% } %>

@@ -1,0 +1,25 @@
+<%- include('partials/header') %>
+<div class="title-row"><h1>People</h1><a class="btn small" href="/profile">Edit my profile</a></div>
+<p class="lede">Everyone at the company who uses this site. Search by name, job, or what they know.</p>
+<form method="get" action="/people" class="filters">
+  <label class="grow">Search <input name="q" value="<%= q %>" maxlength="60" placeholder="A name, a job, or a skill such as EST3" autocomplete="off"></label>
+  <% if (branches.length > 1) { %>
+  <label>Branch <select name="branch"><option value="">All branches</option><% branches.forEach(function (b) { %><option value="<%= b.id %>" <%= branch === b.id ? 'selected' : '' %>><%= b.name %></option><% }) %></select></label>
+  <% } %>
+  <div class="filter-actions"><button class="btn primary" type="submit">Search</button><% if (q || branch) { %><a class="btn" href="/people">Clear</a><% } %></div>
+</form>
+<p class="meta"><%= people.length %> <%= people.length === 1 ? 'person' : 'people' %><%= q || branch ? ' found, of ' + total : '' %></p>
+<% if (!people.length) { %><p class="card empty">Nobody matches that. Try a shorter search.</p><% } %>
+<ul class="people">
+  <% people.forEach(function (p) { %>
+  <li><a href="/people/<%= p.id %>">
+    <%- include('partials/avatar', { who: p, size: 'lg' }) %>
+    <span class="person-text">
+      <strong><%= p.display_name %></strong>
+      <span class="meta"><%= [p.job_title, p.branch].filter(Boolean).join(' · ') || 'No details yet' %></span>
+      <% if (p.skillList.length) { %><span class="chips"><% p.skillList.slice(0, 4).forEach(function (s) { %><span class="skill"><%= s %></span><% }) %><% if (p.skillList.length > 4) { %><span class="skill more">+<%= p.skillList.length - 4 %></span><% } %></span><% } %>
+    </span>
+  </a></li>
+  <% }) %>
+</ul>
+<%- include('partials/footer') %>

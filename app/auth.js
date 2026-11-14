@@ -30,13 +30,13 @@ function tempPassword() {
  * profile: a profile name or id. The very first account, and any account made
  * with master: true, becomes the master account.
  */
-function createUser({ username, displayName, email, password, profile = 'Technician', master = false }) {
+function createUser({ username, displayName, email, password, profile = 'Technician', master = false, branchId = null }) {
   const profileId = typeof profile === 'number' ? profile : (access.profileByName(profile) || {}).id;
   if (!profileId) throw new Error(`Unknown profile: ${profile}`);
   const info = db.prepare(
-    `INSERT INTO users (username, display_name, email, password_hash, profile_id, is_master, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
-  ).run(username, displayName, email || null, hashPassword(password), profileId, master ? 1 : 0, new Date().toISOString());
+    `INSERT INTO users (username, display_name, email, password_hash, profile_id, is_master, created_at, branch_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, (SELECT MIN(id) FROM branches)))`
+  ).run(username, displayName, email || null, hashPassword(password), profileId, master ? 1 : 0, new Date().toISOString(), branchId);
   return info.lastInsertRowid;
 }
 

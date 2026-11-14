@@ -457,6 +457,7 @@ function editPage(req, res, target, extra = {}) {
   const fullAccess = req.user.scope === 'all';
   res.status(extra.errors ? 400 : 200).render('admin_user_edit', {
     title: 'Edit person', target, values: target, errors: [], profile,
+    welcome: db.prepare('SELECT * FROM welcomes WHERE user_id = ?').get(target.id),
     profiles: grantableProfiles(req.user),
     // Changing someone's profile or team is for people who see everyone; nobody changes their own profile.
     canSetProfile: fullAccess && !target.is_master && target.id !== req.user.id,

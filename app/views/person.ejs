@@ -1,0 +1,40 @@
+<%- include('partials/header') %>
+<p><a href="/people">&larr; People</a></p>
+<div class="card person-head">
+  <%- include('partials/avatar', { who: p, size: 'xl' }) %>
+  <div class="person-text">
+    <h1><%= p.display_name %></h1>
+    <p class="meta"><%= [p.job_title, p.branch ? p.branch + ' branch' : ''].filter(Boolean).join(' · ') %></p>
+    <% if (p.tenure) { %><p class="meta"><%= p.tenure %><%= p.started_on ? ' · started ' + fmtDate(p.started_on) : '' %></p><% } %>
+    <% if (me) { %><p><a class="btn small" href="/profile">Edit my profile</a></p><% } %>
+  </div>
+</div>
+<% if (p.about) { %><h2>About</h2><div class="card"><p class="pre"><%= p.about %></p></div><% } %>
+<% if (p.skillList.length) { %><h2>Knows about</h2><div class="card"><p class="chips big"><% p.skillList.forEach(function (s) { %><a class="skill" href="/people?q=<%= encodeURIComponent(s) %>"><%= s %></a><% }) %></p></div><% } %>
+<% if (certs.length) { %><h2>Certifications</h2><div class="card"><ul class="ticks"><% certs.forEach(function (c) { %><li><%= c %></li><% }) %></ul></div><% } %>
+<% if (p.phone || p.email) { %>
+<h2>Contact</h2>
+<div class="card stack">
+  <% if (p.phone) { %><p class="plain"><span class="meta">Phone</span> <a href="tel:<%= p.phone.replace(/[^0-9+]/g, '') %>"><%= p.phone %></a></p><% } %>
+  <% if (p.email) { %><p class="plain"><span class="meta">Email</span> <a href="mailto:<%= p.email %>"><%= p.email %></a></p><% } %>
+</div>
+<% } %>
+<% if (!p.about && !p.skillList.length && !certs.length && !p.phone && !p.email) { %><p class="card empty"><%= me ? 'Your profile is empty. Add a photo and a few words so people know who you are.' : p.display_name.split(' ')[0] + ' has not filled in a profile yet.' %></p><% } %>
+<% if (welcome) { %>
+<h2 id="welcome">Welcome messages</h2>
+<div class="card stack">
+  <% if (welcome.intro) { %><p class="pre"><%= welcome.intro %></p><% } %>
+  <% if (!notes.length) { %><p class="empty"><%= me ? 'Nobody has said hello yet.' : 'Be the first to say hello.' %></p><% } %>
+  <ul class="notes">
+    <% notes.forEach(function (n) { %><li><%- include('partials/avatar', { who: n, size: 'sm' }) %><span><a href="/people/<%= n.id %>"><strong><%= n.display_name %></strong></a> <%= n.message || 'said welcome 👋' %></span></li><% }) %>
+  </ul>
+  <% if (!me) { %>
+  <form method="post" action="/welcome/<%= welcome.id %>/wave" class="filters">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <label class="grow"><span class="sr">Message</span><input name="message" maxlength="200" autocomplete="off" placeholder="Say something (optional)"></label>
+    <div class="filter-actions"><button class="btn primary" type="submit">👋 Welcome <%= p.display_name.split(' ')[0] %></button></div>
+  </form>
+  <% } %>
+</div>
+<% } %>
+<%- include('partials/footer') %>

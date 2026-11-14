@@ -38,6 +38,7 @@ const GROUPS = [
     ['announcements.post', 'Post announcements and see who has read them'],
     ['tasks.assign', 'Assign tasks to people and see whether they are done'],
     ['newsletters.manage', 'Upload and remove the monthly newsletters'],
+    ['daily.manage', 'Run the daily question: approve suggestions, add and schedule questions'],
     ['activity.view', 'See the activity log (who changed what)'],
   ] },
   { title: 'Email', items: [
@@ -131,7 +132,7 @@ function migrate() {
       'inspections.submit': 'parts.submit', 'inspections.view': 'parts.view', 'inspections.manage': 'parts.manage',
       'certs.manage': 'training.manage', 'announcements.post': 'training.manage', 'records.delete': 'profiles.manage',
       'tasks.assign': 'announcements.post',
-      'newsletters.manage': 'users.manage', 'forum.use': 'parts.submit', 'forum.moderate': 'users.manage',
+      'newsletters.manage': 'users.manage', 'forum.use': 'parts.submit', 'forum.moderate': 'users.manage', 'daily.manage': 'users.manage',
     };
     for (const [perm, from] of Object.entries(INHERIT)) {
       const key = `perm_granted:${perm}`;

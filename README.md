@@ -104,8 +104,8 @@ Reached from the **Usage summary** button on the parts log. For a date range (an
 
 ## The menu
 
-- **Always in the bar:** Home, Announcements, Discussions, Tasks, My activity.
-- **Drop-downs:** Parts, Trucks, Training, Team and Setup. Each holds the forms first, then the pages for managing that area. **Team** is people and what goes out to them (Anonymous complaint, Users, Profiles, Manage tasks, Post announcements, Newsletters, Complaints); **Setup** is the site itself (QR code sign, Activity log, Backups, Import old data). People only see the items their profile allows; a group with a single item shows as a plain link, so a technician sees "Truck inspection" and "Anonymous complaint" as links.
+- **Always in the bar:** Home, Announcements, Tasks, My activity.
+- **Drop-downs:** Community (People, Discussions, Daily question, Newsletters), Parts, Trucks, Training, Team and Setup. Each holds the forms first, then the pages for managing that area. **Team** is people and what goes out to them (Anonymous complaint, Users, Profiles, Manage tasks, Post announcements, Newsletters, Complaints); **Setup** is the site itself (QR code sign, Activity log, Backups, Import old data). People only see the items their profile allows; a group with a single item shows as a plain link, so a technician sees "Truck inspection" and "Anonymous complaint" as links.
 - **One name for each thing:** Announcements (posting them is "Post announcements"), Tasks (giving them out is "Manage tasks"), Truck inspection, Anonymous complaint (reviewing them is "Complaints"), Certifications, Parts requests, and My activity for a person's own entries and requests.
 - **Notification bell** at the top right on a computer: a red number for everything waiting on you, and a list when you press it: your open tasks by name with their due dates, then unread announcements, discussions with new replies, updates on your requests and, for people who manage them, open parts requests, truck problems and expiring certifications. **Notification settings** is at the bottom of the list.
 - **Light / dark** is in the menu: the moon or sun at the right end of the bar on a computer, near the bottom of More on a phone. On the sign-in page, where there is no menu, it stays at the top right.
@@ -391,6 +391,29 @@ test/portal.test.js  automated tests
 ```
 
 Not in this prototype: Microsoft/Outlook sign-in.
+
+## Community: people, new hires and the daily question
+
+The **Community** menu holds People, Discussions, Daily question and Newsletters.
+
+**People (`/people`) and profiles**
+- Everyone with an active account is listed, with a search over names, job titles, skills and "about me".
+- Each person fills in their own profile under **My profile** (`/profile`): photo, job title, start date, about me, and "what I know about" (skills, separated by commas). All optional. The photo is shrunk on the phone before it is sent.
+- A profile also lists the person's certifications on file, by name only (no dates).
+- Phone and email show on a profile only if the person ticks the box for each.
+- The home page reminds people with an empty profile to fill it in.
+
+**New hires**
+- On **Edit person** (Team > Users), **Announce as a new hire** takes a job title, start date and a few words. The person then appears in a **Welcome aboard** panel on everyone's home page for 14 days.
+- Everyone can press **Say welcome**, and add a short message from the person's profile. The messages stay on the profile afterwards.
+
+**Daily question (`/daily`)**
+- One light question a day on weekdays (the weekend keeps Friday's), the same for everyone, on the home page. Results, with who picked what, show once you have answered. You can change your answer during the day.
+- The site starts with 120 built-in questions. Anyone can suggest one; it waits for approval.
+- People whose profile has **Run the daily question** approve or decline suggestions, add their own, and can set a question for a particular day. Approved suggestions and added questions come up before the built-in list.
+
+**Branches**
+- Each person belongs to a branch (everyone starts in Lancaster). The branch shows on profiles and in the directory.
 
 ## The lock, and Face ID / fingerprint sign-in
 

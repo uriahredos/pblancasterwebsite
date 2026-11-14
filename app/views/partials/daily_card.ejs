@@ -1,0 +1,24 @@
+<%# Today's question. Pass `d` (from daily.card) and `back` ('home' or ''). Results show once you have answered. %>
+<p class="daily-q"><%= d.q.prompt %></p>
+<% if (d.mine === null) { %>
+<form method="post" action="/daily/answer" class="daily-choices">
+  <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="question_id" value="<%= d.q.id %>"><input type="hidden" name="back" value="<%= back %>">
+  <% d.options.forEach(function (o) { %><button class="btn daily-pick" type="submit" name="choice" value="<%= o.i %>"><%= o.text %></button><% }) %>
+</form>
+<p class="hint"><%= d.total ? d.total + (d.total === 1 ? ' person has' : ' people have') + ' answered. Pick one to see who chose what.' : 'Be the first to answer.' %></p>
+<% } else { %>
+<ul class="daily-results">
+  <% d.options.forEach(function (o) { %>
+  <li class="<%= o.i === d.mine ? 'mine' : '' %>">
+    <div class="daily-line"><strong><%= o.text %></strong><span><%= o.percent %>%</span></div>
+    <div class="daily-bar" aria-hidden="true"><span style="width: <%= o.percent %>%"></span></div>
+    <p class="daily-who"><% if (!o.people.length) { %>Nobody yet<% } %><% o.people.slice(0, 12).forEach(function (p, i) { %><%= i ? ', ' : '' %><a href="/people/<%= p.id %>"><%= p.id === user.id ? 'You' : p.display_name %></a><% }) %><% if (o.people.length > 12) { %> and <%= o.people.length - 12 %> more<% } %></p>
+  </li>
+  <% }) %>
+</ul>
+<form method="post" action="/daily/answer" class="daily-change">
+  <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="question_id" value="<%= d.q.id %>"><input type="hidden" name="back" value="<%= back %>">
+  <span class="meta">Changed your mind?</span>
+  <% d.options.forEach(function (o) { if (o.i !== d.mine) { %><button class="link" type="submit" name="choice" value="<%= o.i %>">Switch to "<%= o.text %>"</button><% } }) %>
+</form>
+<% } %>

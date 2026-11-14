@@ -27,7 +27,7 @@
       </a>
       <div class="who">
         <% if (user && !isLocked) { %>
-        <a class="who-name" href="/account/password" title="Password and Face ID"><%= user.display_name %></a>
+        <a class="who-name" href="/people/<%= user.id %>" title="My profile"><%= user.display_name %></a>
         <form method="post" action="/logout" class="who-out"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Sign out</button></form>
         <% } %>
         <% if (user && !user.must_change_password && !isLocked) { var alertTotal = alerts.reduce(function (n, a) { return n + a[0]; }, 0) + badges.tasks; %>
@@ -54,6 +54,12 @@
     // The menu: a few plain links, then groups. Each entry is [permission or null, link, label, is-current, badge].
     var is = function (prefix) { return path === prefix || path.indexOf(prefix + '/') === 0; };
     var groups = [
+      { name: 'Community', items: [
+        ['', '/people', 'People', is('/people') || path === '/profile'],
+        ['forum.use', '/discussions', 'Discussions', is('/discussions'), badges.forum],
+        ['', '/daily', 'Daily question', is('/daily')],
+        ['', '/newsletters', 'Newsletters', is('/newsletters')]
+      ] },
       { name: 'Parts', items: [
         ['parts.submit', '/parts?action=take', 'Take parts', false],
         ['parts.submit', '/parts?action=return', 'Return parts', false],
@@ -98,7 +104,7 @@
       ] }
     ].map(function (g) {
       // Keep what this person may use; drop dividers left at an edge or doubled up.
-      var kept = g.items.filter(function (it) { return it === 'divider' || can(it[0]); });
+      var kept = g.items.filter(function (it) { return it === 'divider' || !it[0] || can(it[0]); });
       kept = kept.filter(function (it, i) { return it !== 'divider' || (i > 0 && i < kept.length - 1 && kept[i - 1] !== 'divider' && kept.slice(i + 1).some(function (x) { return x !== 'divider'; }) && kept.slice(0, i).some(function (x) { return x !== 'divider'; })); });
       var links = kept.filter(function (it) { return it !== 'divider'; });
       return { name: g.name, items: kept, links: links,
@@ -110,7 +116,6 @@
     <nav class="nav" aria-label="Main">
       <a href="/" <%- path === '/' ? 'aria-current="page"' : '' %>>Home</a>
       <a href="/notices" <%- path === '/notices' ? 'aria-current="page"' : '' %>>Announcements<% if (badges.notices) { %> <span class="badge" title="Unread"><%= badges.notices %></span><% } %></a>
-      <% if (can('forum.use')) { %><a href="/discussions" <%- path.startsWith('/discussions') ? 'aria-current="page"' : '' %>>Discussions<% if (badges.forum) { %> <span class="badge" title="New replies to threads you follow"><%= badges.forum %></span><% } %></a><% } %>
       <a href="/tasks" <%- path === '/tasks' ? 'aria-current="page"' : '' %>>Tasks<% if (badges.tasks) { %> <span class="badge" title="Tasks to do"><%= badges.tasks %></span><% } %></a>
       <a href="/my" <%- path === '/my' ? 'aria-current="page"' : '' %>>My activity<% if (badges.updates) { %> <span class="badge" title="Updates you have not seen"><%= badges.updates %></span><% } %></a>
       <span class="nav-sep" aria-hidden="true"></span>
@@ -133,6 +138,7 @@
       </button>
       <div class="nav-account">
         <span class="nav-sep" aria-hidden="true"></span>
+        <a href="/profile">My profile</a>
         <a href="/settings/notifications">Notification settings</a>
         <a href="/account/password">Password and Face ID<span class="hint-light"><%= user.display_name %></span></a>
         <form method="post" action="/logout"><input type="hidden" name="_csrf" value="<%= csrf %>"><button type="submit">Sign out</button></form>

@@ -1,0 +1,73 @@
+<%- include('partials/header') %>
+<h1>Daily question</h1>
+<p class="lede">One question a day, just for fun. Answer to see what everyone else picked.</p>
+<%- include('partials/errors') %>
+<% if (today) { %>
+<div class="card daily" id="daily"><p class="eyebrow">Today</p><%- include('partials/daily_card', { d: today, back: '' }) %></div>
+<% } else { %><p class="card empty">No question today. Suggest one below.</p><% } %>
+
+<h2 id="suggest">Suggest a question</h2>
+<form method="post" action="/daily/suggest" class="card stack">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Question <span class="hint">Keep it light and friendly. For example: Would you rather…</span>
+    <input name="prompt" value="<%= !locals.adding ? values.prompt || '' : '' %>" maxlength="140" required autocomplete="off"></label>
+  <div class="two"><label>First choice <input name="a" value="<%= !locals.adding ? values.a || '' : '' %>" maxlength="80" required autocomplete="off"></label>
+  <label>Second choice <input name="b" value="<%= !locals.adding ? values.b || '' : '' %>" maxlength="80" required autocomplete="off"></label></div>
+  <div class="two"><label>Third choice <span class="hint">Optional</span><input name="c" value="<%= !locals.adding ? values.c || '' : '' %>" maxlength="80" autocomplete="off"></label>
+  <label>Fourth choice <span class="hint">Optional</span><input name="d" value="<%= !locals.adding ? values.d || '' : '' %>" maxlength="80" autocomplete="off"></label></div>
+  <button class="btn primary" type="submit">Send suggestion</button>
+</form>
+<% if (mine.length) { %>
+<ul class="records">
+  <% mine.forEach(function (q) { %><li class="card"><div class="rec-head"><span class="status s-<%= q.status === 'active' ? 'fulfilled' : q.status === 'rejected' ? 'declined' : 'new' %>"><%= q.used_on ? 'Asked ' + fmtDate(q.used_on) : q.status === 'active' ? 'Approved, coming up' : q.status === 'rejected' ? 'Not used' : 'Waiting for approval' %></span><strong><%= q.prompt %></strong></div><p class="meta"><%= [q.a, q.b, q.c, q.d].filter(Boolean).join(' / ') %></p></li><% }) %>
+</ul>
+<% } %>
+
+<% if (manage) { %>
+<h2 id="manage">Run the daily question</h2>
+<p class="meta"><%= waiting %> <%= waiting === 1 ? 'question is' : 'questions are' %> waiting their turn. Approved suggestions and ones you add come up before the built-in list.</p>
+<% if (pending.length) { %>
+<h3>Suggestions to approve</h3>
+<ul class="records">
+  <% pending.forEach(function (q) { %>
+  <li class="card"><div class="rec-head"><strong><%= q.prompt %></strong><time><%= q.by_name || 'Someone' %></time></div><p class="meta"><%= [q.a, q.b, q.c, q.d].filter(Boolean).join(' / ') %></p>
+    <div class="filter-actions">
+      <form method="post" action="/admin/daily/<%= q.id %>/approve"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn primary small" type="submit">Approve</button></form>
+      <form method="post" action="/admin/daily/<%= q.id %>/reject"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn small" type="submit">Decline</button></form>
+    </div></li>
+  <% }) %>
+</ul>
+<% } %>
+<h3>Add a question</h3>
+<form method="post" action="/admin/daily" class="card stack">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Question <input name="prompt" value="<%= locals.adding ? values.prompt || '' : '' %>" maxlength="140" required autocomplete="off"></label>
+  <div class="two"><label>First choice <input name="a" value="<%= locals.adding ? values.a || '' : '' %>" maxlength="80" required autocomplete="off"></label>
+  <label>Second choice <input name="b" value="<%= locals.adding ? values.b || '' : '' %>" maxlength="80" required autocomplete="off"></label></div>
+  <div class="two"><label>Third choice <span class="hint">Optional</span><input name="c" value="<%= locals.adding ? values.c || '' : '' %>" maxlength="80" autocomplete="off"></label>
+  <label>Fourth choice <span class="hint">Optional</span><input name="d" value="<%= locals.adding ? values.d || '' : '' %>" maxlength="80" autocomplete="off"></label></div>
+  <label>Ask it on <span class="hint">Optional. Leave empty to let it come up on its own.</span><input type="date" name="scheduled_on" value="<%= locals.adding ? values.scheduled_on || '' : '' %>"></label>
+  <button class="btn primary" type="submit">Add question</button>
+</form>
+<% if (upcoming.length) { %>
+<h3>Coming up</h3>
+<ul class="records">
+  <% upcoming.forEach(function (q) { %>
+  <li class="card"><div class="rec-head"><% if (q.scheduled_on) { %><span class="tag request"><%= fmtDate(q.scheduled_on) %></span><% } %><strong><%= q.prompt %></strong></div><p class="meta"><%= [q.a, q.b, q.c, q.d].filter(Boolean).join(' / ') %></p>
+    <form method="post" action="/admin/daily/<%= q.id %>/delete" data-confirm="Remove this question?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Remove</button></form></li>
+  <% }) %>
+</ul>
+<% } %>
+<% } %>
+
+<% if (past.length) { %>
+<h2>Earlier questions</h2>
+<% past.forEach(function (p) { %>
+<div class="card daily past"><p class="eyebrow"><%= fmtDate(p.q.used_on) %></p><p class="daily-q"><%= p.q.prompt %></p>
+  <ul class="daily-results">
+    <% p.options.forEach(function (o) { %><li class="<%= o.i === p.mine ? 'mine' : '' %>"><div class="daily-line"><strong><%= o.text %></strong><span><%= o.percent %>%</span></div><div class="daily-bar" aria-hidden="true"><span style="width: <%= o.percent %>%"></span></div>
+      <p class="daily-who"><% if (!o.people.length) { %>Nobody<% } %><% o.people.slice(0, 12).forEach(function (x, i) { %><%= i ? ', ' : '' %><a href="/people/<%= x.id %>"><%= x.id === user.id ? 'You' : x.display_name %></a><% }) %><% if (o.people.length > 12) { %> and <%= o.people.length - 12 %> more<% } %></p></li><% }) %>
+  </ul></div>
+<% }) %>
+<% } %>
+<%- include('partials/footer') %>
