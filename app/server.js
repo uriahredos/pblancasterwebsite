@@ -28,4 +28,4 @@ mail.startComplaintDigest();
 require('./backup').startNightlyBackups();
 require('./digest').start();
 require('./certs').start();
-app.listen(config.port, () => console.log(`Pye-Barker Lancaster Branch portal listening on port ${config.port}`));
+app.listen(config.port, () => console.log(`Pye-Barker portal listening on port ${config.port}`));

@@ -507,7 +507,7 @@ router.post('/admin/users/:id/edit', requirePerm('users.manage'), (req, res) => 
       db.prepare('UPDATE users SET branch_id = ? WHERE id = ?').run(moveTo.id, target.id);
       db.prepare('DELETE FROM user_managers WHERE manager_id = ? OR user_id = ?').run(target.id, target.id);
       target.branch_id = moveTo.id;
-      changes.push(`moved to ${moveTo.name} branch`);
+      changes.push(`moved to ${moveTo.name} office`);
     }
     if (changes.length) activity.log(req.user, 'Person edited', `${values.display_name}: ${changes.join(', ')}`);
     const newProfile = profileId ? db.prepare('SELECT scope FROM profiles WHERE id = ?').get(profileId) : null;

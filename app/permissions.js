@@ -46,7 +46,7 @@ const GROUPS = [
     ['digest.weekly', 'Receive the weekly parts summary email (needs an email address on their account)'],
   ] },
   { title: 'Sensitive', items: [
-    ['branches.all', 'See and manage every branch, add branches and move people between them (without this, a person sees only their own branch)'],
+    ['branches.all', 'See and manage every office, add offices and move people between them (without this, a person sees only their own office\'s parts, trucks, tasks and training)'],
     ['complaints.review', 'Read and answer anonymous complaints'],
     ['backups', 'Download backups (a backup contains everything, including complaints)'],
     ['records.delete', 'Permanently delete parts entries, training requests, inspections and (with complaint access) complaints'],

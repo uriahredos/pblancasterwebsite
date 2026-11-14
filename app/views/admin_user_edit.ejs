@@ -19,7 +19,7 @@
   </label>
 
   <% if (branches.length > 1) { %>
-  <label>Branch <span class="hint">Moving someone to another branch takes them out of any manager's team.</span>
+  <label>Office <span class="hint">Moving someone to another office takes them out of any manager's team.</span>
     <select name="branch_id"><% branches.forEach(function (b) { %><option value="<%= b.id %>" <%= b.id === target.branch_id ? 'selected' : '' %>><%= b.name %></option><% }) %></select>
   </label>
   <% } %>

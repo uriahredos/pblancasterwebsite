@@ -97,7 +97,7 @@
         <li>
           <a class="hire" href="/people/<%= w.user_id %>">
             <%- include('partials/avatar', { who: { id: w.user_id, display_name: w.display_name, photo_path: w.photo_path }, size: 'lg' }) %>
-            <span class="person-text"><strong><%= w.display_name %></strong><span class="meta"><%= [w.job_title, w.branch ? w.branch + ' branch' : ''].filter(Boolean).join(' · ') || 'New to the team' %></span></span>
+            <span class="person-text"><strong><%= w.display_name %></strong><span class="meta"><%= [w.job_title, w.branch ? w.branch + ' office' : ''].filter(Boolean).join(' · ') || 'New to the team' %></span></span>
           </a>
           <% if (w.intro) { %><p class="hire-intro"><%= w.intro %></p><% } %>
           <div class="hire-foot">
@@ -157,7 +157,7 @@
           <h3><%= issue.title %></h3>
           <% if (issue.highlightList.length) { %>
           <ul class="highlights"><% issue.highlightList.slice(0, 4).forEach(function (h) { %><li><%= h %></li><% }) %></ul>
-          <% } else { %><p class="meta">Birthdays, anniversaries, branch news and this month's spotlight.</p><% } %>
+          <% } else { %><p class="meta">Birthdays, anniversaries, office news and this month's spotlight.</p><% } %>
           <a class="btn primary" href="/newsletters/<%= issue.id %>">Read this issue</a>
         </div>
       </div>
@@ -241,7 +241,7 @@
         <li class="<%= o.today ? 'today' : '' %>">
           <a href="/people/<%= o.id %>"><%- include('partials/avatar', { who: o }) %></a>
           <span class="person-text"><strong><%= o.kind === 'birthday' ? '🎂' : '🎉' %> <a href="/people/<%= o.id %>"><%= o.mine ? 'You' : o.display_name %></a></strong>
-            <span class="meta"><%= o.text %> · <%= o.when %><%= o.wishes ? ' · ' + o.wishes + (o.wishes === 1 ? ' wish' : ' wishes') : '' %></span></span>
+            <span class="meta"><%= o.text %> · <%= o.when %><%= o.branch_id !== user.branch_id && o.branch ? ' · ' + o.branch : '' %><%= o.wishes ? ' · ' + o.wishes + (o.wishes === 1 ? ' wish' : ' wishes') : '' %></span></span>
           <% if (!o.mine && !o.wished) { %><form method="post" action="/celebrate"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="user_id" value="<%= o.id %>"><input type="hidden" name="kind" value="<%= o.kind %>"><button class="btn small" type="submit"><%= o.kind === 'birthday' ? 'Happy birthday' : 'Congrats' %></button></form>
           <% } else if (o.wished) { %><span class="meta">Sent ✓</span><% } %>
         </li>

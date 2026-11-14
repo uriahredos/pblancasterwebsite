@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
 <meta name="csrf" content="<%= typeof csrf !== 'undefined' ? csrf : '' %>">
-<title><%= title %> · Pye-Barker <%= typeof branchName !== 'undefined' && branchName ? branchName + ' Branch' : 'Branch Portal' %></title>
+<title><%= title %> · Pye-Barker <%= typeof branchName !== 'undefined' && branchName ? branchName + ' Office' : 'Employee Portal' %></title>
 <meta name="theme-color" content="#09324f">
 <script src="/theme.js?v=<%= assetV %>"></script>
 <link rel="manifest" href="/manifest.webmanifest">
@@ -23,16 +23,16 @@
     <div class="banner-in">
       <a class="brand" href="/">
         <span class="logo-plate"><img src="/logo.png" alt="Pye-Barker Fire &amp; Safety" width="640" height="168"></span>
-        <span class="branch"><%= typeof branchName !== 'undefined' && branchName ? branchName + ' Branch' : 'Branch Portal' %></span>
+        <span class="branch"><%= typeof branchName !== 'undefined' && branchName ? branchName + ' Office' : 'Employee Portal' %></span>
       </a>
       <div class="who">
         <% if (user && !isLocked && branchChoices.length) { %>
       <form method="post" action="/branch/view" class="nav-branch in-banner">
         <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="back" value="<%= path %>">
-        <label><span class="sr">Branch you are looking at</span>
+        <label><span class="sr">Office you are looking at</span>
           <select name="branch" data-autosubmit>
             <% branchChoices.forEach(function (b) { %><option value="<%= b.id %>" <%= user.viewBranch === b.id ? 'selected' : '' %>><%= b.name %></option><% }) %>
-            <option value="all" <%= user.viewBranch === null ? 'selected' : '' %>>All branches</option>
+            <option value="all" <%= user.viewBranch === null ? 'selected' : '' %>>All offices</option>
           </select></label>
         <noscript><button type="submit">Go</button></noscript>
       </form>
@@ -73,7 +73,7 @@
         ['forum.use', '/discussions', 'Discussions', is('/discussions'), badges.forum],
         ['', '/daily', 'Daily question', is('/daily')],
         ['', '/newsletters', 'Newsletters', is('/newsletters')],
-        ['', '/branches', 'Branches', is('/branches')]
+        ['', '/branches', 'Offices', is('/branches')]
       ] },
       { name: 'Parts', items: [
         ['parts.submit', '/parts?action=take', 'Take parts', false],
@@ -114,7 +114,7 @@
       { name: 'Setup', items: [
         ['users.manage', '/poster', 'QR code sign', is('/poster')],
         ['activity.view', '/admin/activity', 'Activity log', is('/admin/activity')],
-        [user.allBranches ? '' : 'no.such.permission', '/admin/branches', 'Branches', is('/admin/branches')],
+        [user.allBranches ? '' : 'no.such.permission', '/admin/branches', 'Offices', is('/admin/branches')],
         [user.allBranches ? 'backups' : 'no.such.permission', '/admin/backups', 'Backups', is('/admin/backups')],
         [user.scope === 'all' ? 'users.manage' : 'no.such.permission', '/admin/import', 'Import', is('/admin/import')]
       ] }
@@ -150,10 +150,10 @@
       <% if (branchChoices.length) { %>
       <form method="post" action="/branch/view" class="nav-branch in-menu">
         <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="back" value="<%= path %>">
-        <label><span class="sr">Branch you are looking at</span>
+        <label><span class="sr">Office you are looking at</span>
           <select name="branch" data-autosubmit>
             <% branchChoices.forEach(function (b) { %><option value="<%= b.id %>" <%= user.viewBranch === b.id ? 'selected' : '' %>><%= b.name %></option><% }) %>
-            <option value="all" <%= user.viewBranch === null ? 'selected' : '' %>>All branches</option>
+            <option value="all" <%= user.viewBranch === null ? 'selected' : '' %>>All offices</option>
           </select></label>
         <noscript><button type="submit">Go</button></noscript>
       </form>

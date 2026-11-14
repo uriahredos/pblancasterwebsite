@@ -11,7 +11,7 @@
       <div class="event-text">
         <strong><%= e.title %></strong>
         <span class="meta"><%= e.weekday %>, <%= e.month %> <%= e.day %><%= e.time ? ' at ' + e.time : '' %><%= e.location ? ' · ' + e.location : '' %></span>
-        <span class="meta"><%= e.when %><%= e.when ? ' · ' : '' %><%= e.branch ? e.branch + ' branch' : 'Every branch' %> · posted by <%= e.by_name %></span>
+        <span class="meta"><%= e.when %><%= e.when ? ' · ' : '' %><%= e.branch ? e.branch + ' office' : 'Whole company' %> · posted by <%= e.by_name %></span>
       </div>
     </div>
     <% if (e.details) { %><p class="pre"><%= e.details %></p><% } %>
@@ -41,7 +41,7 @@
   <label>Where <span class="hint">Optional</span><input name="location" value="<%= values.location || '' %>" maxlength="120" autocomplete="off"></label>
   <label>Details <span class="hint">Optional</span><textarea name="details" rows="3" maxlength="2000"><%= values.details || '' %></textarea></label>
   <label class="choice"><input type="checkbox" name="potluck" value="1" <%= values.potluck ? 'checked' : '' %>> Ask people what they are bringing (for a potluck)</label>
-  <% if (canReachAll) { %><label>Who is it for <select name="reach"><option value="branch">My branch</option><option value="everyone" <%= values.reach === 'everyone' ? 'selected' : '' %>>Every branch</option></select></label><% } %>
+  <% if (canReachAll) { %><label>Hosted by <select name="reach"><option value="branch">My office</option><option value="everyone" <%= values.reach === 'everyone' ? 'selected' : '' %>>The whole company</option></select></label><% } %>
   <button class="btn primary" type="submit">Post event</button>
 </form>
 <% } %>

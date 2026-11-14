@@ -2642,7 +2642,7 @@ test('home page: tasks first, then the form buttons, then announcements; branch 
   db.prepare('UPDATE parts_submissions SET needed_by = ? WHERE id = ?').run(ymdFromNow(-3), reqId);
   const oh = await flat(owner);
   const branch = /<section class="panel branch-panel"[\s\S]*?<\/section>/.exec(oh)[0];
-  assert.match(branch, /Branch at a glance/);
+  assert.match(branch, /Office at a glance/);
   assert.ok(rising(order(oh, 'class="dash-hello"', 'class="panel branch-panel"', 'class="dash"')));
   const tile = (html, label) => { const m = new RegExp(`<a href="([^"]+)" class="([a-z]*)"><span class="mini-num">(\\d+)</span><span class="mini-label">${label}</span><span class="mini-sub">([^<]*)`).exec(html); return m ? { url: m[1], level: m[2], n: Number(m[3]), sub: m[4] } : null; };
   for (const label of ['Parts requests', 'Truck problems', 'Low stock', 'Overdue tasks', 'Certifications', 'Audit']) assert.ok(tile(branch, label), label);
@@ -2934,7 +2934,7 @@ test('profiles: people fill in their own, others find them by name, job or skill
   assert.equal(row.skills, 'Viking, backflow, fire pumps');                              // tidied, repeats dropped
   assert.match(row.photo_path, /^[0-9a-f]{32}\.png$/);
   const page = (await quinn.get(`/people/${pid}`)).text;
-  assert.match(page, /Sprinkler Fitter · <a href="\/branches\/\d+">Lancaster branch<\/a>/); assert.match(page, /\d+ years with us · started 2\/3\/2020/);
+  assert.match(page, /Sprinkler Fitter · <a href="\/branches\/\d+">Lancaster office<\/a>/); assert.match(page, /\d+ years with us · started 2\/3\/2020/);
   assert.match(page, /From Lititz\.\n&lt;b&gt;Likes&lt;\/b&gt; fishing\./);                 // typed text is shown as text, never run as code
   assert.match(page, /<a class="skill" href="\/people\?q=backflow">backflow<\/a>/);
   assert.match(page, new RegExp(`src="/people/photo/${pid}\\?v=`));
@@ -2989,7 +2989,7 @@ test('new hires: announced on everyone\'s home page for two weeks, and people sa
 
   const home = (await t1.get('/')).text.replace(/\s+/g, ' ');
   const panel = /<section class="panel p-welcome"[\s\S]*?<\/section>/.exec(home)[0];
-  assert.match(panel, /Nora Newhire<\/strong><span class="meta">Apprentice · Lancaster branch/); assert.match(panel, /Nora is joining the alarm team\./);
+  assert.match(panel, /Nora Newhire<\/strong><span class="meta">Apprentice · Lancaster office/); assert.match(panel, /Nora is joining the alarm team\./);
   assert.match(panel, /Be the first to say welcome/); assert.match(panel, /Say welcome<\/button>/);
 
   // A wave from the home page, then a message from her profile. One note per person: the message updates it.
@@ -3139,11 +3139,11 @@ test('branches: each branch sees only its own parts, stock, trucks, tasks, train
   assert.equal((await tech1.post('/admin/branches', { name: 'Sneaky' }, { page: '/' })).status, 403);
   await owner.post('/admin/branches', { name: 'Harrisburg Branch' }, { page: '/admin/branches' });
   const hbg = db.prepare("SELECT id FROM branches WHERE name = 'Harrisburg'").get().id;
-  assert.match((await owner.post('/admin/branches', { name: 'harrisburg' }, { page: '/admin/branches' })).text, /already a branch with that name/);
+  assert.match((await owner.post('/admin/branches', { name: 'harrisburg' }, { page: '/admin/branches' })).text, /already an office with that name/);
   assert.equal(db.prepare('SELECT COUNT(*) n FROM inspection_items WHERE branch_id = ? AND active = 1').get(hbg).n, db.prepare('SELECT COUNT(*) n FROM inspection_items WHERE branch_id = ? AND active = 1').get(lanc).n);
 
   // The branch box: looking at Harrisburg, a new person joins Harrisburg.
-  assert.match((await owner.get('/')).text, /<select name="branch" data-autosubmit>[\s\S]*Harrisburg[\s\S]*All branches/);
+  assert.match((await owner.get('/')).text, /<select name="branch" data-autosubmit>[\s\S]*Harrisburg[\s\S]*All offices/);
   assert.doesNotMatch((await tech1.get('/')).text, /name="branch" data-autosubmit/);
   assert.equal((await tech1.post('/branch/view', { branch: String(hbg) }, { page: '/' })).status, 403);
   await owner.post('/branch/view', { branch: String(hbg), back: '/admin/users' }, { page: '/' });
@@ -3158,8 +3158,8 @@ test('branches: each branch sees only its own parts, stock, trucks, tasks, train
   await owner.post('/branch/view', { branch: String(lanc) }, { page: '/' });
 
   const hadmin = await loggedIn('hbg.admin'); const htech = await loggedIn('hbg.tech');
-  assert.match((await htech.get('/')).text, /<span class="branch">Harrisburg Branch<\/span>/);
-  assert.match((await tech1.get('/')).text, /<span class="branch">Lancaster Branch<\/span>/);
+  assert.match((await htech.get('/')).text, /<span class="branch">Harrisburg Office<\/span>/);
+  assert.match((await tech1.get('/')).text, /<span class="branch">Lancaster Office<\/span>/);
 
   // --- Lancaster does some work ---
   await tech1.post('/parts', [['action', 'request'], ['part_name', 'LANC-ONLY-PART'], ['quantity', '2'], ['source', 'van'], ['needed_by', '2031-01-01']], { multipart: true });
@@ -3219,7 +3219,7 @@ test('branches: each branch sees only its own parts, stock, trucks, tasks, train
   await htech.post('/parts', [['action', 'take'], ['part_name', 'BR-STOCK'], ['quantity', '2'], ['source', 'van']], { multipart: true });
   assert.deepEqual([on(lanc), on(hbg)], [10, 1]);
   assert.match((await hadmin.get('/admin/stock')).text, /BR-STOCK/);
-  assert.match((await hadmin.get('/')).text.replace(/\s+/g, ' '), /Branch at a glance/);
+  assert.match((await hadmin.get('/')).text.replace(/\s+/g, ' '), /Office at a glance/);
 
   // The checklist is each branch's own.
   await hadmin.post('/admin/inspections/checklist', { label: 'HBG-ONLY check' }, { page: '/admin/inspections/checklist' });
@@ -3239,7 +3239,7 @@ test('branches: each branch sees only its own parts, stock, trucks, tasks, train
   await owner.post('/branch/view', { branch: 'all' }, { page: '/' });
   const both = (await owner.get('/admin/complaints')).text;
   assert.match(both, /HBG-ONLY complaint/); assert.match(both, /LANC-ONLY complaint/);
-  assert.match((await owner.get('/')).text, /All branches at a glance/);
+  assert.match((await owner.get('/')).text, /All offices at a glance/);
   assert.match((await owner.get('/admin/users')).text, /Holly Harrisburg[\s\S]*<span class="pill">Harrisburg<\/span>|<span class="pill">Harrisburg<\/span>/);
   await owner.post('/branch/view', { branch: String(lanc) }, { page: '/' });
 
@@ -3305,8 +3305,8 @@ test('birthdays and anniversaries: this week on the home page for the branch, wi
   const viewer = { id: userId('tech1'), branch_id: 1 };
   const week = social.thisWeek(viewer, today).filter((o) => ['Bea Birthday', 'Andy Anniversary', 'Fran Faraway'].includes(o.display_name));
   assert.deepEqual(week.map((o) => [o.display_name, o.kind, o.when, o.text]), [['Bea Birthday', 'birthday', 'Today', 'Birthday'], ['Andy Anniversary', 'anniversary', 'Mon, Nov 16', '5 years with us']]);
-  // Someone in another branch does not see them.
-  assert.equal(social.thisWeek({ id: 0, branch_id: 999 }, today).length, 0);
+  // Every office sees them; someone from another office is shown which office each person is in.
+  assert.ok(social.thisWeek({ id: 0, branch_id: 999 }, today).some((o) => o.display_name === 'Bea Birthday' && o.branch === 'Lancaster'));
 
   // The profile form: a month and a day, never a year; both or neither.
   const bea = await loggedIn('bday1');
@@ -3357,14 +3357,16 @@ test('events: posted by those allowed, everyone signs up, potlucks collect what 
   await t2.post(`/events/${eid}/signup`, { out: '1' }, { page: '/events' });
   assert.equal(db.prepare('SELECT COUNT(*) n FROM event_signups WHERE event_id = ?').get(eid).n, 1);
 
-  // Another branch does not see a branch's event, but does see one for every branch.
+  // Another office sees and can join every event.
   const other = db.prepare("INSERT INTO branches (name, created_at) VALUES ('Eventville', ?)").run(new Date().toISOString()).lastInsertRowid;
   makeUser('ev1', 'Eve Elsewhere'); db.prepare('UPDATE users SET branch_id = ? WHERE username = ?').run(other, 'ev1');
   await owner.post('/events', { title: 'Company picnic', event_date: ymdFromNow(30), reach: 'everyone' }, { page: '/events' });
   const eve = await loggedIn('ev1');
   const hers = (await eve.get('/events')).text;
-  assert.match(hers, /Company picnic/); assert.doesNotMatch(hers, /Chili|Toy drive/);
-  assert.equal((await eve.post(`/events/${eid}/signup`, {}, { page: '/events' })).status, 404);
+  assert.match(hers, /Company picnic[\s\S]*Whole company/); assert.match(hers, /Chili[\s\S]*Lancaster office/);   // every office sees every event
+  assert.equal((await eve.post(`/events/${eid}/signup`, {}, { page: '/events' })).status, 302);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM event_signups WHERE event_id = ? AND user_id = ?').get(eid, userId('ev1')).n, 1);
+  assert.equal((await eve.post(`/events/${eid}/delete`, {}, { page: '/events' })).status, 403);                 // but cannot remove another office's
 
   // Only the organiser (or someone who posts events for that branch) removes one.
   assert.equal((await t1.post(`/events/${eid}/delete`, {}, { page: '/events' })).status, 403);
@@ -3398,7 +3400,7 @@ test('photo wall and branch pages: photos posted and liked, a branch page with i
   const list = await t1.get('/branches');                                               // one branch goes straight to it; several are listed
   assert.ok(list.location === '/branches/1' || /href="\/branches\/1"/.test(list.text));
   let page = (await t1.get('/branches/1')).text.replace(/\s+/g, ' ');
-  assert.match(page, /Lancaster branch<\/h1>/); assert.match(page, /Service<\/h3>[\s\S]*Terry Tech<\/strong><span class="meta">Lead Tech/);
+  assert.match(page, /Lancaster office<\/h1>/); assert.match(page, /Service<\/h3>[\s\S]*Terry Tech<\/strong><span class="meta">Lead Tech/);
   assert.match(page, /Branch page shout-out/); assert.match(page, /\/wall\/photo\//); assert.doesNotMatch(page, /Edit this page/);
   assert.equal((await t1.post('/branches/1', [['about', 'hacked']], { multipart: true, page: '/branches/1' })).status, 403);
   assert.match((await owner.post('/branches/1', [['phone', 'nope']], { multipart: true, page: '/branches/1?edit=1' })).text, /phone number does not look right/);
@@ -3406,7 +3408,7 @@ test('photo wall and branch pages: photos posted and liked, a branch page with i
   page = (await t1.get('/branches/1')).text;
   assert.match(page, /1 Main St, Lancaster/); assert.match(page, /href="tel:7175550199"/); assert.match(page, /Serving the &lt;county&gt;\./); assert.match(page, /class="branch-hero" src="\/branches\/photo\/1\?v=/);
   assert.equal((await t1.get('/branches/photo/1')).headers.get('content-type'), 'image/png');
-  assert.match((await t1.get(`/people/${userId('tech1')}`)).text, /<a href="\/branches\/1">Lancaster branch<\/a>/);
+  assert.match((await t1.get(`/people/${userId('tech1')}`)).text, /<a href="\/branches\/1">Lancaster office<\/a>/);
   assert.equal((await t1.get('/branches/999')).status, 404);
 
   // The owner removes someone else's photo (moderator); the poster removes their own. The files go too.

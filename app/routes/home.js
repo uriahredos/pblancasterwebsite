@@ -150,7 +150,7 @@ router.get('/', requireLogin, (req, res) => {
     shouts: social.recentShoutouts(me, 3), thisWeek: social.thisWeek(req.user, today), wallPhotos: social.recentPhotos(me, 4),
     dailyCard: require('../daily').card(me), welcomes: require('./community').recentWelcomes(me),
     profileEmpty: !req.user.photo_path && !req.user.about && !req.user.skills,
-    title: 'Home', wide: true, hasPasskey: db.prepare('SELECT 1 FROM passkeys WHERE user_id = ?').get(me) !== undefined, branch, branchTitle: req.user.scope === 'team' ? 'Your team at a glance' : ids ? 'Branch at a glance' : 'All branches at a glance', critical, notices, board, replies, talk, myCerts, issue: issues[0] || null, pastIssues: issues.slice(1), upcoming, status, dateLine,
+    title: 'Home', wide: true, hasPasskey: db.prepare('SELECT 1 FROM passkeys WHERE user_id = ?').get(me) !== undefined, branch, branchTitle: req.user.scope === 'team' ? 'Your team at a glance' : ids ? 'Office at a glance' : 'All offices at a glance', critical, notices, board, replies, talk, myCerts, issue: issues[0] || null, pastIssues: issues.slice(1), upcoming, status, dateLine,
     categories: require('./announcements').CATEGORIES,
   });
 });

@@ -4,7 +4,7 @@
   <%- include('partials/avatar', { who: p, size: 'xl' }) %>
   <div class="person-text">
     <h1><%= p.display_name %></h1>
-    <p class="meta"><%= [p.job_title, p.department].filter(Boolean).join(' · ') %><% if (p.branch) { %><%= p.job_title || p.department ? ' · ' : '' %><a href="/branches/<%= p.branch_id %>"><%= p.branch %> branch</a><% } %></p>
+    <p class="meta"><%= [p.job_title, p.department].filter(Boolean).join(' · ') %><% if (p.branch) { %><%= p.job_title || p.department ? ' · ' : '' %><a href="/branches/<%= p.branch_id %>"><%= p.branch %> office</a><% } %></p>
     <% if (p.tenure) { %><p class="meta"><%= p.tenure %><%= p.started_on ? ' · started ' + fmtDate(p.started_on) : '' %></p><% } %>
     <% if (bday) { %><p class="meta">🎂 <%= bday %></p><% } %>
     <% if (me) { %><p><a class="btn small" href="/profile">Edit my profile</a></p><% } else { %><p><a class="btn small" href="/shoutouts?to=<%= p.id %>#give">👏 Give a shout-out</a></p><% } %>

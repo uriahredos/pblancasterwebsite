@@ -4,7 +4,7 @@
 <form method="get" action="/people" class="filters">
   <label class="grow">Search <input name="q" value="<%= q %>" maxlength="60" placeholder="A name, a job, or a skill such as EST3" autocomplete="off"></label>
   <% if (branches.length > 1) { %>
-  <label>Branch <select name="branch"><option value="">All branches</option><% branches.forEach(function (b) { %><option value="<%= b.id %>" <%= branch === b.id ? 'selected' : '' %>><%= b.name %></option><% }) %></select></label>
+  <label>Office <select name="branch"><option value="">All offices</option><% branches.forEach(function (b) { %><option value="<%= b.id %>" <%= branch === b.id ? 'selected' : '' %>><%= b.name %></option><% }) %></select></label>
   <% } %>
   <% if (departments.length) { %>
   <label>Department <select name="dept"><option value="">All departments</option><% departments.forEach(function (d) { %><option value="<%= d %>" <%= dept === d ? 'selected' : '' %>><%= d %></option><% }) %></select></label>

@@ -9,7 +9,7 @@
   <% rows.forEach(function (a) { %>
   <tr class="<%= a.expired ? 'off' : '' %>">
     <td class="nowrap"><%= fmtDateTime(a.created_at) %></td><td><a href="/admin/announcements/<%= a.id %>"><strong><%= a.title %></strong></a><% if (a.category && a.category !== 'general') { %> <span class="tag cat-<%= a.category %>"><%= categories[a.category] %></span><% } %><% if (a.critical) { %> <span class="tag crit">Critical</span><% } %><% if (a.pinned) { %> <span class="tag pin">Pinned</span><% } %></td><td><%= a.author %></td>
-    <td><%= a.audience === 'team' ? 'Their people' : a.branch_id === null ? 'Every branch' : 'Everyone' %></td>
+    <td><%= a.audience === 'team' ? 'Their people' : a.branch_id === null ? 'Every office' : 'Everyone' %></td>
     <td><strong><%= a.read %> of <%= a.total %></strong></td>
     <td class="nowrap"><%= a.expires_on ? fmtDate(a.expires_on) + (a.expired ? ' (ended)' : '') : 'No end date' %></td>
     <td><a href="/admin/announcements/<%= a.id %>">Who has read it</a></td>
@@ -30,7 +30,7 @@
   </label>
   <% if (canReachAll) { %>
   <label>Who sees it
-    <select name="reach"><option value="branch">The branch I am looking at</option><option value="everyone" <%= values.reach === 'everyone' ? 'selected' : '' %>>Every branch</option></select>
+    <select name="reach"><option value="branch">The office I am looking at</option><option value="everyone" <%= values.reach === 'everyone' ? 'selected' : '' %>>Every office</option></select>
   </label>
   <% } %>
   <label class="choice"><input type="checkbox" name="critical" value="1" <%= values.critical ? 'checked' : '' %>> Critical: keep it at the very top of the home page, even after it is read, until the "show until" date or until you switch it off</label>

@@ -220,32 +220,32 @@ function branchPage(req, res, extra = {}) {
     `SELECT b.*, (SELECT COUNT(*) FROM users u WHERE u.branch_id = b.id AND u.active = 1) AS people,
             (SELECT COUNT(*) FROM users u WHERE u.branch_id = b.id AND u.active = 0) AS off
      FROM branches b ORDER BY b.name COLLATE NOCASE`).all();
-  res.status(extra.errors ? 400 : 200).render('admin_branches', { title: 'Branches', rows, errors: [], values: {}, ...extra });
+  res.status(extra.errors ? 400 : 200).render('admin_branches', { title: 'Offices', rows, errors: [], values: {}, ...extra });
 }
 router.get('/admin/branches', everyBranch, (req, res) => branchPage(req, res));
 
 router.post('/admin/branches', everyBranch, (req, res) => {
-  const name = clean(req.body.name, 60).replace(/\s+branch$/i, '');
+  const name = clean(req.body.name, 60).replace(/\s+(branch|office)$/i, '');
   const errors = [];
-  if (!name) errors.push('Give the branch a name, such as the town it is in.');
-  else if (db.prepare('SELECT 1 FROM branches WHERE name = ?').get(name)) errors.push('There is already a branch with that name.');
+  if (!name) errors.push('Give the office a name, such as the town it is in.');
+  else if (db.prepare('SELECT 1 FROM branches WHERE name = ?').get(name)) errors.push('There is already an office with that name.');
   if (errors.length) return branchPage(req, res, { errors, values: { name } });
   const id = db.prepare('INSERT INTO branches (name, created_at) VALUES (?, ?)').run(name, new Date().toISOString()).lastInsertRowid;
   require('../branches').setUp(id);
-  activity.log(req.user, 'Branch added', name);
-  flash(req, 'ok', `${name} branch added. Add its people under Users after choosing ${name} in the branch box.`);
+  activity.log(req.user, 'Office added', name);
+  flash(req, 'ok', `${name} office added. Add its people under Users after choosing ${name} in the office box.`);
   res.redirect('/admin/branches');
 });
 
 router.post('/admin/branches/:id', everyBranch, (req, res) => {
   const b = isId(req.params.id) ? db.prepare('SELECT * FROM branches WHERE id = ?').get(req.params.id) : null;
-  const name = clean(req.body.name, 60).replace(/\s+branch$/i, '');
+  const name = clean(req.body.name, 60).replace(/\s+(branch|office)$/i, '');
   if (!b) return res.redirect('/admin/branches');
   if (!name || db.prepare('SELECT 1 FROM branches WHERE name = ? AND id <> ?').get(name, b.id)) flash(req, 'err', 'That name is empty or already used.');
   else {
     db.prepare('UPDATE branches SET name = ? WHERE id = ?').run(name, b.id);
-    activity.log(req.user, 'Branch renamed', `${b.name} to ${name}`);
-    flash(req, 'ok', 'Branch renamed.');
+    activity.log(req.user, 'Office renamed', `${b.name} to ${name}`);
+    flash(req, 'ok', 'Office renamed.');
   }
   res.redirect('/admin/branches');
 });

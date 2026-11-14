@@ -1,7 +1,7 @@
 <%- include('partials/header') %>
-<p class="back"><a class="back-link" href="<%= many ? '/branches' : '/people' %>"><%= many ? 'Branches' : 'People' %></a></p>
+<p class="back"><a class="back-link" href="<%= many ? '/branches' : '/people' %>"><%= many ? 'Offices' : 'People' %></a></p>
 <% if (b.photo_path) { %><img class="branch-hero" src="/branches/photo/<%= b.id %>?v=<%= b.photo_path.slice(0, 8) %>" alt="The <%= b.name %> branch"><% } %>
-<div class="title-row"><h1><%= b.name %> branch</h1><% if (canEdit && !editing) { %><a class="btn small" href="/branches/<%= b.id %>?edit=1#edit">Edit this page</a><% } %></div>
+<div class="title-row"><h1><%= b.name %> office</h1><% if (canEdit && !editing) { %><a class="btn small" href="/branches/<%= b.id %>?edit=1#edit">Edit this page</a><% } %></div>
 <p class="meta"><%= people.length %> <%= people.length === 1 ? 'person' : 'people' %><%= b.address ? ' · ' + b.address : '' %><% if (b.phone) { %> · <a href="tel:<%= b.phone.replace(/[^0-9+]/g, '') %>"><%= b.phone %></a><% } %></p>
 <% if (b.about) { %><div class="card"><p class="pre"><%= b.about %></p></div><% } %>
 <%- include('partials/errors') %>
@@ -12,7 +12,7 @@
   <% if (b.photo_path) { %><label class="choice"><input type="checkbox" name="remove_photo" value="1"> Remove the photo</label><% } %>
   <label>Address <input name="address" value="<%= b.address || '' %>" maxlength="200" autocomplete="off"></label>
   <label>Main phone <input name="phone" type="tel" value="<%= b.phone || '' %>" maxlength="30" autocomplete="off"></label>
-  <label>About this branch <span class="hint">What it covers, what it is known for, anything visitors should know.</span><textarea name="about" rows="5" maxlength="1500"><%= b.about || '' %></textarea></label>
+  <label>About this office <span class="hint">What it covers, what it is known for, anything visitors should know.</span><textarea name="about" rows="5" maxlength="1500"><%= b.about || '' %></textarea></label>
   <div class="filter-actions"><button class="btn primary" type="submit">Save</button><a class="btn" href="/branches/<%= b.id %>">Cancel</a></div>
 </form>
 <script src="/shrink.js?v=<%= assetV %>" defer></script>
@@ -22,7 +22,7 @@
   <div class="dash-main">
     <section class="panel" aria-labelledby="who-h">
       <div class="panel-head"><h2 id="who-h">Who's who</h2><a href="/people?branch=<%= b.id %>">Search them</a></div>
-      <% if (!people.length) { %><p class="empty">Nobody has been added to this branch yet.</p><% } %>
+      <% if (!people.length) { %><p class="empty">Nobody has been added to this office yet.</p><% } %>
       <% groups.forEach(function (g) { %>
       <% if (groups.length > 1) { %><h3 class="group-h"><%= g.name %></h3><% } %>
       <ul class="roster">
@@ -40,7 +40,7 @@
     <% } %>
     <section class="panel" aria-labelledby="bsh-h">
       <div class="panel-head"><h2 id="bsh-h">Shout-outs</h2><a href="/shoutouts">All</a></div>
-      <% if (!shouts.length) { %><p class="empty">None yet for this branch.</p><% } %>
+      <% if (!shouts.length) { %><p class="empty">None yet for this office.</p><% } %>
       <ul class="shouts"><% shouts.forEach(function (s) { %><%- include('partials/shout', { s: s, back: '' }) %><% }) %></ul>
     </section>
     <% if (photos.length) { %>

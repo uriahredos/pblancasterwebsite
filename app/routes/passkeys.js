@@ -39,7 +39,7 @@ router.post('/passkey/register/options', auth.requireLogin, async (req, res, nex
     const mine = db.prepare('SELECT credential_id, transports FROM passkeys WHERE user_id = ?').all(req.user.id);
     if (mine.length >= MAX_PER_PERSON) return fail(res, 400, `You already have ${MAX_PER_PERSON} devices set up. Remove one first.`);
     const options = await generateRegistrationOptions({
-      rpName: 'Pye-Barker Lancaster Branch', rpID: site(req).rpID,
+      rpName: 'Pye-Barker Employee Portal', rpID: site(req).rpID,
       userName: req.user.username, userDisplayName: req.user.display_name, userID: Buffer.from(`user-${req.user.id}`),
       attestationType: 'none',
       excludeCredentials: mine.map((c) => ({ id: c.credential_id, transports: c.transports ? c.transports.split(',') : undefined })),

@@ -77,13 +77,14 @@ router.post('/shoutouts/:id/delete', requireLogin, (req, res) => {
 // ---- Birthdays and work anniversaries -------------------------------------------------
 
 /**
- * Birthdays and work anniversaries in this person's branch over the coming week (today first).
+ * Birthdays and work anniversaries across every office over the coming week (today first, own office first within a day).
  * Birthdays are a day and month only; anniversaries come from the start date, from one year on.
  */
 function thisWeek(user, today = localDate()) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(today, i));
   const year = Number(today.slice(0, 4));
-  const people = db.prepare(`SELECT u.id, u.display_name, u.photo_path, u.birthday, u.started_on FROM users u WHERE ${LISTED} AND u.branch_id = ? AND (u.birthday IS NOT NULL OR u.started_on IS NOT NULL)`).all(user.branch_id);
+  const people = db.prepare(`SELECT u.id, u.display_name, u.photo_path, u.birthday, u.started_on, u.branch_id, b.name AS branch FROM users u LEFT JOIN branches b ON b.id = u.branch_id WHERE ${LISTED} AND (u.birthday IS NOT NULL OR u.started_on IS NOT NULL)
+     ORDER BY (u.branch_id = ?) DESC, u.display_name COLLATE NOCASE`).all(user.branch_id);
   const out = [];
   days.forEach((ymd, offset) => {
     const md = ymd.slice(5);
@@ -96,7 +97,7 @@ function thisWeek(user, today = localDate()) {
   });
   const count = db.prepare('SELECT COUNT(*) AS n FROM celebrations c JOIN users x ON x.id = c.from_user WHERE c.user_id = ? AND c.kind = ? AND c.year = ? AND x.active = 1');
   const mine = db.prepare('SELECT 1 FROM celebrations WHERE user_id = ? AND kind = ? AND year = ? AND from_user = ?');
-  return out.map((o) => ({ ...o, wishes: count.get(o.id, o.kind, o.year).n, wished: Boolean(mine.get(o.id, o.kind, o.year, user.id)), mine: o.id === user.id })).filter(() => year);
+  return out.slice(0, 15).map((o) => ({ ...o, wishes: count.get(o.id, o.kind, o.year).n, wished: Boolean(mine.get(o.id, o.kind, o.year, user.id)), mine: o.id === user.id })).filter(() => year);
 }
 
 router.post('/celebrate', requireLogin, (req, res) => {
@@ -108,8 +109,8 @@ router.post('/celebrate', requireLogin, (req, res) => {
 
 // ---- Events ------------------------------------------------------------------------------
 
-// An event is for one branch, or for every branch.
-const FOR_BRANCH = '(e.branch_id IS NULL OR e.branch_id = @branch)';
+// Every office sees every event. An event is hosted by one office, or is for the whole company; @branch only puts your own office's first on the same day.
+const FOR_BRANCH = '(@branch IS NOT NULL)';
 function decorateEvent(e, me, today) {
   const d = new Date(`${e.event_date}T12:00:00Z`);
   const days = Math.round((d - new Date(`${today}T12:00:00Z`)) / 86400000);
@@ -119,7 +120,7 @@ function decorateEvent(e, me, today) {
 }
 const EVENT = `SELECT e.*, u.display_name AS by_name, b.name AS branch FROM events e JOIN users u ON u.id = e.created_by LEFT JOIN branches b ON b.id = e.branch_id`;
 function upcomingEvents(user, limit = 50, today = localDate()) {
-  return db.prepare(`${EVENT} WHERE ${FOR_BRANCH} AND e.event_date >= @today ORDER BY e.event_date, e.event_time, e.id LIMIT @limit`).all({ branch: user.branch_id, today, limit }).map((e) => decorateEvent(e, user.id, today));
+  return db.prepare(`${EVENT} WHERE ${FOR_BRANCH} AND e.event_date >= @today ORDER BY e.event_date, (e.branch_id = @branch) DESC, e.event_time, e.id LIMIT @limit`).all({ branch: user.branch_id, today, limit }).map((e) => decorateEvent(e, user.id, today));
 }
 const mayRun = (user, e) => e.created_by === user.id || (access.can(user, 'events.post') && (e.branch_id === null ? user.allBranches : e.branch_id === user.branch_id || user.allBranches));
 
@@ -238,7 +239,7 @@ router.post('/photos/:id/delete', requireLogin, (req, res) => {
 router.get('/branches', requireLogin, (req, res) => {
   const rows = db.prepare(`SELECT b.*, (SELECT COUNT(*) FROM users u WHERE u.branch_id = b.id AND ${LISTED}) AS people FROM branches b ORDER BY b.name COLLATE NOCASE`).all();
   if (rows.length === 1) return res.redirect(`/branches/${rows[0].id}`);
-  res.render('branches', { title: 'Branches', rows });
+  res.render('branches', { title: 'Offices', rows });
 });
 
 router.get('/branches/photo/:id', requireLogin, (req, res) => {
@@ -258,7 +259,7 @@ function branchPage(req, res, b, extra = {}) {
   // Management first, then the rest by name; people with no department last.
   const order = [...groups.keys()].sort((x, y) => (x === 'Management' ? -1 : y === 'Management' ? 1 : x === 'Team' ? 1 : y === 'Team' ? -1 : x.localeCompare(y)));
   res.status(extra.errors ? 400 : 200).render('branch', {
-    title: `${b.name} branch`, wide: true, b, people, groups: order.map((k) => ({ name: k, people: groups.get(k) })), canEdit: mayEditBranch(req.user, b), errors: [], editing: false,
+    title: `${b.name} office`, wide: true, b, people, groups: order.map((k) => ({ name: k, people: groups.get(k) })), canEdit: mayEditBranch(req.user, b), errors: [], editing: false,
     many: db.prepare('SELECT COUNT(*) AS n FROM branches').get().n > 1,
     shouts: db.prepare(`${SHOUT} WHERE t.branch_id = @b ORDER BY s.id DESC LIMIT 4`).all({ me: req.user.id, b: b.id }),
     photos: db.prepare(`${WALL} WHERE u.branch_id = @b ORDER BY p.id DESC LIMIT 8`).all({ me: req.user.id, b: b.id }),
@@ -287,8 +288,8 @@ router.post('/branches/:id', requireLogin, uploads.photos('photo', 1), verifyCsr
   const photo = file ? file.filename : req.body.remove_photo === '1' ? null : b.photo_path;
   db.prepare('UPDATE branches SET address = ?, phone = ?, about = ?, photo_path = ? WHERE id = ?').run(values.address || null, values.phone || null, values.about || null, photo, b.id);
   if (b.photo_path && b.photo_path !== photo) uploads.remove(b.photo_path);
-  activity.log(req.user, 'Branch page edited', b.name);
-  flash(req, 'ok', 'Branch page saved.');
+  activity.log(req.user, 'Office page edited', b.name);
+  flash(req, 'ok', 'Office page saved.');
   res.redirect(`/branches/${b.id}`);
 });
 

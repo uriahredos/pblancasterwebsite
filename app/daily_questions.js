@@ -55,7 +55,7 @@ module.exports = [
   [W, 'Be a kid again for a day', 'See your life ten years from now for a day'],
   [W, 'Have a snow day', 'Have a beach day'],
   [W, 'Meet your favorite athlete', 'Meet your favorite musician'],
-  [W, 'Give a speech to a thousand people', 'Sing karaoke in front of the whole branch'],
+  [W, 'Give a speech to a thousand people', 'Sing karaoke in front of the whole office'],
   [W, 'Have a great memory', 'Have great handwriting'],
   [W, 'Have the first call of the day be the hardest', 'Have the last call of the day be the hardest'],
   [W, 'Always find a parking spot up front', 'Always have the fast checkout line'],

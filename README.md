@@ -1,6 +1,6 @@
-# Pye-Barker Lancaster Branch Portal
+# Pye-Barker Lancaster Office Portal
 
-A small website for the Pye-Barker Lancaster Branch: parts sign-out (take / return / request), training requests, and anonymous complaints. Everyone signs in with a username and password that an admin creates.
+A small website for the Pye-Barker Lancaster Office: parts sign-out (take / return / request), training requests, and anonymous complaints. Everyone signs in with a username and password that an admin creates.
 
 ## Links to share
 
@@ -105,7 +105,7 @@ Reached from the **Usage summary** button on the parts log. For a date range (an
 ## The menu
 
 - **Always in the bar:** Home, Announcements, Tasks, My activity.
-- **Drop-downs:** Community (People, Shout-outs, Events, Photos, Discussions, Daily question, Newsletters, Branches), Parts, Trucks, Training, Team and Setup. Each holds the forms first, then the pages for managing that area. **Team** is people and what goes out to them (Anonymous complaint, Users, Profiles, Manage tasks, Post announcements, Newsletters, Complaints); **Setup** is the site itself (QR code sign, Activity log, Backups, Import old data). People only see the items their profile allows; a group with a single item shows as a plain link, so a technician sees "Truck inspection" and "Anonymous complaint" as links.
+- **Drop-downs:** Community (People, Shout-outs, Events, Photos, Discussions, Daily question, Newsletters, Offices), Parts, Trucks, Training, Team and Setup. Each holds the forms first, then the pages for managing that area. **Team** is people and what goes out to them (Anonymous complaint, Users, Profiles, Manage tasks, Post announcements, Newsletters, Complaints); **Setup** is the site itself (QR code sign, Activity log, Backups, Import old data). People only see the items their profile allows; a group with a single item shows as a plain link, so a technician sees "Truck inspection" and "Anonymous complaint" as links.
 - **One name for each thing:** Announcements (posting them is "Post announcements"), Tasks (giving them out is "Manage tasks"), Truck inspection, Anonymous complaint (reviewing them is "Complaints"), Certifications, Parts requests, and My activity for a person's own entries and requests.
 - **Notification bell** at the top right on a computer: a red number for everything waiting on you, and a list when you press it: your open tasks by name with their due dates, then unread announcements, discussions with new replies, updates on your requests and, for people who manage them, open parts requests, truck problems and expiring certifications. **Notification settings** is at the bottom of the list.
 - **Light / dark** is in the menu: the moon or sun at the right end of the bar on a computer, near the bottom of More on a phone. On the sign-in page, where there is no menu, it stays at the top right.
@@ -185,7 +185,7 @@ Record each person's licenses and certifications with an optional issuer, number
 The home page is laid out in the order people need it. From the top:
 
 - **Critical announcements**: announcements marked critical, always first and shown every time, read or not.
-- **Branch at a glance** (only for people who run things): a row of numbers, each one a link to the list behind it: open **parts requests** (and how many are past their needed-by date), **truck problems** not fixed, **low stock** (parts at or below their minimum), **overdue tasks** among the ones they gave out, **certifications** expired or expiring within 30 days, and parts entries from the last 30 days not yet checked in the **audit**. A person only gets the numbers their profile lets them act on. A manager's panel is headed **Your team at a glance** and counts only the people assigned to them (stock is the branch's). Technicians do not see it.
+- **Office at a glance** (only for people who run things): a row of numbers, each one a link to the list behind it: open **parts requests** (and how many are past their needed-by date), **truck problems** not fixed, **low stock** (parts at or below their minimum), **overdue tasks** among the ones they gave out, **certifications** expired or expiring within 30 days, and parts entries from the last 30 days not yet checked in the **audit**. A person only gets the numbers their profile lets them act on. A manager's panel is headed **Your team at a glance** and counts only the people assigned to them (stock is the office's). Technicians do not see it.
 - New replies in discussion threads they follow, and their own certifications that are expired or expire within 30 days.
 - **Your tasks**: what they have been given, overdue first, with when each is due and who it is from. Left out when there is nothing to do.
 - **What do you need to do?**: the forms their profile allows, as buttons.
@@ -362,7 +362,7 @@ What the site does:
 
 What it cannot do:
 
-- In a small branch, the **content** of a complaint can give the writer away. The form tells people this.
+- In a small office, the **content** of a complaint can give the writer away. The form tells people this.
 - A reviewer who watches the complaints list all day could notice roughly when a new one appears.
 - Your hosting company's own network logs are outside this app's control. They record which addresses visited the site, though not what was typed.
 
@@ -404,7 +404,7 @@ The **Community** menu holds People, Discussions, Daily question and Newsletters
 - The home page reminds people with an empty profile to fill it in.
 
 **Contact list (Setup > Import)**
-- Upload the branch contact list as a CSV (in Excel: File > Save As > CSV) with a Name column and, optionally, Title, Email and Phone. A row with only a name in it (MANAGEMENT, SERVICE...) is a department heading for the rows under it.
+- Upload the office contact list as a CSV (in Excel: File > Save As > CSV) with a Name column and, optionally, Title, Email and Phone. A row with only a name in it (MANAGEMENT, SERVICE...) is a department heading for the rows under it.
 - People who already have an account are matched by email, by the "first.last" in the email, or by name, and keep the name they have on the site. Their job title, department, work email and phone are set from the list, and the phone and email are shown on their profile (each person can untick that under My profile).
 - Everyone else is added with sign-in switched off: they are on the People page, but cannot sign in until an admin presses Enable and Reset password under Users.
 - Names and titles typed in capitals are tidied ("MIKE MCDONNELL" becomes "Mike McDonnell"). Uploading a newer list updates titles, departments and phones; nobody is removed. Disabling an account by hand takes that person off the People page.
@@ -425,35 +425,35 @@ The **Community** menu holds People, Discussions, Daily question and Newsletters
 
 **Birthdays and work anniversaries**
 - A birthday is a month and a day only, set by the person under My profile (never a year, and optional). Anniversaries come from the start date, from one year on.
-- The home page shows a **This week** panel for the person's own branch, today first, with a button to wish them well (one wish per person).
+- The home page shows a **This week** panel for every office, today first and your own office first within a day, with a button to wish them well (one wish per person).
 
 **Events (`/events`)**
 - People whose profile has **Post events** add an event with a date, time, place and details, and can tick "ask people what they are bringing" for a potluck. Everyone presses **I'm in**, can say what they are bringing, and can back out.
-- An event is for the poster's branch; people who can see every branch can post one for every branch. Events appear with training sessions under **Coming up** on the home page.
+- Every office sees and can join every event. An event is hosted by the poster's office, or (from people who can see every office) by the whole company. Events appear with training sessions under **Coming up** on the home page.
 
 **Photos (`/photos`)**
-- Anyone who can use Discussions can post up to six photos at a time with a caption; others can like them. Photos are shrunk on the phone before they are sent. The poster or a moderator can remove one. The wall is shared by every branch.
+- Anyone who can use Discussions can post up to six photos at a time with a caption; others can like them. Photos are shrunk on the phone before they are sent. The poster or a moderator can remove one. The wall is shared by every office.
 
-**Branch pages (`/branches`)**
-- Each branch has a page with a photo, address, phone, a few words about it, its people grouped by department, its upcoming events, and its latest shout-outs and photos.
-- The page is edited by people who manage accounts in that branch, or anyone who can see every branch.
+**Office pages (`/branches`)**
+- Each office has a page with a photo, address, phone, a few words about it, its people grouped by department, its upcoming events, and its latest shout-outs and photos.
+- The page is edited by people who manage accounts in that office, or anyone who can see every office.
 
-## Branches
+## Offices
 
-One site for every branch. Each person belongs to one branch; everything that existed before branches belongs to Lancaster.
+One site for every office. Each person belongs to one office; everything that existed before offices belongs to Lancaster.
 
 **Shared by everyone:** People and profiles, Discussions, the daily question, new-hire welcomes, newsletters, and the parts catalog (the list of part numbers).
 
-**Private to each branch:** the parts log, requests, audit and usage; stock counts and minimums (the same part number has its own count in each branch); truck inspections and each branch's own checklist; tasks; training requests, topics, sessions and attendance; certifications; announcements; anonymous complaints; the Users page and the activity log.
+**Private to each office:** the parts log, requests, audit and usage; stock counts and minimums (the same part number has its own count in each office); truck inspections and each office's own checklist; tasks; training requests, topics, sessions and attendance; certifications; announcements; anonymous complaints; the Users page and the activity log.
 
-- **Everyone sees only their own branch**, whatever their profile. An Admin in one branch can do everything an Admin can, inside that branch.
-- **Seeing every branch** is the master account, plus any profile with the tick-box **See and manage every branch**. Those people get a branch box beside their name (in More on a phone) to choose which branch the pages show, or **All branches** together. Stock, the checklist and new training sessions always belong to one branch: the one chosen, or their own when looking at all.
-- **Setup > Branches** (for the same people): add or rename branches. A new branch starts with a copy of the first branch's truck checklist and no stock.
-- **Adding people to a branch**: choose it in the branch box, then add them under Team > Users (or upload its contact list under Setup > Import). A branch admin's new people always join that admin's own branch. Moving someone to another branch is on Edit person, for people who can see every branch.
-- **Announcements** go to the branch they were posted in. People who can see every branch can choose **Every branch** when posting.
-- **Complaints** record which branch they came from (still nothing about who sent them) and go to that branch's reviewers.
-- **Profiles (permission sets), backups and the Forms history import** cover the whole site, so they are only for people who can see every branch.
-- **Email**: the `NOTIFY_TO` and `COMPLAINT_NOTIFY_TO` mailboxes are the first branch's. Other branches rely on the site's own alerts (the bell and push alerts) for new requests, truck problems and low stock.
+- **Everyone sees only their own office**, whatever their profile. An Admin in one office can do everything an Admin can, inside that office.
+- **Seeing every office** is the master account, plus any profile with the tick-box **See and manage every office**. Those people get a office box beside their name (in More on a phone) to choose which office the pages show, or **All offices** together. Stock, the checklist and new training sessions always belong to one office: the one chosen, or their own when looking at all.
+- **Setup > Offices** (for the same people): add or rename offices. A new office starts with a copy of the first office's truck checklist and no stock.
+- **Adding people to a office**: choose it in the office box, then add them under Team > Users (or upload its contact list under Setup > Import). A office admin's new people always join that admin's own office. Moving someone to another office is on Edit person, for people who can see every office.
+- **Announcements** go to the office they were posted in. People who can see every office can choose **Every office** when posting.
+- **Complaints** record which office they came from (still nothing about who sent them) and go to that office's reviewers.
+- **Profiles (permission sets), backups and the Forms history import** cover the whole site, so they are only for people who can see every office.
+- **Email**: the `NOTIFY_TO` and `COMPLAINT_NOTIFY_TO` mailboxes are the first office's. Other offices rely on the site's own alerts (the bell and push alerts) for new requests, truck problems and low stock.
 
 
 ## The lock, and Face ID / fingerprint sign-in
