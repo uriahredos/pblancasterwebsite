@@ -973,17 +973,15 @@ td.row-more { width: 1%; white-space: nowrap; text-align: right; vertical-align:
 .acct .row-menu-list hr { border: 0; border-top: 1px solid var(--line); margin: .3rem .2rem; }
 .acct > summary { height: 42px; padding: 0 .7rem 0 .4rem; gap: .5rem; background: var(--banner-bg); box-shadow: 0 1px 2px rgba(10, 49, 82, .08); }
 
-/* The flame in the welcome band flickers for about four seconds when the page opens, then rests */
-.hero-mark { transform-origin: 60% 100%; animation: flame-in 4s ease-out both; }
-@keyframes flame-in {
-  0% { opacity: 0; transform: translateY(18%) scale(.7); }
-  14% { opacity: .5; transform: translateY(0) scale(1.14) skewX(-5deg); }
-  26% { opacity: .34; transform: scale(1.04) skewX(4deg) scaleY(1.06); }
-  38% { opacity: .46; transform: scale(1.12) skewX(-4deg) scaleY(.97); }
-  50% { opacity: .32; transform: scale(1.05) skewX(3deg) scaleY(1.07); }
-  62% { opacity: .42; transform: scale(1.09) skewX(-3deg) scaleY(.98); }
-  74% { opacity: .3; transform: scale(1.03) skewX(2deg) scaleY(1.04); }
-  87% { opacity: .34; transform: scale(1.04) skewX(-1deg); }
-  100% { opacity: .22; transform: none; }
-}
-@media (prefers-reduced-motion: reduce) { .hero-mark { animation: none; } }
+/* The PB mark in the welcome band builds itself when the page opens: the P, then the B, then the flame sweeps in */
+.hero-logo { position: absolute; right: 1.8rem; top: 50%; width: 15rem; aspect-ratio: 422 / 208; transform: translateY(-50%); pointer-events: none; }
+.hero-logo img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; filter: brightness(0) invert(1); }
+.hl-p { opacity: .5; animation: hlP .8s cubic-bezier(.22, 1, .36, 1) .2s both; }
+.hl-b { opacity: .34; animation: hlB .8s cubic-bezier(.22, 1, .36, 1) .75s both; }
+.hl-flame { opacity: .95; transform-origin: 34% 99%; animation: hlFlame .9s cubic-bezier(.34, 1.56, .64, 1) 1.4s both, lhFlicker 1.1s ease-in-out 2.3s 2; }
+@keyframes hlP { from { opacity: 0; transform: translateX(-28%); } to { opacity: .5; transform: none; } }
+@keyframes hlB { from { opacity: 0; transform: translateX(28%); } to { opacity: .34; transform: none; } }
+@keyframes hlFlame { from { opacity: 0; transform: translate(-14%, 30%) scale(.3) rotate(-18deg); } to { opacity: .95; transform: none; } }
+@media (max-width: 700px) { .hero-logo { width: 6.4rem; right: .9rem; top: .9rem; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .hl-p, .hl-b, .hl-flame { animation: none; } }
+@media print { .hero-logo { display: none; } }

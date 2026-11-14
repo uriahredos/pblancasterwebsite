@@ -20,7 +20,11 @@
     <h1>Hi, <%= user.display_name.split(' ')[0] %></h1>
     <p class="hero-sub"><%= branchName ? branchName + ' Office' : 'Pye-Barker' %> · Pye-Barker Fire &amp; Safety</p>
   </div>
-  <img class="hero-mark" src="/logo-flame.png?v=<%= assetV %>" alt="" width="422" height="208" aria-hidden="true">
+  <span class="hero-logo" aria-hidden="true">
+    <img class="hl-p" src="/logo-p.png?v=<%= assetV %>" alt="" width="422" height="208">
+    <img class="hl-b" src="/logo-b.png?v=<%= assetV %>" alt="" width="422" height="208">
+    <img class="hl-flame" src="/logo-flame.png?v=<%= assetV %>" alt="" width="422" height="208">
+  </span>
 </div>
 
 <% if (critical.length) { %>
