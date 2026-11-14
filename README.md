@@ -442,7 +442,7 @@ The **Community** menu holds People, Discussions, Daily question and Newsletters
 
 **What an office does** is a set of tick-boxes on the office's page (**Edit this page**), set by that office's admin or a corporate admin. The services are the company's own: Fire Alarms & Detection, Fire Sprinklers, Fire Extinguishers, Fire Suppression Systems, Security, Proactive Video Monitoring, Life Safety Equipment and Mass Notification. Corporate admins can add, rename or remove services under **Corporate > Offices and admins > Services offices can offer**.
 
-An office page also shows the name the office goes by when that differs from its town ("Lancaster" for the Ephrata office), its market, its product lines, its address (a link to a map) and its phone. The finder's search box looks in all of these, so "Naples" finds Bonita Springs and "Genetec" finds the offices that carry it.
+An office page also shows its market, its product lines, its address (a link to a map) and its phone. The finder's search box looks in all of these and in the name an office goes by (which is not printed), so "Naples" finds Bonita Springs and "Genetec" finds the offices that carry it.
 
 **Who to contact (`/contacts`)** is the company-wide contact list by department, with search.
 

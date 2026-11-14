@@ -3558,7 +3558,7 @@ test('company: the office list loads once, offices say what they do, and anyone 
   assert.deepEqual(await names('?state=PA'), ['Allentown', 'King of Prussia', 'Lancaster', 'North Wales (Industrial Dr)', 'North Wales (PRPV)']);
   assert.deepEqual(await names(`?state=PA&service=${svc('FS')}`), ['North Wales (Industrial Dr)']);            // Lancaster's own admin unticked sprinklers above
   assert.deepEqual(await names('?q=naples'), ['Bonita Springs']); assert.ok((await names('?q=genetec')).includes('West Monroe'));   // by the name an office goes by, or a product line
-  assert.match((await t1.get('/branches?q=naples')).text, /Bonita Springs <span class="aka">“Naples”<\/span>/);
+  assert.doesNotMatch((await t1.get('/branches?q=naples')).text, /Naples|also known as/);                  // the other name finds the office but is not printed
   assert.deepEqual(await names('?q=2054'), ['Lancaster']); assert.deepEqual(await names('?q=broussard'), ['Lafayette']);
   assert.ok((await names('?region=Southwest')).length >= 20); assert.deepEqual(await names("?q=%27%20OR%201%3D1"), []);
   assert.equal((await new Client().get('/branches')).status, 302);

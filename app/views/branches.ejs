@@ -18,7 +18,7 @@
   <li><a href="/branches/<%= b.id %>">
     <span class="office-no"><%= b.number || '·' %></span>
     <span class="person-text">
-      <strong><%= b.name %><% if (b.marketing_name && b.marketing_name.toLowerCase() !== b.name.toLowerCase()) { %> <span class="aka">“<%= b.marketing_name %>”</span><% } %></strong>
+      <strong><%= b.name %></strong>
       <span class="meta"><%= [b.city && b.state ? b.city + ', ' + b.state : '', b.street, b.market || b.region].filter(Boolean).join(' · ') %><%= b.people ? ' · ' + b.people + (b.people === 1 ? ' person' : ' people') + ' here' : '' %></span>
       <% if (b.services.length) { %><span class="chips"><% b.services.forEach(function (s) { %><span class="skill" title="<%= s.name %>"><%= s.code %></span><% }) %></span><% } %>
     </span>

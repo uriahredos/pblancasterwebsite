@@ -2,7 +2,7 @@
 <p class="back"><a class="back-link" href="<%= many ? '/branches' : '/people' %>"><%= many ? 'Offices' : 'People' %></a></p>
 <% if (b.photo_path) { %><img class="branch-hero" src="/branches/photo/<%= b.id %>?v=<%= b.photo_path.slice(0, 8) %>" alt="The <%= b.name %> branch"><% } %>
 <div class="title-row"><h1><%= b.name %> office</h1><% if (canEdit && !editing) { %><a class="btn small" href="/branches/<%= b.id %>?edit=1#edit">Edit this page</a><% } %></div>
-<p class="meta"><% if (b.number) { %><span class="office-no"><%= b.number %></span> <% } %><%= [b.marketing_name && b.marketing_name.toLowerCase() !== b.name.toLowerCase() ? 'also known as ' + b.marketing_name : '', b.city && b.state ? b.city + ', ' + (stateNames[b.state] || b.state) : '', b.market ? b.market + ' market' : '', b.region ? b.region + ' region' : ''].filter(Boolean).join(' · ') %></p>
+<p class="meta"><% if (b.number) { %><span class="office-no"><%= b.number %></span> <% } %><%= [b.city && b.state ? b.city + ', ' + (stateNames[b.state] || b.state) : '', b.market ? b.market + ' market' : '', b.region ? b.region + ' region' : ''].filter(Boolean).join(' · ') %></p>
 <p class="office-reach"><% if (b.address) { %><a href="https://www.google.com/maps/search/?api=1&amp;query=<%= encodeURIComponent(b.address) %>" rel="noopener noreferrer" target="_blank"><%= b.address %></a><% } else if (b.street) { %><%= b.street %><% } %><% if (b.phone) { %><%= b.address || b.street ? ' · ' : '' %><% b.phone.split(/\s*\/\s*/).forEach(function (ph, i) { %><%= i ? ' / ' : '' %><a href="tel:<%= ph.replace(/[^0-9+]/g, '') %>"><%= ph %></a><% }) %><% } %></p>
 <p class="meta"><%= people.length %> <%= people.length === 1 ? 'person' : 'people' %> on this site</p>
 <div class="card does">
