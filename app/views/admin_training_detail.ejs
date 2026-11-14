@@ -1,5 +1,5 @@
 <%- include('partials/header') %>
-<p><a href="/admin/training">&larr; Training requests</a></p>
+<p class="back"><a class="back-link" href="/admin/training">Training requests</a></p>
 <h1>Training request · <%= t.display_name %><% if (t.cancelled_at) { %> <span class="tag off">Cancelled</span><% } %></h1>
 <div class="card stack">
   <dl class="facts">

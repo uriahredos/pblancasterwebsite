@@ -1,5 +1,5 @@
 <%- include('partials/header') %>
-<p><a href="/admin/certs">&larr; Certifications</a></p>
+<p class="back"><a class="back-link" href="/admin/certs">Certifications</a></p>
 <h1><%= c.display_name %></h1>
 <%- include('partials/errors') %>
 <form method="post" action="/admin/certs/<%= c.id %>" class="card stack">

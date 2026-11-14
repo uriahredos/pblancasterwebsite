@@ -1,5 +1,5 @@
 <%- include('partials/header') %>
-<p><a href="/discussions/s/<%= t.section_id %>">&larr; <%= t.section %></a></p>
+<p class="back"><a class="back-link" href="/discussions/s/<%= t.section_id %>"><%= t.section %></a></p>
 <h1 class="thread-title"><%= t.title %></h1>
 <p class="thread-tags"><% if (t.is_pinned) { %><span class="tag pin">Pinned</span> <% } %><% if (t.solved_at) { %><span class="tag solved">Solved</span> <% } %><% if (t.is_locked) { %><span class="tag off">Locked</span> <% } %><span class="meta"><%= t.reply_count %> <%= t.reply_count === 1 ? 'reply' : 'replies' %></span></p>
 <div class="thread-tools">

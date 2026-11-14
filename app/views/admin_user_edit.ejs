@@ -1,5 +1,5 @@
 <%- include('partials/header') %>
-<p><a href="/admin/users">&larr; Users</a></p>
+<p class="back"><a class="back-link" href="/admin/users">Users</a></p>
 <h1>Edit <%= target.display_name %><% if (target.is_master) { %> <span class="tag master">Master</span><% } %></h1>
 <%- include('partials/errors') %>
 <form method="post" action="/admin/users/<%= target.id %>/edit" class="card stack">

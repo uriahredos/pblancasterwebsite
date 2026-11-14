@@ -1,5 +1,5 @@
 <%- include('partials/header') %>
-<p><a href="/admin/users">&larr; Users</a></p>
+<p class="back"><a class="back-link" href="/admin/users">Users</a></p>
 <h1>Import</h1>
 <h2>Old Microsoft Forms history</h2>
 <p class="lede">Brings in the history from the old Microsoft Forms: parts taken, returned and requested, and training requests. Already imported: <strong><%= counts.parts %></strong> parts <%= counts.parts === 1 ? 'entry' : 'entries' %> and <strong><%= counts.training %></strong> training <%= counts.training === 1 ? 'request' : 'requests' %>.</p>

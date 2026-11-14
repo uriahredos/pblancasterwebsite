@@ -1,5 +1,5 @@
 <%- include('partials/header') %>
-<p><a href="/admin/inspections">&larr; Truck inspections</a></p>
+<p class="back"><a class="back-link" href="/admin/inspections">Truck inspections</a></p>
 <h1>Truck <%= i.truck %> · <%= i.display_name %></h1>
 <p class="lede"><%= fmtDateTime(i.created_at) %><%= i.odometer ? ' · Odometer ' + i.odometer : '' %></p>
 <div class="table-wrap">

@@ -1,5 +1,5 @@
 <%- include('partials/header') %>
-<p><a href="/admin/announcements">&larr; Announcements</a></p>
+<p class="back"><a class="back-link" href="/admin/announcements">Announcements</a></p>
 <h1><%= a.title %></h1>
 <p><% if (a.category && a.category !== 'general') { %><span class="tag cat-<%= a.category %>"><%= categories[a.category] %></span> <% } %><% if (a.critical) { %><span class="tag crit">Critical</span> <% } %><% if (a.pinned) { %><span class="tag pin">Pinned</span><% } %></p>
 <p class="lede">Posted by <%= a.author %>, <%= fmtDateTime(a.created_at) %> · to <%= a.audience === 'team' ? 'their people' : a.branch_id === null ? 'every branch' : 'everyone in the branch' %><%= a.expires_on ? ' · shown until ' + fmtDate(a.expires_on) : '' %></p>

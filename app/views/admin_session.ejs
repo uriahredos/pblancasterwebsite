@@ -1,5 +1,5 @@
 <%- include('partials/header') %>
-<p><a href="/admin/training/sessions">&larr; Training sessions</a></p>
+<p class="back"><a class="back-link" href="/admin/training/sessions">Training sessions</a></p>
 <h1><%= session.title %> <% if (session.completed_at) { %><span class="tag return">Held</span><% } else { %><span class="tag request">Planned</span><% } %></h1>
 <p class="lede"><%= fmtDate(session.session_date) %><%= session.session_time ? ' at ' + session.session_time : '' %><%= session.location ? ' · ' + session.location : '' %></p>
 <% if (session.notes) { %><p class="pre"><%= session.notes %></p><% } %>

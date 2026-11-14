@@ -1,5 +1,5 @@
 <%- include('partials/header') %>
-<p><a href="/admin/profiles">&larr; Profiles</a></p>
+<p class="back"><a class="back-link" href="/admin/profiles">Profiles</a></p>
 <h1><%= profile.name %> profile</h1>
 <p class="lede"><% if (people.length) { %>Used by <%= people.map(function (p) { return p.display_name; }).join(', ') %>.<% } else { %>Nobody has this profile yet.<% } %> Changes apply as soon as you save.</p>
 <%- include('partials/errors') %>

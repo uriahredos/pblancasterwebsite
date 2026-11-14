@@ -1,5 +1,5 @@
 <%- include('partials/header') %>
-<p><a href="/admin/users">&larr; Users</a></p>
+<p class="back"><a class="back-link" href="/admin/users">Users</a></p>
 <h1>Backups</h1>
 <p class="lede">A copy of the database is made every night after <%= hour %>:00 and the newest <%= keep %> are kept. <% if (emailTo.length) { %>Each night's copy is also emailed to <%= emailTo.join(', ') %>.<% } else { %>Nightly copies are not being emailed anywhere.<% } %></p>
 <div class="notice">

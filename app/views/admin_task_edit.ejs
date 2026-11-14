@@ -1,5 +1,5 @@
 <%- include('partials/header') %>
-<p><a href="/admin/tasks">&larr; Tasks</a></p>
+<p class="back"><a class="back-link" href="/admin/tasks">Tasks</a></p>
 <h1>Edit task</h1>
 <p class="lede">Given by <%= t.by_name %>, <%= fmtDateTime(t.created_at) %>. <%= t.when %>.</p>
 <%- include('partials/errors') %>

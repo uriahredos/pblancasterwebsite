@@ -1,5 +1,5 @@
 <%- include('partials/header') %>
-<p><a href="/newsletters">&larr; All newsletters</a></p>
+<p class="back"><a class="back-link" href="/newsletters">All newsletters</a></p>
 <div class="title-row"><h1><%= n.title %></h1><a class="btn small" href="/newsletters/<%= n.id %>/pdf" target="_blank" rel="noopener">Open the PDF</a></div>
 <p class="lede"><%= n.month %> · <%= n.pages.length %> <%= n.pages.length === 1 ? 'page' : 'pages' %></p>
 <div class="pages">
