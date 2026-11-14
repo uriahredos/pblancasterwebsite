@@ -1,6 +1,7 @@
 <%- include('partials/header') %>
 <p><a href="/admin/users">&larr; Users</a></p>
-<h1>Import old data</h1>
+<h1>Import</h1>
+<h2>Old Microsoft Forms history</h2>
 <p class="lede">Brings in the history from the old Microsoft Forms: parts taken, returned and requested, and training requests. Already imported: <strong><%= counts.parts %></strong> parts <%= counts.parts === 1 ? 'entry' : 'entries' %> and <strong><%= counts.training %></strong> training <%= counts.training === 1 ? 'request' : 'requests' %>.</p>
 <% if (result) { %>
 <div class="card stack">
@@ -31,4 +32,23 @@
   <p class="hint">For starting over with a corrected file. Entries people made in this site, and all accounts, are left alone.</p>
 </form>
 <% } %>
+<h2 id="contacts">Contact list</h2>
+<% if (contacts) { %>
+<div class="card stack">
+  <p class="flash ok"><strong><%= contacts.updated.length %></strong> existing <%= contacts.updated.length === 1 ? 'account' : 'accounts' %> filled in and <strong><%= contacts.created.length %></strong> <%= contacts.created.length === 1 ? 'person' : 'people' %> added. Everyone on the list is now on the <a href="/people">People</a> page.</p>
+  <% if (contacts.updated.length) { %><p><strong>Matched to existing accounts:</strong> <%= contacts.updated.join(', ') %></p><% } %>
+  <% if (contacts.created.length) { %><p><strong>Added, with sign-in switched off:</strong> <%= contacts.created.join(', ') %></p>
+  <p class="hint">These people are listed but cannot sign in yet. When someone is ready, open <a href="/admin/users">Users</a>, press Enable, then Reset password, and give them the temporary password.</p><% } %>
+</div>
+<% } %>
+<div class="notice">
+  <p>Upload the branch contact list to give everyone on it a profile with their job title, department, work email and phone. In Excel choose <strong>File &gt; Save As &gt; CSV</strong> first.</p>
+  <p>The file needs a <strong>Name</strong> column; Title, Email and Phone are optional. A row with only a name in it (such as SERVICE) is read as a department heading for the people under it.</p>
+  <p>People who already have an account are matched by email or name and keep the name they have here. Uploading a newer list later updates titles, departments and phones; nobody is removed.</p>
+</div>
+<form method="post" action="/admin/people/import" enctype="multipart/form-data" class="card stack">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Contact list <span class="hint">A .csv file</span><input type="file" name="file" accept=".csv,text/csv" required></label>
+  <button class="btn primary" type="submit">Import contact list</button>
+</form>
 <%- include('partials/footer') %>

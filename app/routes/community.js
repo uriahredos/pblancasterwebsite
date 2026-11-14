@@ -26,9 +26,9 @@ function tenure(startedOn, today = localDate()) {
   const years = Math.floor(months / 12);
   return `${years} ${years === 1 ? 'year' : 'years'} with us`;
 }
-const PERSON = `SELECT u.id, u.display_name, u.job_title, u.started_on, u.about, u.skills, u.photo_path, u.branch_id, b.name AS branch,
+const PERSON = `SELECT u.id, u.display_name, u.active, u.department, u.job_title, u.started_on, u.about, u.skills, u.photo_path, u.branch_id, b.name AS branch,
   CASE WHEN u.show_phone = 1 THEN u.phone END AS phone, CASE WHEN u.show_email = 1 THEN u.email END AS email
-  FROM users u LEFT JOIN branches b ON b.id = u.branch_id WHERE u.active = 1`;
+  FROM users u LEFT JOIN branches b ON b.id = u.branch_id WHERE (u.active = 1 OR u.in_directory = 1)`;
 const decorate = (p) => ({ ...p, skillList: skillList(p.skills), tenure: tenure(p.started_on) });
 
 // ---- People -----------------------------------------------------------------
@@ -39,16 +39,19 @@ router.get('/people', requireLogin, (req, res) => {
   const where = []; const params = [];
   if (q) {
     const like = '%' + q.replace(/[\\%_]/g, '\\$&') + '%';
-    where.push("(u.display_name LIKE ? ESCAPE '\\' OR u.job_title LIKE ? ESCAPE '\\' OR u.skills LIKE ? ESCAPE '\\' OR u.about LIKE ? ESCAPE '\\')");
-    params.push(like, like, like, like);
+    where.push("(u.display_name LIKE ? ESCAPE '\\' OR u.job_title LIKE ? ESCAPE '\\' OR u.skills LIKE ? ESCAPE '\\' OR u.about LIKE ? ESCAPE '\\' OR u.department LIKE ? ESCAPE '\\')");
+    params.push(like, like, like, like, like);
   }
   if (branch) { where.push('u.branch_id = ?'); params.push(branch); }
+  const departments = db.prepare("SELECT DISTINCT department FROM users WHERE department IS NOT NULL AND (active = 1 OR in_directory = 1) ORDER BY department COLLATE NOCASE").all().map((r) => r.department);
+  const dept = departments.includes(req.query.dept) ? req.query.dept : '';
+  if (dept) { where.push('u.department = ?'); params.push(dept); }
   const people = db.prepare(`${PERSON} ${where.length ? 'AND ' + where.join(' AND ') : ''} ORDER BY u.display_name COLLATE NOCASE LIMIT 500`).all(...params).map(decorate);
-  res.render('people', { title: 'People', wide: true, people, q, branch, branches: branches(), total: db.prepare('SELECT COUNT(*) AS n FROM users WHERE active = 1').get().n });
+  res.render('people', { title: 'People', wide: true, people, q, branch, dept, departments, branches: branches(), total: db.prepare('SELECT COUNT(*) AS n FROM users WHERE active = 1 OR in_directory = 1').get().n });
 });
 
 router.get('/people/photo/:id', requireLogin, (req, res) => {
-  const row = isId(req.params.id) ? db.prepare('SELECT photo_path FROM users WHERE id = ? AND active = 1').get(req.params.id) : null;
+  const row = isId(req.params.id) ? db.prepare('SELECT photo_path FROM users WHERE id = ? AND (active = 1 OR in_directory = 1)').get(req.params.id) : null;
   if (!row || !row.photo_path) return notFound(res);
   res.sendFile(require('path').basename(row.photo_path), { root: uploads.uploadDir, headers: { 'Cache-Control': 'private, max-age=86400' } },
     (err) => { if (err && !res.headersSent) notFound(res); });
@@ -96,6 +99,94 @@ router.post('/profile', requireLogin, uploads.photos('photo', 1), verifyCsrf, (r
   if (old && old !== photo) uploads.remove(old);
   flash(req, 'ok', 'Profile saved.');
   res.redirect(`/people/${req.user.id}`);
+});
+
+// ---- Bringing in a contact list ---------------------------------------------------
+// A spreadsheet saved as CSV with Name, Title, Email and Phone columns. A row with only a name
+// (MANAGEMENT, SERVICE, ...) is a heading: the people under it belong to that department.
+
+const ACRONYMS = new Set(['CED', 'HR', 'IT', 'GM', 'PM', 'VP', 'CEO', 'CFO', 'COO', 'II', 'III', 'IV', 'NICET', 'HVAC']);
+const SMALL = new Set(['of', 'and', 'the', 'for', 'to', 'in']);
+/** "MIKE MCDONNELL" -> "Mike McDonnell". Left alone if it already has lower-case letters. */
+function tidyName(text) {
+  const t = String(text || '').trim().replace(/\s+/g, ' ');
+  if (/[a-z]/.test(t)) return t;
+  return t.toLowerCase().replace(/(^|[\s'-])([a-z])/g, (m, pre, ch) => pre + ch.toUpperCase()).replace(/\bMc([a-z])/g, (m, ch) => 'Mc' + ch.toUpperCase());
+}
+/** "LEAD FIRE ALARM INSPECTOR" -> "Lead Fire Alarm Inspector", keeping CED and the like in capitals. */
+function tidyTitle(text) {
+  const t = String(text || '').trim().replace(/\s+/g, ' ').replace(/\s*\/\s*/g, ' / ');
+  if (/[a-z]/.test(t)) return t;
+  return t.split(' ').map((w, i) => (ACRONYMS.has(w) ? w : SMALL.has(w.toLowerCase()) && i ? w.toLowerCase() : w.charAt(0) + w.slice(1).toLowerCase())).join(' ');
+}
+const lettersOnly = (text) => String(text || '').toLowerCase().replace(/[^a-z]/g, '');
+
+function readContacts(rows) {
+  const h = rows[0].map((c) => c.trim().toLowerCase());
+  const col = (re) => h.findIndex((c) => re.test(c));
+  const cName = col(/name/), cTitle = col(/title|position|role|job/), cEmail = col(/e-?mail/), cPhone = col(/phone|cell|mobile/);
+  if (cName < 0) return { error: 'The file needs a "Name" column. "Title", "Email" and "Phone" are optional.' };
+  const people = []; let department = null;
+  for (const r of rows.slice(1)) {
+    const name = clean(r[cName], 80);
+    const rest = [cTitle, cEmail, cPhone].map((i) => (i >= 0 ? clean(r[i], 120) : ''));
+    if (!name) continue;
+    if (rest.every((v) => !v)) { department = tidyTitle(name).slice(0, 60); continue; }   // a heading row
+    const email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rest[1]) ? rest[1].toLowerCase() : '';
+    const phone = /^[0-9 ()+.x-]{7,30}$/.test(rest[2]) && /\d{7}/.test(rest[2].replace(/\D/g, '')) ? rest[2].replace(/\)(\d)/, ') $1') : '';
+    people.push({ name: tidyName(name), title: tidyTitle(rest[0]).slice(0, 80), email, phone, department });
+  }
+  return { people };
+}
+
+/** The account a contact belongs to: same email, or the email's "first.last" matches a name or username, or the same name. */
+function findAccount(c, users) {
+  const local = lettersOnly(c.email.split('@')[0]);
+  return (c.email && users.find((u) => (u.email || '').toLowerCase() === c.email))
+    || (local && users.find((u) => lettersOnly(u.display_name) === local || lettersOnly(u.username) === local))
+    || users.find((u) => lettersOnly(u.display_name) === lettersOnly(c.name)) || null;
+}
+
+const csvUpload = require('multer')({ storage: require('multer').memoryStorage(), limits: { fileSize: 2 * 1024 * 1024, files: 1 } }).single('file');
+router.post('/admin/people/import', requirePerm('users.manage'), (req, res, next) => csvUpload(req, res, (err) => {
+  req.body = req.body || {}; req.uploadFailed = Boolean(err); next();
+}), verifyCsrf, (req, res) => {
+  if (req.user.scope !== 'all') return forbidden(res);
+  const fail = (msg) => { flash(req, 'err', msg); res.redirect('/admin/import#contacts'); };
+  if (req.uploadFailed || !req.file) return fail('Choose the contact list file (up to 2 MB).');
+  if (req.file.buffer.subarray(0, 2).toString('latin1') === 'PK') return fail('That is an Excel workbook. In Excel choose File > Save As > CSV, then upload the CSV file.');
+  const rows = require('./catalog').parseCsv(req.file.buffer.toString('utf8'));
+  if (rows.length < 2) return fail('The file needs a header row and at least one person.');
+  const read = readContacts(rows);
+  if (read.error) return fail(read.error);
+  if (read.people.length > 2000) return fail('That file has too many people in it.');
+
+  const auth = require('../auth');
+  const technician = access.profileByName('Technician') || db.prepare('SELECT * FROM profiles ORDER BY id LIMIT 1').get();
+  const result = { updated: [], created: [] };
+  db.transaction(() => {
+    const users = db.prepare('SELECT id, username, display_name, email FROM users').all();
+    for (const c of read.people) {
+      let u = findAccount(c, users);
+      if (!u) {
+        let username = (c.email ? c.email.split('@')[0] : c.name.replace(/\s+/g, '.')).toLowerCase().replace(/[^a-z0-9._-]/g, '').slice(0, 36).padEnd(3, 'x');
+        for (let i = 2; users.some((x) => x.username.toLowerCase() === username); i++) username = `${username.replace(/\d+$/, '')}${i}`;
+        // A random password nobody knows, and switched off: listed for everyone to see, but no sign-in until an admin enables it.
+        const id = auth.createUser({ username, displayName: c.name, email: c.email, password: require('crypto').randomBytes(24).toString('hex'), profile: technician.id, branchId: req.user.branch_id });
+        db.prepare('UPDATE users SET active = 0 WHERE id = ?').run(id);
+        u = { id, username, display_name: c.name, email: c.email };
+        users.push(u); result.created.push(c.name);
+      } else result.updated.push(u.display_name);
+      // The list is the branch's own record of titles and work contact details, so it sets those (the work email included) and shows them.
+      db.prepare(`UPDATE users SET in_directory = 1, job_title = COALESCE(NULLIF(?, ''), job_title), department = COALESCE(?, department),
+                    email = COALESCE(NULLIF(?, ''), email), phone = COALESCE(NULLIF(?, ''), phone),
+                    show_phone = CASE WHEN ? <> '' THEN 1 ELSE show_phone END, show_email = CASE WHEN ? <> '' THEN 1 ELSE show_email END WHERE id = ?`)
+        .run(c.title, c.department, c.email, c.phone, c.phone, c.email, u.id);
+    }
+  })();
+  activity.log(req.user, 'Contact list imported', `${result.updated.length} existing accounts updated, ${result.created.length} people added`);
+  req.session.contactResult = result;
+  res.redirect('/admin/import#contacts');
 });
 
 // ---- Welcoming new people -------------------------------------------------------

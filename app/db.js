@@ -410,6 +410,9 @@ addColumn('users', 'phone', 'TEXT');
 addColumn('users', 'show_phone', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('users', 'show_email', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('users', 'photo_path', 'TEXT');
+addColumn('users', 'department', 'TEXT');
+// On the People page even though the account is switched off: someone on the contact list who has not been given a sign-in yet.
+addColumn('users', 'in_directory', 'INTEGER NOT NULL DEFAULT 0');
 db.prepare('UPDATE users SET branch_id = (SELECT MIN(id) FROM branches) WHERE branch_id IS NULL').run();
 if (!db.prepare("SELECT 1 FROM meta WHERE key = 'daily_seed_1'").get()) {
   const add = db.prepare("INSERT INTO daily_questions (prompt, a, b, source, status, created_at) VALUES (?, ?, ?, 'builtin', 'active', ?)");

@@ -25,7 +25,9 @@ const counts = () => ({
 router.get('/admin/import', guard, (req, res) => {
   const result = req.session.importResult || null;
   delete req.session.importResult;
-  res.render('admin_import', { title: 'Import old data', counts: counts(), result });
+  const contacts = req.session.contactResult || null;
+  delete req.session.contactResult;
+  res.render('admin_import', { title: 'Import', counts: counts(), result, contacts });
 });
 
 const isIso = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/.test(s) && !Number.isNaN(Date.parse(s));

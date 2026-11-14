@@ -100,7 +100,7 @@
         ['users.manage', '/poster', 'QR code sign', is('/poster')],
         ['activity.view', '/admin/activity', 'Activity log', is('/admin/activity')],
         ['backups', '/admin/backups', 'Backups', is('/admin/backups')],
-        [user.scope === 'all' ? 'users.manage' : 'no.such.permission', '/admin/import', 'Import old data', is('/admin/import')]
+        [user.scope === 'all' ? 'users.manage' : 'no.such.permission', '/admin/import', 'Import', is('/admin/import')]
       ] }
     ].map(function (g) {
       // Keep what this person may use; drop dividers left at an edge or doubled up.

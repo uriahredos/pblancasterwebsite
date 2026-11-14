@@ -534,7 +534,7 @@ router.post('/admin/users/:id/:op', requirePerm('users.manage'), (req, res) => {
       else if (target.is_master) flash(req, 'err', 'The master account cannot be disabled.');
       else {
         db.prepare('UPDATE users SET active = ? WHERE id = ?').run(target.active ? 0 : 1, target.id);
-        if (target.active) auth.endSessions(target.id);
+        if (target.active) { auth.endSessions(target.id); db.prepare('UPDATE users SET in_directory = 0 WHERE id = ?').run(target.id); }
         activity.log(req.user, target.active ? 'Account disabled' : 'Account enabled', target.display_name);
       }
       break;

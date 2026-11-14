@@ -271,7 +271,7 @@ People whose profile has **Permanently delete...** ticked see a delete button at
 
 ## Importing the old Microsoft Forms history (`/admin/import`)
 
-Under **Setup > Import old data**. It takes an import file (`.json`) prepared from the two Forms exports and adds each old parts entry and training request under the person who sent it, with its original date.
+Under **Setup > Import**. It takes an import file (`.json`) prepared from the two Forms exports and adds each old parts entry and training request under the person who sent it, with its original date.
 
 - **People**: someone is matched to an existing account by email address or by full name. Anyone not found gets a new account that is switched off, on the Technician profile, so their history has a name on it. To let them in, press Enable and Reset password on the Users page.
 - **Parts and quantities**: the old form was free typing ("(7) SIGA-CT2", "5x 12-7", "3 Cases (15) batteries"). Each line was read into a part and a quantity. Where that needed a judgment call, the entry's note keeps the original wording after "As typed:". A line with no quantity counts as 1. Something counted in cases with no total given is recorded as, for example, "3 x SLA12-7F batteries (cases)".
@@ -402,6 +402,13 @@ The **Community** menu holds People, Discussions, Daily question and Newsletters
 - A profile also lists the person's certifications on file, by name only (no dates).
 - Phone and email show on a profile only if the person ticks the box for each.
 - The home page reminds people with an empty profile to fill it in.
+
+**Contact list (Setup > Import)**
+- Upload the branch contact list as a CSV (in Excel: File > Save As > CSV) with a Name column and, optionally, Title, Email and Phone. A row with only a name in it (MANAGEMENT, SERVICE...) is a department heading for the rows under it.
+- People who already have an account are matched by email, by the "first.last" in the email, or by name, and keep the name they have on the site. Their job title, department, work email and phone are set from the list, and the phone and email are shown on their profile (each person can untick that under My profile).
+- Everyone else is added with sign-in switched off: they are on the People page, but cannot sign in until an admin presses Enable and Reset password under Users.
+- Names and titles typed in capitals are tidied ("MIKE MCDONNELL" becomes "Mike McDonnell"). Uploading a newer list updates titles, departments and phones; nobody is removed. Disabling an account by hand takes that person off the People page.
+- The People page can be filtered by department.
 
 **New hires**
 - On **Edit person** (Team > Users), **Announce as a new hire** takes a job title, start date and a few words. The person then appears in a **Welcome aboard** panel on everyone's home page for 14 days.

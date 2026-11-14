@@ -3077,3 +3077,51 @@ test('daily question: one a day for everyone, results after you answer, suggesti
   db.prepare("DELETE FROM daily_questions WHERE source <> 'builtin'").run();
   db.prepare("UPDATE daily_questions SET used_on = NULL").run(); db.prepare('DELETE FROM daily_answers').run();
 });
+
+test('contact list: a CSV fills in existing accounts, adds everyone else with sign-in off, and puts them all on the People page', async () => {
+  makeUser('daniel.rivers', 'Danny Rivers'); makeUser('contact2', 'Mia Old-Email');
+  db.prepare("UPDATE users SET email = 'mia@oldcompany.example' WHERE username = 'contact2'").run();
+  const owner = await loggedIn('owner'); const t1 = await loggedIn('tech1');
+  const csv = ['NAME,TITLE,EMAIL,PHONE', 'MANAGEMENT,,,', 'PAT O\'BRIEN-MCKAY,GENERAL MANAGER,PAT.OBRIEN@EXAMPLE.COM,(717)555-0101',
+    'SERVICE,,,', 'DAN RIVERS,SERVICE TECH,DANIEL.RIVERS@EXAMPLE.COM,(717)555-0102', 'MIA OLD-EMAIL,CED AGENT,MIA.NEW@EXAMPLE.COM,(TEAMS)',
+    'TERRY TECH,"LEAD TECH, NIGHTS",,717-555-0103', ',,,', 'NO CONTACT DETAILS,,,'].join('\r\n');
+  const send = (client, text, name = 'list.csv') => client.post('/admin/people/import', [['file', new File([text], name, { type: 'text/csv' })]], { multipart: true, page: '/admin/import' });
+  const before = db.prepare('SELECT COUNT(*) n FROM users').get().n;
+
+  assert.equal((await send(t1, csv)).status, 403);                                        // people who manage accounts only
+  assert.equal((await send(owner, 'PK\u0003\u0004 not a csv')).location, '/admin/import#contacts');
+  assert.match((await owner.get('/admin/import')).text, /That is an Excel workbook/);
+  await send(owner, 'TITLE,PHONE\nBoss,1'); assert.match((await owner.get('/admin/import')).text, /needs a &#34;Name&#34; column/);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM users').get().n, before);
+
+  await send(owner, csv);
+  const page = (await owner.get('/admin/import')).text;
+  assert.match(page, /<strong>3<\/strong> existing accounts filled in and <strong>1<\/strong> person added/);
+  assert.match(page, /Matched to existing accounts:<\/strong> Danny Rivers, Mia Old-Email, Terry Tech/);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM users').get().n, before + 1);            // the heading and the empty row are not people
+  const who = (name) => db.prepare('SELECT username, display_name, job_title, department, email, phone, show_phone, show_email, active, in_directory, must_change_password FROM users WHERE display_name = ?').get(name);
+  // Matched by the first.last in the email; keeps the name it has here, takes the title, department and work contact details.
+  assert.deepEqual(who('Danny Rivers'), { username: 'daniel.rivers', display_name: 'Danny Rivers', job_title: 'Service Tech', department: 'Service', email: 'daniel.rivers@example.com', phone: '(717) 555-0102', show_phone: 1, show_email: 1, active: 1, in_directory: 1, must_change_password: 0 });
+  assert.deepEqual([who('Mia Old-Email').email, who('Mia Old-Email').job_title, who('Mia Old-Email').phone, who('Mia Old-Email').show_phone], ['mia.new@example.com', 'CED Agent', null, 0]);   // "(TEAMS)" is not a phone number
+  assert.deepEqual([who('Terry Tech').job_title, who('Terry Tech').phone, who('Terry Tech').department], ['Lead Tech, Nights', '717-555-0103', 'Service']);
+  // New to the site: listed, tidied, and unable to sign in until an admin enables the account.
+  const pat = who("Pat O'Brien-McKay");
+  assert.deepEqual([pat.username, pat.job_title, pat.department, pat.active, pat.in_directory, pat.must_change_password], ['pat.obrien', 'General Manager', 'Management', 0, 1, 1]);
+  assert.equal((await new Client().post('/login', { username: 'pat.obrien', password: '' }, { page: '/login' })).status, 401);
+
+  const people = (await t1.get('/people')).text;
+  assert.match(people, /Pat O&#39;Brien-McKay<\/strong>\s*<span class="meta">General Manager · Management/);
+  assert.match(people, /<option value="Service"/);
+  const service = (await t1.get('/people?dept=Service')).text;
+  assert.match(service, /Danny Rivers/); assert.doesNotMatch(service, /Pat O&#39;Brien/);
+  const patPage = (await t1.get(`/people/${userId('pat.obrien')}`)).text;
+  assert.match(patPage, /href="tel:7175550101"/); assert.match(patPage, /mailto:pat\.obrien@example\.com/); assert.match(patPage, /Pat is not using this site yet/);
+
+  // Importing again changes nothing but what the list changed; disabling someone by hand takes them off the page.
+  await send(owner, csv.replace('GENERAL MANAGER', 'REGIONAL MANAGER'));
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM users').get().n, before + 1);
+  assert.equal(who("Pat O'Brien-McKay").job_title, 'Regional Manager');
+  await owner.post(`/admin/users/${userId('daniel.rivers')}/toggle-active`, {}, { page: '/admin/users' });
+  assert.doesNotMatch((await t1.get('/people')).text, /Danny Rivers/);
+  db.prepare("UPDATE users SET job_title = NULL, department = NULL, phone = NULL, show_phone = 0, show_email = 0, in_directory = 0 WHERE username IN ('tech1')").run();
+});
