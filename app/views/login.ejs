@@ -1,5 +1,6 @@
-<%- include('partials/header') %>
+<%- include('partials/header', { hero: true }) %>
 <div class="narrow">
+<%- include('partials/logo_hero') %>
 <h1>Sign in</h1>
 <% if (error) { %><p class="flash err" role="alert"><%= error %></p><% } %>
 <form method="post" action="/login" class="card stack">

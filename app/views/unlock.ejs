@@ -1,6 +1,6 @@
-<%- include('partials/header') %>
+<%- include('partials/header', { hero: true }) %>
 <div class="narrow lock-screen">
-<p class="lock-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg></p>
+<%- include('partials/logo_hero') %>
 <h1>Welcome back, <%= user.display_name.split(' ')[0] %></h1>
 <p class="lede">The site locks when it is closed or left for a few minutes. Confirm it is you to carry on.</p>
 <% if (error) { %><p class="flash err" role="alert"><%= error %></p><% } %>

@@ -17,7 +17,7 @@
 <script src="/site.js?v=<%= assetV %>" defer></script>
 <script src="/passkey.js?v=<%= assetV %>" defer></script>
 </head>
-<body class="<%= user && !user.must_change_password && !isLocked ? 'has-tabbar' : '' %>">
+<body class="<%= user && !user.must_change_password && !isLocked ? 'has-tabbar' : '' %><%= typeof hero !== 'undefined' && hero ? ' hero-page' : '' %>">
 <header class="top">
   <div class="banner">
     <div class="banner-in">
