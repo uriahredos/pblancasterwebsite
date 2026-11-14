@@ -71,9 +71,16 @@ router.get('/', requireLogin, (req, res) => {
      ORDER BY s.session_date, s.session_time LIMIT 4`).all(today, req.user.branch_id).map((s) => {
     const d = ymdDate(s.session_date);
     const days = daysBetween(today, s.session_date);
-    return { ...s, weekday: WEEKDAYS[d.getUTCDay()], month: MONTHS[d.getUTCMonth()], day: d.getUTCDate(), time: clock(s.session_time),
+    return { ...s, date: s.session_date, kind: 'Training', weekday: WEEKDAYS[d.getUTCDay()], month: MONTHS[d.getUTCMonth()], day: d.getUTCDate(), time: clock(s.session_time),
       when: days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : `In ${days} days` };
   });
+  // Events share the "Coming up" list with training sessions, soonest first.
+  const social = require('./social');
+  for (const e of social.upcomingEvents(req.user, 4, today)) {
+    upcoming.push({ title: e.title, date: e.event_date, kind: e.mine ? "You're in" : `${e.going.length} in`, url: `/events#e${e.id}`, weekday: e.weekday, month: e.month, day: e.day, time: e.time, location: e.location, when: e.when });
+  }
+  upcoming.sort((x, y) => (x.date < y.date ? -1 : x.date > y.date ? 1 : 0));
+  upcoming.splice(5);
 
   // Where this person's own things stand.
   const status = [];
@@ -140,6 +147,7 @@ router.get('/', requireLogin, (req, res) => {
   const now = new Date();
   const dateLine = new Intl.DateTimeFormat('en-US', { timeZone: config.timezone, weekday: 'long', month: 'long', day: 'numeric' }).format(now);
   res.render('home', {
+    shouts: social.recentShoutouts(me, 3), thisWeek: social.thisWeek(req.user, today), wallPhotos: social.recentPhotos(me, 4),
     dailyCard: require('../daily').card(me), welcomes: require('./community').recentWelcomes(me),
     profileEmpty: !req.user.photo_path && !req.user.about && !req.user.skills,
     title: 'Home', wide: true, hasPasskey: db.prepare('SELECT 1 FROM passkeys WHERE user_id = ?').get(me) !== undefined, branch, branchTitle: req.user.scope === 'team' ? 'Your team at a glance' : ids ? 'Branch at a glance' : 'All branches at a glance', critical, notices, board, replies, talk, myCerts, issue: issues[0] || null, pastIssues: issues.slice(1), upcoming, status, dateLine,

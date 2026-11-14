@@ -4,9 +4,10 @@
   <%- include('partials/avatar', { who: p, size: 'xl' }) %>
   <div class="person-text">
     <h1><%= p.display_name %></h1>
-    <p class="meta"><%= [p.job_title, p.department, p.branch ? p.branch + ' branch' : ''].filter(Boolean).join(' · ') %></p>
+    <p class="meta"><%= [p.job_title, p.department].filter(Boolean).join(' · ') %><% if (p.branch) { %><%= p.job_title || p.department ? ' · ' : '' %><a href="/branches/<%= p.branch_id %>"><%= p.branch %> branch</a><% } %></p>
     <% if (p.tenure) { %><p class="meta"><%= p.tenure %><%= p.started_on ? ' · started ' + fmtDate(p.started_on) : '' %></p><% } %>
-    <% if (me) { %><p><a class="btn small" href="/profile">Edit my profile</a></p><% } %>
+    <% if (bday) { %><p class="meta">🎂 <%= bday %></p><% } %>
+    <% if (me) { %><p><a class="btn small" href="/profile">Edit my profile</a></p><% } else { %><p><a class="btn small" href="/shoutouts?to=<%= p.id %>#give">👏 Give a shout-out</a></p><% } %>
   </div>
 </div>
 <% if (p.about) { %><h2>About</h2><div class="card"><p class="pre"><%= p.about %></p></div><% } %>
@@ -20,7 +21,11 @@
 </div>
 <% } %>
 <% if (!p.active) { %><p class="hint"><%= p.display_name.split(' ')[0] %> is not using this site yet.</p><% } %>
-<% if (!p.about && !p.skillList.length && !certs.length && !p.phone && !p.email) { %><p class="card empty"><%= me ? 'Your profile is empty. Add a photo and a few words so people know who you are.' : p.display_name.split(' ')[0] + ' has not filled in a profile yet.' %></p><% } %>
+<% if (!p.about && !p.skillList.length && !certs.length && !p.phone && !p.email && !shouts.length) { %><p class="card empty"><%= me ? 'Your profile is empty. Add a photo and a few words so people know who you are.' : p.display_name.split(' ')[0] + ' has not filled in a profile yet.' %></p><% } %>
+<% if (shouts.length) { %>
+<h2 id="shoutouts">Shout-outs</h2>
+<div class="card"><ul class="shouts"><% shouts.forEach(function (s) { %><%- include('partials/shout', { s: s, back: 'person' }) %><% }) %></ul></div>
+<% } %>
 <% if (welcome) { %>
 <h2 id="welcome">Welcome messages</h2>
 <div class="card stack">

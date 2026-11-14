@@ -105,7 +105,7 @@ Reached from the **Usage summary** button on the parts log. For a date range (an
 ## The menu
 
 - **Always in the bar:** Home, Announcements, Tasks, My activity.
-- **Drop-downs:** Community (People, Discussions, Daily question, Newsletters), Parts, Trucks, Training, Team and Setup. Each holds the forms first, then the pages for managing that area. **Team** is people and what goes out to them (Anonymous complaint, Users, Profiles, Manage tasks, Post announcements, Newsletters, Complaints); **Setup** is the site itself (QR code sign, Activity log, Backups, Import old data). People only see the items their profile allows; a group with a single item shows as a plain link, so a technician sees "Truck inspection" and "Anonymous complaint" as links.
+- **Drop-downs:** Community (People, Shout-outs, Events, Photos, Discussions, Daily question, Newsletters, Branches), Parts, Trucks, Training, Team and Setup. Each holds the forms first, then the pages for managing that area. **Team** is people and what goes out to them (Anonymous complaint, Users, Profiles, Manage tasks, Post announcements, Newsletters, Complaints); **Setup** is the site itself (QR code sign, Activity log, Backups, Import old data). People only see the items their profile allows; a group with a single item shows as a plain link, so a technician sees "Truck inspection" and "Anonymous complaint" as links.
 - **One name for each thing:** Announcements (posting them is "Post announcements"), Tasks (giving them out is "Manage tasks"), Truck inspection, Anonymous complaint (reviewing them is "Complaints"), Certifications, Parts requests, and My activity for a person's own entries and requests.
 - **Notification bell** at the top right on a computer: a red number for everything waiting on you, and a list when you press it: your open tasks by name with their due dates, then unread announcements, discussions with new replies, updates on your requests and, for people who manage them, open parts requests, truck problems and expiring certifications. **Notification settings** is at the bottom of the list.
 - **Light / dark** is in the menu: the moon or sun at the right end of the bar on a computer, near the bottom of More on a phone. On the sign-in page, where there is no menu, it stays at the top right.
@@ -418,6 +418,25 @@ The **Community** menu holds People, Discussions, Daily question and Newsletters
 - One light question a day on weekdays (the weekend keeps Friday's), the same for everyone, on the home page. Results, with who picked what, show once you have answered. You can change your answer during the day.
 - The site starts with 120 built-in questions. Anyone can suggest one; it waits for approval.
 - People whose profile has **Run the daily question** approve or decline suggestions, add their own, and can set a question for a particular day. Approved suggestions and added questions come up before the built-in list.
+
+**Shout-outs (`/shoutouts`)**
+- Anyone can thank a coworker by name with a short note. The latest show on the home page and all of a person's shout-outs stay on their profile. Others can applaud. The person gets a push alert if they have alerts on.
+- Whoever wrote one, or a moderator, can remove it.
+
+**Birthdays and work anniversaries**
+- A birthday is a month and a day only, set by the person under My profile (never a year, and optional). Anniversaries come from the start date, from one year on.
+- The home page shows a **This week** panel for the person's own branch, today first, with a button to wish them well (one wish per person).
+
+**Events (`/events`)**
+- People whose profile has **Post events** add an event with a date, time, place and details, and can tick "ask people what they are bringing" for a potluck. Everyone presses **I'm in**, can say what they are bringing, and can back out.
+- An event is for the poster's branch; people who can see every branch can post one for every branch. Events appear with training sessions under **Coming up** on the home page.
+
+**Photos (`/photos`)**
+- Anyone who can use Discussions can post up to six photos at a time with a caption; others can like them. Photos are shrunk on the phone before they are sent. The poster or a moderator can remove one. The wall is shared by every branch.
+
+**Branch pages (`/branches`)**
+- Each branch has a page with a photo, address, phone, a few words about it, its people grouped by department, its upcoming events, and its latest shout-outs and photos.
+- The page is edited by people who manage accounts in that branch, or anyone who can see every branch.
 
 ## Branches
 

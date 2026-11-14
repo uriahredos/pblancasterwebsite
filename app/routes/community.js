@@ -26,7 +26,7 @@ function tenure(startedOn, today = localDate()) {
   const years = Math.floor(months / 12);
   return `${years} ${years === 1 ? 'year' : 'years'} with us`;
 }
-const PERSON = `SELECT u.id, u.display_name, u.active, u.department, u.job_title, u.started_on, u.about, u.skills, u.photo_path, u.branch_id, b.name AS branch,
+const PERSON = `SELECT u.id, u.display_name, u.birthday, u.active, u.department, u.job_title, u.started_on, u.about, u.skills, u.photo_path, u.branch_id, b.name AS branch,
   CASE WHEN u.show_phone = 1 THEN u.phone END AS phone, CASE WHEN u.show_email = 1 THEN u.email END AS email
   FROM users u LEFT JOIN branches b ON b.id = u.branch_id WHERE (u.active = 1 OR u.in_directory = 1)`;
 const decorate = (p) => ({ ...p, skillList: skillList(p.skills), tenure: tenure(p.started_on) });
@@ -66,14 +66,18 @@ router.get('/people/:id', requireLogin, (req, res) => {
   const notes = welcome ? db.prepare(
     `SELECT n.message, n.created_at, u.id, u.display_name, u.photo_path FROM welcome_notes n JOIN users u ON u.id = n.user_id
      WHERE n.welcome_id = ? AND u.active = 1 ORDER BY n.created_at`).all(welcome.id) : [];
-  res.render('person', { title: p.display_name, p: decorate(p), certs, welcome, notes, me: p.id === req.user.id });
+  const social = require('./social');
+  const bday = /^\d\d-\d\d$/.test(p.birthday || '') ? `${social.MONTHS[Number(p.birthday.slice(0, 2)) - 1]} ${Number(p.birthday.slice(3))}` : '';
+  res.render('person', { title: p.display_name, p: decorate(p), certs, welcome, notes, me: p.id === req.user.id, bday, shouts: social.shoutoutsFor(req.user.id, p.id) });
 });
 
 // ---- My own profile ------------------------------------------------------------
 
 function profileForm(req, res, extra = {}) {
   const me = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
-  res.status(extra.errors ? 400 : 200).render('profile_edit', { title: 'My profile', me, values: me, errors: [], ...extra });
+  const values = extra.values || me;
+  const [bMonth, bDay] = /^\d\d-\d\d$/.test(values.birthday || '') ? values.birthday.split('-').map(Number) : [null, null];
+  res.status(extra.errors ? 400 : 200).render('profile_edit', { title: 'My profile', me, errors: [], months: require('./social').MONTHS, ...extra, values, bMonth, bDay });
 }
 router.get('/profile', requireLogin, (req, res) => profileForm(req, res));
 
@@ -82,9 +86,15 @@ router.post('/profile', requireLogin, uploads.photos('photo', 1), verifyCsrf, (r
   const values = {
     job_title: clean(req.body.job_title, 80), started_on: clean(req.body.started_on, 10), about: clean(req.body.about, 1000),
     skills: skillList(clean(req.body.skills, 800)).map((s) => s.slice(0, 40)).slice(0, 25).join(', '),
+    birthday: null,
     phone: clean(req.body.phone, 30), show_phone: req.body.show_phone === '1' ? 1 : 0, show_email: req.body.show_email === '1' ? 1 : 0,
   };
   const errors = [];
+  const bm = Number(req.body.birth_month), bd = Number(req.body.birth_day);
+  if (req.body.birth_month || req.body.birth_day) {
+    if (bm >= 1 && bm <= 12 && bd >= 1 && bd <= [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][bm - 1]) values.birthday = `${String(bm).padStart(2, '0')}-${String(bd).padStart(2, '0')}`;
+    else errors.push('Choose both a month and a day for your birthday, or neither.');
+  }
   if (values.started_on && (!isYmd(values.started_on) || values.started_on > localDate())) errors.push('The start date does not look right.');
   if (values.phone && !/^[0-9 ()+.x-]{7,30}$/.test(values.phone)) errors.push('The phone number does not look right.');
   if (req.photoError) errors.push(req.photoError);
@@ -94,8 +104,8 @@ router.post('/profile', requireLogin, uploads.photos('photo', 1), verifyCsrf, (r
 
   const old = req.user.photo_path;
   const photo = file ? file.filename : req.body.remove_photo === '1' ? null : old;
-  db.prepare('UPDATE users SET job_title = ?, started_on = ?, about = ?, skills = ?, phone = ?, show_phone = ?, show_email = ?, photo_path = ? WHERE id = ?')
-    .run(values.job_title || null, values.started_on || null, values.about || null, values.skills || null, values.phone || null, values.show_phone, values.show_email, photo, req.user.id);
+  db.prepare('UPDATE users SET job_title = ?, started_on = ?, about = ?, skills = ?, phone = ?, show_phone = ?, show_email = ?, photo_path = ?, birthday = ? WHERE id = ?')
+    .run(values.job_title || null, values.started_on || null, values.about || null, values.skills || null, values.phone || null, values.show_phone, values.show_email, photo, values.birthday, req.user.id);
   if (old && old !== photo) uploads.remove(old);
   flash(req, 'ok', 'Profile saved.');
   res.redirect(`/people/${req.user.id}`);

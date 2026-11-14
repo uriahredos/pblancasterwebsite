@@ -67,9 +67,13 @@
     var groups = [
       { name: 'Community', items: [
         ['', '/people', 'People', is('/people') || path === '/profile'],
+        ['', '/shoutouts', 'Shout-outs', is('/shoutouts')],
+        ['', '/events', 'Events', is('/events')],
+        ['', '/photos', 'Photos', is('/photos')],
         ['forum.use', '/discussions', 'Discussions', is('/discussions'), badges.forum],
         ['', '/daily', 'Daily question', is('/daily')],
-        ['', '/newsletters', 'Newsletters', is('/newsletters')]
+        ['', '/newsletters', 'Newsletters', is('/newsletters')],
+        ['', '/branches', 'Branches', is('/branches')]
       ] },
       { name: 'Parts', items: [
         ['parts.submit', '/parts?action=take', 'Take parts', false],

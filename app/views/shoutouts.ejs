@@ -1,0 +1,26 @@
+<%- include('partials/header') %>
+<h1>Shout-outs</h1>
+<p class="lede">Thank someone for a job well done. Everyone at the company can see it, and it stays on their profile.</p>
+<%- include('partials/errors') %>
+<form method="post" action="/shoutouts" class="card stack" id="give">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Who is it for?
+    <select name="to_user" required>
+      <option value="">Choose a person</option>
+      <% people.forEach(function (p) { %><option value="<%= p.id %>" <%= values.to_user === p.id ? 'selected' : '' %>><%= p.display_name %><%= p.branch ? ' · ' + p.branch : '' %></option><% }) %>
+    </select>
+  </label>
+  <label>What did they do? <span class="hint">A sentence or two is plenty.</span>
+    <textarea name="message" rows="3" maxlength="400" required><%= values.message || '' %></textarea>
+  </label>
+  <button class="btn primary" type="submit">👏 Give a shout-out</button>
+</form>
+<h2>Latest</h2>
+<% if (!rows.length) { %><p class="card empty">No shout-outs yet. Be the first to give one.</p><% } %>
+<ul class="shouts">
+  <% rows.forEach(function (s) { %>
+  <%- include('partials/shout', { s: s, back: '' }) %>
+  <% if (s.from_user === user.id || mod) { %><li class="shout-admin"><form method="post" action="/shoutouts/<%= s.id %>/delete" data-confirm="Remove this shout-out?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Remove the one above</button></form></li><% } %>
+  <% }) %>
+</ul>
+<%- include('partials/footer') %>

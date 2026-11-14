@@ -455,6 +455,67 @@ addColumn('stock_adjustments', 'branch_id', 'INTEGER');
   }
 }
 
+// ---- Community, part two: shout-outs, celebrations, events, the photo wall, branch pages ----
+db.exec(`
+CREATE TABLE IF NOT EXISTS shoutouts (
+  id INTEGER PRIMARY KEY,
+  from_user INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  to_user INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  message TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS shoutouts_to ON shoutouts(to_user);
+CREATE TABLE IF NOT EXISTS shoutout_cheers (
+  shoutout_id INTEGER NOT NULL REFERENCES shoutouts(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY (shoutout_id, user_id)
+);
+-- "Happy birthday" / "Congratulations": one per person, per occasion, per year.
+CREATE TABLE IF NOT EXISTS celebrations (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('birthday','anniversary')),
+  year INTEGER NOT NULL,
+  from_user INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY (user_id, kind, year, from_user)
+);
+CREATE TABLE IF NOT EXISTS events (
+  id INTEGER PRIMARY KEY,
+  title TEXT NOT NULL,
+  details TEXT,
+  event_date TEXT NOT NULL,
+  event_time TEXT,
+  location TEXT,
+  branch_id INTEGER REFERENCES branches(id),     -- empty = every branch
+  potluck INTEGER NOT NULL DEFAULT 0,
+  created_by INTEGER NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS event_signups (
+  event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  bringing TEXT,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (event_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS wall_photos (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  path TEXT NOT NULL,
+  caption TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS wall_likes (
+  photo_id INTEGER NOT NULL REFERENCES wall_photos(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY (photo_id, user_id)
+);
+`);
+addColumn('users', 'birthday', 'TEXT');            // "MM-DD": the day only, never the year
+addColumn('branches', 'address', 'TEXT');
+addColumn('branches', 'phone', 'TEXT');
+addColumn('branches', 'about', 'TEXT');
+addColumn('branches', 'photo_path', 'TEXT');
+
 // ---- Face ID / fingerprint sign-in (passkeys) ----
 db.exec(`
 CREATE TABLE IF NOT EXISTS passkeys (

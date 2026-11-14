@@ -1,0 +1,54 @@
+<%- include('partials/header') %>
+<h1>Events</h1>
+<p class="lede">Cookouts, potlucks, drives and get-togethers. Press "I'm in" so the organiser knows who is coming.</p>
+<%- include('partials/errors') %>
+<% if (!upcoming.length) { %><p class="card empty">Nothing on the calendar yet.<%= canPost ? ' Add the first event below.' : '' %></p><% } %>
+<ul class="records">
+  <% upcoming.forEach(function (e) { %>
+  <li class="card event" id="e<%= e.id %>">
+    <div class="event-top">
+      <span class="cal" aria-hidden="true"><span><%= e.month %></span><%= e.day %></span>
+      <div class="event-text">
+        <strong><%= e.title %></strong>
+        <span class="meta"><%= e.weekday %>, <%= e.month %> <%= e.day %><%= e.time ? ' at ' + e.time : '' %><%= e.location ? ' · ' + e.location : '' %></span>
+        <span class="meta"><%= e.when %><%= e.when ? ' · ' : '' %><%= e.branch ? e.branch + ' branch' : 'Every branch' %> · posted by <%= e.by_name %></span>
+      </div>
+    </div>
+    <% if (e.details) { %><p class="pre"><%= e.details %></p><% } %>
+    <p class="meta"><strong><%= e.going.length %></strong> <%= e.going.length === 1 ? 'person is' : 'people are' %> in<%= e.going.length ? ':' : '.' %></p>
+    <% if (e.going.length) { %><ul class="going"><% e.going.forEach(function (g) { %><li><%- include('partials/avatar', { who: g, size: 'sm' }) %><span><a href="/people/<%= g.id %>"><%= g.display_name %></a><% if (g.bringing) { %> <span class="meta">· bringing <%= g.bringing %></span><% } %></span></li><% }) %></ul><% } %>
+    <form method="post" action="/events/<%= e.id %>/signup" class="filters">
+      <input type="hidden" name="_csrf" value="<%= csrf %>">
+      <% if (e.potluck) { %><label class="grow"><span class="sr">What you are bringing</span><input name="bringing" value="<%= e.mine ? e.mine.bringing || '' : '' %>" maxlength="120" autocomplete="off" placeholder="What are you bringing? (optional)"></label><% } %>
+      <div class="filter-actions">
+        <button class="btn <%= e.mine ? '' : 'primary' %> small" type="submit"><%= e.mine ? (e.potluck ? 'Update what I am bringing' : "You're in ✓") : "I'm in" %></button>
+        <% if (e.mine) { %><button class="link" type="submit" name="out" value="1">I can't make it</button><% } %>
+      </div>
+    </form>
+    <% if (e.mayRun) { %><form method="post" action="/events/<%= e.id %>/delete" data-confirm="Remove this event and its sign-ups?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Remove event</button></form><% } %>
+  </li>
+  <% }) %>
+</ul>
+<% if (canPost) { %>
+<h2 id="add">Add an event</h2>
+<form method="post" action="/events" class="card stack">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>What is it? <input name="title" value="<%= values.title || '' %>" maxlength="120" required autocomplete="off"></label>
+  <div class="two">
+    <label>Date <input type="date" name="event_date" value="<%= values.event_date || '' %>" required></label>
+    <label>Time <span class="hint">Optional</span><input type="time" name="event_time" value="<%= values.event_time || '' %>"></label>
+  </div>
+  <label>Where <span class="hint">Optional</span><input name="location" value="<%= values.location || '' %>" maxlength="120" autocomplete="off"></label>
+  <label>Details <span class="hint">Optional</span><textarea name="details" rows="3" maxlength="2000"><%= values.details || '' %></textarea></label>
+  <label class="choice"><input type="checkbox" name="potluck" value="1" <%= values.potluck ? 'checked' : '' %>> Ask people what they are bringing (for a potluck)</label>
+  <% if (canReachAll) { %><label>Who is it for <select name="reach"><option value="branch">My branch</option><option value="everyone" <%= values.reach === 'everyone' ? 'selected' : '' %>>Every branch</option></select></label><% } %>
+  <button class="btn primary" type="submit">Post event</button>
+</form>
+<% } %>
+<% if (past.length) { %>
+<h2>Recent events</h2>
+<ul class="records">
+  <% past.forEach(function (e) { %><li class="card cancelled"><div class="rec-head"><strong><%= e.title %></strong><time><%= fmtDate(e.event_date) %></time></div><p class="meta"><%= e.going.length %> <%= e.going.length === 1 ? 'person' : 'people' %> signed up</p></li><% }) %>
+</ul>
+<% } %>
+<%- include('partials/footer') %>

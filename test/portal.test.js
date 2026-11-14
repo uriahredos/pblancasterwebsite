@@ -2934,7 +2934,7 @@ test('profiles: people fill in their own, others find them by name, job or skill
   assert.equal(row.skills, 'Viking, backflow, fire pumps');                              // tidied, repeats dropped
   assert.match(row.photo_path, /^[0-9a-f]{32}\.png$/);
   const page = (await quinn.get(`/people/${pid}`)).text;
-  assert.match(page, /Sprinkler Fitter · Lancaster branch/); assert.match(page, /\d+ years with us · started 2\/3\/2020/);
+  assert.match(page, /Sprinkler Fitter · <a href="\/branches\/\d+">Lancaster branch<\/a>/); assert.match(page, /\d+ years with us · started 2\/3\/2020/);
   assert.match(page, /From Lititz\.\n&lt;b&gt;Likes&lt;\/b&gt; fishing\./);                 // typed text is shown as text, never run as code
   assert.match(page, /<a class="skill" href="\/people\?q=backflow">backflow<\/a>/);
   assert.match(page, new RegExp(`src="/people/photo/${pid}\\?v=`));
@@ -3266,4 +3266,156 @@ test('branches: each branch sees only its own parts, stock, trucks, tasks, train
   db.prepare('DELETE FROM training_sessions WHERE id = ?').run(lancSession); db.prepare('DELETE FROM training_requests WHERE id = ?').run(lancTraining);
   db.prepare("DELETE FROM branch_stock WHERE catalog_id = (SELECT id FROM parts_catalog WHERE part_number = 'BR-STOCK')").run();
   db.prepare("UPDATE users SET active = 0, in_directory = 0 WHERE branch_id = ? OR username = 'hbg.new'").run(hbg);
+});
+
+// ---- Community, part two ----------------------------------------------------------
+test('shout-outs: thank someone by name; it shows on the home page and stays on their profile', async () => {
+  const t1 = await loggedIn('tech1'); const t2 = await loggedIn('tech2'); const owner = await loggedIn('owner');
+  const [id1, id2] = [userId('tech1'), userId('tech2')];
+  assert.match((await t1.get('/shoutouts')).text, /No shout-outs yet/);
+  assert.match((await t1.post('/shoutouts', { to_user: String(id1), message: 'Me!' }, { page: '/shoutouts' })).text, /for someone else/);
+  assert.match((await t1.post('/shoutouts', { to_user: String(id2), message: '' }, { page: '/shoutouts' })).text, /Say what they did/);
+  assert.match((await t1.post('/shoutouts', { to_user: '999999', message: 'x' }, { page: '/shoutouts' })).text, /Choose who/);
+  assert.equal((await t1.post('/shoutouts', { to_user: String(id2), message: 'Fixed the <b>panel</b> at the school.' }, { page: '/shoutouts' })).location, '/shoutouts');
+  const sid = db.prepare('SELECT MAX(id) id FROM shoutouts').get().id;
+  const home = (await owner.get('/')).text.replace(/\s+/g, ' ');
+  assert.match(/<section class="panel p-shouts"[\s\S]*?<\/section>/.exec(home)[0], /Uma Tech<\/strong><\/a> <span class="meta">from <a href="\/people\/\d+">Terry Tech<\/a>[\s\S]*Fixed the &lt;b&gt;panel&lt;\/b&gt; at the school\./);
+  assert.match((await owner.get(`/people/${id2}`)).text, /id="shoutouts"[\s\S]*Fixed the/);
+  assert.match((await owner.get(`/people/${id1}`)).text, new RegExp(`href="/shoutouts\\?to=${id1}#give"`));
+  assert.match((await owner.get(`/shoutouts?to=${id1}`)).text, new RegExp(`<option value="${id1}" selected>`));
+  // Applause toggles, one per person.
+  await owner.post(`/shoutouts/${sid}/cheer`, { back: 'home' }, { page: '/' }); await t2.post(`/shoutouts/${sid}/cheer`, {}, { page: '/shoutouts' });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM shoutout_cheers WHERE shoutout_id = ?').get(sid).n, 2);
+  await owner.post(`/shoutouts/${sid}/cheer`, {}, { page: '/shoutouts' });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM shoutout_cheers WHERE shoutout_id = ?').get(sid).n, 1);
+  // Only the writer or a moderator removes one.
+  assert.equal((await t2.post(`/shoutouts/${sid}/delete`, {}, { page: '/shoutouts' })).status, 403);
+  await t1.post(`/shoutouts/${sid}/delete`, {}, { page: '/shoutouts' });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM shoutouts').get().n, 0);
+  assert.equal((await new Client().get('/shoutouts')).status, 302);
+});
+
+test('birthdays and anniversaries: this week on the home page for the branch, with one wish each', async () => {
+  const social = require('../app/routes/social');
+  makeUser('bday1', 'Bea Birthday'); makeUser('anniv1', 'Andy Anniversary'); makeUser('far1', 'Fran Faraway');
+  const today = '2026-11-13';
+  db.prepare("UPDATE users SET birthday = '11-13' WHERE username = 'bday1'").run();
+  db.prepare("UPDATE users SET started_on = '2021-11-16' WHERE username = 'anniv1'").run();     // five years on Monday
+  db.prepare("UPDATE users SET birthday = '12-25', started_on = '2026-11-14' WHERE username = 'far1'").run();   // outside the week; started this year
+  const viewer = { id: userId('tech1'), branch_id: 1 };
+  const week = social.thisWeek(viewer, today).filter((o) => ['Bea Birthday', 'Andy Anniversary', 'Fran Faraway'].includes(o.display_name));
+  assert.deepEqual(week.map((o) => [o.display_name, o.kind, o.when, o.text]), [['Bea Birthday', 'birthday', 'Today', 'Birthday'], ['Andy Anniversary', 'anniversary', 'Mon, Nov 16', '5 years with us']]);
+  // Someone in another branch does not see them.
+  assert.equal(social.thisWeek({ id: 0, branch_id: 999 }, today).length, 0);
+
+  // The profile form: a month and a day, never a year; both or neither.
+  const bea = await loggedIn('bday1');
+  const save = (f) => bea.post('/profile', Object.entries(f), { multipart: true, page: '/profile' });
+  assert.match((await save({ birth_month: '2', birth_day: '30' })).text, /both a month and a day/);
+  assert.match((await save({ birth_month: '3' })).text, /both a month and a day/);
+  const now = new Date(Date.now() - 5 * 3600 * 1000);
+  await save({ birth_month: String(now.getUTCMonth() + 1), birth_day: String(now.getUTCDate()) });
+  assert.match(db.prepare("SELECT birthday FROM users WHERE username = 'bday1'").get().birthday, /^\d\d-\d\d$/);
+  assert.match((await bea.get(`/people/${userId('bday1')}`)).text, /🎂 [A-Z][a-z]+ \d+/);
+
+  // A wish from the home page: once per person, not for yourself.
+  const t1 = await loggedIn('tech1');
+  const live = require('../app/routes/social').thisWeek({ id: userId('tech1'), branch_id: 1 }).find((o) => o.display_name === 'Bea Birthday');
+  if (live) {                                                         // true unless the test runs across midnight in another timezone
+    assert.match((await t1.get('/')).text.replace(/\s+/g, ' '), /id="thisweek"[\s\S]*Bea Birthday[\s\S]*Happy birthday<\/button>/);
+    await t1.post('/celebrate', { user_id: String(userId('bday1')), kind: 'birthday' }, { page: '/' });
+    await t1.post('/celebrate', { user_id: String(userId('bday1')), kind: 'birthday' }, { page: '/' });
+    await bea.post('/celebrate', { user_id: String(userId('bday1')), kind: 'birthday' }, { page: '/' });
+    await t1.post('/celebrate', { user_id: String(userId('far1')), kind: 'birthday' }, { page: '/' });   // not this week: ignored
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM celebrations').get().n, 1);
+    assert.match((await t1.get('/')).text.replace(/\s+/g, ' '), /Bea Birthday[\s\S]*1 wish[\s\S]*Sent ✓/);
+  }
+  await save({});                                                      // clearing it takes them off the list
+  assert.equal(db.prepare("SELECT birthday FROM users WHERE username = 'bday1'").get().birthday, null);
+  db.prepare("UPDATE users SET birthday = NULL, started_on = NULL WHERE username IN ('anniv1', 'far1')").run(); db.prepare('DELETE FROM celebrations').run();
+});
+
+test('events: posted by those allowed, everyone signs up, potlucks collect what people bring', async () => {
+  const owner = await loggedIn('owner'); const t1 = await loggedIn('tech1'); const t2 = await loggedIn('tech2');
+  assert.equal((await t1.post('/events', { title: 'Sneaky', event_date: ymdFromNow(3) }, { page: '/events' })).status, 403);
+  assert.doesNotMatch((await t1.get('/events')).text, /Add an event/);
+  assert.match((await owner.post('/events', { title: 'Old news', event_date: '2020-01-01' }, { page: '/events' })).text, /today or later/);
+  await owner.post('/events', { title: 'Chili <cook-off>', event_date: ymdFromNow(6), event_time: '12:30', location: 'The shop', details: 'Bring a pot.', potluck: '1' }, { page: '/events' });
+  await owner.post('/events', { title: 'Toy drive', event_date: ymdFromNow(20) }, { page: '/events' });
+  const eid = db.prepare("SELECT id FROM events WHERE title LIKE 'Chili%'").get().id;
+  const page = (await t1.get('/events')).text;
+  assert.match(page, /Chili &lt;cook-off&gt;[\s\S]*at 12:30 PM · The shop[\s\S]*Toy drive/); assert.match(page, /name="bringing"/);
+
+  await t1.post(`/events/${eid}/signup`, { bringing: 'Cornbread' }, { page: '/events' });
+  await t2.post(`/events/${eid}/signup`, {}, { page: '/events' });
+  await t1.post(`/events/${eid}/signup`, { bringing: 'Cornbread and butter' }, { page: '/events' });      // changing it does not sign up twice
+  assert.deepEqual(db.prepare('SELECT bringing FROM event_signups WHERE event_id = ? ORDER BY created_at').all(eid).map((r) => r.bringing), ['Cornbread and butter', null]);
+  const after = (await owner.get('/events')).text.replace(/\s+/g, ' ');
+  assert.match(after, /<strong>2<\/strong> people are in:[\s\S]*Terry Tech<\/a> <span class="meta">· bringing Cornbread and butter/);
+  // The home page lists it under Coming up with whether you are in.
+  assert.match((await t1.get('/')).text.replace(/\s+/g, ' '), /Coming up[\s\S]*<a href="\/events#e\d+">Chili &lt;cook-off&gt;<\/a>[\s\S]*You&#39;re in/);
+  await t2.post(`/events/${eid}/signup`, { out: '1' }, { page: '/events' });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM event_signups WHERE event_id = ?').get(eid).n, 1);
+
+  // Another branch does not see a branch's event, but does see one for every branch.
+  const other = db.prepare("INSERT INTO branches (name, created_at) VALUES ('Eventville', ?)").run(new Date().toISOString()).lastInsertRowid;
+  makeUser('ev1', 'Eve Elsewhere'); db.prepare('UPDATE users SET branch_id = ? WHERE username = ?').run(other, 'ev1');
+  await owner.post('/events', { title: 'Company picnic', event_date: ymdFromNow(30), reach: 'everyone' }, { page: '/events' });
+  const eve = await loggedIn('ev1');
+  const hers = (await eve.get('/events')).text;
+  assert.match(hers, /Company picnic/); assert.doesNotMatch(hers, /Chili|Toy drive/);
+  assert.equal((await eve.post(`/events/${eid}/signup`, {}, { page: '/events' })).status, 404);
+
+  // Only the organiser (or someone who posts events for that branch) removes one.
+  assert.equal((await t1.post(`/events/${eid}/delete`, {}, { page: '/events' })).status, 403);
+  await owner.post(`/events/${eid}/delete`, {}, { page: '/events' });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM event_signups').get().n, 0);
+  db.prepare('DELETE FROM events').run(); db.prepare("UPDATE users SET active = 0 WHERE username = 'ev1'").run(); db.prepare('DELETE FROM branches WHERE id = ?').run(other);
+  db.prepare("UPDATE users SET branch_id = 1 WHERE username = 'ev1'").run();
+});
+
+test('photo wall and branch pages: photos posted and liked, a branch page with its people and news', async () => {
+  const t1 = await loggedIn('tech1'); const t2 = await loggedIn('tech2'); const owner = await loggedIn('owner');
+  const png = () => new File([PNG], 'site.png', { type: 'image/png' });
+  assert.match((await t1.post('/photos', [['caption', 'none']], { multipart: true, page: '/photos' })).text, /at least one photo/);
+  assert.match((await t1.post('/photos', [['photos', new File(['nope'], 'x.png', { type: 'image/png' })]], { multipart: true, page: '/photos' })).text, /must be JPEG, PNG, WebP or GIF/);
+  await t1.post('/photos', [['photos', png()], ['photos', png()], ['caption', 'New <panel> at the school']], { multipart: true, page: '/photos' });
+  const ids = db.prepare('SELECT id FROM wall_photos ORDER BY id').all().map((r) => r.id);
+  assert.equal(ids.length, 2);
+  const wall = (await t2.get('/photos')).text;
+  assert.match(wall, new RegExp(`<a class="wall-img" href="/wall/photo/${ids[1]}">`)); assert.match(wall, /New &lt;panel&gt; at the school/);
+  assert.doesNotMatch(wall, /target=/);
+  assert.equal((await t2.get(`/wall/photo/${ids[0]}`)).headers.get('content-type'), 'image/png');
+  assert.equal((await new Client().get(`/wall/photo/${ids[0]}`)).status, 302);
+  await t2.post(`/photos/${ids[0]}/like`, {}, { page: '/photos' }); await owner.post(`/photos/${ids[0]}/like`, {}, { page: '/photos' }); await t2.post(`/photos/${ids[0]}/like`, {}, { page: '/photos' });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM wall_likes WHERE photo_id = ?').get(ids[0]).n, 1);
+  assert.match((await t2.get('/')).text, /Latest photos[\s\S]*\/wall\/photo\//);
+  assert.equal((await t2.post(`/photos/${ids[0]}/delete`, {}, { page: '/photos' })).status, 403);
+
+  // The branch page: who's who by department, its shout-outs and photos; only people who manage the branch edit it.
+  db.prepare("UPDATE users SET department = 'Service', job_title = 'Lead Tech' WHERE username = 'tech1'").run();
+  await t2.post('/shoutouts', { to_user: String(userId('tech1')), message: 'Branch page shout-out' }, { page: '/shoutouts' });
+  const list = await t1.get('/branches');                                               // one branch goes straight to it; several are listed
+  assert.ok(list.location === '/branches/1' || /href="\/branches\/1"/.test(list.text));
+  let page = (await t1.get('/branches/1')).text.replace(/\s+/g, ' ');
+  assert.match(page, /Lancaster branch<\/h1>/); assert.match(page, /Service<\/h3>[\s\S]*Terry Tech<\/strong><span class="meta">Lead Tech/);
+  assert.match(page, /Branch page shout-out/); assert.match(page, /\/wall\/photo\//); assert.doesNotMatch(page, /Edit this page/);
+  assert.equal((await t1.post('/branches/1', [['about', 'hacked']], { multipart: true, page: '/branches/1' })).status, 403);
+  assert.match((await owner.post('/branches/1', [['phone', 'nope']], { multipart: true, page: '/branches/1?edit=1' })).text, /phone number does not look right/);
+  await owner.post('/branches/1', [['address', '1 Main St, Lancaster'], ['phone', '(717) 555-0199'], ['about', 'Serving the <county>.'], ['photo', png()]], { multipart: true, page: '/branches/1?edit=1' });
+  page = (await t1.get('/branches/1')).text;
+  assert.match(page, /1 Main St, Lancaster/); assert.match(page, /href="tel:7175550199"/); assert.match(page, /Serving the &lt;county&gt;\./); assert.match(page, /class="branch-hero" src="\/branches\/photo\/1\?v=/);
+  assert.equal((await t1.get('/branches/photo/1')).headers.get('content-type'), 'image/png');
+  assert.match((await t1.get(`/people/${userId('tech1')}`)).text, /<a href="\/branches\/1">Lancaster branch<\/a>/);
+  assert.equal((await t1.get('/branches/999')).status, 404);
+
+  // The owner removes someone else's photo (moderator); the poster removes their own. The files go too.
+  const fs3 = require('fs'); const p3 = require('path');
+  const file = p3.join(dataDir, 'uploads', db.prepare('SELECT path FROM wall_photos WHERE id = ?').get(ids[0]).path);
+  assert.ok(fs3.existsSync(file));
+  await owner.post(`/photos/${ids[0]}/delete`, {}, { page: '/photos' }); await t1.post(`/photos/${ids[1]}/delete`, {}, { page: '/photos' });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM wall_photos').get().n, 0);
+  await new Promise((r) => setTimeout(r, 50)); assert.ok(!fs3.existsSync(file));
+  db.prepare('DELETE FROM shoutouts').run(); db.prepare("UPDATE users SET department = NULL, job_title = NULL WHERE username = 'tech1'").run();
+  db.prepare('UPDATE branches SET address = NULL, phone = NULL, about = NULL, photo_path = NULL WHERE id = 1').run();
 });

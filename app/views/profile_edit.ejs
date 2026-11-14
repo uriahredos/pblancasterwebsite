@@ -18,6 +18,14 @@
   <label>Start date with the company
     <input type="date" name="started_on" value="<%= values.started_on || '' %>">
   </label>
+  <fieldset>
+    <legend>Birthday</legend>
+    <p class="hint">Just the day, never the year. Your branch sees it on the home page the week it comes up. Leave it empty to keep it to yourself.</p>
+    <div class="two">
+      <label>Month <select name="birth_month"><option value="">None</option><% months.forEach(function (m, i) { %><option value="<%= i + 1 %>" <%= bMonth === i + 1 ? 'selected' : '' %>><%= m %></option><% }) %></select></label>
+      <label>Day <select name="birth_day"><option value="">None</option><% for (var d = 1; d <= 31; d++) { %><option value="<%= d %>" <%= bDay === d ? 'selected' : '' %>><%= d %></option><% } %></select></label>
+    </div>
+  </fieldset>
   <label>About me <span class="hint">Where you are from, what you do outside work, anything you would tell someone on your first day.</span>
     <textarea name="about" rows="5" maxlength="1000"><%= values.about || '' %></textarea>
   </label>

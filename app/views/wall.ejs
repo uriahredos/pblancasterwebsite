@@ -1,0 +1,32 @@
+<%- include('partials/header') %>
+<h1>Photos</h1>
+<p class="lede">Job sites, events and anything worth showing off. Keep customers' private details out of the picture.</p>
+<%- include('partials/errors') %>
+<% if (canPost) { %>
+<form method="post" action="/photos" enctype="multipart/form-data" class="card stack" data-once>
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Add photos <span class="hint">Up to 6 at a time.</span>
+    <input type="file" name="photos" accept="image/jpeg,image/png,image/webp" multiple required data-shrink="1600">
+  </label>
+  <label>Caption <span class="hint">Optional</span><input name="caption" value="<%= values.caption || '' %>" maxlength="200" autocomplete="off"></label>
+  <button class="btn primary" type="submit">Post</button>
+</form>
+<script src="/shrink.js?v=<%= assetV %>" defer></script>
+<% } %>
+<% if (!rows.length) { %><p class="card empty">No photos yet.</p><% } %>
+<ul class="wall photo-grid">
+  <% rows.forEach(function (p) { %>
+  <li id="w<%= p.id %>">
+    <a class="wall-img" href="/wall/photo/<%= p.id %>"><img src="/wall/photo/<%= p.id %>" alt="<%= p.caption || 'Photo from ' + p.display_name %>" loading="lazy"></a>
+    <div class="wall-foot">
+      <span class="wall-who"><a href="/people/<%= p.user_id %>"><%= p.display_name %></a><span class="meta"><%= [p.branch, dateOnly(p.created_at)].filter(Boolean).join(' · ') %></span></span>
+      <form method="post" action="/photos/<%= p.id %>/like"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="page" value="<%= page %>">
+        <button class="react <%= p.liked ? 'on' : '' %>" type="submit" aria-pressed="<%= p.liked ? 'true' : 'false' %>">👍 <span><%= p.likes || '' %></span><span class="sr">Like</span></button></form>
+    </div>
+    <% if (p.caption) { %><p class="wall-cap"><%= p.caption %></p><% } %>
+    <% if (p.user_id === user.id || mod) { %><form method="post" action="/photos/<%= p.id %>/delete" data-confirm="Remove this photo?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Remove</button></form><% } %>
+  </li>
+  <% }) %>
+</ul>
+<% if (page > 1 || more) { %><p class="pager"><% if (page > 1) { %><a class="btn small" href="/photos?page=<%= page - 1 %>">Newer</a><% } else { %><span></span><% } %><% if (more) { %><a class="btn small" href="/photos?page=<%= page + 1 %>">Older</a><% } %></p><% } %>
+<%- include('partials/footer') %>

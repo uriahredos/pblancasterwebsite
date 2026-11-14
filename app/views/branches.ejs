@@ -1,0 +1,12 @@
+<%- include('partials/header') %>
+<h1>Branches</h1>
+<p class="lede">Who is where. Open a branch to see its people, its news and how to reach it.</p>
+<ul class="people">
+  <% rows.forEach(function (b) { %>
+  <li><a href="/branches/<%= b.id %>">
+    <% if (b.photo_path) { %><img class="avatar lg square" src="/branches/photo/<%= b.id %>?v=<%= b.photo_path.slice(0, 8) %>" alt="" loading="lazy"><% } else { %><span class="avatar lg square hue<%= b.id % 6 %>" aria-hidden="true"><%= b.name.slice(0, 2).toUpperCase() %></span><% } %>
+    <span class="person-text"><strong><%= b.name %></strong><span class="meta"><%= b.people %> <%= b.people === 1 ? 'person' : 'people' %><%= b.address ? ' · ' + b.address : '' %></span></span>
+  </a></li>
+  <% }) %>
+</ul>
+<%- include('partials/footer') %>

@@ -1,0 +1,12 @@
+<%# One shout-out. Pass `s` and `back` ('home', 'person' or ''). %>
+<li class="shout" id="s<%= s.id %>">
+  <%- include('avatar', { who: { id: s.to_user, display_name: s.to_name, photo_path: s.to_photo }, size: 'lg' }) %>
+  <div class="shout-body">
+    <p class="shout-head"><a href="/people/<%= s.to_user %>"><strong><%= s.to_name %></strong></a> <span class="meta">from <a href="/people/<%= s.from_user %>"><%= s.from_name %></a> · <%= dateOnly(s.created_at) %></span></p>
+    <p class="shout-text"><%= s.message %></p>
+    <form method="post" action="/shoutouts/<%= s.id %>/cheer" class="shout-foot">
+      <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="back" value="<%= back %>">
+      <button class="react <%= s.cheered ? 'on' : '' %>" type="submit" aria-pressed="<%= s.cheered ? 'true' : 'false' %>">👏 <span><%= s.cheers || '' %></span><span class="sr"><%= s.cheered ? 'Take back your applause' : 'Applaud' %></span></button>
+    </form>
+  </div>
+</li>

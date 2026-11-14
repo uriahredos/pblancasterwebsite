@@ -30,6 +30,7 @@ const KINDS = [
   { key: 'critical_notice', perm: null, group: 'For you', label: 'A critical announcement is posted' },
   { key: 'request_status', perm: null, group: 'For you', label: 'My parts or training request is updated' },
   { key: 'forum_reply', perm: 'forum.use', group: 'For you', label: 'Someone replies in a discussion I follow' },
+  { key: 'shoutout', perm: null, group: 'For you', label: 'Someone gives me a shout-out' },
   { key: 'task_done', perm: 'tasks.assign', group: 'For what you manage', label: 'A task I assigned is marked done' },
   { key: 'parts_request', perm: 'parts.manage', group: 'For what you manage', label: 'Someone requests parts' },
   { key: 'truck_problem', perm: 'inspections.view', group: 'For what you manage', label: 'A truck problem is reported' },

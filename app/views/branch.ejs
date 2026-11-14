@@ -1,0 +1,54 @@
+<%- include('partials/header') %>
+<p class="back"><a class="back-link" href="<%= many ? '/branches' : '/people' %>"><%= many ? 'Branches' : 'People' %></a></p>
+<% if (b.photo_path) { %><img class="branch-hero" src="/branches/photo/<%= b.id %>?v=<%= b.photo_path.slice(0, 8) %>" alt="The <%= b.name %> branch"><% } %>
+<div class="title-row"><h1><%= b.name %> branch</h1><% if (canEdit && !editing) { %><a class="btn small" href="/branches/<%= b.id %>?edit=1#edit">Edit this page</a><% } %></div>
+<p class="meta"><%= people.length %> <%= people.length === 1 ? 'person' : 'people' %><%= b.address ? ' · ' + b.address : '' %><% if (b.phone) { %> · <a href="tel:<%= b.phone.replace(/[^0-9+]/g, '') %>"><%= b.phone %></a><% } %></p>
+<% if (b.about) { %><div class="card"><p class="pre"><%= b.about %></p></div><% } %>
+<%- include('partials/errors') %>
+<% if (editing) { %>
+<form method="post" action="/branches/<%= b.id %>" enctype="multipart/form-data" class="card stack" id="edit">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Photo <span class="hint">The building, the crew, the trucks.</span><input type="file" name="photo" accept="image/jpeg,image/png,image/webp" data-shrink="1800"></label>
+  <% if (b.photo_path) { %><label class="choice"><input type="checkbox" name="remove_photo" value="1"> Remove the photo</label><% } %>
+  <label>Address <input name="address" value="<%= b.address || '' %>" maxlength="200" autocomplete="off"></label>
+  <label>Main phone <input name="phone" type="tel" value="<%= b.phone || '' %>" maxlength="30" autocomplete="off"></label>
+  <label>About this branch <span class="hint">What it covers, what it is known for, anything visitors should know.</span><textarea name="about" rows="5" maxlength="1500"><%= b.about || '' %></textarea></label>
+  <div class="filter-actions"><button class="btn primary" type="submit">Save</button><a class="btn" href="/branches/<%= b.id %>">Cancel</a></div>
+</form>
+<script src="/shrink.js?v=<%= assetV %>" defer></script>
+<% } %>
+
+<div class="dash">
+  <div class="dash-main">
+    <section class="panel" aria-labelledby="who-h">
+      <div class="panel-head"><h2 id="who-h">Who's who</h2><a href="/people?branch=<%= b.id %>">Search them</a></div>
+      <% if (!people.length) { %><p class="empty">Nobody has been added to this branch yet.</p><% } %>
+      <% groups.forEach(function (g) { %>
+      <% if (groups.length > 1) { %><h3 class="group-h"><%= g.name %></h3><% } %>
+      <ul class="roster">
+        <% g.people.forEach(function (p) { %><li><a href="/people/<%= p.id %>"><%- include('partials/avatar', { who: p }) %><span class="person-text"><strong><%= p.display_name %></strong><span class="meta"><%= p.job_title || '' %></span></span></a></li><% }) %>
+      </ul>
+      <% }) %>
+    </section>
+  </div>
+  <div class="dash-side">
+    <% if (events.length) { %>
+    <section class="panel" aria-labelledby="bev-h">
+      <div class="panel-head"><h2 id="bev-h">Coming up</h2><a href="/events">Events</a></div>
+      <ul class="agenda"><% events.forEach(function (e) { %><li><span class="cal" aria-hidden="true"><span><%= e.month %></span><%= e.day %></span><span class="agenda-body"><strong><%= e.title %></strong><span class="meta"><%= e.weekday %><%= e.time ? ' at ' + e.time : '' %><%= e.location ? ' · ' + e.location : '' %></span></span></li><% }) %></ul>
+    </section>
+    <% } %>
+    <section class="panel" aria-labelledby="bsh-h">
+      <div class="panel-head"><h2 id="bsh-h">Shout-outs</h2><a href="/shoutouts">All</a></div>
+      <% if (!shouts.length) { %><p class="empty">None yet for this branch.</p><% } %>
+      <ul class="shouts"><% shouts.forEach(function (s) { %><%- include('partials/shout', { s: s, back: '' }) %><% }) %></ul>
+    </section>
+    <% if (photos.length) { %>
+    <section class="panel" aria-labelledby="bph-h">
+      <div class="panel-head"><h2 id="bph-h">Photos</h2><a href="/photos">All</a></div>
+      <div class="thumbs photo-grid"><% photos.forEach(function (p) { %><a href="/wall/photo/<%= p.id %>"><img src="/wall/photo/<%= p.id %>" alt="<%= p.caption || 'Photo from ' + p.display_name %>" loading="lazy"></a><% }) %></div>
+    </section>
+    <% } %>
+  </div>
+</div>
+<%- include('partials/footer') %>

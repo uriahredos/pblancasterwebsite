@@ -111,6 +111,18 @@
       </ul>
     </section>
     <% } %>
+    <section class="panel p-shouts" aria-labelledby="shouts-h" id="shoutouts">
+      <div class="panel-head"><h2 id="shouts-h">Shout-outs</h2><a href="/shoutouts">All shout-outs</a></div>
+      <% if (!shouts.length) { %><p class="empty">Nobody has been thanked yet. Who did a great job this week?</p><% } %>
+      <ul class="shouts"><% shouts.forEach(function (s) { %><%- include('partials/shout', { s: s, back: 'home' }) %><% }) %></ul>
+      <p class="panel-foot"><a class="btn small" href="/shoutouts#give">👏 Give a shout-out</a></p>
+    </section>
+    <% if (wallPhotos.length) { %>
+    <section class="panel p-photos" aria-labelledby="photos-h">
+      <div class="panel-head"><h2 id="photos-h">Latest photos</h2><a href="/photos">All photos</a></div>
+      <div class="thumbs photo-grid"><% wallPhotos.forEach(function (p) { %><a href="/wall/photo/<%= p.id %>"><img src="/wall/photo/<%= p.id %>" alt="<%= p.caption || 'Photo from ' + p.display_name %>" loading="lazy"></a><% }) %></div>
+    </section>
+    <% } %>
     <section class="panel p-board" aria-labelledby="board-h">
       <div class="panel-head"><h2 id="board-h">Announcements</h2><a href="/notices">All announcements</a></div>
       <% notices.forEach(function (n) { %>
@@ -221,16 +233,33 @@
     </section>
     <% } %>
 
+    <% if (thisWeek.length) { %>
+    <section class="panel p-week" aria-labelledby="week-h" id="thisweek">
+      <div class="panel-head"><h2 id="week-h">This week</h2></div>
+      <ul class="week">
+        <% thisWeek.forEach(function (o) { %>
+        <li class="<%= o.today ? 'today' : '' %>">
+          <a href="/people/<%= o.id %>"><%- include('partials/avatar', { who: o }) %></a>
+          <span class="person-text"><strong><%= o.kind === 'birthday' ? '🎂' : '🎉' %> <a href="/people/<%= o.id %>"><%= o.mine ? 'You' : o.display_name %></a></strong>
+            <span class="meta"><%= o.text %> · <%= o.when %><%= o.wishes ? ' · ' + o.wishes + (o.wishes === 1 ? ' wish' : ' wishes') : '' %></span></span>
+          <% if (!o.mine && !o.wished) { %><form method="post" action="/celebrate"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="user_id" value="<%= o.id %>"><input type="hidden" name="kind" value="<%= o.kind %>"><button class="btn small" type="submit"><%= o.kind === 'birthday' ? 'Happy birthday' : 'Congrats' %></button></form>
+          <% } else if (o.wished) { %><span class="meta">Sent ✓</span><% } %>
+        </li>
+        <% }) %>
+      </ul>
+    </section>
+    <% } %>
+
     <% if (upcoming.length) { %>
     <section class="panel p-up" aria-labelledby="up-h">
-      <div class="panel-head"><h2 id="up-h">Coming up</h2><% if (can('training.submit')) { %><a href="/training/topics">Training topics</a><% } %></div>
+      <div class="panel-head"><h2 id="up-h">Coming up</h2><a href="/events">Events</a></div>
       <ul class="agenda">
         <% upcoming.forEach(function (s) { %>
         <li>
           <span class="cal" aria-hidden="true"><span><%= s.month %></span><%= s.day %></span>
-          <span class="agenda-body"><strong><%= s.title %></strong>
+          <span class="agenda-body"><strong><% if (s.url) { %><a href="<%= s.url %>"><%= s.title %></a><% } else { %><%= s.title %><% } %></strong>
             <span class="meta"><%= s.weekday %>, <%= s.month %> <%= s.day %><%= s.time ? ' at ' + s.time : '' %><%= s.location ? ' · ' + s.location : '' %></span>
-            <span class="meta"><%= s.when %></span></span>
+            <span class="meta"><%= s.when %> · <%= s.kind %></span></span>
         </li>
         <% }) %>
       </ul>
