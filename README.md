@@ -104,7 +104,7 @@ Reached from the **Usage summary** button on the parts log. For a date range (an
 
 ## The menu
 
-- **Always in the bar:** Home, Announcements, Tasks, My activity.
+- **Always in the bar:** Home, Tasks, Discussions. Announcements sits in the Community menu (and on the home page and the bell); My activity is reached from the home page, the bell and the account links on a phone.
 - **Drop-downs:** Community (Company, Offices, Who to contact, People, Shout-outs, Events, Photos, Discussions, Daily question, Newsletters), Parts, Trucks, Training, Team and Setup. Each holds the forms first, then the pages for managing that area. **Team** is people and what goes out to them (Anonymous complaint, Users, Profiles, Manage tasks, Post announcements, Newsletters, Complaints); **Setup** is the site itself (QR code sign, Activity log, Backups, Import old data). People only see the items their profile allows; a group with a single item shows as a plain link, so a technician sees "Truck inspection" and "Anonymous complaint" as links.
 - **One name for each thing:** Announcements (posting them is "Post announcements"), Tasks (giving them out is "Manage tasks"), Truck inspection, Anonymous complaint (reviewing them is "Complaints"), Certifications, Parts requests, and My activity for a person's own entries and requests.
 - **Notification bell** at the top right on a computer: a red number for everything waiting on you, and a list when you press it: your open tasks by name with their due dates, then unread announcements, discussions with new replies, updates on your requests and, for people who manage them, open parts requests, truck problems and expiring certifications. **Notification settings** is at the bottom of the list.

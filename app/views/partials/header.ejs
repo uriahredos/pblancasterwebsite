@@ -78,7 +78,7 @@
         ['', '/events', 'Events', is('/events')],
         ['', '/photos', 'Photos', is('/photos')],
         'divider',
-        ['forum.use', '/discussions', 'Discussions', is('/discussions'), badges.forum],
+        ['', '/notices', 'Announcements', is('/notices'), badges.notices],
         ['', '/daily', 'Daily question', is('/daily')],
         ['', '/newsletters', 'Newsletters', is('/newsletters')]
       ] },
@@ -140,9 +140,8 @@
   <div class="navbar" id="navbar">
     <nav class="nav" aria-label="Main">
       <a href="/" <%- path === '/' ? 'aria-current="page"' : '' %>>Home</a>
-      <a href="/notices" <%- path === '/notices' ? 'aria-current="page"' : '' %>>Announcements<% if (badges.notices) { %> <span class="badge" title="Unread"><%= badges.notices %></span><% } %></a>
       <a href="/tasks" <%- path === '/tasks' ? 'aria-current="page"' : '' %>>Tasks<% if (badges.tasks) { %> <span class="badge" title="Tasks to do"><%= badges.tasks %></span><% } %></a>
-      <a href="/my" <%- path === '/my' ? 'aria-current="page"' : '' %>>My activity<% if (badges.updates) { %> <span class="badge" title="Updates you have not seen"><%= badges.updates %></span><% } %></a>
+      <% if (can('forum.use')) { %><a href="/discussions" <%- path === '/discussions' || path.indexOf('/discussions/') === 0 ? 'aria-current="page"' : '' %>>Discussions<% if (badges.forum) { %> <span class="badge" title="New replies"><%= badges.forum %></span><% } %></a><% } %>
       <span class="nav-sep" aria-hidden="true"></span>
       <% groups.forEach(function (g) { %>
       <% if (g.links.length === 1) { var only = g.links[0]; %>
@@ -175,6 +174,7 @@
       <div class="nav-account">
         <span class="nav-sep" aria-hidden="true"></span>
         <a href="/profile">My profile</a>
+        <a href="/my" <%- path === '/my' ? 'aria-current="page"' : '' %>>My activity<% if (badges.updates) { %> <span class="badge" title="Updates you have not seen"><%= badges.updates %></span><% } %></a>
         <a href="/settings/notifications">Notification settings</a>
         <a href="/account/password">Password and Face ID<span class="hint-light"><%= user.display_name %></span></a>
         <form method="post" action="/logout"><input type="hidden" name="_csrf" value="<%= csrf %>"><button type="submit">Sign out</button></form>

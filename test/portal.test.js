@@ -1679,7 +1679,7 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
 
   const owner = (await (await loggedIn('owner')).get('/admin/users')).text;
   assert.deepEqual(groupsOf(owner), ['Community', 'Parts', 'Trucks', 'Training', 'Team', 'Setup', 'Corporate']);
-  assert.deepEqual(barLinks(owner), ['/', '/notices', '/tasks', '/my']);
+  assert.deepEqual(barLinks(owner), ['/', '/tasks', '/discussions']);
   // What used to be one long Admin list is two: Team (people and what goes out to them) and Setup (the site itself).
   const team = /<summary[^>]*>Team[\s\S]*?<\/details>/.exec(owner)[0];
   const setup = /<summary[^>]*>Setup[\s\S]*?<\/details>/.exec(owner)[0];
@@ -1701,7 +1701,7 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
   // A technician: no Team or Setup; Trucks has one thing, so it is a plain "Truck inspection" link.
   const tech = (await (await loggedIn('tech1')).get('/')).text;
   assert.deepEqual(groupsOf(tech), ['Community', 'Parts', 'Training']);
-  assert.deepEqual(barLinks(tech), ['/', '/notices', '/tasks', '/my', '/inspection', '/complaint']); // one-item groups show as plain links
+  assert.deepEqual(barLinks(tech), ['/', '/tasks', '/discussions', '/inspection', '/complaint']); // one-item groups show as plain links
   assert.doesNotMatch(tech, /href="\/admin\//);
   assert.match(tech, /<a href="\/inspection"[^>]*>Truck inspection<\/a>/);
   assert.doesNotMatch(/<summary[^>]*>Parts[\s\S]*?<\/details>/.exec(tech)[0], /<hr>/); // no stray divider
@@ -1709,7 +1709,7 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
   // A manager's Team group holds only what their profile allows, and they have no Setup group.
   const mgr = (await (await loggedIn('mgr1')).get('/')).text;
   assert.deepEqual(groupsOf(mgr), ['Community', 'Parts', 'Trucks', 'Training', 'Team']);           // Manage tasks and Post announcements
-  assert.deepEqual(barLinks(mgr), ['/', '/notices', '/tasks', '/my']);
+  assert.deepEqual(barLinks(mgr), ['/', '/tasks', '/discussions']);
   assert.doesNotMatch(mgr, /admin\/(users|profiles|complaints|backups|activity)"/);
 
   // Styles and scripts carry a version so a new release is not shown with old files.
