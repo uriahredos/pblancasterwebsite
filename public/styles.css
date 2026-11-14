@@ -973,17 +973,19 @@ td.row-more { width: 1%; white-space: nowrap; text-align: right; vertical-align:
 .acct .row-menu-list hr { border: 0; border-top: 1px solid var(--line); margin: .3rem .2rem; }
 .acct > summary { height: 42px; padding: 0 .7rem 0 .4rem; gap: .5rem; background: var(--banner-bg); box-shadow: 0 1px 2px rgba(10, 49, 82, .08); }
 
-/* The flame in the welcome band flickers for about four seconds when the page opens, then rests */
-.hero-mark { transform-origin: 60% 100%; animation: flame-in 4s ease-out both; }
-@keyframes flame-in {
-  0% { opacity: 0; transform: translateY(18%) scale(.7); }
-  14% { opacity: .5; transform: translateY(0) scale(1.14) skewX(-5deg); }
-  26% { opacity: .34; transform: scale(1.04) skewX(4deg) scaleY(1.06); }
-  38% { opacity: .46; transform: scale(1.12) skewX(-4deg) scaleY(.97); }
-  50% { opacity: .32; transform: scale(1.05) skewX(3deg) scaleY(1.07); }
-  62% { opacity: .42; transform: scale(1.09) skewX(-3deg) scaleY(.98); }
-  74% { opacity: .3; transform: scale(1.03) skewX(2deg) scaleY(1.04); }
-  87% { opacity: .34; transform: scale(1.04) skewX(-1deg); }
-  100% { opacity: .22; transform: none; }
-}
-@media (prefers-reduced-motion: reduce) { .hero-mark { animation: none; } }
+/* Sparks rise from the flame in the welcome band for a few seconds when the page opens; the flame itself stays still */
+.embers { position: absolute; right: 0; bottom: 0; width: 15rem; height: 100%; pointer-events: none; }
+.embers i { position: absolute; bottom: 8%; width: 5px; height: 5px; border-radius: 50%; background: #ffb547; box-shadow: 0 0 8px 2px rgba(255, 170, 60, .7); opacity: 0; animation: ember 2.6s ease-out 2 both; }
+.embers i:nth-child(1) { right: 22%; --dx: -18px; animation-delay: .2s; }
+.embers i:nth-child(2) { right: 34%; --dx: 14px; width: 4px; height: 4px; animation-delay: .55s; }
+.embers i:nth-child(3) { right: 14%; --dx: -30px; width: 3px; height: 3px; background: #ffe0a3; animation-delay: .9s; }
+.embers i:nth-child(4) { right: 44%; --dx: -10px; animation-delay: 1.2s; }
+.embers i:nth-child(5) { right: 27%; --dx: 22px; width: 3px; height: 3px; animation-delay: 1.5s; }
+.embers i:nth-child(6) { right: 18%; --dx: 8px; width: 4px; height: 4px; background: #ff8a3d; animation-delay: 1.8s; }
+.embers i:nth-child(7) { right: 38%; --dx: -24px; width: 3px; height: 3px; background: #ffe0a3; animation-delay: 2.1s; }
+.embers i:nth-child(8) { right: 9%; --dx: -12px; width: 4px; height: 4px; animation-delay: .4s; }
+.embers i:nth-child(9) { right: 30%; --dx: -4px; background: #ff8a3d; animation-delay: 1s; }
+@keyframes ember { 0% { opacity: 0; transform: translate(0, 0) scale(.6); } 15% { opacity: 1; } 70% { opacity: .8; } 100% { opacity: 0; transform: translate(var(--dx, 0), -9rem) scale(.3); } }
+@media (max-width: 520px) { .embers { width: 9rem; } }
+@media (prefers-reduced-motion: reduce) { .embers { display: none; } }
+@media print { .embers { display: none; } }
