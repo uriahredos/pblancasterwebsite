@@ -1,0 +1,28 @@
+<%- include('partials/header', { wide: true }) %>
+<div class="title-row"><h1>Positions</h1><a class="btn small" href="/admin/users">Users</a></div>
+<p class="lede">Everyone's job title and department in one place. Change as many as you like, then press Save once.</p>
+<% if (saved !== undefined) { %><p class="flash ok"><%= saved ? saved + (saved === 1 ? ' person' : ' people') + ' updated.' : 'Nothing was changed.' %></p><% } %>
+<% if (!people.length) { %><p class="empty">Nobody to show yet.</p><% } else { %>
+<label class="grow pos-find">Find a person <input type="search" id="pos-find" placeholder="Start typing a name, job or department" autocomplete="off"></label>
+<form method="post" action="/admin/positions" id="pos-form">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <datalist id="dept-list"><% departments.forEach(function (d) { %><option value="<%= d %>"></option><% }) %></datalist>
+  <div class="table-wrap">
+  <table class="positions">
+    <thead><tr><th>Name</th><th>Job title</th><th>Department</th></tr></thead>
+    <tbody>
+    <% people.forEach(function (p) { %>
+    <tr id="p<%= p.id %>" class="<%= focus === p.id ? 'focus' : '' %>">
+      <td data-label="Name"><a href="/people/<%= p.id %>"><%= p.display_name %></a><% if (showOffice && p.branch) { %> <span class="pill"><%= p.branch %></span><% } %></td>
+      <td data-label="Job title"><input name="job_<%= p.id %>" value="<%= p.job_title || '' %>" maxlength="80" autocomplete="off" aria-label="Job title for <%= p.display_name %>" <%= focus === p.id ? 'autofocus' : '' %>></td>
+      <td data-label="Department"><input name="dept_<%= p.id %>" value="<%= p.department || '' %>" maxlength="60" autocomplete="off" list="dept-list" aria-label="Department for <%= p.display_name %>"></td>
+    </tr>
+    <% }) %>
+    </tbody>
+  </table>
+  </div>
+  <div class="save-bar"><span class="meta" id="pos-count">No changes yet</span><button class="btn primary" type="submit">Save changes</button></div>
+</form>
+<script src="/positions.js?v=<%= assetV %>" defer></script>
+<% } %>
+<%- include('partials/footer') %>

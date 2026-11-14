@@ -69,7 +69,36 @@ router.get('/people/:id', requireLogin, (req, res) => {
      WHERE n.welcome_id = ? AND u.active = 1 ORDER BY n.created_at`).all(welcome.id) : [];
   const social = require('./social');
   const bday = /^\d\d-\d\d$/.test(p.birthday || '') ? `${social.MONTHS[Number(p.birthday.slice(0, 2)) - 1]} ${Number(p.birthday.slice(3))}` : '';
-  res.render('person', { title: p.display_name, p: decorate(p), certs, welcome, notes, me: p.id === req.user.id, bday, shouts: social.shoutoutsFor(req.user.id, p.id) });
+  const canPosition = access.can(req.user, 'users.manage') && access.canSee(req.user, p.id);
+  res.render('person', { canPosition, title: p.display_name, p: decorate(p), certs, welcome, notes, me: p.id === req.user.id, bday, shouts: social.shoutoutsFor(req.user.id, p.id) });
+});
+
+// ---- Positions: job titles and departments for a whole office, edited in one table -------------
+
+const deptList = () => db.prepare("SELECT DISTINCT department FROM users WHERE department IS NOT NULL AND department <> '' AND (active = 1 OR in_directory = 1) ORDER BY department COLLATE NOCASE").all().map((r) => r.department);
+function positionPeople(user) {
+  const ids = access.visibleUserIds(user);
+  return db.prepare(`SELECT u.id, u.display_name, u.job_title, u.department, u.photo_path, b.name AS branch FROM users u LEFT JOIN branches b ON b.id = u.branch_id
+    WHERE (u.active = 1 OR u.in_directory = 1) ${ids ? `AND u.id IN (${ids.map(Number).join(',') || 0})` : ''} ORDER BY u.display_name COLLATE NOCASE LIMIT 1000`).all();
+}
+router.get('/admin/positions', requirePerm('users.manage'), (req, res) => {
+  const saved = req.session.positionsSaved; delete req.session.positionsSaved;
+  res.render('admin_positions', { title: 'Positions', wide: true, people: positionPeople(req.user), departments: deptList(), saved, focus: isId(req.query.who) ? Number(req.query.who) : 0, showOffice: req.user.viewBranch === null });
+});
+router.post('/admin/positions', requirePerm('users.manage'), (req, res) => {
+  const set = db.prepare('UPDATE users SET job_title = ?, department = ? WHERE id = ?');
+  let changed = 0;
+  db.transaction(() => {
+    for (const p of positionPeople(req.user)) {
+      if (req.body[`job_${p.id}`] === undefined && req.body[`dept_${p.id}`] === undefined) continue;
+      const job = clean(req.body[`job_${p.id}`], 80) || null; const dept = clean(req.body[`dept_${p.id}`], 60) || null;
+      if (job === (p.job_title || null) && dept === (p.department || null)) continue;
+      set.run(job, dept, p.id); changed += 1;
+      activity.log(req.user, 'Position changed', `${p.display_name}: ${[job, dept].filter(Boolean).join(' · ') || 'cleared'}`);
+    }
+  })();
+  req.session.positionsSaved = changed;
+  res.redirect('/admin/positions');
 });
 
 // ---- My own profile ------------------------------------------------------------

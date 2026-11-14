@@ -989,3 +989,20 @@ td.row-more { width: 1%; white-space: nowrap; text-align: right; vertical-align:
 @media (max-width: 520px) { .embers { width: 9rem; } }
 @media (prefers-reduced-motion: reduce) { .embers { display: none; } }
 @media print { .embers { display: none; } }
+
+/* Positions: job titles and departments in one table */
+.pos-find { display: block; max-width: 28rem; margin-bottom: .9rem; }
+table.positions td { vertical-align: middle; padding-top: .45rem; padding-bottom: .45rem; }
+table.positions input { width: 100%; min-width: 9rem; min-height: 42px; }
+table.positions tr.changed td { background: color-mix(in srgb, var(--ok-bg) 70%, transparent); }
+table.positions tr.focus td { background: var(--warn-bg); }
+table.positions tr.focus td:first-child { box-shadow: inset 4px 0 0 var(--warn); }
+.save-bar { position: sticky; bottom: .6rem; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: .9rem; padding: .7rem .9rem; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 6px 20px rgba(10, 49, 82, .18); }
+@media (max-width: 700px) {
+  table.positions thead { display: none; }
+  table.positions tr { display: block; padding: .6rem .7rem; border-bottom: 1px solid var(--line); }
+  table.positions td { display: block; padding: .15rem 0; border: 0; }
+  table.positions td:first-child { font-weight: 800; }
+  table.positions td[data-label]:not(:first-child)::before { content: attr(data-label); display: block; font-size: .74rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+}
+@media (max-width: 899px) { .has-tabbar .save-bar { bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + .5rem); } }

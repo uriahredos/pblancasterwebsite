@@ -1,5 +1,5 @@
 <%- include('partials/header') %>
-<div class="title-row"><h1>People</h1><a class="btn small" href="/profile">Edit my profile</a></div>
+<div class="title-row"><h1>People</h1><span class="filter-actions"><% if (can('users.manage')) { %><a class="btn small" href="/admin/positions">Edit positions</a><% } %><a class="btn small" href="/profile">Edit my profile</a></span></div>
 <p class="lede">Everyone at the company who uses this site. Search by name, job, or what they know.</p>
 <form method="get" action="/people" class="filters">
   <label class="grow">Search <input name="q" value="<%= q %>" maxlength="60" placeholder="A name, a job, or a skill such as EST3" autocomplete="off"></label>

@@ -407,6 +407,7 @@ The **Community** menu holds People, Discussions, Daily question and Newsletters
 - The People page can be filtered by department.
 
 **New hires**
+- **Team > Positions** lists everyone in the office with their job title and department in one table; change as many as needed and save once. A department box suggests the departments already in use. People who manage users also get an **Edit job title and department** button on a person's page and an **Edit positions** button on People. Each change is written to the activity log.
 - On **Edit person** (Team > Users), **Announce as a new hire** takes a job title, start date and a few words. The person then appears under **Welcome aboard** (in Around the company) on everyone's home page for 14 days.
 - Everyone can press **Say welcome**, and add a short message from the person's profile. The messages stay on the profile afterwards.
 

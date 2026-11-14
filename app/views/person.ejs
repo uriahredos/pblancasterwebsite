@@ -8,6 +8,7 @@
     <% if (p.tenure) { %><p class="meta"><%= p.tenure %><%= p.started_on ? ' · started ' + fmtDate(p.started_on) : '' %></p><% } %>
     <% if (bday) { %><p class="meta">🎂 <%= bday %></p><% } %>
     <% if (me) { %><p><a class="btn small" href="/profile">Edit my profile</a></p><% } else { %><p><a class="btn small" href="/shoutouts?to=<%= p.id %>#give">👏 Give a shout-out</a></p><% } %>
+    <% if (canPosition) { %><p><a class="btn small" href="/admin/positions?who=<%= p.id %>">Edit job title and department</a></p><% } %>
   </div>
 </div>
 <% if (p.about) { %><h2>About</h2><div class="card"><p class="pre"><%= p.about %></p></div><% } %>
