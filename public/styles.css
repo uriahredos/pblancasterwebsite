@@ -972,3 +972,19 @@ td.row-more { width: 1%; white-space: nowrap; text-align: right; vertical-align:
 .acct .row-menu-list { z-index: 40; top: calc(100% + 10px); min-width: 14rem; }
 .acct .row-menu-list hr { border: 0; border-top: 1px solid var(--line); margin: .3rem .2rem; }
 .acct > summary { height: 42px; padding: 0 .7rem 0 .4rem; gap: .5rem; background: var(--banner-bg); box-shadow: 0 1px 2px rgba(10, 49, 82, .08); }
+
+/* The welcome band's flame: it flares up, a sprinkler head drops in and knocks it back down (about 4 seconds, once) */
+.hero { flex-wrap: nowrap; justify-content: flex-start; }
+.hero-scene { position: relative; flex: none; align-self: stretch; width: 11rem; margin: -1.35rem 0 -1.35rem 2.2rem; overflow: hidden; pointer-events: none; }
+.hs-head { position: absolute; top: 0; left: 50%; width: 2.3rem; height: auto; margin-left: -1.15rem; transform: translateY(-105%); animation: hs-head 4s ease-in-out .4s both; }
+.hs-water { position: absolute; top: 2.55rem; left: 0; width: 100%; height: calc(100% - 3.4rem); opacity: 0; animation: hs-water 4s linear .4s both, hs-spray .45s linear .4s 9; }
+.hs-flame { position: absolute; left: 50%; bottom: .9rem; width: 5.2rem; margin-left: -2.6rem; transform-origin: 50% 100%; transform: scale(.8); opacity: .85; animation: hs-flame 4s ease-in-out .4s both; }
+.hs-flame img { display: block; width: 100%; height: auto; transform-origin: 50% 100%; animation: hs-flicker .32s ease-in-out .4s 12 alternate; filter: drop-shadow(0 0 10px rgba(255, 255, 255, .35)); }
+@keyframes hs-flame { 0% { transform: scale(.7); opacity: .6; } 30% { transform: scale(1.55); opacity: 1; } 46% { transform: scale(1.6); opacity: 1; } 84% { transform: scale(.72); opacity: .8; } 100% { transform: scale(.8); opacity: .85; } }
+@keyframes hs-flicker { from { transform: skewX(-4deg) scaleY(.96); } to { transform: skewX(4deg) scaleY(1.05); } }
+@keyframes hs-head { 0%, 26% { transform: translateY(-105%); } 38%, 88% { transform: translateY(0); } 100% { transform: translateY(-105%); } }
+@keyframes hs-water { 0%, 40% { opacity: 0; } 46%, 80% { opacity: 1; } 88%, 100% { opacity: 0; } }
+@keyframes hs-spray { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -26; } }
+@media (max-width: 520px) { .hero-scene { width: 6rem; margin: -1.1rem -.4rem -1.1rem auto; } .hs-head { width: 1.7rem; margin-left: -.85rem; } .hs-water { top: 1.9rem; height: calc(100% - 2.6rem); } .hs-flame { width: 3.2rem; margin-left: -1.6rem; bottom: .7rem; } }
+@media (prefers-reduced-motion: reduce) { .hs-head, .hs-water, .hs-flame, .hs-flame img { animation: none; } }
+@media print { .hero-scene { display: none; } }

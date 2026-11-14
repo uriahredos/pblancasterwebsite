@@ -20,7 +20,11 @@
     <h1>Hi, <%= user.display_name.split(' ')[0] %></h1>
     <p class="hero-sub"><%= branchName ? branchName + ' Office' : 'Pye-Barker' %> · Pye-Barker Fire &amp; Safety</p>
   </div>
-  <img class="hero-mark" src="/logo-flame.png?v=<%= assetV %>" alt="" width="422" height="208" aria-hidden="true">
+  <div class="hero-scene" aria-hidden="true">
+    <svg class="hs-head" viewBox="0 0 40 46" width="40" height="46"><rect x="16" y="0" width="8" height="11" fill="#b9c7d6"/><rect x="11" y="9" width="18" height="7" rx="1.5" fill="#e3ebf3"/><path d="M14 16Q9 29 17 38M26 16q5 13-3 22" fill="none" stroke="#e3ebf3" stroke-width="3" stroke-linecap="round"/><rect x="18.2" y="16" width="3.6" height="20" rx="1.8" fill="#e5484d"/><rect x="5" y="37" width="30" height="5" rx="2.5" fill="#e3ebf3"/><path d="M8 42v3M14 42v3M20 42v3M26 42v3M32 42v3" stroke="#e3ebf3" stroke-width="2" stroke-linecap="round"/></svg>
+    <svg class="hs-water" viewBox="0 0 160 100" preserveAspectRatio="none"><g fill="none" stroke="#a9d6ff" stroke-width="3" stroke-linecap="round" stroke-dasharray="3 10"><path d="M80 0Q34 14 12 96"/><path d="M80 0Q56 22 44 98"/><path d="M80 0Q72 40 70 99"/><path d="M80 0q8 40 10 99"/><path d="M80 0q24 22 36 98"/><path d="M80 0q46 14 68 96"/></g></svg>
+    <span class="hs-flame"><img src="/flame-white.png?v=<%= assetV %>" alt="" width="149" height="118"></span>
+  </div>
 </div>
 
 <% if (critical.length) { %>
