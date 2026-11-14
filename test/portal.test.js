@@ -3597,3 +3597,16 @@ test('company: the office list loads once, offices say what they do, and anyone 
   db.prepare('UPDATE branches SET number = NULL, city = NULL, state = NULL, street = NULL, region = NULL, address = NULL, phone = NULL, market = NULL, marketing_name = NULL, product_lines = NULL WHERE id = 1').run();
   db.prepare("DELETE FROM services WHERE code = 'GEN'").run();
 });
+
+test('the office name sits beside the logo only on pages about your own office, not on company-wide ones', async () => {
+  const t1 = await loggedIn('tech1');
+  const label = async (url) => { const m = /<span class="branch">([^<]*)<\/span>/.exec((await t1.get(url)).text); return m ? m[1] : null; };
+  for (const url of ['/', '/parts', '/tasks', '/my', '/notices', '/training', '/inspection', '/alerts']) assert.equal(await label(url), 'Lancaster Office', url);
+  for (const url of ['/company', '/branches', '/branches/1', '/contacts', '/people', `/people/${userId('tech1')}`, '/profile', '/shoutouts', '/events', '/photos', '/discussions', '/daily', '/newsletters']) assert.equal(await label(url), null, url);
+  assert.match((await t1.get('/company')).text, /<title>Company · Pye-Barker<\/title>/);
+  assert.match((await t1.get('/parts')).text, /<title>Parts · Pye-Barker Lancaster Office<\/title>/);
+  const owner = await loggedIn('owner');
+  assert.doesNotMatch((await owner.get('/admin/branches')).text, /<span class="branch">/);       // the Corporate page is about every office
+  assert.match((await owner.get('/admin/users')).text, /<span class="branch">Lancaster Office<\/span>/);
+  assert.match((await new Client().get('/login')).text, /<span class="branch">Employee Portal<\/span>/);
+});
