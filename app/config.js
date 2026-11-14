@@ -26,7 +26,7 @@ module.exports = {
     user: env.SMTP_USER || '',
     pass: env.SMTP_PASS || '',
   },
-  mailFrom: env.MAIL_FROM || 'Pye-Barker Lancaster Branch Portal <portal@localhost>',
+  mailFrom: env.MAIL_FROM || 'Pye-Barker Employee Portal <portal@localhost>',
   notifyTo: list(env.NOTIFY_TO),
   complaintNotifyTo: list(env.COMPLAINT_NOTIFY_TO),
   complaintDigestHour: env.COMPLAINT_DIGEST_HOUR === undefined ? 17 : Number(env.COMPLAINT_DIGEST_HOUR),

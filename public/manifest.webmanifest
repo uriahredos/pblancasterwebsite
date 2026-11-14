@@ -1,6 +1,6 @@
 {
   "name": "Pye-Barker Employee Portal",
-  "short_name": "PB Lancaster",
+  "short_name": "PB Portal",
   "description": "Parts sign-out, training requests and anonymous complaints for Pye-Barker offices.",
   "start_url": "/",
   "scope": "/",
