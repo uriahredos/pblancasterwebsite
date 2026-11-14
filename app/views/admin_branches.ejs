@@ -32,11 +32,12 @@
   <% } %>
 </div>
 
-<h2>Offices</h2>
+<h2 id="offices">Offices in use</h2>
+<p class="meta">Offices that have people on the site. <%= totalOffices %> offices in all.</p>
 <ul class="records">
   <% rows.forEach(function (b) { %>
   <li class="card stack" id="o<%= b.id %>">
-    <div class="rec-head"><strong class="office-name"><%= b.name %> office</strong><time><%= b.people %> <%= b.people === 1 ? 'person' : 'people' %> signed up<%= b.off ? ', ' + b.off + ' without sign-in' : '' %></time></div>
+    <div class="rec-head"><strong class="office-name"><% if (b.number) { %><span class="office-no"><%= b.number %></span> <% } %><%= b.name %> office</strong><time><%= b.people %> <%= b.people === 1 ? 'person' : 'people' %> signed up<%= b.off ? ', ' + b.off + ' without sign-in' : '' %></time></div>
     <p class="plain"><strong>Admins</strong> <span class="meta">run this office on the site: its people, parts, trucks, tasks, training and announcements.</span></p>
     <% if (!b.admins.length) { %><p class="flash warn">This office has no admin of its own yet. Until it does, only corporate admins can run it.</p><% } %>
     <ul class="plain-list">
@@ -73,6 +74,66 @@
   </li>
   <% }) %>
 </ul>
+
+<h2 id="others">Other offices</h2>
+<form method="get" action="/admin/branches#others" class="filters">
+  <label class="grow">Find an office <input name="oq" value="<%= oq %>" maxlength="40" placeholder="Town, state, region or number" autocomplete="off"></label>
+  <div class="filter-actions"><button class="btn" type="submit">Search</button><% if (oq) { %><a class="btn" href="/admin/branches#others">Clear</a><% } %></div>
+</form>
+<% if (!others.length) { %><p class="card empty"><%= oq ? 'No office matches that.' : 'Every office is in use.' %></p><% } else { %>
+<p class="meta"><%= others.length %> <%= others.length === 1 ? 'office has' : 'offices have' %> nobody on the site yet. Open one to appoint its admin.</p>
+<ul class="office-links">
+  <% others.slice(0, 400).forEach(function (b) { %><li><a href="/admin/branches?office=<%= b.id %>#o<%= b.id %>"><% if (b.number) { %><span class="office-no"><%= b.number %></span> <% } %><%= b.name %><% if (b.state) { %> <span class="meta"><%= b.state %></span><% } %></a></li><% }) %>
+</ul>
+<% } %>
+
+<h2 id="company">Company information</h2>
+<div class="card stack">
+  <p class="plain"><strong>Office list.</strong> <% if (list.missing.length) { %><%= list.missing.length %> of the company's <%= listOptions.length %> offices are not on the site yet.<% } else { %>All <%= listOptions.length %> offices on the company list are on the site.<% } %></p>
+  <% if (list.missing.length) { %>
+  <form method="post" action="/admin/company/offices" class="stack" data-confirm="Add <%= list.missing.length %> offices to the site?">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <% list.unnumbered.forEach(function (u) { %>
+    <label>"<%= u.name %>" is already here. Which office on the company list is it? <span class="hint">So it is not added a second time. It keeps its name and everything in it.</span>
+      <select name="is_<%= u.id %>"><option value="">It is not on the list</option><% list.missing.forEach(function (o) { %><option value="<%= o.number %>"><%= o.number %> · <%= o.labelCity %>, <%= o.labelState %> · <%= o.street %><%= o.division ? ' · ' + o.division : '' %></option><% }) %></select></label>
+    <% }) %>
+    <button class="btn primary" type="submit">Add the <%= list.missing.length %> offices</button>
+  </form>
+  <% } %>
+  <hr>
+  <form method="post" action="/admin/company/details" enctype="multipart/form-data" class="stack">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <label><strong>Office details in bulk.</strong> <span class="hint">A CSV with a Number column and any of Services, Address, Phone, About. Services can be codes or names, separated by commas: "FE, KH". Each office's admin can also set these on the office's own page.</span>
+      <input type="file" name="file" accept=".csv,text/csv" required></label>
+    <button class="btn" type="submit">Upload office details</button>
+  </form>
+  <hr>
+  <form method="post" action="/admin/company/contacts" enctype="multipart/form-data" class="stack">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <label><strong>Who to contact.</strong> <span class="hint"><%= contactCount ? contactCount + ' entries are loaded. Uploading a new file replaces them all.' : 'Nothing loaded yet.' %> Use the .json file prepared from the "Who To Contact" spreadsheet.</span>
+      <input type="file" name="file" accept=".json,application/json" required></label>
+    <button class="btn" type="submit">Upload contacts</button>
+  </form>
+</div>
+
+<h2 id="services">Services offices can offer</h2>
+<div class="card stack">
+  <p class="plain">The list every office ticks from. People search offices by these.</p>
+  <ul class="plain-list">
+    <% services.forEach(function (s) { %>
+    <li><form method="post" action="/admin/company/services/<%= s.id %>" class="svc-row"><input type="hidden" name="_csrf" value="<%= csrf %>">
+      <span class="office-no"><%= s.code %></span><label class="grow"><span class="sr">Name</span><input name="name" value="<%= s.name %>" maxlength="60" required autocomplete="off"></label>
+      <span class="meta"><%= s.offices %> <%= s.offices === 1 ? 'office' : 'offices' %></span>
+      <button class="btn small" type="submit">Rename</button><button class="link danger" type="submit" name="remove" value="1" data-confirm-button="Remove <%= s.name %> from the list and from every office?">Remove</button></form></li>
+    <% }) %>
+  </ul>
+  <form method="post" action="/admin/company/services" class="filters">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <label>Code <input name="code" maxlength="8" required autocomplete="off" placeholder="FA"></label>
+    <label class="grow">Name <input name="name" maxlength="60" required autocomplete="off" placeholder="Fire Alarm"></label>
+    <div class="filter-actions"><button class="btn primary" type="submit">Add service</button></div>
+  </form>
+</div>
 
 <h2>Add an office</h2>
 <form method="post" action="/admin/branches" class="card stack">

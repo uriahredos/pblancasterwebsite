@@ -2,7 +2,12 @@
 <p class="back"><a class="back-link" href="<%= many ? '/branches' : '/people' %>"><%= many ? 'Offices' : 'People' %></a></p>
 <% if (b.photo_path) { %><img class="branch-hero" src="/branches/photo/<%= b.id %>?v=<%= b.photo_path.slice(0, 8) %>" alt="The <%= b.name %> branch"><% } %>
 <div class="title-row"><h1><%= b.name %> office</h1><% if (canEdit && !editing) { %><a class="btn small" href="/branches/<%= b.id %>?edit=1#edit">Edit this page</a><% } %></div>
-<p class="meta"><%= people.length %> <%= people.length === 1 ? 'person' : 'people' %><%= b.address ? ' · ' + b.address : '' %><% if (b.phone) { %> · <a href="tel:<%= b.phone.replace(/[^0-9+]/g, '') %>"><%= b.phone %></a><% } %></p>
+<p class="meta"><% if (b.number) { %><span class="office-no"><%= b.number %></span> <% } %><%= [b.city && b.state ? b.city + ', ' + (stateNames[b.state] || b.state) : '', b.region ? b.region + ' region' : ''].filter(Boolean).join(' · ') %><%= b.city || b.region ? ' · ' : '' %><%= people.length %> <%= people.length === 1 ? 'person' : 'people' %> on this site<%= b.address ? ' · ' + b.address : (b.street ? ' · ' + b.street : '') %><% if (b.phone) { %> · <a href="tel:<%= b.phone.replace(/[^0-9+]/g, '') %>"><%= b.phone %></a><% } %></p>
+<div class="card does">
+  <p class="plain"><strong>What this office does</strong></p>
+  <% if (services.length) { %><p class="chips big"><% services.forEach(function (s) { %><a class="skill" href="/branches?service=<%= s.id %>"><%= s.name %> <span class="meta"><%= s.code %></span></a><% }) %></p>
+  <% } else { %><p class="empty">Not listed yet.<%= canEdit ? ' Tick what this office does under "Edit this page".' : ' Its admin can add this.' %></p><% } %>
+</div>
 <% if (b.about) { %><div class="card"><p class="pre"><%= b.about %></p></div><% } %>
 <%- include('partials/errors') %>
 <% if (editing) { %>
@@ -10,6 +15,14 @@
   <input type="hidden" name="_csrf" value="<%= csrf %>">
   <label>Photo <span class="hint">The building, the crew, the trucks.</span><input type="file" name="photo" accept="image/jpeg,image/png,image/webp" data-shrink="1800"></label>
   <% if (b.photo_path) { %><label class="choice"><input type="checkbox" name="remove_photo" value="1"> Remove the photo</label><% } %>
+  <fieldset>
+    <legend>What this office does</legend>
+    <p class="hint">Tick everything this office offers. People across the company search by these.</p>
+    <input type="hidden" name="services_form" value="1">
+    <div class="check-grid">
+      <% allServices.forEach(function (s) { %><label class="choice"><input type="checkbox" name="services" value="<%= s.id %>" <%= services.some(function (x) { return x.id === s.id; }) ? 'checked' : '' %>> <%= s.name %> <span class="hint">(<%= s.code %>)</span></label><% }) %>
+    </div>
+  </fieldset>
   <label>Address <input name="address" value="<%= b.address || '' %>" maxlength="200" autocomplete="off"></label>
   <label>Main phone <input name="phone" type="tel" value="<%= b.phone || '' %>" maxlength="30" autocomplete="off"></label>
   <label>About this office <span class="hint">What it covers, what it is known for, anything visitors should know.</span><textarea name="about" rows="5" maxlength="1500"><%= b.about || '' %></textarea></label>

@@ -105,7 +105,7 @@ Reached from the **Usage summary** button on the parts log. For a date range (an
 ## The menu
 
 - **Always in the bar:** Home, Announcements, Tasks, My activity.
-- **Drop-downs:** Community (People, Shout-outs, Events, Photos, Discussions, Daily question, Newsletters, Offices), Parts, Trucks, Training, Team and Setup. Each holds the forms first, then the pages for managing that area. **Team** is people and what goes out to them (Anonymous complaint, Users, Profiles, Manage tasks, Post announcements, Newsletters, Complaints); **Setup** is the site itself (QR code sign, Activity log, Backups, Import old data). People only see the items their profile allows; a group with a single item shows as a plain link, so a technician sees "Truck inspection" and "Anonymous complaint" as links.
+- **Drop-downs:** Community (Company, Offices, Who to contact, People, Shout-outs, Events, Photos, Discussions, Daily question, Newsletters), Parts, Trucks, Training, Team and Setup. Each holds the forms first, then the pages for managing that area. **Team** is people and what goes out to them (Anonymous complaint, Users, Profiles, Manage tasks, Post announcements, Newsletters, Complaints); **Setup** is the site itself (QR code sign, Activity log, Backups, Import old data). People only see the items their profile allows; a group with a single item shows as a plain link, so a technician sees "Truck inspection" and "Anonymous complaint" as links.
 - **One name for each thing:** Announcements (posting them is "Post announcements"), Tasks (giving them out is "Manage tasks"), Truck inspection, Anonymous complaint (reviewing them is "Complaints"), Certifications, Parts requests, and My activity for a person's own entries and requests.
 - **Notification bell** at the top right on a computer: a red number for everything waiting on you, and a list when you press it: your open tasks by name with their due dates, then unread announcements, discussions with new replies, updates on your requests and, for people who manage them, open parts requests, truck problems and expiring certifications. **Notification settings** is at the bottom of the list.
 - **Light / dark** is in the menu: the moon or sun at the right end of the bar on a computer, near the bottom of More on a phone. On the sign-in page, where there is no menu, it stays at the top right.
@@ -437,6 +437,23 @@ The **Community** menu holds People, Discussions, Daily question and Newsletters
 **Office pages (`/branches`)**
 - Each office has a page with a photo, address, phone, a few words about it, its people grouped by department, its upcoming events, and its latest shout-outs and photos.
 - The page is edited by people who manage accounts in that office, or anyone who can see every office.
+
+## The company: offices, services and who to contact
+
+**Company (`/company`)** is the main page for getting to know the business: how many offices in how many states, a search box, every service with the number of offices that offer it, each region with its vice president and directors, and the departments on the "Who to contact" list. Everyone signed in can see it.
+
+**Offices (`/branches`)** is the finder: every office with its number, town, street, region and what it does. Filter by service, state or region, or search by town or office number. Each office opens to its own page.
+
+**What an office does** is a set of tick-boxes on the office's page (**Edit this page**), set by that office's admin or a corporate admin. The list of services to tick from is kept under **Corporate > Offices and admins > Services offices can offer** (it starts with Fire Alarm, Fire Extinguishers, Kitchen Hood Suppression, Sprinkler Inspection, Sprinkler Install and Service, Backflow Testing, Special Hazard Suppression, Emergency and Exit Lighting, Security and Intrusion, Access Control, Video Surveillance and Alarm Monitoring; add, rename or remove as needed).
+
+**Who to contact (`/contacts`)** is the company-wide contact list by department, with search.
+
+Corporate admins load the company information under **Corporate > Offices and admins > Company information**:
+- **Office list**: one button adds every office on the company list (`app/office_list.txt`, 233 offices with number, town, street and region). An office already on the site under another name is matched to its entry first, so it is not added twice; it keeps its name and everything in it. Where an office's label says what it does (Security, Sprinkler, Fire Alarm), that service is ticked for it. Each new office gets its own truck checklist and no stock. Loading again adds only what is missing.
+- **Office details in bulk**: a CSV with a Number column and any of Services, Address, Phone, About. Services are codes or names separated by commas ("FE, KH").
+- **Who to contact**: the `.json` file prepared from the "Who To Contact" spreadsheet. Uploading a new one replaces the list.
+
+With hundreds of offices, the Corporate page shows in full only the offices that have people on the site; the rest are in a searchable list, and opening one shows its card for appointing an admin. The office box beside a corporate admin's name lists only offices in use.
 
 ## Corporate and office admins
 

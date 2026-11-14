@@ -518,6 +518,42 @@ addColumn('branches', 'photo_path', 'TEXT');
 
 db.prepare("UPDATE forum_sections SET description = 'Shop talk, tips, tools and anything else worth sharing.' WHERE description = 'Branch talk, tips, tools and anything else worth sharing.'").run();
 
+// ---- The company: every office with its number, region and what it does; who to contact ----
+db.exec(`
+CREATE TABLE IF NOT EXISTS services (
+  id INTEGER PRIMARY KEY,
+  code TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  name TEXT NOT NULL,
+  sort INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS branch_services (
+  branch_id INTEGER NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+  service_id INTEGER NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+  PRIMARY KEY (branch_id, service_id)
+);
+CREATE TABLE IF NOT EXISTS company_contacts (
+  id INTEGER PRIMARY KEY,
+  section TEXT NOT NULL,       -- Accounting & Finance, HR, Regional Layout ...
+  grp TEXT,                    -- a heading inside the section: Tax, Fleet, a region's name ...
+  topic TEXT,                  -- what to contact them about, or their role
+  name TEXT,
+  email TEXT,
+  note TEXT,
+  sort INTEGER NOT NULL
+);
+`);
+addColumn('branches', 'number', 'TEXT');
+addColumn('branches', 'city', 'TEXT');
+addColumn('branches', 'state', 'TEXT');
+addColumn('branches', 'street', 'TEXT');
+addColumn('branches', 'region', 'TEXT');
+if (!db.prepare('SELECT 1 FROM services').get()) {
+  const add = db.prepare('INSERT INTO services (code, name, sort) VALUES (?, ?, ?)');
+  [['FA', 'Fire Alarm'], ['FE', 'Fire Extinguishers'], ['KH', 'Kitchen Hood Suppression'], ['SI', 'Sprinkler Inspection'], ['SP', 'Sprinkler Install and Service'],
+    ['BF', 'Backflow Testing'], ['SH', 'Special Hazard Suppression'], ['EL', 'Emergency and Exit Lighting'], ['SEC', 'Security and Intrusion'], ['AC', 'Access Control'],
+    ['CCTV', 'Video Surveillance'], ['MON', 'Alarm Monitoring']].forEach(([code, name], i) => add.run(code, name, i + 1));
+}
+
 // ---- Face ID / fingerprint sign-in (passkeys) ----
 db.exec(`
 CREATE TABLE IF NOT EXISTS passkeys (

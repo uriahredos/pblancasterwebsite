@@ -236,10 +236,17 @@ router.post('/photos/:id/delete', requireLogin, (req, res) => {
 
 // ---- Branch pages ------------------------------------------------------------------------
 
+// The office finder: every office, searchable by town, number, state, region and what it does.
 router.get('/branches', requireLogin, (req, res) => {
-  const rows = db.prepare(`SELECT b.*, (SELECT COUNT(*) FROM users u WHERE u.branch_id = b.id AND ${LISTED}) AS people FROM branches b ORDER BY b.name COLLATE NOCASE`).all();
-  if (rows.length === 1) return res.redirect(`/branches/${rows[0].id}`);
-  res.render('branches', { title: 'Offices', rows });
+  const company = require('./company');
+  const services = company.allServices();
+  const f = { q: clean(req.query.q, 60), region: clean(req.query.region, 40), state: clean(req.query.state, 2).toUpperCase(), service: services.find((s) => String(s.id) === String(req.query.service)) || null };
+  const everything = company.findOffices();
+  const rows = company.findOffices({ q: f.q, region: f.region, state: f.state, service: f.service ? f.service.id : null });
+  res.render('branches', {
+    title: 'Offices', wide: true, rows, f, services, total: everything.length, stateNames: company.STATES,
+    regions: [...new Set(everything.map((b) => b.region).filter(Boolean))].sort(), states: [...new Set(everything.map((b) => b.state).filter(Boolean))].sort(),
+  });
 });
 
 router.get('/branches/photo/:id', requireLogin, (req, res) => {
@@ -260,6 +267,7 @@ function branchPage(req, res, b, extra = {}) {
   const order = [...groups.keys()].sort((x, y) => (x === 'Management' ? -1 : y === 'Management' ? 1 : x === 'Team' ? 1 : y === 'Team' ? -1 : x.localeCompare(y)));
   res.status(extra.errors ? 400 : 200).render('branch', {
     title: `${b.name} office`, wide: true, b, people, groups: order.map((k) => ({ name: k, people: groups.get(k) })), canEdit: mayEditBranch(req.user, b), errors: [], editing: false,
+    services: require('./company').servicesOf(b.id), allServices: require('./company').allServices(), stateNames: require('./company').STATES,
     many: db.prepare('SELECT COUNT(*) AS n FROM branches').get().n > 1,
     shouts: db.prepare(`${SHOUT} WHERE t.branch_id = @b ORDER BY s.id DESC LIMIT 4`).all({ me: req.user.id, b: b.id }),
     photos: db.prepare(`${WALL} WHERE u.branch_id = @b ORDER BY p.id DESC LIMIT 8`).all({ me: req.user.id, b: b.id }),
@@ -286,7 +294,15 @@ router.post('/branches/:id', requireLogin, uploads.photos('photo', 1), verifyCsr
   else if (file && !uploads.looksLikeImage(file.path)) errors.push('The photo must be a JPEG, PNG, WebP or GIF image.');
   if (errors.length) { drop(); return branchPage(req, res, { ...b, ...values }, { errors, editing: true }); }
   const photo = file ? file.filename : req.body.remove_photo === '1' ? null : b.photo_path;
-  db.prepare('UPDATE branches SET address = ?, phone = ?, about = ?, photo_path = ? WHERE id = ?').run(values.address || null, values.phone || null, values.about || null, photo, b.id);
+  db.transaction(() => {
+    db.prepare('UPDATE branches SET address = ?, phone = ?, about = ?, photo_path = ? WHERE id = ?').run(values.address || null, values.phone || null, values.about || null, photo, b.id);
+    // What this office does: the boxes that were ticked.
+    if (req.body.services_form === '1') {
+      db.prepare('DELETE FROM branch_services WHERE branch_id = ?').run(b.id);
+      const tick = db.prepare('INSERT OR IGNORE INTO branch_services (branch_id, service_id) SELECT ?, id FROM services WHERE id = ?');
+      for (const id of [].concat(req.body.services || []).filter(isId)) tick.run(b.id, Number(id));
+    }
+  })();
   if (b.photo_path && b.photo_path !== photo) uploads.remove(b.photo_path);
   activity.log(req.user, 'Office page edited', b.name);
   flash(req, 'ok', 'Office page saved.');

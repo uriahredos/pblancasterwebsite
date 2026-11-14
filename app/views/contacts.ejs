@@ -1,0 +1,28 @@
+<%- include('partials/header') %>
+<p class="back"><a class="back-link" href="/company">Company</a></p>
+<h1>Who to contact</h1>
+<p class="lede">Company-wide contacts: the right inbox or person for each kind of question.</p>
+<form method="get" action="/contacts" class="filters">
+  <label class="grow">Search <input name="q" value="<%= q %>" maxlength="60" placeholder="A topic, a name, or a region" autocomplete="off"></label>
+  <div class="filter-actions"><button class="btn primary" type="submit">Search</button><% if (q) { %><a class="btn" href="/contacts">Clear</a><% } %></div>
+</form>
+<% if (!total) { %><p class="card empty">The contact list has not been loaded yet.<% if (canManage) { %> Load it under <a href="/admin/branches#company">Corporate</a>.<% } %></p>
+<% } else if (!sections.length) { %><p class="card empty">Nothing matches that.</p><% } %>
+<% sections.forEach(function (s) { %>
+<h2 id="<%= s.title.toLowerCase().replace(/[^a-z0-9]+/g, '-') %>"><%= s.title %></h2>
+<% s.groups.forEach(function (g) { %>
+<div class="card contact-group">
+  <% if (g.title) { %><h3 class="group-h"><%= g.title %></h3><% } %>
+  <ul class="contact-rows">
+    <% g.rows.forEach(function (c) { %>
+    <li>
+      <div class="contact-who"><% if (c.name) { %><strong><%= c.name %></strong><% } %><% if (c.note) { %> <span class="pill"><%= c.note %></span><% } %>
+        <% if (c.email) { %><span class="contact-mail"><% c.email.split(/,\s*/).forEach(function (e, i) { %><%= i ? ' · ' : '' %><a href="mailto:<%= e %>"><%= e %></a><% }) %></span><% } %></div>
+      <% if (c.topic) { %><p class="meta"><%= c.topic %></p><% } %>
+    </li>
+    <% }) %>
+  </ul>
+</div>
+<% }) %>
+<% }) %>
+<%- include('partials/footer') %>

@@ -253,6 +253,11 @@
       });
     });
 
+    // The same question on a single button of a form (the others go straight through).
+    document.querySelectorAll('button[data-confirm-button]').forEach(function (btn) {
+      btn.addEventListener('click', function (e) { if (!window.confirm(btn.getAttribute('data-confirm-button'))) e.preventDefault(); });
+    });
+
     // A form that should only be sent once: a second tap while the first is still sending does nothing.
     document.querySelectorAll('form[data-once]').forEach(function (form) {
       var btn = form.querySelector('button[type="submit"]');

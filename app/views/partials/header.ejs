@@ -66,14 +66,17 @@
     var is = function (prefix) { return path === prefix || path.indexOf(prefix + '/') === 0; };
     var groups = [
       { name: 'Community', items: [
+        ['', '/company', 'Company', is('/company')],
+        ['', '/branches', 'Offices', is('/branches')],
+        ['', '/contacts', 'Who to contact', is('/contacts')],
+        'divider',
         ['', '/people', 'People', is('/people') || path === '/profile'],
         ['', '/shoutouts', 'Shout-outs', is('/shoutouts')],
         ['', '/events', 'Events', is('/events')],
         ['', '/photos', 'Photos', is('/photos')],
         ['forum.use', '/discussions', 'Discussions', is('/discussions'), badges.forum],
         ['', '/daily', 'Daily question', is('/daily')],
-        ['', '/newsletters', 'Newsletters', is('/newsletters')],
-        ['', '/branches', 'Offices', is('/branches')]
+        ['', '/newsletters', 'Newsletters', is('/newsletters')]
       ] },
       { name: 'Parts', items: [
         ['parts.submit', '/parts?action=take', 'Take parts', false],

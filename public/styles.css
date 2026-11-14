@@ -808,3 +808,36 @@ a.skill:hover { outline: 1px solid var(--accent); }
 .lh-ember.e4 { left: 24%; top: 45%; width: .9%; background: #245dac; animation-delay: 2.8s; }
 @keyframes lhEmber { 0% { opacity: 0; transform: translate(0, 0) scale(1); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate(170%, -1000%) scale(.4); } }
 @media (prefers-reduced-motion: reduce) { .lh-p, .lh-b, .lh-flame, .lh-text, .lh-ember { animation: none; } }
+
+/* Company page, the office finder and who to contact */
+.office-no { display: inline-block; min-width: 2.9rem; padding: .1rem .4rem; border-radius: 6px; background: var(--brand); color: #fff; font-size: .8rem; font-weight: 700; font-variant-numeric: tabular-nums; text-align: center; letter-spacing: .02em; }
+.company-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 1rem; }
+@media (min-width: 700px) { .company-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.company-stats a { background: var(--surface); }
+.office-mine { font-size: 1.25rem; }
+.finder { margin-bottom: .5rem; }
+.svc-grid { list-style: none; margin: .5rem 0 1rem; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: .5rem; }
+.svc-grid a { display: flex; align-items: center; gap: .6rem; height: 100%; padding: .65rem .8rem; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; color: var(--ink); text-decoration: none; }
+.svc-grid a:hover { border-color: var(--accent); }
+.svc-name { flex: 1; font-weight: 600; }
+.region-grid { list-style: none; margin: .5rem 0 1rem; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr)); gap: .75rem; align-items: start; }
+.region-grid .plain a { overflow-wrap: anywhere; }
+.region-more summary { cursor: pointer; color: var(--accent); margin: .5rem 0; }
+.plain-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: .55rem; font-size: .93rem; }
+.plain-rows a { overflow-wrap: anywhere; }
+.offices { list-style: none; margin: .75rem 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr)); gap: .5rem; }
+.offices a { display: flex; align-items: flex-start; gap: .7rem; height: 100%; padding: .7rem .8rem; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; color: var(--ink); text-decoration: none; }
+.offices a:hover { border-color: var(--accent); }
+.offices .state-h { grid-column: 1 / -1; margin: .8rem 0 .1rem; font-size: .8rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.does .chips.big .meta { font-size: .78rem; }
+.contact-group { margin-bottom: .75rem; }
+.contact-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: .8rem; }
+.contact-rows li + li { padding-top: .8rem; border-top: 1px solid var(--line); }
+.contact-who { display: flex; flex-wrap: wrap; align-items: baseline; gap: .2rem .6rem; }
+.contact-mail a { overflow-wrap: anywhere; }
+.contact-rows .meta { margin: .2rem 0 0; }
+.office-links { list-style: none; margin: .5rem 0 1rem; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: .3rem .75rem; }
+.office-links a { display: flex; align-items: center; gap: .5rem; padding: .3rem .2rem; color: var(--ink); text-decoration: none; border-radius: 6px; }
+.office-links a:hover { background: var(--accent-soft); }
+.svc-row { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; width: 100%; }
+.svc-row .grow { flex: 1 1 12rem; margin: 0; }

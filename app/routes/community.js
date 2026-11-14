@@ -15,7 +15,8 @@ const isId = (v) => /^\d+$/.test(String(v || ''));
 const MAX_PHOTO = 4 * 1024 * 1024;   // the page shrinks photos before sending, so this is generous
 const WELCOME_DAYS = 14;
 
-const branches = () => db.prepare('SELECT * FROM branches ORDER BY name COLLATE NOCASE').all();
+// (for the People filter: only offices that have someone listed)
+const branches = () => db.prepare('SELECT * FROM branches b WHERE EXISTS (SELECT 1 FROM users u WHERE u.branch_id = b.id AND (u.active = 1 OR u.in_directory = 1)) ORDER BY name COLLATE NOCASE').all();
 /** "EST3, Notifier , sprinklers" -> ["EST3", "Notifier", "sprinklers"] */
 const skillList = (text) => [...new Set(String(text || '').split(/[,\n]/).map((s) => s.trim()).filter(Boolean))];
 function tenure(startedOn, today = localDate()) {
@@ -228,7 +229,13 @@ function branchPage(req, res, extra = {}) {
   const rows = db.prepare(
     `SELECT b.*, (SELECT COUNT(*) FROM users u WHERE u.branch_id = b.id AND u.active = 1) AS people,
             (SELECT COUNT(*) FROM users u WHERE u.branch_id = b.id AND u.active = 0) AS off
-     FROM branches b ORDER BY b.name COLLATE NOCASE`).all().map((b) => ({
+     FROM branches b ORDER BY b.name COLLATE NOCASE`).all();
+  // With a couple of hundred offices, only the ones in use (or the one asked for) are shown in full.
+  const wanted = isId(req.query.office) ? Number(req.query.office) : extra.values && extra.values.office ? extra.values.office : null;
+  const oq = clean(req.query.oq, 40).toLowerCase();
+  const others = rows.filter((b) => !b.people && !b.off && b.id !== wanted)
+    .filter((b) => !oq || [b.name, b.number, b.city, b.state, b.region].some((v) => String(v || '').toLowerCase().includes(oq)));
+  const shown = rows.filter((b) => b.people || b.off || b.id === wanted).map((b) => ({
     ...b,
     admins: db.prepare(`SELECT u.id, u.display_name, u.photo_path, u.active, u.must_change_password, p.name AS profile FROM users u JOIN profiles p ON p.id = u.profile_id
                         WHERE u.branch_id = ? AND u.is_master = 0 AND u.profile_id IN (${inList(office)}) ORDER BY u.display_name COLLATE NOCASE`).all(b.id),
@@ -240,8 +247,11 @@ function branchPage(req, res, extra = {}) {
      WHERE u.is_master = 1 OR u.profile_id IN (${inList(corp)}) ORDER BY u.is_master DESC, u.display_name COLLATE NOCASE`).all();
   const created = req.session.created || null;   // a temporary password, shown once
   delete req.session.created;
+  const company = require('./company');
   res.status(extra.errors ? 400 : 200).render('admin_branches', {
-    title: 'Corporate', wide: true, rows, corporate, created, errors: [], values: {},
+    title: 'Corporate', wide: true, rows: shown, others, oq, totalOffices: rows.length, corporate, created, errors: [], values: {},
+    list: company.officeListStatus(), listOptions: require('../offices').all(), services: company.allServices(),
+    contactCount: db.prepare('SELECT COUNT(*) AS n FROM company_contacts').get().n,
     officeProfiles: grantable(req, office), corporateProfiles: grantable(req, corp),
     everyone: db.prepare(`SELECT u.id, u.display_name, b.name AS branch FROM users u LEFT JOIN branches b ON b.id = u.branch_id
                           WHERE u.active = 1 AND u.is_master = 0 AND u.id <> ? AND (u.profile_id IS NULL OR u.profile_id NOT IN (${inList(corp)})) ORDER BY u.display_name COLLATE NOCASE`).all(req.user.id),
@@ -259,8 +269,8 @@ router.post('/admin/branches', everyBranch, (req, res) => {
   const id = db.prepare('INSERT INTO branches (name, created_at) VALUES (?, ?)').run(name, new Date().toISOString()).lastInsertRowid;
   require('../branches').setUp(id);
   activity.log(req.user, 'Office added', name);
-  flash(req, 'ok', `${name} office added. Add its people under Users after choosing ${name} in the office box.`);
-  res.redirect('/admin/branches');
+  flash(req, 'ok', `${name} office added. Appoint its admin below; they can then add its people.`);
+  res.redirect(`/admin/branches?office=${id}#o${id}`);
 });
 
 router.post('/admin/branches/:id', everyBranch, (req, res) => {

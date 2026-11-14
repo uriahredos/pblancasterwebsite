@@ -1,0 +1,52 @@
+<%- include('partials/header') %>
+<h1>Pye-Barker at a glance</h1>
+<p class="lede">Who we are across the country: every office, what each one does, and who to ask for what.</p>
+
+<div class="mini-stats company-stats">
+  <a href="/branches"><span class="mini-num"><%= total %></span><span class="mini-label">Offices</span><span class="mini-sub">in <%= states %> <%= states === 1 ? 'state' : 'states' %></span></a>
+  <a href="#regions"><span class="mini-num"><%= regions.length %></span><span class="mini-label">Regions</span><span class="mini-sub">each with its own leadership</span></a>
+  <a href="/people"><span class="mini-num"><%= people %></span><span class="mini-label">People</span><span class="mini-sub">on this site so far</span></a>
+  <% if (mine) { %><a href="/branches/<%= mine.id %>"><span class="mini-num office-mine"><%= mine.number || '·' %></span><span class="mini-label">My office</span><span class="mini-sub"><%= mine.name %><%= mine.region ? ' · ' + mine.region : '' %></span></a><% } %>
+</div>
+
+<form method="get" action="/branches" class="card stack finder">
+  <label><strong>Find an office</strong> <span class="hint">A town, a state, or an office number such as 2054.</span>
+    <input name="q" maxlength="60" autocomplete="off" placeholder="Search offices"></label>
+  <button class="btn primary" type="submit">Search</button>
+</form>
+
+<h2 id="services">Who does what</h2>
+<p class="meta">Pick a service to see every office that offers it.<% if (described < total) { %> <%= described %> of <%= total %> offices have listed what they do so far; each office's admin fills this in on the office's page.<% } %></p>
+<ul class="svc-grid">
+  <% services.forEach(function (s) { %>
+  <li><a href="/branches?service=<%= s.id %>"><span class="office-no"><%= s.code %></span><span class="svc-name"><%= s.name %></span><span class="meta"><%= s.offices %> <%= s.offices === 1 ? 'office' : 'offices' %></span></a></li>
+  <% }) %>
+</ul>
+
+<h2 id="regions">Regions</h2>
+<% if (!regions.length) { %><p class="card empty">The office list has not been loaded yet.<% if (user.allBranches) { %> Load it under <a href="/admin/branches#company">Corporate</a>.<% } %></p><% } %>
+<ul class="region-grid">
+  <% regions.forEach(function (r) { %>
+  <li class="card">
+    <div class="rec-head"><strong class="office-name"><%= r.name %></strong><time><%= r.offices %> <%= r.offices === 1 ? 'office' : 'offices' %></time></div>
+    <p class="meta"><%= r.states.join(' · ') %></p>
+    <% if (r.vp) { %><p class="plain"><span class="meta">Regional Vice President</span><br><strong><%= r.vp.name %></strong><% if (r.vp.email) { %> · <a href="mailto:<%= r.vp.email %>"><%= r.vp.email %></a><% } %></p><% } %>
+    <% if (r.directors.length) { %>
+    <details class="region-more"><summary><%= r.directors.length %> regional <%= r.directors.length === 1 ? 'director' : 'directors' %></summary>
+      <ul class="plain-rows"><% r.directors.forEach(function (d) { %><li><strong><%= d.name %></strong><% if (d.note) { %> <span class="meta"><%= d.note %></span><% } %><% if (d.email) { %><br><a href="mailto:<%= d.email %>"><%= d.email %></a><% } %></li><% }) %></ul>
+    </details>
+    <% } %>
+    <p class="panel-foot"><a class="btn small" href="/branches?region=<%= encodeURIComponent(r.name) %>">See its offices</a></p>
+  </li>
+  <% }) %>
+</ul>
+
+<h2 id="contacts">Who to contact</h2>
+<% if (!sections.length) { %><p class="card empty">The company contact list has not been loaded yet.<% if (user.allBranches) { %> Load it under <a href="/admin/branches#company">Corporate</a>.<% } %></p><% } else { %>
+<p class="meta">The right inbox or person for accounting, HR, payroll systems, safety, fleet, legal and marketing.</p>
+<ul class="svc-grid">
+  <% sections.forEach(function (s) { %><li><a href="/contacts#<%= s.toLowerCase().replace(/[^a-z0-9]+/g, '-') %>"><span class="svc-name"><%= s %></span></a></li><% }) %>
+</ul>
+<p><a class="btn" href="/contacts">Open the full list</a></p>
+<% } %>
+<%- include('partials/footer') %>

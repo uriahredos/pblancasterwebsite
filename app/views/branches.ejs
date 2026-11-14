@@ -1,11 +1,27 @@
 <%- include('partials/header') %>
+<p class="back"><a class="back-link" href="/company">Company</a></p>
 <h1>Offices</h1>
-<p class="lede">Who is where. Open an office to see its people, its news and how to reach it.</p>
-<ul class="people">
-  <% rows.forEach(function (b) { %>
+<p class="lede">Every office, where it is and what it does. Open one to see its people and how to reach it.</p>
+<form method="get" action="/branches" class="filters">
+  <label class="grow">Search <input name="q" value="<%= f.q %>" maxlength="60" placeholder="Town, street or office number" autocomplete="off"></label>
+  <label>Does <select name="service"><option value="">Any service</option><% services.forEach(function (s) { %><option value="<%= s.id %>" <%= f.service && f.service.id === s.id ? 'selected' : '' %>><%= s.name %> (<%= s.code %>)</option><% }) %></select></label>
+  <% if (states.length) { %><label>State <select name="state"><option value="">Any state</option><% states.forEach(function (s) { %><option value="<%= s %>" <%= f.state === s ? 'selected' : '' %>><%= stateNames[s] || s %></option><% }) %></select></label><% } %>
+  <% if (regions.length) { %><label>Region <select name="region"><option value="">Any region</option><% regions.forEach(function (r) { %><option value="<%= r %>" <%= f.region === r ? 'selected' : '' %>><%= r %></option><% }) %></select></label><% } %>
+  <div class="filter-actions"><button class="btn primary" type="submit">Search</button><% if (f.q || f.service || f.state || f.region) { %><a class="btn" href="/branches">Clear</a><% } %></div>
+</form>
+<p class="meta"><%= rows.length %> <%= rows.length === 1 ? 'office' : 'offices' %><%= rows.length !== total ? ' of ' + total : '' %><%= f.service ? ' that do ' + f.service.name : '' %><%= f.state ? ' in ' + (stateNames[f.state] || f.state) : '' %><%= f.region ? ' in the ' + f.region + ' region' : '' %></p>
+<% if (f.service && !rows.length) { %><p class="card empty">No office has listed <%= f.service.name %> yet. Offices are still filling in what they do, so this does not mean nobody offers it.</p>
+<% } else if (!rows.length) { %><p class="card empty">No office matches that. Try a shorter search.</p><% } %>
+<ul class="offices">
+  <% var lastState = null; rows.forEach(function (b) { %>
+  <% if (b.state !== lastState && !f.state && rows.length > 12) { lastState = b.state; %><li class="state-h"><%= b.state ? (stateNames[b.state] || b.state) : 'Other' %></li><% } %>
   <li><a href="/branches/<%= b.id %>">
-    <% if (b.photo_path) { %><img class="avatar lg square" src="/branches/photo/<%= b.id %>?v=<%= b.photo_path.slice(0, 8) %>" alt="" loading="lazy"><% } else { %><span class="avatar lg square hue<%= b.id % 6 %>" aria-hidden="true"><%= b.name.slice(0, 2).toUpperCase() %></span><% } %>
-    <span class="person-text"><strong><%= b.name %></strong><span class="meta"><%= b.people %> <%= b.people === 1 ? 'person' : 'people' %><%= b.address ? ' · ' + b.address : '' %></span></span>
+    <span class="office-no"><%= b.number || '·' %></span>
+    <span class="person-text">
+      <strong><%= b.name %></strong>
+      <span class="meta"><%= [b.city && b.state ? b.city + ', ' + b.state : '', b.street, b.region].filter(Boolean).join(' · ') %><%= b.people ? ' · ' + b.people + (b.people === 1 ? ' person' : ' people') + ' here' : '' %></span>
+      <% if (b.services.length) { %><span class="chips"><% b.services.forEach(function (s) { %><span class="skill" title="<%= s.name %>"><%= s.code %></span><% }) %></span><% } %>
+    </span>
   </a></li>
   <% }) %>
 </ul>
