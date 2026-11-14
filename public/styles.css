@@ -972,3 +972,18 @@ td.row-more { width: 1%; white-space: nowrap; text-align: right; vertical-align:
 .acct .row-menu-list { z-index: 40; top: calc(100% + 10px); min-width: 14rem; }
 .acct .row-menu-list hr { border: 0; border-top: 1px solid var(--line); margin: .3rem .2rem; }
 .acct > summary { height: 42px; padding: 0 .7rem 0 .4rem; gap: .5rem; background: var(--banner-bg); box-shadow: 0 1px 2px rgba(10, 49, 82, .08); }
+
+/* The flame in the welcome band flickers for about four seconds when the page opens, then rests */
+.hero-mark { transform-origin: 60% 100%; animation: flame-in 4s ease-out both; }
+@keyframes flame-in {
+  0% { opacity: 0; transform: translateY(18%) scale(.7); }
+  14% { opacity: .5; transform: translateY(0) scale(1.14) skewX(-5deg); }
+  26% { opacity: .34; transform: scale(1.04) skewX(4deg) scaleY(1.06); }
+  38% { opacity: .46; transform: scale(1.12) skewX(-4deg) scaleY(.97); }
+  50% { opacity: .32; transform: scale(1.05) skewX(3deg) scaleY(1.07); }
+  62% { opacity: .42; transform: scale(1.09) skewX(-3deg) scaleY(.98); }
+  74% { opacity: .3; transform: scale(1.03) skewX(2deg) scaleY(1.04); }
+  87% { opacity: .34; transform: scale(1.04) skewX(-1deg); }
+  100% { opacity: .22; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) { .hero-mark { animation: none; } }
