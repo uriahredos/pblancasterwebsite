@@ -333,7 +333,7 @@ CREATE INDEX IF NOT EXISTS forum_reads_user ON forum_reads(user_id, following);
 if (db.prepare('SELECT COUNT(*) AS n FROM forum_sections').get().n === 0) {
   const add = db.prepare('INSERT INTO forum_sections (name, description, kind, sort_order) VALUES (?, ?, ?, ?)');
   add.run('Tech support', 'Stuck on a panel, a device or a job? Ask here. Mark the thread solved when you have your answer.', 'support', 1);
-  add.run('General', 'Branch talk, tips, tools and anything else worth sharing.', 'general', 2);
+  add.run('General', 'Shop talk, tips, tools and anything else worth sharing.', 'general', 2);
   add.run('Introductions', 'New here, or never said hello? Tell everyone who you are.', 'general', 3);
 }
 
@@ -515,6 +515,8 @@ addColumn('branches', 'address', 'TEXT');
 addColumn('branches', 'phone', 'TEXT');
 addColumn('branches', 'about', 'TEXT');
 addColumn('branches', 'photo_path', 'TEXT');
+
+db.prepare("UPDATE forum_sections SET description = 'Shop talk, tips, tools and anything else worth sharing.' WHERE description = 'Branch talk, tips, tools and anything else worth sharing.'").run();
 
 // ---- Face ID / fingerprint sign-in (passkeys) ----
 db.exec(`
