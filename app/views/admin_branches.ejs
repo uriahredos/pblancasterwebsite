@@ -1,28 +1,89 @@
 <%- include('partials/header') %>
-<h1>Offices</h1>
-<p class="lede">Each person belongs to one office. People, profiles, discussions, the daily question and newsletters are shared by everyone. Parts, stock, trucks, tasks, training, certifications, announcements and complaints stay inside each office.</p>
+<h1>Corporate</h1>
+<p class="lede">The company level: its offices, who runs each one, and who can see across all of them.</p>
 <%- include('partials/errors') %>
+<% if (created) { %>
+<div class="card stack created">
+  <p>Account <strong><%= created.username %></strong> was created as an admin for the <%= created.office %> office.</p>
+  <p>Give them this temporary password. It is shown only this once, and they choose their own the first time they sign in.</p>
+  <p class="code"><%= created.password %></p>
+</div>
+<% } %>
+
+<h2 id="corporate">Corporate admins</h2>
+<div class="card stack">
+  <p class="plain">Corporate admins see and manage every office: its people, logs, stock and settings. They add offices and appoint each office's admins.</p>
+  <ul class="plain-list">
+    <% corporate.forEach(function (c) { %>
+    <li><span class="who-row"><%- include('partials/avatar', { who: c }) %><span><strong><%= c.display_name %></strong><span class="meta"><%= c.is_master ? 'Master account' : c.profile %><%= c.branch ? ' · ' + c.branch + ' office' : '' %><%= c.active ? '' : ' · sign-in off' %></span></span></span>
+      <% if (!c.is_master && c.id !== user.id) { %><form method="post" action="/admin/corporate/admins/<%= c.id %>/remove" data-confirm="Stop <%= c.display_name %> being a corporate admin? They will only see their own office."><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Stand down</button></form><% } %></li>
+    <% }) %>
+  </ul>
+  <% if (corporateProfiles.length && everyone.length) { %>
+  <form method="post" action="/admin/corporate/admins" class="filters">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <label class="grow">Make someone a corporate admin
+      <select name="user_id" required><option value="">Choose a person</option><% everyone.forEach(function (p) { %><option value="<%= p.id %>"><%= p.display_name %><%= p.branch ? ' · ' + p.branch : '' %></option><% }) %></select></label>
+    <% if (corporateProfiles.length > 1) { %><label>Profile <select name="profile_id"><% corporateProfiles.forEach(function (p) { %><option value="<%= p.id %>"><%= p.name %></option><% }) %></select></label>
+    <% } else { %><input type="hidden" name="profile_id" value="<%= corporateProfiles[0].id %>"><% } %>
+    <div class="filter-actions"><button class="btn primary" type="submit">Appoint</button></div>
+  </form>
+  <p class="hint">The person needs an account first. Someone new to the site: add them as an admin of their office below, then appoint them here.</p>
+  <% } %>
+</div>
+
+<h2>Offices</h2>
 <ul class="records">
   <% rows.forEach(function (b) { %>
-  <li class="card">
-    <div class="rec-head"><strong><%= b.name %></strong><time><%= b.people %> <%= b.people === 1 ? 'person' : 'people' %><%= b.off ? ', ' + b.off + ' without sign-in' : '' %></time></div>
+  <li class="card stack" id="o<%= b.id %>">
+    <div class="rec-head"><strong class="office-name"><%= b.name %> office</strong><time><%= b.people %> <%= b.people === 1 ? 'person' : 'people' %> signed up<%= b.off ? ', ' + b.off + ' without sign-in' : '' %></time></div>
+    <p class="plain"><strong>Admins</strong> <span class="meta">run this office on the site: its people, parts, trucks, tasks, training and announcements.</span></p>
+    <% if (!b.admins.length) { %><p class="flash warn">This office has no admin of its own yet. Until it does, only corporate admins can run it.</p><% } %>
+    <ul class="plain-list">
+      <% b.admins.forEach(function (a) { %>
+      <li><span class="who-row"><%- include('partials/avatar', { who: a }) %><span><strong><%= a.display_name %></strong><span class="meta"><%= a.profile %><%= !a.active ? ' · sign-in off' : a.must_change_password ? ' · has not signed in yet' : '' %></span></span></span>
+        <form method="post" action="/admin/branches/<%= b.id %>/admins/<%= a.id %>/remove" data-confirm="Stop <%= a.display_name %> being an admin for <%= b.name %>?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Stand down</button></form></li>
+      <% }) %>
+    </ul>
+    <% if (officeProfiles.length) { %>
+    <details class="appoint" <%= values.office === b.id ? 'open' : '' %>>
+      <summary class="btn small">Add an admin for <%= b.name %></summary>
+      <form method="post" action="/admin/branches/<%= b.id %>/admins" class="stack">
+        <input type="hidden" name="_csrf" value="<%= csrf %>">
+        <% if (officeProfiles.length > 1) { %><label>Admin profile <select name="profile_id"><% officeProfiles.forEach(function (p) { %><option value="<%= p.id %>"><%= p.name %></option><% }) %></select></label>
+        <% } else { %><input type="hidden" name="profile_id" value="<%= officeProfiles[0].id %>"><% } %>
+        <% if (b.others.length) { %>
+        <label>Someone already in this office <select name="user_id"><option value="">Choose a person</option><% b.others.forEach(function (p) { %><option value="<%= p.id %>"><%= p.display_name %></option><% }) %></select></label>
+        <p class="or">or someone new</p>
+        <% } %>
+        <div class="two">
+          <label>Full name <input name="display_name" value="<%= values.office === b.id ? values.display_name || '' : '' %>" maxlength="80" autocomplete="off"></label>
+          <label>Username <span class="hint">What they type to sign in</span><input name="username" value="<%= values.office === b.id ? values.username || '' : '' %>" maxlength="40" autocapitalize="none" autocomplete="off"></label>
+        </div>
+        <label>Email <span class="hint">Optional</span><input name="email" type="email" value="<%= values.office === b.id ? values.email || '' : '' %>" maxlength="120" autocomplete="off"></label>
+        <button class="btn primary" type="submit">Appoint admin</button>
+      </form>
+    </details>
+    <% } %>
     <form method="post" action="/admin/branches/<%= b.id %>" class="filters">
       <input type="hidden" name="_csrf" value="<%= csrf %>">
-      <label class="grow"><span class="sr">Name</span><input name="name" value="<%= b.name %>" maxlength="60" required autocomplete="off"></label>
-      <div class="filter-actions"><button class="btn small" type="submit">Rename</button><a class="btn small" href="/people?branch=<%= b.id %>">See its people</a></div>
+      <label class="grow">Office name<input name="name" value="<%= b.name %>" maxlength="60" required autocomplete="off"></label>
+      <div class="filter-actions"><button class="btn small" type="submit">Rename</button><a class="btn small" href="/branches/<%= b.id %>">Its page</a><a class="btn small" href="/people?branch=<%= b.id %>">Its people</a></div>
     </form>
   </li>
   <% }) %>
 </ul>
-<h2>Add a office</h2>
+
+<h2>Add an office</h2>
 <form method="post" action="/admin/branches" class="card stack">
   <input type="hidden" name="_csrf" value="<%= csrf %>">
-  <label>Name <span class="hint">Usually the town, for example Harrisburg.</span><input name="name" value="<%= values.name || '' %>" maxlength="60" required autocomplete="off"></label>
+  <label>Name <span class="hint">Usually the town, for example Ephrata. "Office" is added for you.</span><input name="name" value="<%= values.name || '' %>" maxlength="60" required autocomplete="off"></label>
   <button class="btn primary" type="submit">Add office</button>
 </form>
 <div class="notice">
-  <p><strong>Who sees what</strong></p>
-  <p>You can see every office. Use the office box in the menu to choose which one the logs, stock and other pages show, or "All offices" to see them together.</p>
-  <p>Everyone else sees only their own office, whatever their profile. To let someone else see every office, tick "See and manage every office" on their profile.</p>
+  <p><strong>Who can do what</strong></p>
+  <p><strong>Corporate admins</strong> see every office. Use the office box beside your name to choose which one the logs, stock and other pages show, or "All offices" to see them together.</p>
+  <p><strong>Office admins</strong> do everything an admin can, inside their own office only. They add and manage that office's people themselves.</p>
+  <p><strong>Everyone</strong> shares the community side: people, discussions, shout-outs, photos, events and the daily question.</p>
 </div>
 <%- include('partials/footer') %>

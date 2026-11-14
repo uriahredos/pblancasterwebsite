@@ -109,7 +109,7 @@ p { margin: 0 0 .75rem; }
   .nav .nav-theme span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .nav .nav-theme { padding: .45rem .55rem; }
 }
-@media (min-width: 900px) and (max-width: 1239px) {
+@media (min-width: 900px) and (max-width: 1519px) {
   .nav { gap: .1rem; }
   .nav > a, .menu > summary { padding: .45rem .5rem; font-size: .9rem; }
   .nav-sep { margin: .3rem .15rem; }
@@ -773,3 +773,14 @@ a.skill:hover { outline: 1px solid var(--accent); }
 .roster { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: .35rem .75rem; }
 .roster a { display: flex; align-items: center; gap: .6rem; padding: .35rem .3rem; border-radius: 8px; color: var(--ink); text-decoration: none; }
 .roster a:hover { background: var(--accent-soft); }
+
+/* Corporate page */
+.who-row { display: flex; align-items: center; gap: .6rem; min-width: 0; }
+.who-row .meta { display: block; font-size: .85rem; }
+.office-name { font-size: 1.1rem; }
+.appoint > summary { list-style: none; display: inline-flex; cursor: pointer; }
+.appoint > summary::-webkit-details-marker { display: none; }
+.appoint[open] > summary { margin-bottom: .75rem; }
+.card.created { border-left: 5px solid var(--green); margin-bottom: 1rem; }
+
+.card + .notice, form.card + .notice { margin-top: 1rem; }

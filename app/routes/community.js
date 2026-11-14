@@ -215,12 +215,38 @@ router.post('/branch/view', everyBranch, (req, res) => {
   res.redirect(/^\/(?![/\\])/.test(back) ? back : '/');
 });
 
+// Profiles that make someone an office's admin (they manage that office's people, and nothing outside it),
+// and profiles that make someone a corporate admin (every office).
+const profilePerms = () => db.prepare('SELECT p.id, p.name, p.scope FROM profiles p ORDER BY p.name COLLATE NOCASE').all().map((p) => ({ ...p, perms: access.permsOf(p.id) }));
+const officeAdminProfiles = () => profilePerms().filter((p) => p.scope === 'all' && p.perms.has('users.manage') && !p.perms.has('branches.all'));
+const corporateProfiles = () => profilePerms().filter((p) => p.scope === 'all' && p.perms.has('branches.all'));
+const grantable = (req, list) => list.filter((p) => access.canGrant(req.user, p.perms));
+
 function branchPage(req, res, extra = {}) {
+  const office = officeAdminProfiles(); const corp = corporateProfiles();
+  const inList = (list) => list.map((p) => p.id).join(',') || '0';
   const rows = db.prepare(
     `SELECT b.*, (SELECT COUNT(*) FROM users u WHERE u.branch_id = b.id AND u.active = 1) AS people,
             (SELECT COUNT(*) FROM users u WHERE u.branch_id = b.id AND u.active = 0) AS off
-     FROM branches b ORDER BY b.name COLLATE NOCASE`).all();
-  res.status(extra.errors ? 400 : 200).render('admin_branches', { title: 'Offices', rows, errors: [], values: {}, ...extra });
+     FROM branches b ORDER BY b.name COLLATE NOCASE`).all().map((b) => ({
+    ...b,
+    admins: db.prepare(`SELECT u.id, u.display_name, u.photo_path, u.active, u.must_change_password, p.name AS profile FROM users u JOIN profiles p ON p.id = u.profile_id
+                        WHERE u.branch_id = ? AND u.is_master = 0 AND u.profile_id IN (${inList(office)}) ORDER BY u.display_name COLLATE NOCASE`).all(b.id),
+    others: db.prepare(`SELECT u.id, u.display_name FROM users u WHERE u.branch_id = ? AND u.is_master = 0 AND u.id <> ? AND (u.profile_id IS NULL OR u.profile_id NOT IN (${inList([...office, ...corp])}))
+                        ORDER BY u.display_name COLLATE NOCASE`).all(b.id, req.user.id),
+  }));
+  const corporate = db.prepare(`SELECT u.id, u.display_name, u.photo_path, u.is_master, u.active, b.name AS branch, p.name AS profile FROM users u
+     LEFT JOIN profiles p ON p.id = u.profile_id LEFT JOIN branches b ON b.id = u.branch_id
+     WHERE u.is_master = 1 OR u.profile_id IN (${inList(corp)}) ORDER BY u.is_master DESC, u.display_name COLLATE NOCASE`).all();
+  const created = req.session.created || null;   // a temporary password, shown once
+  delete req.session.created;
+  res.status(extra.errors ? 400 : 200).render('admin_branches', {
+    title: 'Corporate', wide: true, rows, corporate, created, errors: [], values: {},
+    officeProfiles: grantable(req, office), corporateProfiles: grantable(req, corp),
+    everyone: db.prepare(`SELECT u.id, u.display_name, b.name AS branch FROM users u LEFT JOIN branches b ON b.id = u.branch_id
+                          WHERE u.active = 1 AND u.is_master = 0 AND u.id <> ? AND (u.profile_id IS NULL OR u.profile_id NOT IN (${inList(corp)})) ORDER BY u.display_name COLLATE NOCASE`).all(req.user.id),
+    ...extra,
+  });
 }
 router.get('/admin/branches', everyBranch, (req, res) => branchPage(req, res));
 
@@ -248,6 +274,73 @@ router.post('/admin/branches/:id', everyBranch, (req, res) => {
     flash(req, 'ok', 'Office renamed.');
   }
   res.redirect('/admin/branches');
+});
+
+// Appoint an admin for an office: someone already in it, or a new person (who gets a temporary password).
+router.post('/admin/branches/:id/admins', everyBranch, (req, res) => {
+  const b = isId(req.params.id) ? db.prepare('SELECT * FROM branches WHERE id = ?').get(req.params.id) : null;
+  if (!b) return res.redirect('/admin/branches');
+  const profile = grantable(req, officeAdminProfiles()).find((p) => String(p.id) === String(req.body.profile_id));
+  if (!profile) return branchPage(req, res, { errors: ['Choose which admin profile they get.'] });
+  const auth = require('../auth');
+  if (isId(req.body.user_id)) {
+    const u = db.prepare('SELECT * FROM users WHERE id = ? AND branch_id = ? AND is_master = 0').get(req.body.user_id, b.id);
+    if (!u || u.id === req.user.id) return branchPage(req, res, { errors: ['Choose someone from that office.'] });
+    db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(profile.id, u.id);
+    db.prepare('DELETE FROM user_managers WHERE manager_id = ?').run(u.id);
+    activity.log(req.user, 'Office admin appointed', `${u.display_name} for ${b.name} (${profile.name})`);
+    flash(req, 'ok', `${u.display_name} is now an admin for the ${b.name} office.${u.active ? '' : ' Their sign-in is switched off: enable it and reset their password under Users.'}`);
+    return res.redirect(`/admin/branches#o${b.id}`);
+  }
+  const values = { username: clean(req.body.username, 40), display_name: clean(req.body.display_name, 80), email: clean(req.body.email, 120) };
+  const errors = [];
+  if (!values.display_name) errors.push('Choose someone from the office, or enter a new person\'s name.');
+  else if (!/^[a-zA-Z0-9._-]{3,40}$/.test(values.username)) errors.push('Username: 3-40 letters, numbers, dot, dash or underscore.');
+  else if (db.prepare('SELECT 1 FROM users WHERE username = ?').get(values.username)) errors.push('That username is already taken.');
+  if (values.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)) errors.push('That email address does not look right.');
+  if (errors.length) return branchPage(req, res, { errors, values: { ...values, office: b.id } });
+  const password = auth.tempPassword();
+  auth.createUser({ username: values.username, displayName: values.display_name, email: values.email, password, profile: profile.id, branchId: b.id });
+  activity.log(req.user, 'Office admin appointed', `${values.display_name} (${values.username}) for ${b.name} (${profile.name})`);
+  req.session.created = { username: values.username, password, what: 'created', office: b.name };
+  res.redirect('/admin/branches');
+});
+
+// Stand an office admin down: they go back to the Technician profile.
+router.post('/admin/branches/:id/admins/:uid/remove', everyBranch, (req, res) => {
+  const u = isId(req.params.uid) ? db.prepare('SELECT * FROM users WHERE id = ? AND branch_id = ? AND is_master = 0').get(req.params.uid, req.params.id) : null;
+  const tech = access.profileByName('Technician');
+  if (u && tech && officeAdminProfiles().some((p) => p.id === u.profile_id) && access.canGrant(req.user, access.permsOf(u.profile_id))) {
+    db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(tech.id, u.id);
+    activity.log(req.user, 'Office admin stood down', u.display_name);
+    flash(req, 'ok', `${u.display_name} is no longer an office admin. They are on the Technician profile now; change it under Users if needed.`);
+  }
+  res.redirect(`/admin/branches#o${req.params.id}`);
+});
+
+// Corporate admins: people who can see and manage every office.
+router.post('/admin/corporate/admins', everyBranch, (req, res) => {
+  const profile = grantable(req, corporateProfiles()).find((p) => String(p.id) === String(req.body.profile_id));
+  const u = isId(req.body.user_id) ? db.prepare('SELECT * FROM users WHERE id = ? AND active = 1 AND is_master = 0').get(req.body.user_id) : null;
+  if (!profile || !u || u.id === req.user.id) return branchPage(req, res, { errors: ['Choose a person and a corporate profile.'] });
+  db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(profile.id, u.id);
+  db.prepare('DELETE FROM user_managers WHERE manager_id = ?').run(u.id);
+  activity.log(req.user, 'Corporate admin appointed', `${u.display_name} (${profile.name})`);
+  flash(req, 'ok', `${u.display_name} is now a corporate admin and can see and manage every office.`);
+  res.redirect('/admin/branches#corporate');
+});
+
+// Stand a corporate admin down to an admin of their own office. Never the master account, and not yourself.
+router.post('/admin/corporate/admins/:uid/remove', everyBranch, (req, res) => {
+  const u = isId(req.params.uid) ? db.prepare('SELECT * FROM users WHERE id = ? AND is_master = 0').get(req.params.uid) : null;
+  const to = officeAdminProfiles()[0] || access.profileByName('Technician');
+  if (u && u.id !== req.user.id && to && corporateProfiles().some((p) => p.id === u.profile_id) && access.canGrant(req.user, access.permsOf(u.profile_id))) {
+    db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(to.id, u.id);
+    db.prepare("DELETE FROM sessions WHERE json_extract(data, '$.userId') = ?").run(u.id);   // their wider view ends at once
+    activity.log(req.user, 'Corporate admin stood down', `${u.display_name}, now ${to.name}`);
+    flash(req, 'ok', `${u.display_name} is no longer a corporate admin. They are on the ${to.name} profile for their own office.`);
+  }
+  res.redirect('/admin/branches#corporate');
 });
 
 // ---- Welcoming new people -------------------------------------------------------

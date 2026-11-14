@@ -150,6 +150,11 @@ function migrate() {
                   WHERE p.scope = 'team' AND EXISTS (SELECT 1 FROM profile_permissions x WHERE x.profile_id = p.id AND x.permission = 'parts.view')`).run();
       db.prepare("INSERT INTO meta (key, value) VALUES ('perm_granted:digest.weekly', '1')").run();
     }
+    // The corporate level: a profile that can do everything in every office. Made once; after that it is an ordinary profile.
+    if (!db.prepare("SELECT 1 FROM meta WHERE key = 'corporate_profile_1'").get()) {
+      if (!db.prepare("SELECT 1 FROM profiles WHERE name = 'Corporate admin'").get()) createProfile('Corporate admin', 'all', ALL);
+      db.prepare("INSERT INTO meta (key, value) VALUES ('corporate_profile_1', '1')").run();
+    }
     // The master account: MASTER_USERNAME if set, otherwise the first admin ever created.
     const named = process.env.MASTER_USERNAME && db.prepare('SELECT id FROM users WHERE username = ?').get(process.env.MASTER_USERNAME.trim());
     if (named) {

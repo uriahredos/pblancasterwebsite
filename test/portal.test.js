@@ -690,7 +690,7 @@ test('a database from the first release is upgraded in place without losing data
   assert.equal(r.adminPerms, r.all - 1);                          // everything except seeing every branch, which is the master's
   assert.ok(!r.plain.includes('complaints.review') && !r.plain.includes('backups') && r.plain.includes('users.manage'));
   assert.ok(r.rev.includes('complaints.review') && !r.rev.includes('parts.view'));
-  assert.deepEqual(r.profiles, ['Admin', 'Admin (no complaints)', 'Complaint reviewer', 'Manager', 'Technician', 'Warehouse']);
+  assert.deepEqual(r.profiles, ['Admin', 'Admin (no complaints)', 'Complaint reviewer', 'Corporate admin', 'Manager', 'Technician', 'Warehouse']);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -829,7 +829,7 @@ test('starting profiles: Technician, Warehouse, Manager and Admin each see only 
   assert.deepEqual(navLinks((await wh.get('/')).text), ['/admin/parts', '/admin/requests', '/admin/parts/audit', '/admin/stock', '/admin/parts/summary', '/admin/catalog', '/admin/inspections', '/admin/inspections/checklist']);
   assert.deepEqual(navLinks((await owner.get('/')).text),
     ['/admin/parts', '/admin/requests', '/admin/parts/audit', '/admin/stock', '/admin/parts/summary', '/admin/catalog', '/admin/inspections', '/admin/inspections/checklist',
-      '/admin/training', '/admin/training/sessions', '/admin/certs', '/admin/users', '/admin/profiles', '/admin/tasks', '/admin/announcements', '/admin/newsletters', '/admin/complaints', '/admin/activity', '/admin/branches', '/admin/backups', '/admin/import']);
+      '/admin/training', '/admin/training/sessions', '/admin/certs', '/admin/users', '/admin/tasks', '/admin/announcements', '/admin/newsletters', '/admin/complaints', '/admin/activity', '/admin/import', '/admin/branches', '/admin/profiles', '/admin/backups']);
 
   for (const url of ['/admin/parts', '/admin/parts/audit', '/admin/parts/summary', '/admin/catalog']) assert.equal((await wh.get(url)).status, 200, url);
   for (const url of ['/admin/training', '/admin/users', '/admin/profiles', '/admin/complaints', '/admin/backups']) assert.equal((await wh.get(url)).status, 403, url);
@@ -1678,14 +1678,16 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
   const barLinks = (html) => { const nav = /<nav class="nav"[\s\S]*?<\/nav>/.exec(html)[0].replace(/<details[\s\S]*?<\/details>/g, '').replace(/<div class="nav-account">[\s\S]*?<\/div>/, ''); return [...nav.matchAll(/<a href="([^"]+)"/g)].map((m) => m[1]); };
 
   const owner = (await (await loggedIn('owner')).get('/admin/users')).text;
-  assert.deepEqual(groupsOf(owner), ['Community', 'Parts', 'Trucks', 'Training', 'Team', 'Setup']);
+  assert.deepEqual(groupsOf(owner), ['Community', 'Parts', 'Trucks', 'Training', 'Team', 'Setup', 'Corporate']);
   assert.deepEqual(barLinks(owner), ['/', '/notices', '/tasks', '/my']);
   // What used to be one long Admin list is two: Team (people and what goes out to them) and Setup (the site itself).
   const team = /<summary[^>]*>Team[\s\S]*?<\/details>/.exec(owner)[0];
   const setup = /<summary[^>]*>Setup[\s\S]*?<\/details>/.exec(owner)[0];
   const hrefs = (html) => [...html.matchAll(/<a href="([^"]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(hrefs(team), ['/complaint', '/admin/users', '/admin/profiles', '/admin/tasks', '/admin/announcements', '/admin/newsletters', '/admin/complaints']);
-  assert.deepEqual(hrefs(setup), ['/poster', '/admin/activity', '/admin/branches', '/admin/backups', '/admin/import']);
+  assert.deepEqual(hrefs(team), ['/complaint', '/admin/users', '/admin/tasks', '/admin/announcements', '/admin/newsletters', '/admin/complaints']);
+  assert.deepEqual(hrefs(setup), ['/poster', '/admin/activity', '/admin/import']);
+  // The company level has its own group, only for people who can see every office.
+  assert.deepEqual(hrefs(/<summary[^>]*>Corporate[\s\S]*?<\/details>/.exec(owner)[0]), ['/admin/branches', '/admin/profiles', '/admin/backups']);
   assert.match(team, /<summary aria-current="true">Team/);                 // the group you are in is marked
   assert.match(team, /href="\/admin\/users" aria-current="page"/);
   assert.doesNotMatch(setup, /<summary aria-current/);
@@ -3420,4 +3422,69 @@ test('photo wall and branch pages: photos posted and liked, a branch page with i
   await new Promise((r) => setTimeout(r, 50)); assert.ok(!fs3.existsSync(file));
   db.prepare('DELETE FROM shoutouts').run(); db.prepare("UPDATE users SET department = NULL, job_title = NULL WHERE username = 'tech1'").run();
   db.prepare('UPDATE branches SET address = NULL, phone = NULL, about = NULL, photo_path = NULL WHERE id = 1').run();
+});
+
+test('corporate: corporate admins appoint an admin for each office; office admins stay inside their own office', async () => {
+  const owner = await loggedIn('owner');                                      // sees every office
+  const tech1 = await loggedIn('tech1');
+  assert.equal((await tech1.get('/admin/branches')).status, 403);
+  assert.ok(profileId('Corporate admin'));
+  assert.ok(access.permsOf(profileId('Corporate admin')).has('branches.all'));
+
+  await owner.post('/admin/branches', { name: 'Ephrata office' }, { page: '/admin/branches' });
+  const eph = db.prepare("SELECT id FROM branches WHERE name = 'Ephrata'").get().id;      // "office" is not doubled up
+  let page = (await owner.get('/admin/branches')).text.replace(/\s+/g, ' ');
+  assert.match(page, /<h1>Corporate<\/h1>/); assert.match(page, /Ephrata office<\/strong>[\s\S]*This office has no admin of its own yet/);
+
+  // A new person as Ephrata's admin: created in that office with a temporary password shown once.
+  // (In these checks the profile called Admin can see every office, so an office's admin gets a profile that cannot.)
+  const adminProfile = access.ensureProfile('Office admin', 'all', access.ALL.filter((p) => p !== 'branches.all'));
+  assert.match((await owner.post(`/admin/branches/${eph}/admins`, { profile_id: String(adminProfile), display_name: 'Ed Ephrata', username: 'tech1' }, { page: '/admin/branches' })).text, /already taken/);
+  assert.match((await owner.post(`/admin/branches/${eph}/admins`, { profile_id: String(profileId('Corporate admin')), display_name: 'Ed Ephrata', username: 'ed.ephrata' }, { page: '/admin/branches' })).text, /Choose which admin profile/);   // not a way to make corporate admins
+  await owner.post(`/admin/branches/${eph}/admins`, { profile_id: String(adminProfile), display_name: 'Ed Ephrata', username: 'ed.ephrata', email: 'ed@example.com' }, { page: '/admin/branches' });
+  const ed = db.prepare("SELECT * FROM users WHERE username = 'ed.ephrata'").get();
+  assert.deepEqual([ed.branch_id, ed.profile_id, ed.must_change_password, ed.active], [eph, adminProfile, 1, 1]);
+  page = (await owner.get('/admin/branches')).text.replace(/\s+/g, ' ');
+  const temp = /created as an admin for the Ephrata office[\s\S]*?<p class="code">([a-z0-9-]+)<\/p>/.exec(page)[1];
+  assert.doesNotMatch((await owner.get('/admin/branches')).text, new RegExp(temp));                // once only
+  assert.match(page, /Ed Ephrata<\/strong><span class="meta">Office admin · has not signed in yet/);
+
+  // Ed signs in, chooses a password, and runs Ephrata: adds his own people, sees nothing of Lancaster, has no Corporate menu.
+  const edc = new Client();
+  await edc.login('ed.ephrata', temp);
+  await edc.post('/account/password', { current: temp, password: 'ephrata admin password', confirm: 'ephrata admin password' });
+  const home = (await edc.get('/')).text;
+  assert.match(home, /<span class="branch">Ephrata Office<\/span>/); assert.doesNotMatch(home, /Corporate<|\/admin\/branches|\/admin\/profiles|name="branch" data-autosubmit/);
+  await edc.post('/admin/users', { username: 'eph.tech', display_name: 'Tess Ephrata', profile_id: String(profileId('Technician')) }, { page: '/admin/users' });
+  assert.equal(db.prepare("SELECT branch_id FROM users WHERE username = 'eph.tech'").get().branch_id, eph);
+  const edUsers = (await edc.get('/admin/users')).text;
+  assert.match(edUsers, /Tess Ephrata/); assert.doesNotMatch(edUsers, /Terry Tech|Olive Owner/);
+  for (const url of ['/admin/branches', '/admin/profiles', '/admin/backups']) assert.equal((await edc.get(url)).status, 403, url);
+  for (const [url, body] of [[`/admin/branches/${eph}/admins`, { profile_id: String(adminProfile), user_id: String(userId('eph.tech')) }], ['/admin/corporate/admins', { user_id: String(ed.id), profile_id: String(profileId('Corporate admin')) }], ['/admin/branches', { name: 'Rogue' }]]) {
+    assert.equal((await edc.post(url, body, { page: '/' })).status, 403, url);
+  }
+
+  // Someone already in the office can be appointed, and stood down again.
+  await owner.post(`/admin/branches/${eph}/admins`, { profile_id: String(adminProfile), user_id: String(userId('eph.tech')) }, { page: '/admin/branches' });
+  assert.equal(db.prepare("SELECT profile_id FROM users WHERE username = 'eph.tech'").get().profile_id, adminProfile);
+  assert.match((await owner.post(`/admin/branches/${eph}/admins`, { profile_id: String(adminProfile), user_id: String(userId('tech1')) }, { page: '/admin/branches' })).text, /Choose someone from that office/);   // Lancaster's Terry cannot be Ephrata's admin
+  await owner.post(`/admin/branches/${eph}/admins/${userId('eph.tech')}/remove`, {}, { page: '/admin/branches' });
+  assert.equal(db.prepare("SELECT profile_id FROM users WHERE username = 'eph.tech'").get().profile_id, profileId('Technician'));
+
+  // Corporate admins: appointed from existing people; they then see every office. Standing down ends it at once.
+  await owner.post('/admin/corporate/admins', { user_id: String(ed.id), profile_id: String(profileId('Corporate admin')) }, { page: '/admin/branches' });
+  page = (await owner.get('/admin/branches')).text.replace(/\s+/g, ' ');
+  assert.match(page, /Corporate admins<\/h2>[\s\S]*Ed Ephrata<\/strong><span class="meta">Corporate admin · Ephrata office/);
+  assert.equal((await edc.get('/admin/branches')).status, 200);
+  assert.match((await edc.get('/')).text, /name="branch" data-autosubmit/);
+  await edc.post('/branch/view', { branch: 'all' }, { page: '/' });
+  assert.match((await edc.get('/admin/users')).text, /Terry Tech/);
+  await edc.post(`/admin/corporate/admins/${ed.id}/remove`, {}, { page: '/admin/branches' });      // nobody stands themselves down
+  assert.equal(db.prepare('SELECT profile_id FROM users WHERE id = ?').get(ed.id).profile_id, profileId('Corporate admin'));
+  await owner.post(`/admin/corporate/admins/${ed.id}/remove`, {}, { page: '/admin/branches' });
+  assert.notEqual(db.prepare('SELECT profile_id FROM users WHERE id = ?').get(ed.id).profile_id, profileId('Corporate admin'));
+  assert.equal((await edc.get('/admin/branches')).status, 302);                                    // signed out, and an office admin again when he returns
+  assert.match(db.prepare("SELECT GROUP_CONCAT(action, '|') a FROM activity_log WHERE action LIKE '%admin%'").get().a, /Office admin appointed[\s\S]*Corporate admin appointed[\s\S]*Corporate admin stood down/);
+
+  db.prepare('UPDATE users SET active = 0, in_directory = 0 WHERE branch_id = ?').run(eph);
 });

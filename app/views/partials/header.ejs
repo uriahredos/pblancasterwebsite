@@ -105,7 +105,6 @@
         ['complaints.submit', '/complaint', 'Anonymous complaint', is('/complaint')],
         'divider',
         ['users.manage', '/admin/users', 'Users', is('/admin/users')],
-        [user.allBranches ? 'profiles.manage' : 'no.such.permission', '/admin/profiles', 'Profiles', is('/admin/profiles')],
         ['tasks.assign', '/admin/tasks', 'Manage tasks', is('/admin/tasks')],
         ['announcements.post', '/admin/announcements', 'Post announcements', is('/admin/announcements')],
         ['newsletters.manage', '/admin/newsletters', 'Newsletters', is('/admin/newsletters')],
@@ -114,10 +113,13 @@
       { name: 'Setup', items: [
         ['users.manage', '/poster', 'QR code sign', is('/poster')],
         ['activity.view', '/admin/activity', 'Activity log', is('/admin/activity')],
-        [user.allBranches ? '' : 'no.such.permission', '/admin/branches', 'Offices', is('/admin/branches')],
-        [user.allBranches ? 'backups' : 'no.such.permission', '/admin/backups', 'Backups', is('/admin/backups')],
         [user.scope === 'all' ? 'users.manage' : 'no.such.permission', '/admin/import', 'Import', is('/admin/import')]
-      ] }
+      ] },
+      { name: 'Corporate', items: user.allBranches ? [
+        ['', '/admin/branches', 'Offices and admins', is('/admin/branches')],
+        ['profiles.manage', '/admin/profiles', 'Profiles', is('/admin/profiles')],
+        ['backups', '/admin/backups', 'Backups', is('/admin/backups')]
+      ] : [] }
     ].map(function (g) {
       // Keep what this person may use; drop dividers left at an edge or doubled up.
       var kept = g.items.filter(function (it) { return it === 'divider' || !it[0] || can(it[0]); });

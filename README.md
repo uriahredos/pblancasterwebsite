@@ -438,6 +438,19 @@ The **Community** menu holds People, Discussions, Daily question and Newsletters
 - Each office has a page with a photo, address, phone, a few words about it, its people grouped by department, its upcoming events, and its latest shout-outs and photos.
 - The page is edited by people who manage accounts in that office, or anyone who can see every office.
 
+## Corporate and office admins
+
+There are two levels of admin.
+
+- **Corporate admins** see and manage every office. They have a **Corporate** menu: **Offices and admins**, **Profiles** and **Backups**. The master account is always one; others are people on a profile with **See and manage every office** ticked (the site starts with one called **Corporate admin**).
+- **Office admins** do everything an admin can inside their own office only: they add and manage that office's people, and never see another office's parts, trucks, tasks, training, announcements or complaints. They are people on a profile that can manage accounts but cannot see every office (the starting **Admin** profile).
+
+On **Corporate > Offices and admins** a corporate admin can:
+- add an office, or rename one;
+- appoint an admin for an office: either someone already in that office, or a new person, who is created in that office and given a temporary password shown once;
+- stand an office admin down (they go back to the Technician profile);
+- make an existing person a corporate admin, or stand one down (they become an admin of their own office and are signed out so the change takes hold at once). Nobody can stand themselves or the master account down.
+
 ## Offices
 
 One site for every office. Each person belongs to one office; everything that existed before offices belongs to Lancaster.
@@ -449,7 +462,7 @@ One site for every office. Each person belongs to one office; everything that ex
 - **Everyone sees only their own office**, whatever their profile. An Admin in one office can do everything an Admin can, inside that office.
 - **Seeing every office** is the master account, plus any profile with the tick-box **See and manage every office**. Those people get a office box beside their name (in More on a phone) to choose which office the pages show, or **All offices** together. Stock, the checklist and new training sessions always belong to one office: the one chosen, or their own when looking at all.
 - **Setup > Offices** (for the same people): add or rename offices. A new office starts with a copy of the first office's truck checklist and no stock.
-- **Adding people to a office**: choose it in the office box, then add them under Team > Users (or upload its contact list under Setup > Import). A office admin's new people always join that admin's own office. Moving someone to another office is on Edit person, for people who can see every office.
+- **Adding people to an office**: choose it in the office box, then add them under Team > Users (or upload its contact list under Setup > Import). A office admin's new people always join that admin's own office. Moving someone to another office is on Edit person, for people who can see every office.
 - **Announcements** go to the office they were posted in. People who can see every office can choose **Every office** when posting.
 - **Complaints** record which office they came from (still nothing about who sent them) and go to that office's reviewers.
 - **Profiles (permission sets), backups and the Forms history import** cover the whole site, so they are only for people who can see every office.
