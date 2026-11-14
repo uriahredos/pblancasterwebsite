@@ -192,6 +192,7 @@
         <a href="/my" <%- path === '/my' ? 'aria-current="page"' : '' %>>My activity<% if (badges.updates) { %> <span class="badge" title="Updates you have not seen"><%= badges.updates %></span><% } %></a>
         <a href="/settings/notifications">Notification settings</a>
         <a href="/account/password">Password and Face ID<span class="hint-light"><%= user.display_name %></span></a>
+        <button type="button" id="install-open" hidden>Get the app<span class="hint-light">Add it to your home screen</span></button>
         <form method="post" action="/logout"><input type="hidden" name="_csrf" value="<%= csrf %>"><button type="submit">Sign out</button></form>
       </div>
     </nav>

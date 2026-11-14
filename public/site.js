@@ -14,30 +14,33 @@
       (window.matchMedia && ['standalone', 'fullscreen', 'minimal-ui'].some(function (m) { return window.matchMedia('(display-mode: ' + m + ')').matches; }));
   }
   function snoozed() {
-    try { return Number(localStorage.getItem('install:later') || 0) > Date.now(); } catch (e) { return false; }
+    try { return Number(localStorage.getItem('install:snooze') || 0) > Date.now(); } catch (e) { return false; }
   }
   var installEvent = null;
-  function showInstallBar() {
+  // `manual` is true when the browser has not offered its own install prompt (Samsung Internet, Firefox,
+  // or Chrome that has not got round to it): the bar then says where the option is in the browser's menu.
+  function showInstallBar(manual) {
     var bar = document.getElementById('install-bar');
     if (!bar || inApp() || snoozed() || !(isIOS || isAndroid)) return;
     var go = document.getElementById('install-go');
     var how = document.getElementById('install-how');
-    if (installEvent) go.hidden = false;
+    if (installEvent) { go.hidden = false; how.textContent = 'Add it to your home screen for one-tap access.'; }
     else if (isIOS) how.textContent = 'Tap the Share button, then "Add to Home Screen".';
-    else return; // Android: wait for the browser to say the app can be installed (it will not if it already is).
+    else if (manual) how.textContent = 'Open your browser\u2019s menu (\u22ee or \u2261), then tap "Add to Home screen" or "Install app".';
+    else return; // Android: give the browser a moment to offer its own prompt first.
     bar.hidden = false;
   }
   function hideInstallBar(days) {
     var bar = document.getElementById('install-bar');
     if (bar) bar.hidden = true;
-    if (days) { try { localStorage.setItem('install:later', String(Date.now() + days * 86400000)); } catch (e) {} }
+    if (days) { try { localStorage.setItem('install:snooze', String(Date.now() + days * 86400000)); } catch (e) {} }
   }
   window.addEventListener('beforeinstallprompt', function (e) {
     e.preventDefault(); // keep the event so our own Install button can use it
     installEvent = e;
     showInstallBar();
   });
-  window.addEventListener('appinstalled', function () { installEvent = null; hideInstallBar(3650); });
+  window.addEventListener('appinstalled', function () { installEvent = null; hideInstallBar(90); });
   document.addEventListener('DOMContentLoaded', function () {
     var go = document.getElementById('install-go');
     var later = document.getElementById('install-later');
@@ -45,11 +48,23 @@
       if (!installEvent) return;
       var ev = installEvent; installEvent = null;
       ev.prompt();
-      if (ev.userChoice) ev.userChoice.then(function (c) { hideInstallBar(c && c.outcome === 'accepted' ? 3650 : 14); });
+      if (ev.userChoice) ev.userChoice.then(function (c) { hideInstallBar(c && c.outcome === 'accepted' ? 90 : 14); });
       else hideInstallBar(14);
     });
     if (later) later.addEventListener('click', function () { hideInstallBar(14); });
     showInstallBar();
+    if (isAndroid) setTimeout(function () { if (!installEvent) showInstallBar(true); }, 3500);
+    // "Get the app" in the menu brings the bar back at any time, even after "Not now".
+    var open = document.getElementById('install-open');
+    if (open && !inApp() && (isIOS || isAndroid)) {
+      open.hidden = false;
+      open.addEventListener('click', function () {
+        try { localStorage.removeItem('install:snooze'); } catch (e) {}
+        var sheetBtn = document.querySelector('.tabbar [aria-expanded="true"]');
+        if (sheetBtn) sheetBtn.click();
+        showInstallBar(true);
+      });
+    }
   });
 
   var store = {
