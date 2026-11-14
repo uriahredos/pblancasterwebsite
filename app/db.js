@@ -422,6 +422,39 @@ if (!db.prepare("SELECT 1 FROM meta WHERE key = 'daily_seed_1'").get()) {
   })();
 }
 
+// ---- Branch privacy: the things that are not tied to one person belong to a branch ----
+db.exec(`
+CREATE TABLE IF NOT EXISTS branch_stock (
+  branch_id INTEGER NOT NULL REFERENCES branches(id),
+  catalog_id INTEGER NOT NULL REFERENCES parts_catalog(id),
+  count_qty INTEGER NOT NULL DEFAULT 0,
+  count_at TEXT NOT NULL,
+  min_level INTEGER,
+  PRIMARY KEY (branch_id, catalog_id)
+);
+`);
+addColumn('inspection_items', 'branch_id', 'INTEGER');
+addColumn('training_sessions', 'branch_id', 'INTEGER');
+addColumn('complaints', 'branch_id', 'INTEGER');          // the branch only; still nothing about who sent it
+addColumn('announcements', 'branch_id', 'INTEGER');       // empty = every branch
+addColumn('stock_adjustments', 'branch_id', 'INTEGER');
+{
+  const home = db.prepare('SELECT MIN(id) AS id FROM branches').get().id;
+  db.prepare('UPDATE inspection_items SET branch_id = ? WHERE branch_id IS NULL').run(home);
+  db.prepare('UPDATE training_sessions SET branch_id = COALESCE((SELECT branch_id FROM users WHERE id = created_by), ?) WHERE branch_id IS NULL').run(home);
+  db.prepare('UPDATE complaints SET branch_id = ? WHERE branch_id IS NULL').run(home);
+  db.prepare('UPDATE stock_adjustments SET branch_id = COALESCE((SELECT branch_id FROM users WHERE id = user_id), ?) WHERE branch_id IS NULL').run(home);
+  if (!db.prepare("SELECT 1 FROM meta WHERE key = 'branch_privacy_1'").get()) {
+    db.transaction(() => {
+      // Everything that existed before branches belongs to the first branch.
+      db.prepare('UPDATE announcements SET branch_id = COALESCE((SELECT branch_id FROM users WHERE id = created_by), ?)').run(home);
+      db.prepare(`INSERT OR IGNORE INTO branch_stock (branch_id, catalog_id, count_qty, count_at, min_level)
+                  SELECT ?, id, COALESCE(count_qty, 0), COALESCE(count_at, created_at), min_level FROM parts_catalog WHERE stocked = 1`).run(home);
+      db.prepare("INSERT INTO meta (key, value) VALUES ('branch_privacy_1', '1')").run();
+    })();
+  }
+}
+
 // ---- Face ID / fingerprint sign-in (passkeys) ----
 db.exec(`
 CREATE TABLE IF NOT EXISTS passkeys (

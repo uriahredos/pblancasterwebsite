@@ -19,19 +19,21 @@ const wholeNumber = (v, { signed = false } = {}) => {
 const getPart = (id) => (/^\d+$/.test(String(id)) ? db.prepare('SELECT * FROM parts_catalog WHERE id = ?').get(id) : null);
 
 /** Start (or restart) tracking a part from a physical count. */
-function setCount(part, qty, minLevel) {
-  db.prepare('UPDATE parts_catalog SET stocked = 1, count_qty = ?, count_at = ?, min_level = COALESCE(?, min_level) WHERE id = ?')
-    .run(qty, new Date().toISOString(), minLevel, part.id);
+function setCount(branchId, part, qty, minLevel) {
+  db.prepare(`INSERT INTO branch_stock (branch_id, catalog_id, count_qty, count_at, min_level) VALUES (?, ?, ?, ?, ?)
+              ON CONFLICT(branch_id, catalog_id) DO UPDATE SET count_qty = excluded.count_qty, count_at = excluded.count_at, min_level = COALESCE(excluded.min_level, min_level)`)
+    .run(branchId, part.id, qty, new Date().toISOString(), minLevel);
 }
+const tracked = (branchId, part) => Boolean(part && db.prepare('SELECT 1 FROM branch_stock WHERE branch_id = ? AND catalog_id = ?').get(branchId, part.id));
 
 // Anyone who can see the parts log can see stock; changing it needs "manage stock".
 router.get('/admin/stock', requireLogin, (req, res) => {
   if (!access.can(req.user, 'parts.view') && !access.can(req.user, 'stock.manage')) return forbidden(res);
   const q = clean(req.query.q, 60);
   const low = req.query.low === '1';
-  const all = stock.list();
+  const all = stock.list(req.user.workBranch);
   res.render('admin_stock', {
-    title: 'Stock', rows: stock.list({ q, low }), q, low, errors: [], values: {},
+    title: 'Stock', rows: stock.list(req.user.workBranch, { q, low }), q, low, errors: [], values: {},
     total: all.length, lowTotal: all.filter((r) => r.low).length,
   });
 });
@@ -45,7 +47,7 @@ router.post('/admin/stock', manage, (req, res) => {
   if (count === null) errors.push('Enter how many are on the shelf now (a whole number).');
   if (String(req.body.min_level ?? '').trim() !== '' && min === null) errors.push('The minimum must be a whole number.');
   if (errors.length) {
-    const all = stock.list();
+    const all = stock.list(req.user.workBranch);
     return res.status(400).render('admin_stock', { title: 'Stock', rows: all, q: '', low: false, errors, values: req.body, total: all.length, lowTotal: all.filter((r) => r.low).length });
   }
   let part = db.prepare('SELECT * FROM parts_catalog WHERE part_number = ?').get(number);
@@ -53,7 +55,7 @@ router.post('/admin/stock', manage, (req, res) => {
     const info = db.prepare("INSERT INTO parts_catalog (part_number, description, created_at) VALUES (?, '', ?)").run(number, new Date().toISOString());
     part = getPart(info.lastInsertRowid);
   }
-  setCount(part, count, min);
+  setCount(req.user.workBranch, part, count, min);
   activity.log(req.user, 'Stock count', `${part.part_number}: counted ${count}${min !== null ? ', minimum ' + min : ''}`);
   flash(req, 'ok', `${part.part_number} is now tracked with ${count} on hand.`);
   res.redirect('/admin/stock');
@@ -85,7 +87,7 @@ router.post('/admin/stock/import', manage, (req, res, next) => upload(req, res, 
         const info = db.prepare("INSERT INTO parts_catalog (part_number, description, created_at) VALUES (?, '', ?)").run(number, new Date().toISOString());
         part = getPart(info.lastInsertRowid); result.added++;
       }
-      setCount(part, qty, cMin >= 0 ? wholeNumber(r[cMin]) : null);
+      setCount(req.user.workBranch, part, qty, cMin >= 0 ? wholeNumber(r[cMin]) : null);
       result.set++;
     }
   })();
@@ -96,30 +98,31 @@ router.post('/admin/stock/import', manage, (req, res, next) => upload(req, res, 
 
 router.get('/admin/stock/:id', requireLogin, (req, res) => {
   if (!access.can(req.user, 'parts.view') && !access.can(req.user, 'stock.manage')) return forbidden(res);
-  const part = stock.list().find((r) => String(r.id) === req.params.id);
+  const part = stock.list(req.user.workBranch).find((r) => String(r.id) === req.params.id);
   if (!part) return res.status(404).render('error', { title: 'Page not found', message: 'That part is not being tracked.' });
   const history = db.prepare(
     `SELECT a.quantity, a.reason, a.created_at, u.display_name FROM stock_adjustments a JOIN users u ON u.id = a.user_id
-     WHERE a.catalog_id = ? ORDER BY a.id DESC LIMIT 50`).all(part.id);
+     WHERE a.catalog_id = ? AND a.branch_id = ? ORDER BY a.id DESC LIMIT 50`).all(part.id, req.user.workBranch);
   const moves = db.prepare(
     `SELECT s.id, s.action, s.created_at, i.quantity, u.display_name FROM parts_items i
      JOIN parts_submissions s ON s.id = i.submission_id JOIN users u ON u.id = s.user_id
-     WHERE i.part_name = ? COLLATE NOCASE AND s.action IN ('take','return') AND s.cancelled_at IS NULL AND s.created_at > ?
-     ORDER BY s.id DESC LIMIT 50`).all(part.part_number, part.count_at);
+     WHERE i.part_name = ? COLLATE NOCASE AND s.action IN ('take','return') AND s.cancelled_at IS NULL AND s.created_at > ? AND u.branch_id = ?
+     ORDER BY s.id DESC LIMIT 50`).all(part.part_number, part.count_at, req.user.workBranch);
   res.render('admin_stock_part', { title: `Stock: ${part.part_number}`, part, history, moves });
 });
 
 router.post('/admin/stock/:id/:op', manage, (req, res) => {
   const part = getPart(req.params.id);
-  if (!part || !part.stocked) return res.redirect('/admin/stock');
+  const branchId = req.user.workBranch;
+  if (!tracked(branchId, part)) return res.redirect('/admin/stock');
   const back = `/admin/stock/${part.id}`;
   switch (req.params.op) {
     case 'adjust': {
       const qty = wholeNumber(req.body.quantity, { signed: true });
       if (!qty) { flash(req, 'err', 'Enter a whole number: positive for a delivery, negative to take stock off.'); break; }
       const reason = clean(req.body.reason, 200);
-      db.prepare('INSERT INTO stock_adjustments (catalog_id, quantity, reason, user_id, created_at) VALUES (?, ?, ?, ?, ?)')
-        .run(part.id, qty, reason || null, req.user.id, new Date().toISOString());
+      db.prepare('INSERT INTO stock_adjustments (catalog_id, quantity, reason, user_id, created_at, branch_id) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(part.id, qty, reason || null, req.user.id, new Date().toISOString(), branchId);
       activity.log(req.user, 'Stock adjusted', `${part.part_number}: ${qty > 0 ? '+' : ''}${qty}${reason ? ' (' + reason + ')' : ''}`);
       flash(req, 'ok', `${qty > 0 ? 'Added ' + qty : 'Removed ' + -qty}.`);
       break;
@@ -127,7 +130,7 @@ router.post('/admin/stock/:id/:op', manage, (req, res) => {
     case 'count': {
       const qty = wholeNumber(req.body.count);
       if (qty === null) { flash(req, 'err', 'Enter how many are on the shelf (a whole number).'); break; }
-      setCount(part, qty, null);
+      setCount(branchId, part, qty, null);
       activity.log(req.user, 'Stock count', `${part.part_number}: counted ${qty}`);
       flash(req, 'ok', `Count set to ${qty}.`);
       break;
@@ -136,13 +139,13 @@ router.post('/admin/stock/:id/:op', manage, (req, res) => {
       const blank = String(req.body.min_level ?? '').trim() === '';
       const min = blank ? null : wholeNumber(req.body.min_level);
       if (!blank && min === null) { flash(req, 'err', 'The minimum must be a whole number, or blank for none.'); break; }
-      db.prepare('UPDATE parts_catalog SET min_level = ? WHERE id = ?').run(min, part.id);
+      db.prepare('UPDATE branch_stock SET min_level = ? WHERE branch_id = ? AND catalog_id = ?').run(min, branchId, part.id);
       activity.log(req.user, 'Stock minimum', `${part.part_number}: ${blank ? 'no minimum' : 'minimum ' + min}`);
       flash(req, 'ok', blank ? 'Minimum removed.' : `Minimum set to ${min}.`);
       break;
     }
     case 'stop':
-      db.prepare('UPDATE parts_catalog SET stocked = 0 WHERE id = ?').run(part.id);
+      db.prepare('DELETE FROM branch_stock WHERE branch_id = ? AND catalog_id = ?').run(branchId, part.id);
       activity.log(req.user, 'Stock tracking stopped', part.part_number);
       flash(req, 'ok', `${part.part_number} is no longer tracked.`);
       return res.redirect('/admin/stock');

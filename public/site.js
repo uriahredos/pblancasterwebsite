@@ -236,6 +236,11 @@
       else if (e.key === 'ArrowRight' && viewerLinks.length > 1) showPhoto(viewerAt + 1);
     });
 
+    // A drop-down that acts as soon as it is changed (the branch chooser).
+    document.querySelectorAll('select[data-autosubmit]').forEach(function (sel) {
+      sel.addEventListener('change', function () { if (sel.form) sel.form.submit(); });
+    });
+
     // Print buttons.
     document.querySelectorAll('[data-print]').forEach(function (btn) {
       btn.addEventListener('click', function () { window.print(); });

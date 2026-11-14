@@ -45,7 +45,7 @@ function loadUser(req, res, next) {
   req.user = null;
   if (req.session.userId) {
     const user = userById.get(req.session.userId);
-    if (user && user.active) req.user = access.loadAccess(user);
+    if (user && user.active) req.user = access.loadAccess(user, req.session.viewBranch);
     else delete req.session.userId;
   }
   res.locals.user = req.user;
@@ -53,6 +53,13 @@ function loadUser(req, res, next) {
   res.locals.badges = { updates: 0, requests: 0, notices: 0, certs: 0, inspections: 0, forum: 0, tasks: 0 };
   res.locals.myTasks = [];
   res.locals.alerts = [];
+  res.locals.branchName = null; res.locals.branchChoices = [];
+  if (req.user) {
+    const all = db.prepare('SELECT id, name FROM branches ORDER BY name COLLATE NOCASE').all();
+    res.locals.branchName = (all.find((b) => b.id === req.user.branch_id) || {}).name || null;
+    // Someone who can see every branch chooses which one they are looking at.
+    if (req.user.allBranches && all.length > 1) res.locals.branchChoices = all;
+  }
   if (req.user) {
     // Tasks assigned to this person and not done yet: overdue first, then soonest due, then ones with no date.
     const tasks = require('./tasks');
@@ -62,11 +69,7 @@ function loadUser(req, res, next) {
     res.locals.badges.updates =
       db.prepare('SELECT COUNT(*) AS n FROM parts_submissions WHERE user_id = ? AND unseen = 1').get(req.user.id).n +
       db.prepare('SELECT COUNT(*) AS n FROM training_requests WHERE user_id = ? AND unseen = 1').get(req.user.id).n;
-    res.locals.badges.notices = db.prepare(
-      `SELECT COUNT(*) AS n FROM announcements a
-       WHERE (a.audience = 'all' OR a.created_by = @me OR EXISTS (SELECT 1 FROM user_managers um WHERE um.manager_id = a.created_by AND um.user_id = @me))
-         AND (a.expires_on IS NULL OR a.expires_on >= @today)
-         AND NOT EXISTS (SELECT 1 FROM announcement_reads r WHERE r.announcement_id = a.id AND r.user_id = @me)`).get({ me: req.user.id, today: localDate() }).n;
+    res.locals.badges.notices = require('./routes/announcements').unreadCount(req.user.id);
     // Discussions: threads this person follows that someone else has replied to since they last looked.
     if (access.can(req.user, 'forum.use')) {
       res.locals.badges.forum = db.prepare(
@@ -128,6 +131,10 @@ function requirePerm(perm) {
   return (req, res, next) => requireLogin(req, res, () => (access.can(req.user, perm) ? next() : forbidden(res)));
 }
 
+/** Route guard for the things that span every branch: profiles, backups, the history import. */
+function requireEveryBranch(perm) {
+  return (req, res, next) => requirePerm(perm)(req, res, () => (req.user.allBranches ? next() : forbidden(res)));
+}
 function newCsrfToken() {
   return crypto.randomBytes(24).toString('hex');
 }
@@ -166,5 +173,5 @@ function flash(req, type, text) {
 
 module.exports = {
   hashPassword, checkLogin, tempPassword, createUser, loadUser,
-  requireLogin, requirePerm, forbidden, newCsrfToken, verifyCsrf, flash, endSessions, unlock,
+  requireLogin, requirePerm, requireEveryBranch, forbidden, newCsrfToken, verifyCsrf, flash, endSessions, unlock,
 };

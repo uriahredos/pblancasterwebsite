@@ -45,6 +45,7 @@ const GROUPS = [
     ['digest.weekly', 'Receive the weekly parts summary email (needs an email address on their account)'],
   ] },
   { title: 'Sensitive', items: [
+    ['branches.all', 'See and manage every branch, add branches and move people between them (without this, a person sees only their own branch)'],
     ['complaints.review', 'Read and answer anonymous complaints'],
     ['backups', 'Download backups (a backup contains everything, including complaints)'],
     ['records.delete', 'Permanently delete parts entries, training requests, inspections and (with complaint access) complaints'],
@@ -58,7 +59,7 @@ const DEFAULTS = [
   { name: 'Technician', scope: 'all', perms: [...SUBMIT, 'forum.use'] },
   { name: 'Warehouse', scope: 'all', perms: [...SUBMIT, 'forum.use', 'parts.view', 'parts.manage', 'parts.audit', 'catalog.manage', 'stock.manage', 'inspections.view', 'inspections.manage'] },
   { name: 'Manager', scope: 'team', perms: [...SUBMIT, 'forum.use', 'parts.view', 'parts.manage', 'parts.audit', 'training.view', 'training.manage', 'digest.weekly', 'inspections.view', 'inspections.manage', 'certs.manage', 'announcements.post', 'tasks.assign'] },
-  { name: 'Admin', scope: 'all', perms: ALL },
+  { name: 'Admin', scope: 'all', perms: ALL.filter((p) => p !== 'branches.all') },   // an admin runs one branch
 ];
 
 db.exec(`
@@ -116,10 +117,11 @@ function migrate() {
       for (const d of DEFAULTS) createProfile(d.name, d.scope, d.perms);
     }
     const withoutProfile = db.prepare('SELECT id, role, can_review_complaints AS reviewer FROM users WHERE profile_id IS NULL').all();
-    const noComplaints = ALL.filter((p) => p !== 'complaints.review' && p !== 'backups');
+    const oneBranch = ALL.filter((p) => p !== 'branches.all');
+    const noComplaints = oneBranch.filter((p) => p !== 'complaints.review' && p !== 'backups');
     for (const u of withoutProfile) {
       let profileId;
-      if (u.role === 'admin' && u.reviewer) profileId = ensureProfile('Admin', 'all', ALL);
+      if (u.role === 'admin' && u.reviewer) profileId = ensureProfile('Admin', 'all', oneBranch);
       else if (u.role === 'admin') profileId = ensureProfile('Admin (no complaints)', 'all', noComplaints);
       else if (u.reviewer) profileId = ensureProfile('Complaint reviewer', 'all', [...SUBMIT, 'complaints.review']);
       else profileId = ensureProfile('Technician', 'all', SUBMIT);
@@ -162,24 +164,40 @@ migrate();
 const permsOf = (profileId) => new Set(
   db.prepare('SELECT permission FROM profile_permissions WHERE profile_id = ?').all(profileId).map((r) => r.permission));
 
-/** Attach what this person may do. Called once per request. */
-function loadAccess(user) {
+/**
+ * Attach what this person may do. Called once per request.
+ * viewBranch: for someone who can see every branch, the branch they have chosen to look at
+ * (a branch id, or 'all'). Everyone else always looks at their own.
+ */
+function loadAccess(user, viewBranch) {
   const profile = user.profile_id ? db.prepare('SELECT * FROM profiles WHERE id = ?').get(user.profile_id) : null;
   user.profile_name = user.is_master ? 'Master' : profile ? profile.name : 'No profile';
   user.perms = user.is_master ? new Set(ALL) : profile ? permsOf(profile.id) : new Set();
   user.scope = user.is_master || !profile ? 'all' : profile.scope;
+  user.allBranches = Boolean(user.is_master || user.perms.has('branches.all'));
+  const chosen = user.allBranches && viewBranch !== undefined && viewBranch !== null ? viewBranch : user.branch_id;
+  // null = every branch at once. workBranch is the one branch that stock, the truck checklist and new training sessions belong to.
+  user.viewBranch = chosen === 'all' ? null : (db.prepare('SELECT id FROM branches WHERE id = ?').get(chosen) || { id: user.branch_id }).id;
+  user.workBranch = user.viewBranch || user.branch_id;
   return user;
 }
 
 const can = (user, perm) => Boolean(user && user.perms && user.perms.has(perm));
 
-/** null = everyone. Otherwise the ids this person may see: their own and the people assigned to them. */
+/**
+ * null = everyone in every branch. Otherwise the ids this person may see: for a manager, their own
+ * and the people assigned to them; for anyone else, the people in the branch they are looking at.
+ */
 function visibleUserIds(user) {
-  if (user.scope !== 'team') return null;
-  if (!user.teamIds) {
-    user.teamIds = [user.id, ...db.prepare('SELECT user_id FROM user_managers WHERE manager_id = ?').all(user.id).map((r) => r.user_id)];
+  if (user.scope === 'team') {
+    if (!user.teamIds) {
+      user.teamIds = [user.id, ...db.prepare('SELECT user_id FROM user_managers WHERE manager_id = ?').all(user.id).map((r) => r.user_id)];
+    }
+    return user.teamIds;
   }
-  return user.teamIds;
+  if (!user.viewBranch) return null;
+  if (!user.branchIds) user.branchIds = db.prepare('SELECT id FROM users WHERE branch_id = ?').all(user.viewBranch).map((r) => r.id);
+  return user.branchIds;
 }
 const canSee = (user, ownerId) => { const ids = visibleUserIds(user); return !ids || ids.includes(ownerId); };
 

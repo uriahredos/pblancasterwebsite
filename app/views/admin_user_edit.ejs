@@ -18,6 +18,12 @@
     <input name="default_truck" value="<%= values.default_truck || '' %>" maxlength="20" autocomplete="off">
   </label>
 
+  <% if (branches.length > 1) { %>
+  <label>Branch <span class="hint">Moving someone to another branch takes them out of any manager's team.</span>
+    <select name="branch_id"><% branches.forEach(function (b) { %><option value="<%= b.id %>" <%= b.id === target.branch_id ? 'selected' : '' %>><%= b.name %></option><% }) %></select>
+  </label>
+  <% } %>
+
   <% if (target.is_master) { %>
   <p class="notice">This is the master account. It can do everything, and nobody else can edit it, disable it or change what it can do.</p>
   <% } else if (canSetProfile) { %>

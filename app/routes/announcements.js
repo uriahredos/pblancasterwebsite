@@ -9,7 +9,8 @@ const { clean, isYmd, localDate } = require('../util');
 const router = express.Router();
 
 // An announcement reaches everyone, or (when a manager posted it) that manager's people and the manager.
-const FOR_ME = `(a.audience = 'all' OR a.created_by = @me OR EXISTS (SELECT 1 FROM user_managers um WHERE um.manager_id = a.created_by AND um.user_id = @me))`;
+// 'all' means everyone in the branch it was posted for, or every branch when it has no branch.
+const FOR_ME = `((a.audience = 'all' AND (a.branch_id IS NULL OR a.branch_id = (SELECT branch_id FROM users WHERE id = @me))) OR a.created_by = @me OR EXISTS (SELECT 1 FROM user_managers um WHERE um.manager_id = a.created_by AND um.user_id = @me))`;
 const CURRENT = `(a.expires_on IS NULL OR a.expires_on >= @today)`;
 
 // What an announcement is about. 'general' shows no label.
@@ -28,7 +29,7 @@ const unreadCount = (userId) => db.prepare(
 
 /** Everyone an announcement is meant for (active accounts only). */
 function audience(a) {
-  if (a.audience === 'all') return db.prepare('SELECT id, display_name FROM users WHERE active = 1 ORDER BY display_name COLLATE NOCASE').all();
+  if (a.audience === 'all') return db.prepare('SELECT id, display_name FROM users WHERE active = 1 AND (? IS NULL OR branch_id = ?) ORDER BY display_name COLLATE NOCASE').all(a.branch_id ?? null, a.branch_id ?? null);
   return db.prepare(
     `SELECT u.id, u.display_name FROM users u WHERE u.active = 1 AND (u.id = ? OR u.id IN (SELECT user_id FROM user_managers WHERE manager_id = ?))
      ORDER BY u.display_name COLLATE NOCASE`).all(a.created_by, a.created_by);
@@ -47,7 +48,9 @@ router.post('/notices/:id/read', requireLogin, (req, res) => {
 // ---- Posting and seeing who has read -------------------------------------------
 
 // Someone who sees everyone manages every announcement; a manager manages their own.
-const mine = (user, a) => user.scope !== 'team' || a.created_by === user.id;
+// ...within the branch they are looking at. Ones for every branch are managed by people who can see every branch.
+const mine = (user, a) => (user.scope === 'team' ? a.created_by === user.id
+  : !user.viewBranch || a.branch_id === user.viewBranch || (a.branch_id === null && user.allBranches));
 
 function listPage(req, res, extra = {}) {
   const rows = db.prepare(
@@ -59,7 +62,8 @@ function listPage(req, res, extra = {}) {
       return { ...a, total: people.length, read, expired: Boolean(a.expires_on && a.expires_on < localDate()) };
     });
   res.status(extra.errors ? 400 : 200).render('admin_announcements', {
-    title: 'Post announcements', rows, errors: [], values: {}, team: req.user.scope === 'team', categories: CATEGORIES, ...extra,
+    title: 'Post announcements', rows, errors: [], values: {}, team: req.user.scope === 'team', categories: CATEGORIES,
+    canReachAll: req.user.allBranches && req.user.scope !== 'team' && db.prepare('SELECT COUNT(*) AS n FROM branches').get().n > 1, ...extra,
   });
 }
 
@@ -76,12 +80,14 @@ router.post('/admin/announcements', requirePerm('announcements.post'), (req, res
   if (!values.body) errors.push('Enter the announcement.');
   if (values.expires_on && !isYmd(values.expires_on)) errors.push('The "show until" date does not look right.');
   if (errors.length) return listPage(req, res, { errors, values });
-  const info = db.prepare('INSERT INTO announcements (title, body, audience, expires_on, category, pinned, critical, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-    .run(values.title, values.body, req.user.scope === 'team' ? 'team' : 'all', values.expires_on || null, values.category, values.pinned, values.critical, req.user.id, new Date().toISOString());
+  // For the branch being looked at, or (only from someone who can see every branch) for every branch.
+  const branchId = req.user.scope === 'team' ? req.user.branch_id : req.user.allBranches && req.body.reach === 'everyone' ? null : req.user.workBranch;
+  const info = db.prepare('INSERT INTO announcements (title, body, audience, expires_on, category, pinned, critical, created_by, created_at, branch_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(values.title, values.body, req.user.scope === 'team' ? 'team' : 'all', values.expires_on || null, values.category, values.pinned, values.critical, req.user.id, new Date().toISOString(), branchId);
   // The person posting has obviously read it.
   db.prepare('INSERT INTO announcement_reads (announcement_id, user_id, read_at) VALUES (?, ?, ?)').run(info.lastInsertRowid, req.user.id, new Date().toISOString());
   if (values.critical) {
-    const who = audience({ audience: req.user.scope === 'team' ? 'team' : 'all', created_by: req.user.id }).map((p) => p.id).filter((id) => id !== req.user.id);
+    const who = audience({ audience: req.user.scope === 'team' ? 'team' : 'all', created_by: req.user.id, branch_id: branchId }).map((p) => p.id).filter((id) => id !== req.user.id);
     require('../push').notify(who, 'critical_notice', { title: `Critical: ${values.title}`, body: values.body, url: '/notices' });
   }
   activity.log(req.user, 'Announcement posted', values.title);

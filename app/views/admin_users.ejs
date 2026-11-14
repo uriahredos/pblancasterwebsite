@@ -36,7 +36,7 @@
   <tbody>
   <% users.forEach(function (u) { %>
   <tr class="<%= u.active ? '' : 'off' %>">
-    <td><%= u.display_name %><% if (u.id === user.id) { %> <span class="hint">(you)</span><% } %></td>
+    <td><%= u.display_name %><% if (u.id === user.id) { %> <span class="hint">(you)</span><% } %><% if (user.viewBranch === null && u.branch_name) { %> <span class="pill"><%= u.branch_name %></span><% } %></td>
     <td><%= u.username %></td>
     <td><% if (u.is_master) { %><span class="tag master">Master</span><% } else { %><%= u.profile_name || 'None' %><% if (u.profile_scope === 'team') { %> <span class="hint">· <%= u.team_size %> <%= u.team_size === 1 ? 'person' : 'people' %></span><% } %><% } %></td>
     <td><%= u.managers || '' %></td>

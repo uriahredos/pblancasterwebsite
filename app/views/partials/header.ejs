@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
 <meta name="csrf" content="<%= typeof csrf !== 'undefined' ? csrf : '' %>">
-<title><%= title %> · Pye-Barker Lancaster Branch</title>
+<title><%= title %> · Pye-Barker <%= typeof branchName !== 'undefined' && branchName ? branchName + ' Branch' : 'Branch Portal' %></title>
 <meta name="theme-color" content="#09324f">
 <script src="/theme.js?v=<%= assetV %>"></script>
 <link rel="manifest" href="/manifest.webmanifest">
@@ -23,9 +23,20 @@
     <div class="banner-in">
       <a class="brand" href="/">
         <span class="logo-plate"><img src="/logo.png" alt="Pye-Barker Fire &amp; Safety" width="640" height="168"></span>
-        <span class="branch">Lancaster Branch</span>
+        <span class="branch"><%= typeof branchName !== 'undefined' && branchName ? branchName + ' Branch' : 'Branch Portal' %></span>
       </a>
       <div class="who">
+        <% if (user && !isLocked && branchChoices.length) { %>
+      <form method="post" action="/branch/view" class="nav-branch in-banner">
+        <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="back" value="<%= path %>">
+        <label><span class="sr">Branch you are looking at</span>
+          <select name="branch" data-autosubmit>
+            <% branchChoices.forEach(function (b) { %><option value="<%= b.id %>" <%= user.viewBranch === b.id ? 'selected' : '' %>><%= b.name %></option><% }) %>
+            <option value="all" <%= user.viewBranch === null ? 'selected' : '' %>>All branches</option>
+          </select></label>
+        <noscript><button type="submit">Go</button></noscript>
+      </form>
+      <% } %>
         <% if (user && !isLocked) { %>
         <a class="who-name" href="/people/<%= user.id %>" title="My profile"><%= user.display_name %></a>
         <form method="post" action="/logout" class="who-out"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Sign out</button></form>
@@ -90,7 +101,7 @@
         ['complaints.submit', '/complaint', 'Anonymous complaint', is('/complaint')],
         'divider',
         ['users.manage', '/admin/users', 'Users', is('/admin/users')],
-        ['profiles.manage', '/admin/profiles', 'Profiles', is('/admin/profiles')],
+        [user.allBranches ? 'profiles.manage' : 'no.such.permission', '/admin/profiles', 'Profiles', is('/admin/profiles')],
         ['tasks.assign', '/admin/tasks', 'Manage tasks', is('/admin/tasks')],
         ['announcements.post', '/admin/announcements', 'Post announcements', is('/admin/announcements')],
         ['newsletters.manage', '/admin/newsletters', 'Newsletters', is('/admin/newsletters')],
@@ -99,7 +110,8 @@
       { name: 'Setup', items: [
         ['users.manage', '/poster', 'QR code sign', is('/poster')],
         ['activity.view', '/admin/activity', 'Activity log', is('/admin/activity')],
-        ['backups', '/admin/backups', 'Backups', is('/admin/backups')],
+        [user.allBranches ? '' : 'no.such.permission', '/admin/branches', 'Branches', is('/admin/branches')],
+        [user.allBranches ? 'backups' : 'no.such.permission', '/admin/backups', 'Backups', is('/admin/backups')],
         [user.scope === 'all' ? 'users.manage' : 'no.such.permission', '/admin/import', 'Import', is('/admin/import')]
       ] }
     ].map(function (g) {
@@ -131,6 +143,17 @@
       </details>
       <% } %>
       <% }) %>
+      <% if (branchChoices.length) { %>
+      <form method="post" action="/branch/view" class="nav-branch in-menu">
+        <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="back" value="<%= path %>">
+        <label><span class="sr">Branch you are looking at</span>
+          <select name="branch" data-autosubmit>
+            <% branchChoices.forEach(function (b) { %><option value="<%= b.id %>" <%= user.viewBranch === b.id ? 'selected' : '' %>><%= b.name %></option><% }) %>
+            <option value="all" <%= user.viewBranch === null ? 'selected' : '' %>>All branches</option>
+          </select></label>
+        <noscript><button type="submit">Go</button></noscript>
+      </form>
+      <% } %>
       <button type="button" class="theme-toggle nav-theme" id="theme-toggle" title="Switch between light and dark mode">
         <span class="icon-moon">Dark mode</span><span class="icon-sun">Light mode</span>
         <svg class="icon-moon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M20.4 14.6A8.5 8.5 0 0 1 9.4 3.6a.75.75 0 0 0-.98-.93A10 10 0 1 0 21.33 15.6a.75.75 0 0 0-.93-1z"/></svg>

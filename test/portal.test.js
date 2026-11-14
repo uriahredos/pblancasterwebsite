@@ -89,6 +89,8 @@ before(async () => {
   makeUser('owner', 'Olive Owner', { role: 'admin', reviewer: true }); // admin AND reviewer
   makeUser('tech1', 'Terry Tech');
   makeUser('tech2', 'Uma Tech');
+  // In these checks the Admin profile is the kind that runs the whole site, so it can see every branch.
+  db.prepare("INSERT OR IGNORE INTO profile_permissions (profile_id, permission) SELECT id, 'branches.all' FROM profiles WHERE name = 'Admin'").run();
   await new Promise((r) => { server = app.listen(0, r); });
   base = `http://127.0.0.1:${server.address().port}`;
 });
@@ -311,7 +313,7 @@ test('anonymous complaint: nothing identifying is stored, logged or emailed', as
 
   // The table has no column that could hold an identity or a time.
   const cols = db.prepare("SELECT name FROM pragma_table_info('complaints')").all().map((c) => c.name).sort();
-  assert.deepEqual(cols, ['category', 'created_date', 'description', 'id', 'notified', 'occurred_text', 'reviewer_reply', 'status', 'tracking_code_hash']);
+  assert.deepEqual(cols, ['branch_id', 'category', 'created_date', 'description', 'id', 'notified', 'occurred_text', 'reviewer_reply', 'status', 'tracking_code_hash']);
   const row = db.prepare('SELECT * FROM complaints').get();
   assert.match(row.created_date, /^\d{4}-\d{2}-\d{2}$/);
   assert.match(row.id, /^[0-9a-f]{16}$/);
@@ -685,7 +687,7 @@ test('a database from the first release is upgraded in place without losing data
     { username: 'plainadmin', profile: 'Admin (no complaints)', is_master: 0 },
     { username: 'rev', profile: 'Complaint reviewer', is_master: 0 },
   ]);
-  assert.equal(r.adminPerms, r.all);
+  assert.equal(r.adminPerms, r.all - 1);                          // everything except seeing every branch, which is the master's
   assert.ok(!r.plain.includes('complaints.review') && !r.plain.includes('backups') && r.plain.includes('users.manage'));
   assert.ok(r.rev.includes('complaints.review') && !r.rev.includes('parts.view'));
   assert.deepEqual(r.profiles, ['Admin', 'Admin (no complaints)', 'Complaint reviewer', 'Manager', 'Technician', 'Warehouse']);
@@ -827,7 +829,7 @@ test('starting profiles: Technician, Warehouse, Manager and Admin each see only 
   assert.deepEqual(navLinks((await wh.get('/')).text), ['/admin/parts', '/admin/requests', '/admin/parts/audit', '/admin/stock', '/admin/parts/summary', '/admin/catalog', '/admin/inspections', '/admin/inspections/checklist']);
   assert.deepEqual(navLinks((await owner.get('/')).text),
     ['/admin/parts', '/admin/requests', '/admin/parts/audit', '/admin/stock', '/admin/parts/summary', '/admin/catalog', '/admin/inspections', '/admin/inspections/checklist',
-      '/admin/training', '/admin/training/sessions', '/admin/certs', '/admin/users', '/admin/profiles', '/admin/tasks', '/admin/announcements', '/admin/newsletters', '/admin/complaints', '/admin/activity', '/admin/backups', '/admin/import']);
+      '/admin/training', '/admin/training/sessions', '/admin/certs', '/admin/users', '/admin/profiles', '/admin/tasks', '/admin/announcements', '/admin/newsletters', '/admin/complaints', '/admin/activity', '/admin/branches', '/admin/backups', '/admin/import']);
 
   for (const url of ['/admin/parts', '/admin/parts/audit', '/admin/parts/summary', '/admin/catalog']) assert.equal((await wh.get(url)).status, 200, url);
   for (const url of ['/admin/training', '/admin/users', '/admin/profiles', '/admin/complaints', '/admin/backups']) assert.equal((await wh.get(url)).status, 403, url);
@@ -1028,7 +1030,7 @@ test('nobody can hand out more access than they have themselves', async () => {
 // ---------------------------------------------------------------------------
 
 const stockLib = require('../app/stock');
-const onHand = (pn) => stockLib.list().find((r) => r.part_number === pn).on_hand;
+const onHand = (pn) => stockLib.list(1).find((r) => r.part_number === pn).on_hand;
 const takeParts = (client, items, extra = []) => client.post('/parts', [['action', 'take'], ...items.flatMap(([n, q]) => [['part_name', n], ['quantity', String(q)]]), ['source', 'van'], ...extra], { multipart: true });
 
 test('stock: on hand follows the count, takes, returns, cancellations, deliveries and recounts', async () => {
@@ -1081,7 +1083,7 @@ test('stock: on hand follows the count, takes, returns, cancellations, deliverie
   assert.equal((await mgr.post(page, { part_number: 'X', count: '1' })).status, 403);
   assert.equal((await tech.get(page)).status, 403);
   await wh.post(`${part}/stop`, {}, { page: part });
-  assert.ok(!stockLib.list().some((r) => r.part_number === 'STK-1'));
+  assert.ok(!stockLib.list(1).some((r) => r.part_number === 'STK-1'));
 });
 
 test('stock: low level is flagged, and an email goes out once when a take crosses the minimum', async () => {
@@ -1683,7 +1685,7 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
   const setup = /<summary[^>]*>Setup[\s\S]*?<\/details>/.exec(owner)[0];
   const hrefs = (html) => [...html.matchAll(/<a href="([^"]+)"/g)].map((m) => m[1]);
   assert.deepEqual(hrefs(team), ['/complaint', '/admin/users', '/admin/profiles', '/admin/tasks', '/admin/announcements', '/admin/newsletters', '/admin/complaints']);
-  assert.deepEqual(hrefs(setup), ['/poster', '/admin/activity', '/admin/backups', '/admin/import']);
+  assert.deepEqual(hrefs(setup), ['/poster', '/admin/activity', '/admin/branches', '/admin/backups', '/admin/import']);
   assert.match(team, /<summary aria-current="true">Team/);                 // the group you are in is marked
   assert.match(team, /href="\/admin\/users" aria-current="page"/);
   assert.doesNotMatch(setup, /<summary aria-current/);
@@ -1742,7 +1744,7 @@ test('importing old Microsoft Forms data: history lands under the right people w
   };
   const send = (obj, extra = {}) => owner.post(page, [['file', new File([typeof obj === 'string' ? obj : JSON.stringify(obj)], 'import.json', { type: 'application/json' })], ...Object.entries(extra)], { multipart: true, page });
   const usersBefore = db.prepare('SELECT COUNT(*) n FROM users').get().n;
-  const stockBefore = JSON.stringify(stockLib.list().map((r) => [r.part_number, r.on_hand]));
+  const stockBefore = JSON.stringify(stockLib.list(1).map((r) => [r.part_number, r.on_hand]));
 
   // Files that are not an import file change nothing.
   for (const bad of ['not json', { format: 'something-else', people: [], parts: [], training: [] }, { format: 'pb-portal-import-1' }]) {
@@ -1784,7 +1786,7 @@ test('importing old Microsoft Forms data: history lands under the right people w
   assert.match((await owner.get('/admin/parts/summary.csv?q=IMP-A')).text, /IMP-A,,7,1,6,0,2/);
   assert.match((await owner.get('/admin/training?q=IMPORTED')).text, /Olga Oldhand/);
   assert.doesNotMatch((await owner.get('/admin/requests')).text, /IMP-C/);
-  assert.equal(JSON.stringify(stockLib.list().map((r) => [r.part_number, r.on_hand])), stockBefore);
+  assert.equal(JSON.stringify(stockLib.list(1).map((r) => [r.part_number, r.on_hand])), stockBefore);
   assert.match((await (await loggedIn('tech1')).get('/my')).text, /1 × IMP-A/);                       // and under the person's own history
   assert.doesNotMatch((await (await loggedIn('tech1')).get('/my')).text, new RegExp(`/parts/${ret.id}/edit`)); // too old to edit
 
@@ -2013,7 +2015,7 @@ test('home dashboard: announcements with labels and pins, coming up, and my stat
   const now = new Date().toISOString();
   const soon = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
   const priv = db.prepare("INSERT INTO training_requests (user_id, description, wants_contact, is_private, created_at, created_local_date) VALUES (?, 'private thing', 0, 1, ?, '2026-01-01')").run(userId('tech1'), now).lastInsertRowid;
-  const add = db.prepare('INSERT INTO training_sessions (title, request_id, session_date, session_time, location, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
+  const add = db.prepare('INSERT INTO training_sessions (title, request_id, session_date, session_time, location, created_by, created_at, branch_id) VALUES (?, ?, ?, ?, ?, ?, ?, 1)');
   const ids = [add.run('NICET study group', null, soon, '16:00', 'Training room', userId('owner'), now).lastInsertRowid,
     add.run('One to one coaching', priv, soon, '09:00', null, userId('owner'), now).lastInsertRowid,
     add.run('Last year fire pump class', null, '2020-01-01', null, null, userId('owner'), now).lastInsertRowid];
@@ -2656,7 +2658,7 @@ test('home page: tasks first, then the form buttons, then announcements; branch 
   assert.match(auditPage, /HOME-PART/);
   assert.equal(tile(branch, 'Truck problems').url, '/admin/inspections?show=open');
   assert.equal(tile(branch, 'Low stock').url, '/admin/stock?low=1');
-  assert.equal(tile(branch, 'Low stock').n, stockLib.lowCount());
+  assert.equal(tile(branch, 'Low stock').n, stockLib.lowCount(1));
 
   // A manager sees their own people only: Terry Tech's request counts, Uma Tech's does not.
   const mh = await flat(await loggedIn('mgr1'));
@@ -3124,4 +3126,144 @@ test('contact list: a CSV fills in existing accounts, adds everyone else with si
   await owner.post(`/admin/users/${userId('daniel.rivers')}/toggle-active`, {}, { page: '/admin/users' });
   assert.doesNotMatch((await t1.get('/people')).text, /Danny Rivers/);
   db.prepare("UPDATE users SET job_title = NULL, department = NULL, phone = NULL, show_phone = 0, show_email = 0, in_directory = 0 WHERE username IN ('tech1')").run();
+});
+
+// ---- Branches: shared community, private operations -------------------------------
+test('branches: each branch sees only its own parts, stock, trucks, tasks, training, announcements and complaints', async () => {
+  const lanc = db.prepare('SELECT MIN(id) id FROM branches').get().id;
+  const owner = await loggedIn('owner');                                     // can see every branch
+  const tech1 = await loggedIn('tech1');
+
+  // Only someone who can see every branch can add one. It gets its own copy of the truck checklist.
+  assert.equal((await tech1.get('/admin/branches')).status, 403);
+  assert.equal((await tech1.post('/admin/branches', { name: 'Sneaky' }, { page: '/' })).status, 403);
+  await owner.post('/admin/branches', { name: 'Harrisburg Branch' }, { page: '/admin/branches' });
+  const hbg = db.prepare("SELECT id FROM branches WHERE name = 'Harrisburg'").get().id;
+  assert.match((await owner.post('/admin/branches', { name: 'harrisburg' }, { page: '/admin/branches' })).text, /already a branch with that name/);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM inspection_items WHERE branch_id = ? AND active = 1').get(hbg).n, db.prepare('SELECT COUNT(*) n FROM inspection_items WHERE branch_id = ? AND active = 1').get(lanc).n);
+
+  // The branch box: looking at Harrisburg, a new person joins Harrisburg.
+  assert.match((await owner.get('/')).text, /<select name="branch" data-autosubmit>[\s\S]*Harrisburg[\s\S]*All branches/);
+  assert.doesNotMatch((await tech1.get('/')).text, /name="branch" data-autosubmit/);
+  assert.equal((await tech1.post('/branch/view', { branch: String(hbg) }, { page: '/' })).status, 403);
+  await owner.post('/branch/view', { branch: String(hbg), back: '/admin/users' }, { page: '/' });
+  const adminProfile = profileId('Admin (no complaints)') || profileId('Admin');
+  await owner.post('/admin/users', { username: 'hbg.admin', display_name: 'Hank Harrisburg', profile_id: String(access.ensureProfile('Branch admin', 'all', access.ALL.filter((p) => p !== 'branches.all'))) }, { page: '/admin/users' });
+  await owner.post('/admin/users', { username: 'hbg.tech', display_name: 'Holly Harrisburg', profile_id: String(profileId('Technician')) }, { page: '/admin/users' });
+  assert.deepEqual(db.prepare("SELECT branch_id FROM users WHERE username IN ('hbg.admin', 'hbg.tech')").all(), [{ branch_id: hbg }, { branch_id: hbg }]);
+  assert.ok(adminProfile);
+  for (const u of ['hbg.admin', 'hbg.tech']) db.prepare("UPDATE users SET password_hash = (SELECT password_hash FROM users WHERE username = 'tech1'), must_change_password = 0 WHERE username = ?").run(u);
+  const usersPage = (await owner.get('/admin/users')).text;
+  assert.match(usersPage, /Hank Harrisburg/); assert.doesNotMatch(usersPage, /Terry Tech/);      // looking at Harrisburg shows Harrisburg
+  await owner.post('/branch/view', { branch: String(lanc) }, { page: '/' });
+
+  const hadmin = await loggedIn('hbg.admin'); const htech = await loggedIn('hbg.tech');
+  assert.match((await htech.get('/')).text, /<span class="branch">Harrisburg Branch<\/span>/);
+  assert.match((await tech1.get('/')).text, /<span class="branch">Lancaster Branch<\/span>/);
+
+  // --- Lancaster does some work ---
+  await tech1.post('/parts', [['action', 'request'], ['part_name', 'LANC-ONLY-PART'], ['quantity', '2'], ['source', 'van'], ['needed_by', '2031-01-01']], { multipart: true });
+  const lancPart = lastParts().id;
+  await tech1.post('/training', { description: 'LANC-ONLY training wish', wants_contact: 'no', is_private: 'no' }, { page: '/training' });
+  const lancTraining = db.prepare('SELECT MAX(id) id FROM training_requests').get().id;
+  await owner.post('/admin/stock', { part_number: 'BR-STOCK', count: '10', min_level: '4' }, { page: '/admin/stock' });
+  await owner.post('/admin/announcements', { title: 'LANC-ONLY announcement', body: 'For Lancaster.' }, { page: '/admin/announcements' });
+  await owner.post('/admin/announcements', { title: 'COMPANY-WIDE announcement', body: 'For everyone.', reach: 'everyone' }, { page: '/admin/announcements' });
+  await owner.post('/admin/tasks', [['title', 'LANC-ONLY task'], ['to', String(userId('tech1'))]], { page: '/admin/tasks' });
+  await owner.post('/admin/training/sessions', { title: 'LANC-ONLY session', session_date: ymdFromNow(5) }, { page: '/admin/training/sessions' });
+  const lancSession = db.prepare('SELECT MAX(id) id FROM training_sessions').get().id;
+  await tech1.post('/complaint', { category: 'safety', description: 'LANC-ONLY complaint' }, { page: '/complaint' });
+  const lancComplaint = db.prepare("SELECT id FROM complaints WHERE description = 'LANC-ONLY complaint'").get().id;
+  db.prepare("INSERT INTO certifications (user_id, name, expires_on, created_at) VALUES (?, 'LANC-ONLY cert', ?, ?)").run(userId('tech1'), ymdFromNow(5), new Date().toISOString());
+  const lancCert = db.prepare('SELECT MAX(id) id FROM certifications').get().id;
+
+  // --- A Harrisburg admin, with every permission except seeing other branches, finds none of it ---
+  for (const url of ['/', '/admin/parts', '/admin/parts.csv', '/admin/requests', '/admin/parts/audit', '/admin/parts/summary', '/admin/weekly', '/admin/stock', '/admin/training', '/admin/training.csv',
+    '/admin/training/sessions', '/admin/training/sessions.csv', '/training/topics', '/admin/inspections', '/admin/certs', '/admin/certs.csv', '/admin/tasks?show=all', '/admin/users', '/admin/announcements',
+    '/notices', '/admin/complaints', '/admin/activity', '/alerts']) {
+    const r = await hadmin.get(url);
+    assert.equal(r.status, 200, url);
+    assert.doesNotMatch(r.text, /LANC-ONLY|BR-STOCK|Terry Tech|Uma Tech/, url);
+  }
+  // ...and cannot reach it by address either.
+  for (const url of [`/admin/parts/${lancPart}`, `/admin/training/${lancTraining}`, `/admin/training/sessions/${lancSession}`, `/admin/complaints/${lancComplaint}`, `/admin/certs/${lancCert}`,
+    `/admin/users/${userId('tech1')}/edit`, `/parts/${lancPart}/edit`, '/admin/profiles', '/admin/backups', '/admin/branches']) {
+    assert.ok([403, 404, 302].includes((await hadmin.get(url)).status), url);
+    assert.doesNotMatch((await hadmin.get(url)).text, /LANC-ONLY/, url);
+  }
+  for (const [url, body] of [[`/admin/parts/${lancPart}/status`, { status: 'fulfilled' }], [`/admin/parts/${lancPart}/delete`, {}], [`/admin/training/${lancTraining}/status`, { status: 'reviewed' }],
+    [`/admin/users/${userId('tech1')}/reset-password`, {}], [`/admin/complaints/${lancComplaint}`, { status: 'closed', reviewer_reply: 'hijacked' }], [`/admin/complaints/${lancComplaint}/delete`, {}],
+    [`/admin/training/sessions/${lancSession}/delete`, {}], [`/training/topics/${lancTraining}/vote`, {}], ['/admin/tasks', [['title', 'Cross-branch task'], ['to', String(userId('tech1'))]]]]) {
+    await hadmin.post(url, body, { page: '/' });
+  }
+  assert.equal(db.prepare('SELECT status FROM parts_submissions WHERE id = ?').get(lancPart).status, 'new');
+  assert.equal(db.prepare('SELECT status FROM training_requests WHERE id = ?').get(lancTraining).status, 'new');
+  assert.equal(db.prepare('SELECT status FROM complaints WHERE id = ?').get(lancComplaint).status, 'new');
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM training_sessions WHERE id = ?').get(lancSession).n, 1);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM training_votes WHERE request_id = ?').get(lancTraining).n, 0);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM tasks WHERE title = 'Cross-branch task'").get().n, 0);
+  assert.equal(db.prepare("SELECT must_change_password m FROM users WHERE username = 'tech1'").get().m, 0);
+
+  // The one announcement for every branch does reach Harrisburg; the Lancaster one does not.
+  const hNotices = (await htech.get('/notices')).text;
+  assert.match(hNotices, /COMPANY-WIDE announcement/); assert.doesNotMatch(hNotices, /LANC-ONLY/);
+  assert.match((await tech1.get('/notices')).text, /LANC-ONLY announcement[\s\S]*|COMPANY-WIDE/);
+  assert.equal((await hadmin.post('/admin/announcements', { title: 'HBG tries everyone', body: 'x', reach: 'everyone' }, { page: '/admin/announcements' })).status, 302);
+  assert.equal(db.prepare("SELECT branch_id FROM announcements WHERE title = 'HBG tries everyone'").get().branch_id, hbg);   // stays in their branch
+  assert.doesNotMatch((await tech1.get('/notices')).text, /HBG tries everyone/);
+
+  // Stock is separate: the same part number has its own count in each branch, and a take only moves the taker's branch.
+  await hadmin.post('/admin/stock', { part_number: 'BR-STOCK', count: '3' }, { page: '/admin/stock' });
+  const on = (b) => stockLib.list(b).find((r) => r.part_number === 'BR-STOCK').on_hand;
+  assert.deepEqual([on(lanc), on(hbg)], [10, 3]);
+  await htech.post('/parts', [['action', 'take'], ['part_name', 'BR-STOCK'], ['quantity', '2'], ['source', 'van']], { multipart: true });
+  assert.deepEqual([on(lanc), on(hbg)], [10, 1]);
+  assert.match((await hadmin.get('/admin/stock')).text, /BR-STOCK/);
+  assert.match((await hadmin.get('/')).text.replace(/\s+/g, ' '), /Branch at a glance/);
+
+  // The checklist is each branch's own.
+  await hadmin.post('/admin/inspections/checklist', { label: 'HBG-ONLY check' }, { page: '/admin/inspections/checklist' });
+  assert.match((await htech.get('/inspection')).text, /HBG-ONLY check/);
+  assert.doesNotMatch((await tech1.get('/inspection')).text, /HBG-ONLY check/);
+  const lancItem = db.prepare('SELECT id FROM inspection_items WHERE branch_id = ? ORDER BY id LIMIT 1').get(lanc).id;
+  await hadmin.post(`/admin/inspections/checklist/${lancItem}/toggle`, {}, { page: '/admin/inspections/checklist' });
+  assert.equal(db.prepare('SELECT active FROM inspection_items WHERE id = ?').get(lancItem).active, 1);
+
+  // Harrisburg's own work shows up for Harrisburg, and its complaint goes to its own reviewer.
+  await htech.post('/complaint', { category: 'other', description: 'HBG-ONLY complaint' }, { page: '/complaint' });
+  assert.match((await hadmin.get('/admin/complaints')).text, /HBG-ONLY complaint/);
+  assert.match((await hadmin.get('/admin/parts')).text, /BR-STOCK/);
+  // Lancaster's admin view (the owner, looking at Lancaster) has none of Harrisburg's.
+  for (const url of ['/admin/parts', '/admin/complaints', '/admin/users', '/admin/inspections/checklist']) assert.doesNotMatch((await owner.get(url)).text, /HBG-ONLY|Holly Harrisburg|Hank Harrisburg/, url);
+  // "All branches" shows both.
+  await owner.post('/branch/view', { branch: 'all' }, { page: '/' });
+  const both = (await owner.get('/admin/complaints')).text;
+  assert.match(both, /HBG-ONLY complaint/); assert.match(both, /LANC-ONLY complaint/);
+  assert.match((await owner.get('/')).text, /All branches at a glance/);
+  assert.match((await owner.get('/admin/users')).text, /Holly Harrisburg[\s\S]*<span class="pill">Harrisburg<\/span>|<span class="pill">Harrisburg<\/span>/);
+  await owner.post('/branch/view', { branch: String(lanc) }, { page: '/' });
+
+  // The community side is shared: both branches are in the directory, and the daily question is one for all.
+  const people = (await htech.get('/people')).text;
+  assert.match(people, /Terry Tech/); assert.match(people, /Holly Harrisburg/); assert.match(people, /<option value="\d+" >Harrisburg<\/option>|Harrisburg<\/option>/);
+  assert.doesNotMatch((await htech.get(`/people?branch=${hbg}`)).text, /Terry Tech/);
+  assert.equal((await htech.get('/daily')).status, 200); assert.equal((await htech.get('/discussions')).status, 200);
+
+  // A branch admin can add people (to their own branch only), but not move them or manage profiles.
+  await hadmin.post('/admin/users', { username: 'hbg.new', display_name: 'Nell Newbranch', profile_id: String(profileId('Technician')) }, { page: '/admin/users' });
+  assert.equal(db.prepare("SELECT branch_id FROM users WHERE username = 'hbg.new'").get().branch_id, hbg);
+  await hadmin.post(`/admin/users/${userId('hbg.new')}/edit`, { username: 'hbg.new', display_name: 'Nell Newbranch', branch_id: String(lanc) }, { page: '/admin/users' });
+  assert.equal(db.prepare("SELECT branch_id FROM users WHERE username = 'hbg.new'").get().branch_id, hbg);
+  await owner.post('/branch/view', { branch: String(hbg) }, { page: '/' });
+  await owner.post(`/admin/users/${userId('hbg.new')}/edit`, { username: 'hbg.new', display_name: 'Nell Newbranch', branch_id: String(lanc) }, { page: '/admin/users' });
+  assert.equal(db.prepare("SELECT branch_id FROM users WHERE username = 'hbg.new'").get().branch_id, lanc);
+  await owner.post('/branch/view', { branch: String(lanc) }, { page: '/' });
+
+  // Tidy up so later checks see the single branch they expect.
+  db.prepare("DELETE FROM parts_submissions WHERE id IN (SELECT s.id FROM parts_submissions s JOIN users u ON u.id = s.user_id WHERE u.branch_id = ?) OR id = ?").run(hbg, lancPart);
+  db.prepare('DELETE FROM tasks').run(); db.prepare("DELETE FROM announcements WHERE title LIKE '%announcement' OR title LIKE 'HBG%'").run();
+  db.prepare('DELETE FROM complaints WHERE description LIKE ?').run('%-ONLY complaint'); db.prepare('DELETE FROM certifications WHERE id = ?').run(lancCert);
+  db.prepare('DELETE FROM training_sessions WHERE id = ?').run(lancSession); db.prepare('DELETE FROM training_requests WHERE id = ?').run(lancTraining);
+  db.prepare("DELETE FROM branch_stock WHERE catalog_id = (SELECT id FROM parts_catalog WHERE part_number = 'BR-STOCK')").run();
+  db.prepare("UPDATE users SET active = 0, in_directory = 0 WHERE branch_id = ? OR username = 'hbg.new'").run(hbg);
 });

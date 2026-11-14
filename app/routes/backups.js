@@ -11,7 +11,8 @@ const activity = require('../activity');
 const router = express.Router();
 
 // A backup holds the whole database, complaints included, so it has its own permission.
-const requireBackupAccess = requirePerm('backups');
+// ...and it holds every branch, so it is only for people who can see every branch.
+const requireBackupAccess = require('../auth').requireEveryBranch('backups');
 
 router.get('/admin/backups', requireBackupAccess, (req, res) => {
   res.render('admin_backups', {

@@ -63,7 +63,7 @@ async function runComplaintDigest(now = new Date()) {
   db.prepare(
     "INSERT INTO meta (key, value) VALUES ('complaint_digest_date', ?) " +
     'ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(today);
-  const { n } = db.prepare('SELECT COUNT(*) AS n FROM complaints WHERE notified = 0').get();
+  const { n } = db.prepare('SELECT COUNT(*) AS n FROM complaints WHERE notified = 0 AND branch_id = (SELECT MIN(id) FROM branches)').get();
   if (n === 0) return 0;
   db.prepare('UPDATE complaints SET notified = 1 WHERE notified = 0').run();
   await send(config.complaintNotifyTo,

@@ -9,6 +9,8 @@ const requireReviewer = requirePerm('complaints.review');
 const { clean, localDate, labels } = require('../util');
 
 const router = express.Router();
+// A reviewer reads their own branch's complaints; someone looking at every branch reads them all.
+const inBranch = (user) => (user.viewBranch ? `branch_id = ${Number(user.viewBranch)}` : '1 = 1');
 
 // ---------------------------------------------------------------------------
 // Anonymity rules for this file: never write req.user, req.ip, a time of day or
@@ -65,10 +67,10 @@ router.post('/complaint', requirePerm('complaints.submit'), (req, res) => {
 
   const code = newTrackingCode();
   db.prepare(
-    `INSERT INTO complaints (id, category, description, occurred_text, tracking_code_hash, created_date)
-     VALUES (?, ?, ?, ?, ?, ?)`
+    `INSERT INTO complaints (id, category, description, occurred_text, tracking_code_hash, created_date, branch_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
   ).run(crypto.randomBytes(8).toString('hex'), values.category, values.description,
-    values.occurred_text || null, hashCode(code), localDate());
+    values.occurred_text || null, hashCode(code), localDate(), req.user.branch_id);
 
   // Shown once, straight in this response. It is not kept anywhere on the server.
   res.render('complaint_done', { title: 'Complaint sent', code });
@@ -95,13 +97,13 @@ router.get('/admin/complaints', requireReviewer, (req, res) => {
   const status = labels.complaintStatus[req.query.status] ? req.query.status : '';
   const rows = db.prepare(
     `SELECT id, category, description, status, created_date FROM complaints
-     ${status ? 'WHERE status = ?' : ''} ORDER BY created_date DESC, id LIMIT 500`
+     WHERE ${inBranch(req.user)} ${status ? 'AND status = ?' : ''} ORDER BY created_date DESC, id LIMIT 500`
   ).all(...(status ? [status] : []));
   res.render('admin_complaints', { title: 'Complaints', rows, status });
 });
 
 router.get('/admin/complaints/:id', requireReviewer, (req, res) => {
-  const c = db.prepare('SELECT id, category, description, occurred_text, status, reviewer_reply, created_date FROM complaints WHERE id = ?').get(req.params.id);
+  const c = db.prepare('SELECT id, category, description, occurred_text, status, reviewer_reply, created_date FROM complaints WHERE id = ? AND ' + inBranch(req.user)).get(req.params.id);
   if (!c) return res.status(404).render('error', { title: 'Page not found', message: 'That complaint does not exist.' });
   res.render('admin_complaint_detail', { title: 'Complaint', c });
 });
@@ -109,7 +111,7 @@ router.get('/admin/complaints/:id', requireReviewer, (req, res) => {
 router.post('/admin/complaints/:id', requireReviewer, (req, res) => {
   const status = req.body.status;
   if (!labels.complaintStatus[status]) return res.redirect(`/admin/complaints/${req.params.id}`);
-  db.prepare('UPDATE complaints SET status = ?, reviewer_reply = ? WHERE id = ?')
+  db.prepare('UPDATE complaints SET status = ?, reviewer_reply = ? WHERE id = ? AND ' + inBranch(req.user))
     .run(status, clean(req.body.reviewer_reply, 4000) || null, req.params.id);
   flash(req, 'ok', 'Complaint updated.');
   res.redirect(`/admin/complaints/${req.params.id}`);
@@ -119,7 +121,7 @@ router.post('/admin/complaints/:id', requireReviewer, (req, res) => {
 // The log records that one was deleted and by whom, never what it said.
 router.post('/admin/complaints/:id/delete', requireReviewer, (req, res) => {
   if (!require('../permissions').can(req.user, 'records.delete')) return require('../auth').forbidden(res);
-  const info = db.prepare('DELETE FROM complaints WHERE id = ?').run(req.params.id);
+  const info = db.prepare('DELETE FROM complaints WHERE id = ? AND ' + inBranch(req.user)).run(req.params.id);
   if (info.changes) {
     require('../activity').log(req.user, 'Complaint deleted', null);
     flash(req, 'ok', 'Complaint deleted.');

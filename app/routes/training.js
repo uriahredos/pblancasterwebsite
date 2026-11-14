@@ -39,7 +39,7 @@ router.post('/training', requirePerm('training.submit'), (req, res) => {
      VALUES (?, ?, ?, ?, ?, ?)`
   ).run(req.user.id, values.description, wantsContact ? 1 : 0, isPrivate ? 1 : 0, now.toISOString(), localDate(now));
 
-  mail.notifyTraining({
+  if (require('../branches').isHome(req.user)) mail.notifyTraining({
     id: info.lastInsertRowid, name: req.user.display_name, description: values.description, wantsContact, isPrivate,
   });
   flash(req, 'ok', 'Training request sent. Thank you.');

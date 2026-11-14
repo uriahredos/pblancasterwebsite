@@ -16,6 +16,8 @@ const { requirePerm, verifyCsrf, forbidden, flash } = auth;
 function guard(req, res, next) {
   requirePerm('users.manage')(req, res, () => (req.user.scope === 'all' ? next() : forbidden(res)));
 }
+// The Forms history belongs to the first branch and makes accounts, so it is for people who can see every branch.
+const everyBranch = (req, res, next) => guard(req, res, () => (req.user.allBranches ? next() : forbidden(res)));
 
 const counts = () => ({
   parts: db.prepare("SELECT COUNT(*) AS n FROM parts_submissions WHERE import_ref IS NOT NULL").get().n,
@@ -58,7 +60,7 @@ function resolvePeople(people, result) {
   return map;
 }
 
-router.post('/admin/import', guard, (req, res, next) => upload(req, res, (err) => {
+router.post('/admin/import', everyBranch, (req, res, next) => upload(req, res, (err) => {
   req.body = req.body || {}; req.uploadFailed = Boolean(err); next();
 }), verifyCsrf, (req, res) => {
   const fail = (msg) => { flash(req, 'err', msg); res.redirect('/admin/import'); };
@@ -115,7 +117,7 @@ router.post('/admin/import', guard, (req, res, next) => upload(req, res, (err) =
 
 // Take the imported entries back out (for example to import a corrected file). Accounts are left alone.
 router.post('/admin/import/undo', requirePerm('records.delete'), (req, res) => {
-  if (req.user.scope !== 'all') return forbidden(res);
+  if (req.user.scope !== 'all' || !req.user.allBranches) return forbidden(res);
   const before = counts();
   db.transaction(() => {
     db.prepare("DELETE FROM change_log WHERE kind = 'parts' AND record_id IN (SELECT id FROM parts_submissions WHERE import_ref IS NOT NULL)").run();

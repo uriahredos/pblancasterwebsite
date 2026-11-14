@@ -130,11 +130,11 @@ router.post('/parts', requirePerm('parts.submit'), parseUpload, verifyCsrf, (req
   if (values.action === 'take') {
     const taken = {};
     for (const it of values.items) taken[it.part_name.toUpperCase()] = (taken[it.part_name.toUpperCase()] || 0) + Number(it.quantity);
-    const crossed = stock.forNames(Object.keys(taken)).filter((p) => p.min_level !== null && p.on_hand <= p.min_level &&
+    const crossed = stock.forNames(req.user.branch_id, Object.keys(taken)).filter((p) => p.min_level !== null && p.on_hand <= p.min_level &&
       p.on_hand + taken[p.part_number.toUpperCase()] > p.min_level);
     if (crossed.length) {
-      mail.notifyLowStock(crossed);
-      push.notify(push.peopleWith('stock.manage'), 'low_stock', {
+      if (require('../branches').isHome(req.user)) mail.notifyLowStock(crossed);
+      push.notify(push.peopleWith('stock.manage', req.user.id), 'low_stock', {
         title: crossed.length === 1 ? `Low stock: ${crossed[0].part_number}` : `Low stock: ${crossed.length} parts`,
         body: crossed.map((p) => `${p.part_number}: ${p.on_hand} left (minimum ${p.min_level})`).join(', '), url: '/admin/stock?low=1' });
     }
@@ -143,7 +143,7 @@ router.post('/parts', requirePerm('parts.submit'), parseUpload, verifyCsrf, (req
     push.notify(push.peopleWith('parts.manage', req.user.id, req.user.id), 'parts_request', {
       title: `Parts request from ${req.user.display_name}`,
       body: values.items.map((i) => `${i.quantity} × ${i.part_name}`).join(', ') + `. Needed by ${values.needed_by}.`, url: '/admin/requests' });
-    mail.notifyPartsRequest({
+    if (require('../branches').isHome(req.user)) mail.notifyPartsRequest({
       id, name: req.user.display_name, items: values.items, source: values.source,
       jobNumber: values.job_number, neededBy: values.needed_by,
     });

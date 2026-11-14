@@ -419,8 +419,23 @@ The **Community** menu holds People, Discussions, Daily question and Newsletters
 - The site starts with 120 built-in questions. Anyone can suggest one; it waits for approval.
 - People whose profile has **Run the daily question** approve or decline suggestions, add their own, and can set a question for a particular day. Approved suggestions and added questions come up before the built-in list.
 
-**Branches**
-- Each person belongs to a branch (everyone starts in Lancaster). The branch shows on profiles and in the directory.
+## Branches
+
+One site for every branch. Each person belongs to one branch; everything that existed before branches belongs to Lancaster.
+
+**Shared by everyone:** People and profiles, Discussions, the daily question, new-hire welcomes, newsletters, and the parts catalog (the list of part numbers).
+
+**Private to each branch:** the parts log, requests, audit and usage; stock counts and minimums (the same part number has its own count in each branch); truck inspections and each branch's own checklist; tasks; training requests, topics, sessions and attendance; certifications; announcements; anonymous complaints; the Users page and the activity log.
+
+- **Everyone sees only their own branch**, whatever their profile. An Admin in one branch can do everything an Admin can, inside that branch.
+- **Seeing every branch** is the master account, plus any profile with the tick-box **See and manage every branch**. Those people get a branch box beside their name (in More on a phone) to choose which branch the pages show, or **All branches** together. Stock, the checklist and new training sessions always belong to one branch: the one chosen, or their own when looking at all.
+- **Setup > Branches** (for the same people): add or rename branches. A new branch starts with a copy of the first branch's truck checklist and no stock.
+- **Adding people to a branch**: choose it in the branch box, then add them under Team > Users (or upload its contact list under Setup > Import). A branch admin's new people always join that admin's own branch. Moving someone to another branch is on Edit person, for people who can see every branch.
+- **Announcements** go to the branch they were posted in. People who can see every branch can choose **Every branch** when posting.
+- **Complaints** record which branch they came from (still nothing about who sent them) and go to that branch's reviewers.
+- **Profiles (permission sets), backups and the Forms history import** cover the whole site, so they are only for people who can see every branch.
+- **Email**: the `NOTIFY_TO` and `COMPLAINT_NOTIFY_TO` mailboxes are the first branch's. Other branches rely on the site's own alerts (the bell and push alerts) for new requests, truck problems and low stock.
+
 
 ## The lock, and Face ID / fingerprint sign-in
 

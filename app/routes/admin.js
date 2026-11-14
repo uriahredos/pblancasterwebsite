@@ -408,7 +408,7 @@ function mayManage(actor, target) {
 function renderUsers(req, res, extra = {}) {
   const ids = access.visibleUserIds(req.user);
   const users = db.prepare(
-    `SELECT u.*, p.name AS profile_name, p.scope AS profile_scope,
+    `SELECT u.*, p.name AS profile_name, p.scope AS profile_scope, (SELECT name FROM branches b WHERE b.id = u.branch_id) AS branch_name,
             (SELECT group_concat(m.display_name, ', ') FROM user_managers um JOIN users m ON m.id = um.manager_id WHERE um.user_id = u.id) AS managers,
             (SELECT COUNT(*) FROM user_managers um WHERE um.manager_id = u.id) AS team_size
      FROM users u LEFT JOIN profiles p ON p.id = u.profile_id
@@ -446,7 +446,8 @@ router.post('/admin/users', requirePerm('users.manage'), (req, res) => {
   if (errors.length) return renderUsers(req, res, { errors, values });
 
   const password = auth.tempPassword();
-  auth.createUser({ username: values.username, displayName: values.display_name, email: values.email, password, profile: profile.id });
+  // A new person joins the branch being looked at: your own, unless you can see every branch and have chosen another.
+  auth.createUser({ username: values.username, displayName: values.display_name, email: values.email, password, profile: profile.id, branchId: req.user.workBranch });
   activity.log(req.user, 'Person added', `${values.display_name} (${values.username}) as ${profile.name}`);
   req.session.created = { username: values.username, password, what: 'created' };
   res.redirect('/admin/users');
@@ -462,7 +463,8 @@ function editPage(req, res, target, extra = {}) {
     // Changing someone's profile or team is for people who see everyone; nobody changes their own profile.
     canSetProfile: fullAccess && !target.is_master && target.id !== req.user.id,
     canSetTeam: Boolean(fullAccess && profile && profile.scope === 'team' && !target.is_master),
-    people: db.prepare('SELECT id, display_name, active FROM users WHERE id <> ? ORDER BY display_name COLLATE NOCASE').all(target.id),
+    branches: req.user.allBranches ? db.prepare('SELECT id, name FROM branches ORDER BY name COLLATE NOCASE').all() : [],
+    people: db.prepare('SELECT id, display_name, active FROM users WHERE id <> ? AND branch_id = ? ORDER BY display_name COLLATE NOCASE').all(target.id, target.branch_id),
     team: db.prepare('SELECT user_id FROM user_managers WHERE manager_id = ?').all(target.id).map((r) => r.user_id),
     ...extra,
   });
@@ -499,13 +501,21 @@ router.post('/admin/users/:id/edit', requirePerm('users.manage'), (req, res) => 
     if (values.username !== target.username) changes.push(`username ${target.username} → ${values.username}`);
     if ((values.email || null) !== (target.email || null)) changes.push('email changed');
     if (profileId !== target.profile_id) changes.push(`profile → ${db.prepare('SELECT name FROM profiles WHERE id = ?').get(profileId).name}`);
+    // Moving someone to another branch: only by people who can see every branch. Their team ties do not come along.
+    const moveTo = req.user.allBranches && /^\d+$/.test(String(req.body.branch_id || '')) ? db.prepare('SELECT id, name FROM branches WHERE id = ?').get(req.body.branch_id) : null;
+    if (moveTo && moveTo.id !== target.branch_id) {
+      db.prepare('UPDATE users SET branch_id = ? WHERE id = ?').run(moveTo.id, target.id);
+      db.prepare('DELETE FROM user_managers WHERE manager_id = ? OR user_id = ?').run(target.id, target.id);
+      target.branch_id = moveTo.id;
+      changes.push(`moved to ${moveTo.name} branch`);
+    }
     if (changes.length) activity.log(req.user, 'Person edited', `${values.display_name}: ${changes.join(', ')}`);
     const newProfile = profileId ? db.prepare('SELECT scope FROM profiles WHERE id = ?').get(profileId) : null;
     if (fullAccess && req.body.team_form === '1' && newProfile && newProfile.scope === 'team') {
-      const picked = [].concat(req.body.team || []).filter((v) => /^\d+$/.test(v)).map(Number).filter((id) => id !== target.id);
+      const picked = [].concat(req.body.team || []).filter((v) => /^\d+$/.test(v)).map(Number).filter((id) => id !== target.id && access.canSee(req.user, id));
       db.prepare('DELETE FROM user_managers WHERE manager_id = ?').run(target.id);
-      const add = db.prepare('INSERT OR IGNORE INTO user_managers (manager_id, user_id) SELECT ?, id FROM users WHERE id = ?');
-      for (const id of picked) add.run(target.id, id);
+      const add = db.prepare('INSERT OR IGNORE INTO user_managers (manager_id, user_id) SELECT ?, id FROM users WHERE id = ? AND branch_id = ?');
+      for (const id of picked) add.run(target.id, id, target.branch_id);
       activity.log(req.user, 'Team set', `${values.display_name} manages ${picked.length} ${picked.length === 1 ? 'person' : 'people'}`);
     }
   })();
@@ -551,11 +561,11 @@ const profileRows = () => db.prepare(
           (SELECT COUNT(*) FROM profile_permissions pp WHERE pp.profile_id = p.id) AS perm_count
    FROM profiles p ORDER BY p.name COLLATE NOCASE`).all();
 
-router.get('/admin/profiles', requirePerm('profiles.manage'), (req, res) => {
+router.get('/admin/profiles', auth.requireEveryBranch('profiles.manage'), (req, res) => {
   res.render('admin_profiles', { title: 'Profiles', profiles: profileRows(), total: access.ALL.length, errors: [], values: {} });
 });
 
-router.post('/admin/profiles', requirePerm('profiles.manage'), (req, res) => {
+router.post('/admin/profiles', auth.requireEveryBranch('profiles.manage'), (req, res) => {
   const name = clean(req.body.name, 40);
   const errors = [];
   if (name.length < 2) errors.push('Enter a name for the profile.');
@@ -577,13 +587,13 @@ function profilePage(req, res, profile, extra = {}) {
   });
 }
 
-router.get('/admin/profiles/:id', requirePerm('profiles.manage'), (req, res) => {
+router.get('/admin/profiles/:id', auth.requireEveryBranch('profiles.manage'), (req, res) => {
   const profile = getProfile(req.params.id);
   if (!profile) return res.redirect('/admin/profiles');
   profilePage(req, res, profile);
 });
 
-router.post('/admin/profiles/:id', requirePerm('profiles.manage'), (req, res) => {
+router.post('/admin/profiles/:id', auth.requireEveryBranch('profiles.manage'), (req, res) => {
   const profile = getProfile(req.params.id);
   if (!profile) return res.redirect('/admin/profiles');
   const name = clean(req.body.name, 40);
@@ -617,7 +627,7 @@ router.post('/admin/profiles/:id', requirePerm('profiles.manage'), (req, res) =>
   res.redirect('/admin/profiles');
 });
 
-router.post('/admin/profiles/:id/delete', requirePerm('profiles.manage'), (req, res) => {
+router.post('/admin/profiles/:id/delete', auth.requireEveryBranch('profiles.manage'), (req, res) => {
   const profile = getProfile(req.params.id);
   if (!profile) return res.redirect('/admin/profiles');
   const { n } = db.prepare('SELECT COUNT(*) AS n FROM users WHERE profile_id = ?').get(profile.id);
@@ -638,7 +648,8 @@ router.get('/admin/activity', requirePerm('activity.view'), (req, res) => {
   const like = '%' + q.replace(/[\\%_]/g, '\\$&') + '%';
   const rows = db.prepare(
     `SELECT a.at, a.action, a.detail, u.display_name FROM activity_log a LEFT JOIN users u ON u.id = a.user_id
-     ${q ? "WHERE a.action LIKE ? ESCAPE '\\' OR a.detail LIKE ? ESCAPE '\\' OR u.display_name LIKE ? ESCAPE '\\'" : ''}
+     WHERE ${req.user.viewBranch ? 'u.branch_id = ' + Number(req.user.viewBranch) : '1 = 1'}
+     ${q ? "AND (a.action LIKE ? ESCAPE '\\' OR a.detail LIKE ? ESCAPE '\\' OR u.display_name LIKE ? ESCAPE '\\')" : ''}
      ORDER BY a.id DESC LIMIT 500`).all(...(q ? [like, like, like] : []));
   res.render('admin_activity', { title: 'Activity log', rows, q });
 });

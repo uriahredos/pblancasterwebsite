@@ -67,8 +67,8 @@ router.get('/', requireLogin, (req, res) => {
   const upcoming = !can('training.submit') && !can('training.view') ? [] : db.prepare(
     `SELECT s.title, s.session_date, s.session_time, s.location FROM training_sessions s
      LEFT JOIN training_requests t ON t.id = s.request_id
-     WHERE s.completed_at IS NULL AND s.session_date >= ? AND (t.id IS NULL OR t.is_private = 0)
-     ORDER BY s.session_date, s.session_time LIMIT 4`).all(today).map((s) => {
+     WHERE s.completed_at IS NULL AND s.session_date >= ? AND (t.id IS NULL OR t.is_private = 0) AND s.branch_id = ?
+     ORDER BY s.session_date, s.session_time LIMIT 4`).all(today, req.user.branch_id).map((s) => {
     const d = ymdDate(s.session_date);
     const days = daysBetween(today, s.session_date);
     return { ...s, weekday: WEEKDAYS[d.getUTCDay()], month: MONTHS[d.getUTCMonth()], day: d.getUTCDate(), time: clock(s.session_time),
@@ -116,7 +116,7 @@ router.get('/', requireLogin, (req, res) => {
     branch.push({ label: 'Truck problems', value: b.inspections, sub: b.inspections ? 'not fixed yet' : 'none waiting', level: b.inspections ? 'bad' : '', url: '/admin/inspections?show=open' });
   }
   if (can('stock.manage') || can('parts.view')) {
-    const low = require('../stock').lowCount();
+    const low = require('../stock').lowCount(req.user.workBranch);
     branch.push({ label: 'Low stock', value: low, sub: low === 1 ? 'part at or below its minimum' : 'parts at or below their minimum', level: low ? 'warn' : '', url: '/admin/stock?low=1' });
   }
   if (can('tasks.assign')) {
@@ -142,7 +142,7 @@ router.get('/', requireLogin, (req, res) => {
   res.render('home', {
     dailyCard: require('../daily').card(me), welcomes: require('./community').recentWelcomes(me),
     profileEmpty: !req.user.photo_path && !req.user.about && !req.user.skills,
-    title: 'Home', wide: true, hasPasskey: db.prepare('SELECT 1 FROM passkeys WHERE user_id = ?').get(me) !== undefined, branch, branchTitle: ids ? 'Your team at a glance' : 'Branch at a glance', critical, notices, board, replies, talk, myCerts, issue: issues[0] || null, pastIssues: issues.slice(1), upcoming, status, dateLine,
+    title: 'Home', wide: true, hasPasskey: db.prepare('SELECT 1 FROM passkeys WHERE user_id = ?').get(me) !== undefined, branch, branchTitle: req.user.scope === 'team' ? 'Your team at a glance' : ids ? 'Branch at a glance' : 'All branches at a glance', critical, notices, board, replies, talk, myCerts, issue: issues[0] || null, pastIssues: issues.slice(1), upcoming, status, dateLine,
     categories: require('./announcements').CATEGORIES,
   });
 });

@@ -12,16 +12,16 @@ const { clean, isYmd, localDate, fmtDateTime } = require('../util');
 
 const router = express.Router();
 const MAX_PHOTOS = 4;
-const activeItems = () => db.prepare('SELECT * FROM inspection_items WHERE active = 1 ORDER BY sort, id').all();
+const activeItems = (branchId) => db.prepare('SELECT * FROM inspection_items WHERE active = 1 AND branch_id = ? ORDER BY sort, id').all(branchId);
 
 // ---- The form ---------------------------------------------------------------
 
 router.get('/inspection', requirePerm('inspections.submit'), (req, res) => {
-  res.render('inspection', { title: 'Truck inspection', items: activeItems(), values: { truck: req.user.default_truck || '', results: {}, notes: {} }, errors: [], maxPhotos: MAX_PHOTOS });
+  res.render('inspection', { title: 'Truck inspection', items: activeItems(req.user.branch_id), values: { truck: req.user.default_truck || '', results: {}, notes: {} }, errors: [], maxPhotos: MAX_PHOTOS });
 });
 
 router.post('/inspection', requirePerm('inspections.submit'), uploads.photos('photos', MAX_PHOTOS), verifyCsrf, (req, res) => {
-  const items = activeItems();
+  const items = activeItems(req.user.branch_id);
   const values = { truck: clean(req.body.truck, 20), odometer: clean(req.body.odometer, 12), notes_all: clean(req.body.notes, 1000), results: {}, notes: {} };
   const errors = [];
   if (!values.truck) errors.push('Enter the truck number.');
@@ -58,7 +58,7 @@ router.post('/inspection', requirePerm('inspections.submit'), uploads.photos('ph
     push.notify(push.peopleWith('inspections.view', req.user.id, req.user.id), 'truck_problem', {
       title: `Truck ${values.truck}: ${problems.length} ${problems.length === 1 ? 'problem' : 'problems'} reported`,
       body: `${req.user.display_name}: ` + problems.map((it) => `${it.label}: ${values.notes[it.id]}`).join('; '), url: `/admin/inspections/${id}` });
-    mail.send(config.notifyTo, `Truck ${values.truck}: ${problems.length} ${problems.length === 1 ? 'problem' : 'problems'} reported`,
+    if (require('../branches').isHome(req.user)) mail.send(config.notifyTo, `Truck ${values.truck}: ${problems.length} ${problems.length === 1 ? 'problem' : 'problems'} reported`,
       `${req.user.display_name} inspected truck ${values.truck} and reported:\n\n` +
       problems.map((it) => `  ${it.label}: ${values.notes[it.id]}`).join('\n') + `\n\n${config.baseUrl}/admin/inspections/${id}\n`);
   }
@@ -128,22 +128,22 @@ router.get('/admin/inspections.csv', requirePerm('inspections.view'), (req, res)
 // ---- The checklist --------------------------------------------------------------
 
 router.get('/admin/inspections/checklist', requirePerm('inspections.manage'), (req, res) => {
-  res.render('admin_checklist', { title: 'Inspection checklist', items: db.prepare('SELECT * FROM inspection_items ORDER BY active DESC, sort, id').all() });
+  res.render('admin_checklist', { title: 'Inspection checklist', items: db.prepare('SELECT * FROM inspection_items WHERE branch_id = ? ORDER BY active DESC, sort, id').all(req.user.workBranch) });
 });
 
 router.post('/admin/inspections/checklist', requirePerm('inspections.manage'), (req, res) => {
   const label = clean(req.body.label, 120);
   if (!label) flash(req, 'err', 'Enter what to check.');
   else {
-    const { m } = db.prepare('SELECT COALESCE(MAX(sort), 0) AS m FROM inspection_items').get();
-    db.prepare('INSERT INTO inspection_items (label, sort) VALUES (?, ?)').run(label, m + 1);
+    const { m } = db.prepare('SELECT COALESCE(MAX(sort), 0) AS m FROM inspection_items WHERE branch_id = ?').get(req.user.workBranch);
+    db.prepare('INSERT INTO inspection_items (label, sort, branch_id) VALUES (?, ?, ?)').run(label, m + 1, req.user.workBranch);
     activity.log(req.user, 'Inspection checklist', `added "${label}"`);
   }
   res.redirect('/admin/inspections/checklist');
 });
 
 router.post('/admin/inspections/checklist/:id/:op', requirePerm('inspections.manage'), (req, res) => {
-  const item = db.prepare('SELECT * FROM inspection_items WHERE id = ?').get(req.params.id);
+  const item = db.prepare('SELECT * FROM inspection_items WHERE id = ? AND branch_id = ?').get(req.params.id, req.user.workBranch);
   if (item && req.params.op === 'toggle') {
     db.prepare('UPDATE inspection_items SET active = 1 - active WHERE id = ?').run(item.id);
     activity.log(req.user, 'Inspection checklist', `${item.active ? 'removed' : 'restored'} "${item.label}"`);
@@ -155,7 +155,7 @@ router.post('/admin/inspections/checklist/:id/:op', requirePerm('inspections.man
     }
   } else if (item && (req.params.op === 'up' || req.params.op === 'down')) {
     const other = db.prepare(
-      `SELECT * FROM inspection_items WHERE active = 1 AND sort ${req.params.op === 'up' ? '<' : '>'} ? ORDER BY sort ${req.params.op === 'up' ? 'DESC' : 'ASC'} LIMIT 1`).get(item.sort);
+      `SELECT * FROM inspection_items WHERE active = 1 AND branch_id = ${Number(item.branch_id)} AND sort ${req.params.op === 'up' ? '<' : '>'} ? ORDER BY sort ${req.params.op === 'up' ? 'DESC' : 'ASC'} LIMIT 1`).get(item.sort);
     if (other) {
       db.prepare('UPDATE inspection_items SET sort = ? WHERE id = ?').run(other.sort, item.id);
       db.prepare('UPDATE inspection_items SET sort = ? WHERE id = ?').run(item.sort, other.id);

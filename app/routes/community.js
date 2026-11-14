@@ -165,14 +165,17 @@ router.post('/admin/people/import', requirePerm('users.manage'), (req, res, next
   const technician = access.profileByName('Technician') || db.prepare('SELECT * FROM profiles ORDER BY id LIMIT 1').get();
   const result = { updated: [], created: [] };
   db.transaction(() => {
-    const users = db.prepare('SELECT id, username, display_name, email FROM users').all();
+    // Matching looks only at the branch being imported into; usernames must still be unique across the site.
+    const taken = new Set(db.prepare('SELECT username FROM users').all().map((x) => x.username.toLowerCase()));
+    const users = db.prepare('SELECT id, username, display_name, email FROM users WHERE branch_id = ?').all(req.user.workBranch);
     for (const c of read.people) {
       let u = findAccount(c, users);
       if (!u) {
         let username = (c.email ? c.email.split('@')[0] : c.name.replace(/\s+/g, '.')).toLowerCase().replace(/[^a-z0-9._-]/g, '').slice(0, 36).padEnd(3, 'x');
-        for (let i = 2; users.some((x) => x.username.toLowerCase() === username); i++) username = `${username.replace(/\d+$/, '')}${i}`;
+        for (let i = 2; taken.has(username); i++) username = `${username.replace(/\d+$/, '')}${i}`;
+        taken.add(username);
         // A random password nobody knows, and switched off: listed for everyone to see, but no sign-in until an admin enables it.
-        const id = auth.createUser({ username, displayName: c.name, email: c.email, password: require('crypto').randomBytes(24).toString('hex'), profile: technician.id, branchId: req.user.branch_id });
+        const id = auth.createUser({ username, displayName: c.name, email: c.email, password: require('crypto').randomBytes(24).toString('hex'), profile: technician.id, branchId: req.user.workBranch });
         db.prepare('UPDATE users SET active = 0 WHERE id = ?').run(id);
         u = { id, username, display_name: c.name, email: c.email };
         users.push(u); result.created.push(c.name);
@@ -187,6 +190,54 @@ router.post('/admin/people/import', requirePerm('users.manage'), (req, res, next
   activity.log(req.user, 'Contact list imported', `${result.updated.length} existing accounts updated, ${result.created.length} people added`);
   req.session.contactResult = result;
   res.redirect('/admin/import#contacts');
+});
+
+// ---- Branches -----------------------------------------------------------------------
+// Only for people who can see every branch (the master account, or a profile with that tick-box).
+
+const everyBranch = (req, res, next) => requireLogin(req, res, () => (req.user.allBranches ? next() : forbidden(res)));
+
+// Choose which branch the logs, stock and other branch pages show.
+router.post('/branch/view', everyBranch, (req, res) => {
+  const b = req.body.branch === 'all' ? 'all' : isId(req.body.branch) && db.prepare('SELECT id FROM branches WHERE id = ?').get(req.body.branch) ? Number(req.body.branch) : null;
+  if (b !== null) req.session.viewBranch = b;
+  const back = String(req.body.back || '/');
+  res.redirect(/^\/(?![/\\])/.test(back) ? back : '/');
+});
+
+function branchPage(req, res, extra = {}) {
+  const rows = db.prepare(
+    `SELECT b.*, (SELECT COUNT(*) FROM users u WHERE u.branch_id = b.id AND u.active = 1) AS people,
+            (SELECT COUNT(*) FROM users u WHERE u.branch_id = b.id AND u.active = 0) AS off
+     FROM branches b ORDER BY b.name COLLATE NOCASE`).all();
+  res.status(extra.errors ? 400 : 200).render('admin_branches', { title: 'Branches', rows, errors: [], values: {}, ...extra });
+}
+router.get('/admin/branches', everyBranch, (req, res) => branchPage(req, res));
+
+router.post('/admin/branches', everyBranch, (req, res) => {
+  const name = clean(req.body.name, 60).replace(/\s+branch$/i, '');
+  const errors = [];
+  if (!name) errors.push('Give the branch a name, such as the town it is in.');
+  else if (db.prepare('SELECT 1 FROM branches WHERE name = ?').get(name)) errors.push('There is already a branch with that name.');
+  if (errors.length) return branchPage(req, res, { errors, values: { name } });
+  const id = db.prepare('INSERT INTO branches (name, created_at) VALUES (?, ?)').run(name, new Date().toISOString()).lastInsertRowid;
+  require('../branches').setUp(id);
+  activity.log(req.user, 'Branch added', name);
+  flash(req, 'ok', `${name} branch added. Add its people under Users after choosing ${name} in the branch box.`);
+  res.redirect('/admin/branches');
+});
+
+router.post('/admin/branches/:id', everyBranch, (req, res) => {
+  const b = isId(req.params.id) ? db.prepare('SELECT * FROM branches WHERE id = ?').get(req.params.id) : null;
+  const name = clean(req.body.name, 60).replace(/\s+branch$/i, '');
+  if (!b) return res.redirect('/admin/branches');
+  if (!name || db.prepare('SELECT 1 FROM branches WHERE name = ? AND id <> ?').get(name, b.id)) flash(req, 'err', 'That name is empty or already used.');
+  else {
+    db.prepare('UPDATE branches SET name = ? WHERE id = ?').run(name, b.id);
+    activity.log(req.user, 'Branch renamed', `${b.name} to ${name}`);
+    flash(req, 'ok', 'Branch renamed.');
+  }
+  res.redirect('/admin/branches');
 });
 
 // ---- Welcoming new people -------------------------------------------------------
