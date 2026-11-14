@@ -9,7 +9,7 @@
 <meta name="robots" content="noindex">
 <meta name="csrf" content="<%= typeof csrf !== 'undefined' ? csrf : '' %>">
 <title><%= title %> · Pye-Barker<%= officeLabel ? ' ' + officeLabel : user ? '' : ' Employee Portal' %></title>
-<meta name="theme-color" content="#09324f">
+<meta name="theme-color" content="#0a3152">
 <script src="/theme.js?v=<%= assetV %>"></script>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
@@ -77,6 +77,7 @@
         ['', '/shoutouts', 'Shout-outs', is('/shoutouts')],
         ['', '/events', 'Events', is('/events')],
         ['', '/photos', 'Photos', is('/photos')],
+        'divider',
         ['forum.use', '/discussions', 'Discussions', is('/discussions'), badges.forum],
         ['', '/daily', 'Daily question', is('/daily')],
         ['', '/newsletters', 'Newsletters', is('/newsletters')]

@@ -189,7 +189,7 @@ The home page, from the top:
 - **The Monthly Barker**: the newest newsletter and the three before it.
 - **Shout-outs**: the latest three, with a button to give one.
 - **Office at a glance**: a few quick facts about the person's own office that suit anyone (how many people are in it, announcements still to read, birthdays and anniversaries there this week, events and training coming up, new people to welcome), followed by anything waiting on that person because of what they run: open parts requests, truck problems, low stock, overdue tasks they gave out, certifications running out, entries not yet checked in the audit. Those only appear when the number is above zero, so someone with nothing to chase is not shown empty boxes. A manager's numbers cover their own people.
-- **Your tasks**, then the form buttons (**What do you need to do?**), today's question, new hires, this week's birthdays and anniversaries, what is coming up, latest photos, **My status** and discussions.
+- **Your tasks**, then the form buttons (**What do you need to do?**), today's question, **Coming up** (birthdays, anniversaries, events and training in one list) and **Around the company** (new hires, latest photos and discussions in one section). A person's own open requests, last truck inspection and certifications sit under **Yours** inside Office at a glance. The newsletter shows its cover only while an issue is new (about three weeks), then shrinks to one line with a Read button. A section with nothing in it shrinks to one line or is left out.
 
 On a phone it is one column in that order. On a wider screen announcements, the newsletter, shout-outs, new hires, photos and discussions are on the left; office at a glance, tasks, the buttons and the rest are on the right.
 
@@ -407,7 +407,7 @@ The **Community** menu holds People, Discussions, Daily question and Newsletters
 - The People page can be filtered by department.
 
 **New hires**
-- On **Edit person** (Team > Users), **Announce as a new hire** takes a job title, start date and a few words. The person then appears in a **Welcome aboard** panel on everyone's home page for 14 days.
+- On **Edit person** (Team > Users), **Announce as a new hire** takes a job title, start date and a few words. The person then appears under **Welcome aboard** (in Around the company) on everyone's home page for 14 days.
 - Everyone can press **Say welcome**, and add a short message from the person's profile. The messages stay on the profile afterwards.
 
 **Daily question (`/daily`)**

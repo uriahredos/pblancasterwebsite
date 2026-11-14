@@ -785,7 +785,7 @@ test('logo banner and light/dark switch are on every page', async () => {
   assert.ok(login.indexOf('/theme.js') < login.indexOf('/styles.css')); // applied before the page is drawn
   assert.match((await (await loggedIn('tech1')).get('/')).text, /id="theme-toggle"/);
   const css = (await c.get('/styles.css')).text;
-  for (const color of ['#24b24b', '#235fad', '#09324f']) assert.ok(css.includes(color), color);
+  for (const color of ['#0cb04d', '#245dac', '#0a3152']) assert.ok(css.includes(color), color);
   assert.match(css, /:root\[data-theme="dark"\]/);
   assert.match(css, /:root:not\(\[data-theme="light"\]\)/);
 });
@@ -1915,7 +1915,8 @@ test('newsletters: uploaded by people allowed to, shown on the home page, readab
   const page = '/admin/newsletters';
   assert.equal((await t1.get(page)).status, 403);
   assert.equal((await t1.post(page, { issue_month: '2026-10', pdf: new Blob([tinyPdf()], { type: 'application/pdf' }) }, { multipart: true })).status, 403);
-  assert.match((await t1.get('/')).text, /No newsletter has been posted yet/);
+  // With no issue yet the home page says nothing about it, except to someone who can upload one.
+  assert.doesNotMatch((await t1.get('/')).text, /Monthly Barker/);
   assert.doesNotMatch((await t1.get('/')).text, /Upload the first one/);
   assert.match((await owner.get('/')).text, /Upload the first one/);
 
@@ -1937,9 +1938,15 @@ test('newsletters: uploaded by people allowed to, shown on the home page, readab
   assert.equal(oct.title, 'October Edition'); assert.equal(sep.title, 'September 2026 newsletter');
   assert.equal(db.prepare("SELECT COUNT(*) n FROM activity_log WHERE action = 'Newsletter uploaded'").get().n, 2);
 
-  // The newest issue leads the home page; the earlier one sits under "Past issues".
+  // A new issue gets its cover on the home page. Once it is a few weeks old it shrinks to one line with a Read button.
   const home = (await t1.get('/')).text;
-  assert.match(home, /Latest issue[\s\S]*October Edition[\s\S]*Read this issue[\s\S]*Past issues[\s\S]*September 2026/);
+  assert.match(home, /New issue[\s\S]*October Edition[\s\S]*Read this issue/); assert.doesNotMatch(home, /Past issues/);
+  const postedAt = oct.created_at;
+  db.prepare("UPDATE newsletters SET created_at = '2026-01-05T12:00:00.000Z' WHERE id = ?").run(oct.id);
+  const later = (await t1.get('/')).text.replace(/\s+/g, ' ');
+  assert.match(later, new RegExp(`<section class="panel slim p-news"[^>]*> <div class="one-line"><p><strong>The Monthly Barker</strong> <span class="meta">· October 2026 · <a href="/newsletters">all issues</a></span></p><a class="btn small" href="/newsletters/${oct.id}">Read</a>`));
+  assert.doesNotMatch(later, /Read this issue|issue-cover/);
+  db.prepare('UPDATE newsletters SET created_at = ? WHERE id = ?').run(postedAt, oct.id);
   assert.match(home, new RegExp(`href="/newsletters/${oct.id}"`));
   assert.match((await t1.get(`/newsletters/${sep.id}`)).status === 200 ? (await t1.get(`/newsletters/${sep.id}`)).text : 'Older issue Newer issue', /Newer issue|Older issue/);
   const list = (await t1.get('/newsletters')).text;
@@ -2028,10 +2035,10 @@ test('home dashboard: announcements with labels and pins, coming up, and my stat
   // My status counts this person's own open requests.
   const open = () => db.prepare("SELECT COUNT(*) n FROM parts_submissions WHERE user_id = ? AND action = 'request' AND cancelled_at IS NULL AND status IN ('new','ordered')").get(userId('tech2')).n;
   const before = open();
-  assert.match(home, new RegExp(`Parts requests</span><span class="mini-num">${before}<`));
+  assert.match(home, before ? new RegExp(`<span class="mini-num">${before}</span><span class="mini-label">My parts requests<`) : /Office at a glance/);
   await t2.post('/parts', [['action', 'request'], ['part_name', 'SIGA-PS'], ['quantity', '2'], ['source', 'van'], ['needed_by', '2027-03-01']], { page: '/parts', multipart: true });
   assert.equal(open(), before + 1);
-  assert.match((await t2.get('/')).text, new RegExp(`Parts requests</span><span class="mini-num">${before + 1}</span><span class="mini-sub">open request`));
+  assert.match((await t2.get('/')).text, new RegExp(`<span class="mini-num">${before + 1}</span><span class="mini-label">My parts requests</span><span class="mini-sub">open request`));
 
   db.prepare(`DELETE FROM training_sessions WHERE id IN (${ids.join(',')})`).run();
   db.prepare('DELETE FROM training_requests WHERE id = ?').run(priv);
@@ -2145,7 +2152,7 @@ test('discussions: threads, replies with photos, following, new-reply notices, s
   assert.doesNotMatch(thread, /Discussions <span class="badge"/);
   home = (await t1.get('/')).text;
   assert.doesNotMatch(home, /New replies/); assert.doesNotMatch(home, /Discussions <span class="badge"/);
-  assert.match(home, /id="talk-h">Discussions[\s\S]*XR550 will not take a new zone[\s\S]*Tech support · 1 reply/);
+  assert.match(home, /id="around-h">Around the company[\s\S]*Discussions <a href="\/discussions">All discussions[\s\S]*XR550 will not take a new zone[\s\S]*Tech support · 1 reply/);
   // The replier follows too, so the asker's answer reaches them; unfollowing stops that.
   await t1.post(`${tp}/reply`, { body: 'That was it, thanks.' }, { page: tp, multipart: true });
   assert.match((await t2.get('/')).text, /<strong>Terry Tech<\/strong> replied in/);
@@ -2628,10 +2635,10 @@ test('home page: announcements, newsletter and shout-outs first; office at a gla
   assert.match(tasksPanel, /<li class="overdue"><a href="\/tasks#t\d+"><strong>Home task late<\/strong><span class="todo-when">Overdue by 2 days[^<]* · from /);
   assert.ok(tasksPanel.indexOf('Home task late') < tasksPanel.indexOf('Home task later'));   // overdue first
   assert.match(/<section class="panel p-board"[\s\S]*?<\/section>/.exec(home)[0], /<span class="tag new">New<\/span><strong>Home order news[\s\S]*I have read this/);
-  assert.match(/<section class="panel p-status"[\s\S]*?<\/section>/.exec(home)[0], /<a href="\/tasks" class="warn"><span class="mini-label">Tasks<\/span><span class="mini-num">2<\/span><span class="mini-sub">1 overdue/);
+  assert.doesNotMatch(home, /p-status|My status/);   // a person's own numbers now sit inside Office at a glance
   const css = (await new Client().get('/styles.css')).text;
   assert.match(css, /\.dash \.p-board \{ order: 1; \} \.dash \.p-news \{ order: 2; \} \.dash \.p-shouts \{ order: 3; \} \.dash \.p-glance \{ order: 4; \} \.dash \.p-tasks \{ order: 5; \} \.dash \.p-actions \{ order: 6; \}/);
-  assert.deepEqual(order(home, 'class="dash-hello', 'class="panel p-board"', 'p-news"', 'class="panel p-shouts"', 'class="panel branch-panel', 'class="panel p-tasks"', 'id="act-h"').map((n, i, l) => n >= 0 && (i === 0 || n > l[i - 1])), [true, true, true, true, true, true, true]);
+  assert.deepEqual(order(home, 'class="dash-hello', 'class="panel p-board"', 'p-shouts"', 'class="panel p-around"', 'class="panel branch-panel', 'class="panel p-tasks"', 'id="act-h"').map((n, i, l) => n >= 0 && (i === 0 || n > l[i - 1])), [true, true, true, true, true, true, true]);
   // Office at a glance for someone who runs nothing: facts about the office, and none of the parts, stock or truck numbers.
   const tGlance = /<section class="panel branch-panel[\s\S]*?<\/section>/.exec(home)[0];
   assert.match(tGlance, /<span class="mini-num">\d+<\/span><span class="mini-label">People<\/span><span class="mini-sub">in the Lancaster office/);
@@ -3000,9 +3007,9 @@ test('new hires: announced on everyone\'s home page for two weeks, and people sa
   assert.deepEqual(db.prepare('SELECT job_title, started_on FROM users WHERE id = ?').get(nid), { job_title: 'Apprentice', started_on: '2026-11-09' });
 
   const home = (await t1.get('/')).text.replace(/\s+/g, ' ');
-  const panel = /<section class="panel p-welcome"[\s\S]*?<\/section>/.exec(home)[0];
+  const panel = /<section class="panel p-around"[\s\S]*?<\/section>/.exec(home)[0];
   assert.match(panel, /Nora Newhire<\/strong><span class="meta">Apprentice · Lancaster office/); assert.match(panel, /Nora is joining the alarm team\./);
-  assert.match(panel, /Be the first to say welcome/); assert.match(panel, /Say welcome<\/button>/);
+  assert.match(panel, /id="welcome">Welcome aboard/); assert.match(panel, /Say welcome<\/button>/);
 
   // A wave from the home page, then a message from her profile. One note per person: the message updates it.
   assert.equal((await t1.post(`/welcome/${wid}/wave`, { back: 'home' }, { page: '/' })).location, '/#welcome');
@@ -3010,7 +3017,7 @@ test('new hires: announced on everyone\'s home page for two weeks, and people sa
   await owner.post(`/welcome/${wid}/wave`, {}, { page: '/' });
   await nora.post(`/welcome/${wid}/wave`, { message: 'hi me' }, { page: '/' });            // you cannot welcome yourself
   assert.equal(db.prepare('SELECT COUNT(*) n FROM welcome_notes WHERE welcome_id = ?').get(wid).n, 2);
-  assert.match((await t1.get('/')).text, /2 people have said welcome[\s\S]*You said welcome/);
+  assert.match((await t1.get('/')).text, /· 2 welcomes[\s\S]*You said welcome/);
   const hers = (await nora.get('/')).text;
   assert.match(hers, /See your messages/);
   const profile = (await nora.get(`/people/${nid}`)).text.replace(/\s+/g, ' ');
@@ -3545,8 +3552,8 @@ test('company: the office list loads once, offices say what they do, and anyone 
   assert.equal((await t1.post('/branches/1', [['services_form', '1'], ['services', String(svc('MN'))]], { multipart: true, page: '/branches/1' })).status, 403);
   await owner.post('/branches/1', [['services_form', '1'], ['services', String(svc('FA'))], ['services', String(svc('FE'))], ['services', '999999'], ['address', '1 Oregon Pike'], ['phone', '717-399-3900']], { multipart: true, page: '/branches/1?edit=1' });
   const office = (await t1.get('/branches/1')).text.replace(/\s+/g, ' ');
-  assert.match(office, /What this office does<\/strong>[\s\S]*Fire Alarms &amp; Detection <span class="meta">FA<\/span>[\s\S]*Fire Extinguishers/); assert.match(office, /<span class="office-no">2054<\/span>/); assert.match(office, /Ephrata, Pennsylvania · NJ\/PA\/DE market · Northeast region/);
-  assert.match(office, /href="https:\/\/www\.google\.com\/maps\/search\/\?api=1&amp;query=1%20Oregon%20Pike"[^>]*>1 Oregon Pike<\/a> · <a href="tel:7173993900">717-399-3900<\/a>/);
+  assert.match(office, /What this office does<\/strong>[\s\S]*Fire Alarms &amp; Detection <span class="meta">FA<\/span>[\s\S]*Fire Extinguishers/); assert.match(office, /<span class="office-no">2054<\/span>/); assert.match(office, /<dt>Office<\/dt><dd><span class="office-no">2054<\/span> Ephrata, Pennsylvania<\/dd>/); assert.match(office, /<dt>Market<\/dt><dd>NJ\/PA\/DE<\/dd> <dt>Region<\/dt><dd>Northeast<\/dd>/); assert.match(office, /class="btn primary" href="tel:\d+">Call<\/a>/); assert.match(office, />Map<\/a>/);
+  assert.match(office, /<dt>Address<\/dt><dd>1 Oregon Pike<\/dd> <dt>Phone<\/dt><dd><a href="tel:7173993900">717-399-3900<\/a><\/dd>/); assert.match(office, /href="https:\/\/www\.google\.com\/maps\/search\/\?api=1&amp;query=1%20Oregon%20Pike"[^>]*>Map<\/a>/);
   await owner.post('/branches/1', [['address', '1 Oregon Pike'], ['phone', '717-399-3900']], { multipart: true, page: '/branches/1?edit=1' });   // saving without the service boxes leaves them alone
   assert.equal(db.prepare('SELECT COUNT(*) n FROM branch_services WHERE branch_id = 1').get().n, 2);
 

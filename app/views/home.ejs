@@ -93,15 +93,15 @@
         <% }) %>
       </ul>
     </section>
+    <% if (issue && issueIsNew) { %>
     <section class="panel news p-news" aria-labelledby="news-h">
-      <div class="panel-head"><h2 id="news-h">The Monthly Barker</h2><% if (issue) { %><a href="/newsletters">All issues</a><% } %></div>
-      <% if (issue) { %>
+      <div class="panel-head"><h2 id="news-h">The Monthly Barker</h2><a href="/newsletters">All issues</a></div>
       <div class="issue">
         <a class="issue-cover" href="/newsletters/<%= issue.id %>" aria-label="Read the <%= issue.month %> newsletter">
           <% if (issue.pages.length) { %><img src="/newsletters/<%= issue.id %>/page/1" alt="" width="1100" height="1424"><% } else { %><span class="cover-blank"><span><%= issue.month.split(' ')[0] %></span><%= issue.month.split(' ')[1] %></span><% } %>
         </a>
         <div class="issue-body">
-          <p class="eyebrow">Latest issue</p>
+          <p class="eyebrow">New issue</p>
           <h3><%= issue.title %></h3>
           <% if (issue.highlightList.length) { %>
           <ul class="highlights"><% issue.highlightList.slice(0, 4).forEach(function (h) { %><li><%= h %></li><% }) %></ul>
@@ -109,61 +109,55 @@
           <a class="btn primary" href="/newsletters/<%= issue.id %>">Read this issue</a>
         </div>
       </div>
-      <% if (pastIssues.length) { %>
-      <div class="past">
-        <p class="eyebrow">Past issues</p>
-        <div class="past-row">
-          <% pastIssues.forEach(function (p) { %>
-          <a class="past-issue" href="/newsletters/<%= p.id %>">
-            <% if (p.pages.length) { %><img src="/newsletters/<%= p.id %>/page/1" alt="" loading="lazy" width="1100" height="1424"><% } else { %><span class="cover-blank small"><span><%= p.month.split(' ')[0].slice(0, 3) %></span><%= p.month.split(' ')[1] %></span><% } %>
-            <span><%= p.month %></span>
-          </a>
-          <% }) %>
-        </div>
-      </div>
-      <% } %>
-      <% } else { %>
-      <p class="empty">No newsletter has been posted yet.<% if (can('newsletters.manage')) { %> <a href="/admin/newsletters">Upload the first one</a>.<% } %></p>
-      <% } %>
     </section>
+    <% } else if (issue) { %>
+    <section class="panel slim p-news" aria-label="Newsletter">
+      <div class="one-line"><p><strong>The Monthly Barker</strong> <span class="meta">· <%= issue.month %> · <a href="/newsletters">all issues</a></span></p><a class="btn small" href="/newsletters/<%= issue.id %>">Read</a></div>
+    </section>
+    <% } else if (can('newsletters.manage')) { %>
+    <section class="panel slim p-news" aria-label="Newsletter">
+      <div class="one-line"><p><strong>The Monthly Barker</strong> <span class="meta">· nothing posted yet</span></p><a class="btn small" href="/admin/newsletters">Upload the first one</a></div>
+    </section>
+    <% } %>
+    <% if (shouts.length) { %>
     <section class="panel p-shouts" aria-labelledby="shouts-h" id="shoutouts">
       <div class="panel-head"><h2 id="shouts-h">Shout-outs</h2><a href="/shoutouts">All shout-outs</a></div>
-      <% if (!shouts.length) { %><p class="empty">Nobody has been thanked yet. Who did a great job this week?</p><% } %>
       <ul class="shouts"><% shouts.forEach(function (s) { %><%- include('partials/shout', { s: s, back: 'home' }) %><% }) %></ul>
       <p class="panel-foot"><a class="btn small" href="/shoutouts#give">👏 Give a shout-out</a></p>
     </section>
-    <% if (welcomes.length) { %>
-    <section class="panel p-welcome" aria-labelledby="welcome-h" id="welcome">
-      <div class="panel-head"><h2 id="welcome-h">Welcome aboard</h2><a href="/people">Everyone</a></div>
-      <ul class="hires">
+    <% } else { %>
+    <section class="panel slim p-shouts" aria-label="Shout-outs" id="shoutouts">
+      <div class="one-line"><p><strong>Shout-outs</strong> <span class="meta">· who did a great job this week?</span></p><a class="btn small" href="/shoutouts#give">👏 Give a shout-out</a></div>
+    </section>
+    <% } %>
+    <% var showTalk = can('forum.use'); %>
+    <% if (welcomes.length || wallPhotos.length || showTalk) { %>
+    <section class="panel p-around" aria-labelledby="around-h">
+      <div class="panel-head"><h2 id="around-h">Around the company</h2><a href="/people">People</a></div>
+      <% if (welcomes.length) { %>
+      <h3 class="sub-h" id="welcome">Welcome aboard</h3>
+      <ul class="hires small">
         <% welcomes.forEach(function (w) { %>
         <li>
           <a class="hire" href="/people/<%= w.user_id %>">
-            <%- include('partials/avatar', { who: { id: w.user_id, display_name: w.display_name, photo_path: w.photo_path }, size: 'lg' }) %>
-            <span class="person-text"><strong><%= w.display_name %></strong><span class="meta"><%= [w.job_title, w.branch ? w.branch + ' office' : ''].filter(Boolean).join(' · ') || 'New to the team' %></span></span>
+            <%- include('partials/avatar', { who: { id: w.user_id, display_name: w.display_name, photo_path: w.photo_path } }) %>
+            <span class="person-text"><strong><%= w.display_name %></strong><span class="meta"><%= [w.job_title, w.branch ? w.branch + ' office' : ''].filter(Boolean).join(' · ') || 'New to the team' %><%= w.waves ? ' · ' + w.waves + (w.waves === 1 ? ' welcome' : ' welcomes') : '' %></span></span>
           </a>
           <% if (w.intro) { %><p class="hire-intro"><%= w.intro %></p><% } %>
-          <div class="hire-foot">
-            <span class="meta"><%= w.waves ? w.waves + (w.waves === 1 ? ' person has' : ' people have') + ' said welcome' : 'Be the first to say welcome' %></span>
-            <% if (w.user_id === user.id) { %><a class="btn small" href="/people/<%= w.user_id %>#welcome">See your messages</a>
-            <% } else if (w.waved) { %><a class="btn small" href="/people/<%= w.user_id %>#welcome">You said welcome ✓</a>
-            <% } else { %><form method="post" action="/welcome/<%= w.id %>/wave"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="back" value="home"><button class="btn primary small" type="submit">👋 Say welcome</button></form><% } %>
-          </div>
+          <% if (w.user_id === user.id) { %><a class="btn small" href="/people/<%= w.user_id %>#welcome">See your messages</a>
+          <% } else if (w.waved) { %><span class="meta">You said welcome ✓</span>
+          <% } else { %><form method="post" action="/welcome/<%= w.id %>/wave"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="back" value="home"><button class="btn primary small" type="submit">👋 Say welcome</button></form><% } %>
         </li>
         <% }) %>
       </ul>
-    </section>
-    <% } %>
-    <% if (wallPhotos.length) { %>
-    <section class="panel p-photos" aria-labelledby="photos-h">
-      <div class="panel-head"><h2 id="photos-h">Latest photos</h2><a href="/photos">All photos</a></div>
-      <div class="thumbs photo-grid"><% wallPhotos.forEach(function (p) { %><a href="/wall/photo/<%= p.id %>"><img src="/wall/photo/<%= p.id %>" alt="<%= p.caption || 'Photo from ' + p.display_name %>" loading="lazy"></a><% }) %></div>
-    </section>
-    <% } %>
-    <% if (can('forum.use')) { %>
-    <section class="panel p-talk" aria-labelledby="talk-h">
-      <div class="panel-head"><h2 id="talk-h">Discussions</h2><a href="/discussions">All discussions</a></div>
-      <% if (!talk.length) { %><p class="empty">Nothing posted yet. <a href="/discussions/new">Start the first thread</a>.</p><% } else { %>
+      <% } %>
+      <% if (wallPhotos.length) { %>
+      <h3 class="sub-h">Latest photos <a href="/photos">All photos</a></h3>
+      <div class="thumbs"><% wallPhotos.forEach(function (p) { %><a href="/wall/photo/<%= p.id %>"><img src="/wall/photo/<%= p.id %>" alt="<%= p.caption || 'Photo from ' + p.display_name %>" loading="lazy"></a><% }) %></div>
+      <% } %>
+      <% if (showTalk) { %>
+      <h3 class="sub-h">Discussions <a href="/discussions">All discussions</a></h3>
+      <% if (!talk.length) { %><div class="one-line"><p class="empty">Nothing posted yet.</p><a class="btn small" href="/discussions/new">Start the first thread</a></div><% } else { %>
       <ul class="threads compact">
         <% talk.forEach(function (t) { %>
         <li class="<%= t.unread ? 'unread' : '' %>">
@@ -174,12 +168,10 @@
         </li>
         <% }) %>
       </ul>
-      <p class="panel-foot"><a class="btn small" href="/discussions/new">Start a thread</a></p>
+      <% } %>
       <% } %>
     </section>
     <% } %>
-
-
   </div>
 
   <div class="dash-side">
@@ -190,6 +182,14 @@
         <a href="<%= s.url %>" class="<%= s.level %>"><span class="mini-num"><%= s.value %></span><span class="mini-label"><%= s.label %></span><span class="mini-sub"><%= s.sub %></span></a>
         <% }) %>
       </div>
+      <% if (mine.length) { %>
+      <h3 class="sub-h">Yours <a href="/my">My activity</a></h3>
+      <div class="branch-stats">
+        <% mine.forEach(function (t) { %>
+        <a href="<%= t.url || '/my' %>" class="<%= t.warn ? 'warn' : '' %>"><span class="mini-num"><%= t.value %></span><span class="mini-label"><%= t.label %></span><span class="mini-sub"><%= t.sub %></span></a>
+        <% }) %>
+      </div>
+      <% } %>
     </section>
     <% if (myTasks.length) { %>
     <section class="panel p-tasks" aria-labelledby="tasks-h">
@@ -234,9 +234,11 @@
     </section>
     <% } %>
 
-    <% if (thisWeek.length) { %>
-    <section class="panel p-week" aria-labelledby="week-h" id="thisweek">
-      <div class="panel-head"><h2 id="week-h">This week</h2></div>
+    <% if (thisWeek.length || upcoming.length) { %>
+    <section class="panel p-up" aria-labelledby="up-h" id="thisweek">
+      <div class="panel-head"><h2 id="up-h">Coming up</h2><a href="/events">Events</a></div>
+      <% if (thisWeek.length) { %>
+      <h3 class="sub-h">Birthdays and anniversaries</h3>
       <ul class="week">
         <% thisWeek.forEach(function (o) { %>
         <li class="<%= o.today ? 'today' : '' %>">
@@ -248,12 +250,9 @@
         </li>
         <% }) %>
       </ul>
-    </section>
-    <% } %>
-
-    <% if (upcoming.length) { %>
-    <section class="panel p-up" aria-labelledby="up-h">
-      <div class="panel-head"><h2 id="up-h">Coming up</h2><a href="/events">Events</a></div>
+      <% } %>
+      <% if (upcoming.length) { %>
+      <% if (thisWeek.length) { %><h3 class="sub-h">Events and training</h3><% } %>
       <ul class="agenda">
         <% upcoming.forEach(function (s) { %>
         <li>
@@ -264,17 +263,7 @@
         </li>
         <% }) %>
       </ul>
-    </section>
-    <% } %>
-
-    <% if (status.length) { %>
-    <section class="panel p-status" aria-labelledby="st-h">
-      <div class="panel-head"><h2 id="st-h">My status</h2><a href="/my">My activity</a></div>
-      <div class="mini-stats">
-        <% status.forEach(function (s) { %>
-        <a href="<%= s.url || '/my' %>" class="<%= s.warn ? 'warn' : '' %>"><span class="mini-label"><%= s.label %></span><span class="mini-num"><%= s.value %></span><span class="mini-sub"><%= s.sub %></span></a>
-        <% }) %>
-      </div>
+      <% } %>
     </section>
     <% } %>
   </div>

@@ -2,9 +2,27 @@
 <p class="back"><a class="back-link" href="<%= many ? '/branches' : '/people' %>"><%= many ? 'Offices' : 'People' %></a></p>
 <% if (b.photo_path) { %><img class="branch-hero" src="/branches/photo/<%= b.id %>?v=<%= b.photo_path.slice(0, 8) %>" alt="The <%= b.name %> branch"><% } %>
 <div class="title-row"><h1><%= b.name %> office</h1><% if (canEdit && !editing) { %><a class="btn small" href="/branches/<%= b.id %>?edit=1#edit">Edit this page</a><% } %></div>
-<p class="meta"><% if (b.number) { %><span class="office-no"><%= b.number %></span> <% } %><%= [b.city && b.state ? b.city + ', ' + (stateNames[b.state] || b.state) : '', b.market ? b.market + ' market' : '', b.region ? b.region + ' region' : ''].filter(Boolean).join(' · ') %></p>
-<p class="office-reach"><% if (b.address) { %><a href="https://www.google.com/maps/search/?api=1&amp;query=<%= encodeURIComponent(b.address) %>" rel="noopener noreferrer" target="_blank"><%= b.address %></a><% } else if (b.street) { %><%= b.street %><% } %><% if (b.phone) { %><%= b.address || b.street ? ' · ' : '' %><% b.phone.split(/\s*\/\s*/).forEach(function (ph, i) { %><%= i ? ' / ' : '' %><a href="tel:<%= ph.replace(/[^0-9+]/g, '') %>"><%= ph %></a><% }) %><% } %></p>
-<p class="meta"><%= people.length %> <%= people.length === 1 ? 'person' : 'people' %> on this site</p>
+<%
+  var place = b.address || b.street || '';
+  var phones = b.phone ? b.phone.split(/\s*\/\s*/).filter(Boolean) : [];
+  var mapUrl = b.address ? 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(b.address) : '';
+%>
+<div class="card office-card">
+  <dl class="facts">
+    <% if (b.number) { %><dt>Office</dt><dd><span class="office-no"><%= b.number %></span><%= b.city && b.state ? ' ' + b.city + ', ' + (stateNames[b.state] || b.state) : '' %></dd><% } %>
+    <% if (place) { %><dt>Address</dt><dd><%= place %></dd><% } %>
+    <% if (phones.length) { %><dt>Phone</dt><dd><% phones.forEach(function (ph, i) { %><%= i ? ' / ' : '' %><a href="tel:<%= ph.replace(/[^0-9+]/g, '') %>"><%= ph %></a><% }) %></dd><% } %>
+    <% if (b.market) { %><dt>Market</dt><dd><%= b.market %></dd><% } %>
+    <% if (b.region) { %><dt>Region</dt><dd><%= b.region %></dd><% } %>
+    <dt>People</dt><dd><%= people.length %> on this site</dd>
+  </dl>
+  <% if (phones.length || mapUrl) { %>
+  <div class="filter-actions">
+    <% if (phones.length) { %><a class="btn primary" href="tel:<%= phones[0].replace(/[^0-9+]/g, '') %>">Call</a><% } %>
+    <% if (mapUrl) { %><a class="btn" href="<%= mapUrl %>" rel="noopener noreferrer" target="_blank">Map</a><% } %>
+  </div>
+  <% } %>
+</div>
 <div class="card does">
   <p class="plain"><strong>What this office does</strong></p>
   <% if (services.length) { %><p class="chips big"><% services.forEach(function (s) { %><a class="skill" href="/branches?service=<%= s.id %>"><%= s.name %> <span class="meta"><%= s.code %></span></a><% }) %></p>
@@ -56,7 +74,7 @@
     <% } %>
     <section class="panel" aria-labelledby="bsh-h">
       <div class="panel-head"><h2 id="bsh-h">Shout-outs</h2><a href="/shoutouts">All</a></div>
-      <% if (!shouts.length) { %><p class="empty">None yet for this office.</p><% } %>
+      <% if (!shouts.length) { %><div class="one-line"><p class="empty">None yet for this office.</p><a class="btn small" href="/shoutouts#give">👏 Give one</a></div><% } %>
       <ul class="shouts"><% shouts.forEach(function (s) { %><%- include('partials/shout', { s: s, back: '' }) %><% }) %></ul>
     </section>
     <% if (photos.length) { %>

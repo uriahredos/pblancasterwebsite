@@ -162,13 +162,19 @@ router.get('/', requireLogin, (req, res) => {
   if (newFaces) branch.push({ label: 'New faces', value: newFaces, sub: newFaces === 1 ? 'person to welcome' : 'people to welcome', level: '', url: '/#welcome' });
   branch.push(...waiting);
 
+  // The person's own open things sit under the office numbers. Tasks have their own list, and a zero is left out.
+  const mine = status.filter((t) => t.label !== 'Tasks' && (t.warn || !/^(0|None)$/.test(t.value)))
+    .map((t) => ({ ...t, label: `My ${t.label.charAt(0).toLowerCase()}${t.label.slice(1)}` }));
+  // The newsletter gets its full cover only while the issue is new; after that it is a single line.
+  const issueIsNew = !!issues[0] && (issues[0].issue_month === today.slice(0, 7) || String(issues[0].created_at || '') >= new Date(Date.now() - 21 * 86400000).toISOString().slice(0, 10));
+
   const now = new Date();
   const dateLine = new Intl.DateTimeFormat('en-US', { timeZone: config.timezone, weekday: 'long', month: 'long', day: 'numeric' }).format(now);
   res.render('home', {
     shouts: social.recentShoutouts(me, 3), thisWeek: social.thisWeek(req.user, today), wallPhotos: social.recentPhotos(me, 4),
     dailyCard: require('../daily').card(me), welcomes: require('./community').recentWelcomes(me),
     profileEmpty: !req.user.photo_path && !req.user.about && !req.user.skills,
-    title: 'Home', wide: true, hasPasskey: db.prepare('SELECT 1 FROM passkeys WHERE user_id = ?').get(me) !== undefined, branch, branchTitle: 'Office at a glance', officeId: office ? office.id : null, critical, notices, board, replies, talk, myCerts, issue: issues[0] || null, pastIssues: issues.slice(1), upcoming, status, dateLine,
+    title: 'Home', wide: true, hasPasskey: db.prepare('SELECT 1 FROM passkeys WHERE user_id = ?').get(me) !== undefined, branch, branchTitle: 'Office at a glance', officeId: office ? office.id : null, critical, notices, board, replies, talk, myCerts, issue: issues[0] || null, issueIsNew, upcoming, mine, dateLine,
     categories: require('./announcements').CATEGORIES,
   });
 });
