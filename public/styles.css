@@ -849,3 +849,66 @@ a.skill:hover { outline: 1px solid var(--accent); }
 /* Office at a glance now sits in the narrower column: two tiles across */
 .dash .branch-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .dash .branch-stats .mini-num { font-size: 1.6rem; }
+
+/* ===== A bolder look: strong headings, coloured section heads, cards with depth ===== */
+body { background: linear-gradient(180deg, color-mix(in srgb, var(--pb-blue) 7%, var(--bg)) 0, var(--bg) 420px) no-repeat, var(--bg); }
+h1 { font-size: clamp(1.75rem, 1.3rem + 1.6vw, 2.2rem); font-weight: 800; letter-spacing: -.02em; }
+main > h1, main > .title-row h1, .narrow > h1 { position: relative; padding-bottom: .55rem; margin-bottom: .9rem; }
+main > h1::after, main > .title-row h1::after, .narrow > h1::after { content: ""; position: absolute; left: 0; bottom: 0; width: 3.4rem; height: 5px; border-radius: 3px; background: linear-gradient(90deg, var(--pb-green) 0 45%, var(--pb-blue) 45% 100%); }
+.lock-screen > h1::after { left: 50%; transform: translateX(-50%); }
+h2 { font-size: 1.3rem; font-weight: 800; letter-spacing: -.01em; color: var(--banner-ink); }
+main > h2, .narrow > h2 { padding-left: .7rem; border-left: 5px solid var(--pb-green); line-height: 1.2; }
+h3 { font-weight: 800; }
+.lede { font-size: 1.08rem; }
+.card, .panel { box-shadow: 0 1px 2px rgba(9, 50, 79, .06), 0 6px 18px rgba(9, 50, 79, .07); }
+:where(.card, .panel) { border-color: color-mix(in srgb, var(--line) 70%, transparent); }
+.critical-card { border-color: var(--err); box-shadow: 0 8px 22px color-mix(in srgb, var(--err) 22%, transparent); }
+.critical-card .rec-head strong { font-size: 1.25rem; font-weight: 800; }
+.card { border-radius: 14px; }
+.btn { font-weight: 700; }
+.btn.primary { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, #fff), var(--accent)); box-shadow: 0 2px 0 color-mix(in srgb, var(--accent) 70%, #000), 0 6px 14px color-mix(in srgb, var(--accent) 30%, transparent); }
+.btn.primary:hover { filter: brightness(1.06); }
+.btn.primary:active { transform: translateY(1px); box-shadow: 0 1px 0 color-mix(in srgb, var(--accent) 70%, #000); }
+
+/* Each section of a page: a solid coloured head with heavy white lettering */
+.panel { --pad: 1rem; --tint: var(--pb-navy); padding: var(--pad); overflow: hidden; }
+@media (min-width: 900px) { .panel { --pad: 1.25rem; } }
+.panel-head { margin: calc(var(--pad) * -1) calc(var(--pad) * -1) var(--pad); padding: .7rem var(--pad); align-items: center; background: linear-gradient(100deg, var(--tint), color-mix(in srgb, var(--tint) 72%, #000)); border-bottom: 4px solid color-mix(in srgb, var(--pb-green) 85%, #fff); }
+.panel-head h2 { font-size: 1.12rem; font-weight: 800; letter-spacing: .01em; text-transform: none; color: #fff; padding: 0; border: 0; }
+.panel-head a { color: #fff; font-weight: 700; font-size: .88rem; text-decoration: none; padding: .2rem .65rem; border-radius: 999px; background: rgba(255, 255, 255, .16); }
+.panel-head a:hover { background: rgba(255, 255, 255, .3); }
+.p-board, .p-tasks, .p-daily, .p-up, .p-talk { --tint: var(--pb-blue); }
+.p-shouts, .p-actions, .p-welcome { --tint: #12803b; }
+.p-shouts .panel-head, .p-actions .panel-head, .p-welcome .panel-head { border-bottom-color: var(--pb-blue); }
+
+/* The welcome band at the top of the home page */
+.hero { position: relative; overflow: hidden; align-items: center; margin: 0 0 1.1rem; padding: 1.35rem 1.4rem; border-radius: 18px; color: #fff; background: linear-gradient(115deg, #09324f 0%, #123f73 55%, #235fad 100%); box-shadow: 0 10px 26px rgba(9, 50, 79, .28); }
+.hero::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 8px; background: linear-gradient(180deg, var(--pb-green), #6fe093); }
+.hero h1 { color: #fff; margin: .1rem 0 .15rem; font-size: clamp(2rem, 1.4rem + 2.6vw, 2.9rem); line-height: 1.05; }
+.hero-date { margin: 0; font-size: .8rem; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: #9fd8b3; }
+.hero-sub { margin: 0; color: #c9d9e8; font-weight: 600; }
+.hero-mark { position: absolute; right: -1.5rem; bottom: -1.6rem; width: 15rem; height: auto; opacity: .22; filter: brightness(0) invert(1); pointer-events: none; }
+@media (max-width: 520px) { .hero { padding: 1.1rem 1.1rem 1.1rem 1.3rem; border-radius: 14px; } .hero-mark { width: 10rem; right: -2rem; } }
+
+/* Numbers and tiles carry more weight */
+.mini-num { font-weight: 800; color: var(--accent); }
+.mini-label { color: var(--ink); }
+.branch-stats a, .mini-stats a { border-width: 0; border-left: 5px solid var(--pb-blue); background: color-mix(in srgb, var(--accent-soft) 60%, var(--surface)); border-radius: 10px; }
+.branch-stats a.warn, .mini-stats a.warn { border-left-color: var(--warn); background: var(--warn-bg); }
+.branch-stats a.warn .mini-num, .mini-stats a.warn .mini-num { color: var(--warn); }
+.branch-stats a.bad { border-left-color: var(--err); background: var(--err-bg); }
+.company-stats a { border-left-color: var(--pb-green); padding: .9rem 1rem; }
+.company-stats .mini-num { font-size: 2.2rem; }
+.quick a { font-weight: 800; border-width: 2px; border-color: color-mix(in srgb, var(--green) 35%, var(--line)); transition: transform .12s ease, box-shadow .12s ease; }
+.quick a.quiet { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.quick a:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgba(9, 50, 79, .16); }
+.quick a svg { width: 30px; height: 30px; }
+.svc-grid a, .people a, .offices a { box-shadow: 0 1px 2px rgba(9, 50, 79, .06), 0 4px 12px rgba(9, 50, 79, .06); transition: transform .12s ease, box-shadow .12s ease; }
+.svc-grid a:hover, .people a:hover, .offices a:hover { transform: translateY(-2px); box-shadow: 0 8px 18px rgba(9, 50, 79, .15); }
+.office-no { background: linear-gradient(135deg, var(--pb-navy), var(--pb-blue)); }
+.daily-q { font-size: 1.3rem; font-weight: 800; }
+.todo strong, .board strong, .shout-head strong, .person-text strong { font-weight: 800; }
+.group-h, .bell-title { color: var(--accent); }
+.nav > a, .menu > summary { font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .quick a, .svc-grid a, .people a, .offices a { transition: none; } .quick a:hover, .svc-grid a:hover, .people a:hover, .offices a:hover { transform: none; } }
+@media print { .hero { background: none; color: #000; box-shadow: none; } .hero h1 { color: #000; } .panel-head { background: none; border-bottom: 1px solid #999; } .panel-head h2, .panel-head a { color: #000; } }

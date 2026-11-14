@@ -800,7 +800,7 @@ test('an admin can change a person\'s name, username and email after the account
   assert.equal((await admin.post(page, { username: 'uriah.redos', display_name: 'Uriah Redos', email: '' }, { page })).status, 302);
   assert.equal(db.prepare('SELECT display_name FROM users WHERE id = ?').get(id).display_name, 'Uriah Redos');
   const user = await loggedIn('uriah.redos'); // sign-in is unaffected
-  assert.match((await user.get('/')).text, /Hi, Uriah Redos/);
+  assert.match((await user.get('/')).text, /Hi, Uriah<\/h1>[\s\S]*|Uriah Redos<\/a>[\s\S]*Hi, Uriah<\/h1>/);
 
   assert.equal((await admin.post(page, { username: 'tech1', display_name: 'Uriah Redos' }, { page })).status, 400); // taken
   assert.equal((await admin.post(page, { username: 'uriah.redos', display_name: '' }, { page })).status, 400);
@@ -2631,7 +2631,7 @@ test('home page: announcements, newsletter and shout-outs first; office at a gla
   assert.match(/<section class="panel p-status"[\s\S]*?<\/section>/.exec(home)[0], /<a href="\/tasks" class="warn"><span class="mini-label">Tasks<\/span><span class="mini-num">2<\/span><span class="mini-sub">1 overdue/);
   const css = (await new Client().get('/styles.css')).text;
   assert.match(css, /\.dash \.p-board \{ order: 1; \} \.dash \.p-news \{ order: 2; \} \.dash \.p-shouts \{ order: 3; \} \.dash \.p-glance \{ order: 4; \} \.dash \.p-tasks \{ order: 5; \} \.dash \.p-actions \{ order: 6; \}/);
-  assert.deepEqual(order(home, 'class="dash-hello"', 'class="panel p-board"', 'p-news"', 'class="panel p-shouts"', 'class="panel branch-panel', 'class="panel p-tasks"', 'id="act-h"').map((n, i, l) => n >= 0 && (i === 0 || n > l[i - 1])), [true, true, true, true, true, true, true]);
+  assert.deepEqual(order(home, 'class="dash-hello', 'class="panel p-board"', 'p-news"', 'class="panel p-shouts"', 'class="panel branch-panel', 'class="panel p-tasks"', 'id="act-h"').map((n, i, l) => n >= 0 && (i === 0 || n > l[i - 1])), [true, true, true, true, true, true, true]);
   // Office at a glance for someone who runs nothing: facts about the office, and none of the parts, stock or truck numbers.
   const tGlance = /<section class="panel branch-panel[\s\S]*?<\/section>/.exec(home)[0];
   assert.match(tGlance, /<span class="mini-num">\d+<\/span><span class="mini-label">People<\/span><span class="mini-sub">in the Lancaster office/);
@@ -2897,7 +2897,7 @@ test('Face ID / fingerprint: set up on a device, used to unlock and to sign in, 
   opts = (await sendJson(fresh, '/passkey/auth/options', {}, '/login')).body.options;
   assert.equal((opts.allowCredentials || []).length, 0);                                  // the device says who it is; no usernames are given away
   assert.deepEqual((await sendJson(fresh, '/passkey/auth/verify', { response: phone.get(opts), next: '/tasks' }, '/login')).body, { ok: true, next: '/tasks' });
-  assert.match((await fresh.get('/')).text, /Hi, Fiona Face/);
+  assert.match((await fresh.get('/')).text, /Hi, Fiona<\/h1>/);
   assert.ok(db.prepare('SELECT last_used_at FROM passkeys WHERE user_id = ?').get(userId('face1')).last_used_at);
 
   // A disabled account cannot use it; an unknown device is refused.

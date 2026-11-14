@@ -14,9 +14,13 @@
   };
   var icon = function (name) { return '<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + icons[name] + '</svg>'; };
 %>
-<div class="dash-hello">
-  <h1>Hi, <%= user.display_name %></h1>
-  <p class="dash-date"><%= dateLine %></p>
+<div class="dash-hello hero">
+  <div>
+    <p class="hero-date"><%= dateLine %></p>
+    <h1>Hi, <%= user.display_name.split(' ')[0] %></h1>
+    <p class="hero-sub"><%= branchName ? branchName + ' Office' : 'Pye-Barker' %> · Pye-Barker Fire &amp; Safety</p>
+  </div>
+  <img class="hero-mark" src="/logo-flame.png?v=<%= assetV %>" alt="" width="422" height="208" aria-hidden="true">
 </div>
 
 <% if (critical.length) { %>
