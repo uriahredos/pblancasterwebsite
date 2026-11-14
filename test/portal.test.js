@@ -3497,7 +3497,9 @@ test('company: the office list loads once, offices say what they do, and anyone 
   assert.equal(new Set(list.map((o) => o.name.toLowerCase())).size, 233);    // every office gets a name of its own
   const one = (n) => list.find((o) => o.number === n);
   assert.deepEqual([one('2054').name, one('2054').city, one('2054').state, one('2054').street, one('2054').region], ['Ephrata', 'Ephrata', 'PA', 'Oregon Pike', 'Northeast']);
-  assert.deepEqual([one('2104').name, one('2104').services], ['Boise (Alarm)', ['FA']]);                   // what the label says it does is ticked for it
+  assert.deepEqual([one('2104').name, one('2104').services], ['Boise (Alarm)', ['FA', 'SEC']]);          // what the company lists it as doing
+  assert.deepEqual([one('2054').marketing, one('2054').market, one('2054').address, one('2054').phone], ['Lancaster', 'NJ/PA/DE', '4139 Oregon Pike, Ste 301, Ephrata, PA 17522', '717-399-3900']);
+  assert.ok(!JSON.stringify(list).match(/Sedona|ERP|Rebrand|Reserved|TM1/));                               // accounting and acquisition notes are not carried over
   assert.deepEqual([one('2014').name, one('2014').city], ['Lafayette', 'Broussard']);                    // named for one town, sitting in the next
   assert.deepEqual([one('1293').state, one('1234').city, one('1290').region], ['SD', 'Cranford', 'Midwest']);   // slips in the list do not carry over
   assert.deepEqual([one('2088').name, one('1220').name, one('1295').name], ['Wilmington, DE', 'Wilmington, NC', 'Coral Springs (NW 120th Ave, 1295)']);
@@ -3509,6 +3511,7 @@ test('company: the office list loads once, offices say what they do, and anyone 
   const before = db.prepare('SELECT COUNT(*) n FROM branches').get().n;
   const corp = (await owner.get('/admin/branches')).text;
   assert.match(corp, /233 of the company's 233 offices are not on the site yet/); assert.match(corp, /"Lancaster" is already here\. Which office on the company list is it\?/);
+  assert.match(corp, /<option value="2054" selected>2054 · Ephrata, PA · Oregon Pike \(known as Lancaster\)/);   // offered as the office that goes by its name
   // Lancaster is the office the list calls Ephrata: it is matched, not added again, and keeps its name and people.
   await owner.post('/admin/company/offices', { is_1: '2054' }, { page: '/admin/branches' });
   assert.equal(db.prepare('SELECT COUNT(*) n FROM branches').get().n, before + 232);
@@ -3518,7 +3521,9 @@ test('company: the office list loads once, offices say what they do, and anyone 
   assert.equal(db.prepare('SELECT COUNT(*) n FROM branches').get().n, before + 232);
   assert.match((await owner.get('/admin/branches')).text, /All 233 offices on the company list are on the site/);
   const boise = db.prepare("SELECT id FROM branches WHERE number = '2104'").get().id;
-  assert.deepEqual(db.prepare('SELECT s.code FROM branch_services bs JOIN services s ON s.id = bs.service_id WHERE bs.branch_id = ?').all(boise), [{ code: 'FA' }]);
+  assert.deepEqual(db.prepare('SELECT s.code FROM branch_services bs JOIN services s ON s.id = bs.service_id WHERE bs.branch_id = ? ORDER BY s.sort').all(boise), [{ code: 'FA' }, { code: 'SEC' }]);
+  assert.deepEqual(db.prepare('SELECT address, phone, market, marketing_name FROM branches WHERE id = 1').get(), { address: '4139 Oregon Pike, Ste 301, Ephrata, PA 17522', phone: '717-399-3900', market: 'NJ/PA/DE', marketing_name: 'Lancaster' });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM branch_services WHERE branch_id = 1').get().n, 6);
   assert.ok(db.prepare('SELECT COUNT(*) n FROM inspection_items WHERE branch_id = ?').get(boise).n > 0);   // each new office has its own truck checklist
   // The pages that list offices stay usable: the chooser and the Corporate page show offices in use, not all 233.
   assert.ok(((await owner.get('/')).text.match(/<option value="\d+"/g) || []).length < 40);
@@ -3527,30 +3532,33 @@ test('company: the office list loads once, offices say what they do, and anyone 
 
   // An office's own admin ticks what it does; nobody else in the office can.
   const svc = (code) => db.prepare('SELECT id FROM services WHERE code = ?').get(code).id;
-  assert.equal((await t1.post('/branches/1', [['services_form', '1'], ['services', String(svc('KH'))]], { multipart: true, page: '/branches/1' })).status, 403);
-  await owner.post('/branches/1', [['services_form', '1'], ['services', String(svc('FA'))], ['services', String(svc('FE'))], ['services', '999999'], ['address', '1 Oregon Pike']], { multipart: true, page: '/branches/1?edit=1' });
+  assert.equal((await t1.post('/branches/1', [['services_form', '1'], ['services', String(svc('MN'))]], { multipart: true, page: '/branches/1' })).status, 403);
+  await owner.post('/branches/1', [['services_form', '1'], ['services', String(svc('FA'))], ['services', String(svc('FE'))], ['services', '999999'], ['address', '1 Oregon Pike'], ['phone', '717-399-3900']], { multipart: true, page: '/branches/1?edit=1' });
   const office = (await t1.get('/branches/1')).text.replace(/\s+/g, ' ');
-  assert.match(office, /What this office does<\/strong>[\s\S]*Fire Alarm <span class="meta">FA<\/span>[\s\S]*Fire Extinguishers/); assert.match(office, /<span class="office-no">2054<\/span>/); assert.match(office, /Ephrata, Pennsylvania · Northeast region/);
-  await owner.post('/branches/1', [['address', '1 Oregon Pike']], { multipart: true, page: '/branches/1?edit=1' });   // saving without the service boxes leaves them alone
+  assert.match(office, /What this office does<\/strong>[\s\S]*Fire Alarms &amp; Detection <span class="meta">FA<\/span>[\s\S]*Fire Extinguishers/); assert.match(office, /<span class="office-no">2054<\/span>/); assert.match(office, /Ephrata, Pennsylvania · NJ\/PA\/DE market · Northeast region/);
+  assert.match(office, /href="https:\/\/www\.google\.com\/maps\/search\/\?api=1&amp;query=1%20Oregon%20Pike"[^>]*>1 Oregon Pike<\/a> · <a href="tel:7173993900">717-399-3900<\/a>/);
+  await owner.post('/branches/1', [['address', '1 Oregon Pike'], ['phone', '717-399-3900']], { multipart: true, page: '/branches/1?edit=1' });   // saving without the service boxes leaves them alone
   assert.equal(db.prepare('SELECT COUNT(*) n FROM branch_services WHERE branch_id = 1').get().n, 2);
 
   // The finder: by service, state, region, and by town or number. Anyone signed in can use it.
-  const names = async (qs) => [...(await t1.get('/branches' + qs)).text.matchAll(/<span class="person-text">\s*<strong>([^<]+)<\/strong>/g)].map((m) => m[1]);
+  const names = async (qs) => [...(await t1.get('/branches' + qs)).text.matchAll(/<span class="person-text">\s*<strong>([^<]+?)(?: <span class="aka">[^<]*<\/span>)?<\/strong>/g)].map((m) => m[1]);
   assert.ok((await names('')).length >= 233);
-  assert.deepEqual(await names(`?service=${svc('FE')}`), ['Lancaster']);
+  assert.ok((await names(`?service=${svc('FE')}`)).length > 100); assert.deepEqual(await names(`?service=${svc('PVM')}`), ['Rifle', 'Choctaw']);
   assert.ok((await names(`?service=${svc('FA')}`)).includes('Boise (Alarm)'));
   assert.deepEqual(await names('?state=PA'), ['Allentown', 'King of Prussia', 'Lancaster', 'North Wales (Industrial Dr)', 'North Wales (PRPV)']);
-  assert.deepEqual(await names(`?state=PA&service=${svc('FA')}`), ['Lancaster']);
+  assert.deepEqual(await names(`?state=PA&service=${svc('FS')}`), ['North Wales (Industrial Dr)']);            // Lancaster's own admin unticked sprinklers above
+  assert.deepEqual(await names('?q=naples'), ['Bonita Springs']); assert.ok((await names('?q=genetec')).includes('West Monroe'));   // by the name an office goes by, or a product line
+  assert.match((await t1.get('/branches?q=naples')).text, /Bonita Springs <span class="aka">“Naples”<\/span>/);
   assert.deepEqual(await names('?q=2054'), ['Lancaster']); assert.deepEqual(await names('?q=broussard'), ['Lafayette']);
   assert.ok((await names('?region=Southwest')).length >= 20); assert.deepEqual(await names("?q=%27%20OR%201%3D1"), []);
-  assert.match((await t1.get(`/branches?service=${svc('KH')}`)).text, /No office has listed Kitchen Hood Suppression yet/);
   assert.equal((await new Client().get('/branches')).status, 302);
 
   // Corporate keeps the list of services, and can load office details from a spreadsheet.
   assert.equal((await t1.post('/admin/company/services', { code: 'X', name: 'Nope' }, { page: '/' })).status, 403);
   await owner.post('/admin/company/services', { code: 'gen', name: 'Generators' }, { page: '/admin/branches' });
   assert.ok(svc('GEN'));
-  const csv = 'Branch,Services,Phone,About\r\n2102,"FE, KH; Generators",(610) 555-0100,Serves the Lehigh Valley\r\n2085,Unicorns,,\r\n9999,FA,,\r\n';
+  assert.match((await t1.get(`/branches?service=${svc('GEN')}`)).text, /No office has listed Generators yet/);
+  const csv = 'Branch,Services,Phone,About\r\n2102,"FE; Generators",(610) 555-0100,Serves the Lehigh Valley\r\n2085,Unicorns,,\r\n9999,FA,,\r\n';
   await owner.post('/admin/company/details', [['file', new File([csv], 'offices.csv', { type: 'text/csv' })]], { multipart: true, page: '/admin/branches' });
   const note = (await owner.get('/admin/branches')).text;
   assert.match(note, /2 offices updated\. Not recognised as services[^<]*Unicorns[^<]*No office with number: 9999/);
@@ -3578,7 +3586,7 @@ test('company: the office list loads once, offices say what they do, and anyone 
   const main = (await t1.get('/company')).text.replace(/\s+/g, ' ');
   assert.match(main, /<span class="mini-num">\d{3}<\/span><span class="mini-label">Offices<\/span><span class="mini-sub">in 46 states/);
   assert.match(main, /My office<\/span><span class="mini-sub">Lancaster · Northeast/);
-  assert.match(main, new RegExp(`href="/branches\\?service=${svc('FE')}"><span class="office-no">FE</span><span class="svc-name">Fire Extinguishers</span><span class="meta">2 offices`));
+  assert.match(main, new RegExp(`href="/branches\\?service=${svc('FE')}"><span class="office-no">FE</span><span class="svc-name">Fire Extinguishers</span><span class="meta">\\d+ offices`));
   assert.match(main, /Northeast<\/strong><time>\d+ offices<\/time>[\s\S]*?Regional Vice President<\/span><br><strong>Dana Good<\/strong>[\s\S]*?1 regional director[\s\S]*?Dave Thomas<\/strong> <span class="meta">NJ \| PA \| DE/);
   assert.match(main, /href="\/contacts#health-safety-fleet"/);
 
@@ -3586,5 +3594,6 @@ test('company: the office list loads once, offices say what they do, and anyone 
   db.prepare('DELETE FROM company_contacts').run(); db.prepare('DELETE FROM branch_services').run();
   db.prepare("DELETE FROM inspection_items WHERE branch_id IN (SELECT id FROM branches WHERE id <> 1 AND number IS NOT NULL)").run();
   db.prepare('DELETE FROM branches WHERE id <> 1 AND number IS NOT NULL').run();
-  db.prepare('UPDATE branches SET number = NULL, city = NULL, state = NULL, street = NULL, region = NULL, address = NULL WHERE id = 1').run();
+  db.prepare('UPDATE branches SET number = NULL, city = NULL, state = NULL, street = NULL, region = NULL, address = NULL, phone = NULL, market = NULL, marketing_name = NULL, product_lines = NULL WHERE id = 1').run();
+  db.prepare("DELETE FROM services WHERE code = 'GEN'").run();
 });

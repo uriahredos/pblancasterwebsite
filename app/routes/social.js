@@ -287,9 +287,9 @@ router.post('/branches/:id', requireLogin, uploads.photos('photo', 1), verifyCsr
   const drop = () => { if (file) uploads.remove(file.filename); };
   if (!b) { drop(); return notFound(res); }
   if (!mayEditBranch(req.user, b)) { drop(); return forbidden(res); }
-  const values = { address: clean(req.body.address, 200), phone: clean(req.body.phone, 30), about: clean(req.body.about, 1500) };
+  const values = { address: clean(req.body.address, 200), phone: clean(req.body.phone, 40), about: clean(req.body.about, 1500) };
   const errors = [];
-  if (values.phone && !/^[0-9 ()+.x-]{7,30}$/.test(values.phone)) errors.push('The phone number does not look right.');
+  if (values.phone && !/^[0-9 ()+.x\/-]{7,40}$/.test(values.phone)) errors.push('The phone number does not look right.');
   if (req.photoError) errors.push(req.photoError);
   else if (file && !uploads.looksLikeImage(file.path)) errors.push('The photo must be a JPEG, PNG, WebP or GIF image.');
   if (errors.length) { drop(); return branchPage(req, res, { ...b, ...values }, { errors, editing: true }); }

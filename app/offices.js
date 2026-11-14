@@ -5,8 +5,13 @@ const fs = require('fs');
 const path = require('path');
 
 const REGION = { 'Mid-West': 'Midwest' };
-// What the end of an office's label tells us about what it does. Only the unambiguous ones.
-const HINTS = [[/security|\bsec\b/i, 'SEC'], [/sprinkler/i, 'SP'], [/fire alarm|\balarm\b/i, 'FA']];
+// What each office does, where it is and how to reach it, from the company's branch finder (office_details.json,
+// keyed by office number). Only what every employee may see: nothing about accounting systems or acquisitions.
+const DETAILS = JSON.parse(fs.readFileSync(path.join(__dirname, 'office_details.json'), 'utf8'));
+// The company's service names and the short codes used for them on this site.
+const SERVICES = [['FA', 'Fire Alarms & Detection'], ['FS', 'Fire Sprinklers'], ['FE', 'Fire Extinguishers'], ['SUP', 'Fire Suppression Systems'],
+  ['SEC', 'Security'], ['PVM', 'Proactive Video Monitoring'], ['LSE', 'Life Safety Equipment'], ['MN', 'Mass Notification']];
+const CODE = new Map(SERVICES.map(([code, name]) => [name, code]));
 
 function parseLine(line) {
   const m = /^(\d{4})(.+?) · (.+)$/.exec(line.trim());
@@ -28,8 +33,10 @@ function parseLine(line) {
   const parts = label.slice(lead[0].length).split(' - ').map((s) => s.trim()).filter(Boolean);
   const street = parts[0] || '';
   const division = parts.length > 1 ? parts[parts.length - 1] : '';
+  const d = DETAILS[number] || {};
   return { number, labelCity, labelState, street, division, city, state, region: REGION[region] || region,
-    services: HINTS.filter(([re]) => re.test(division)).map(([, code]) => code) };
+    services: (d.services || []).map((name) => CODE.get(name)).filter(Boolean),
+    marketing: d.marketing || '', market: d.market || '', products: (d.products || []).join(', '), address: d.address || '', phone: d.phone || '' };
 }
 
 /** Every office on the list, each with a short name that is unique. */
@@ -52,4 +59,4 @@ function all() {
   return rows;
 }
 
-module.exports = { all, parseLine };
+module.exports = { all, parseLine, SERVICES };

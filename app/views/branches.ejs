@@ -3,7 +3,7 @@
 <h1>Offices</h1>
 <p class="lede">Every office, where it is and what it does. Open one to see its people and how to reach it.</p>
 <form method="get" action="/branches" class="filters">
-  <label class="grow">Search <input name="q" value="<%= f.q %>" maxlength="60" placeholder="Town, street or office number" autocomplete="off"></label>
+  <label class="grow">Search <input name="q" value="<%= f.q %>" maxlength="60" placeholder="Town, office number, market or product line" autocomplete="off"></label>
   <label>Does <select name="service"><option value="">Any service</option><% services.forEach(function (s) { %><option value="<%= s.id %>" <%= f.service && f.service.id === s.id ? 'selected' : '' %>><%= s.name %> (<%= s.code %>)</option><% }) %></select></label>
   <% if (states.length) { %><label>State <select name="state"><option value="">Any state</option><% states.forEach(function (s) { %><option value="<%= s %>" <%= f.state === s ? 'selected' : '' %>><%= stateNames[s] || s %></option><% }) %></select></label><% } %>
   <% if (regions.length) { %><label>Region <select name="region"><option value="">Any region</option><% regions.forEach(function (r) { %><option value="<%= r %>" <%= f.region === r ? 'selected' : '' %>><%= r %></option><% }) %></select></label><% } %>
@@ -18,8 +18,8 @@
   <li><a href="/branches/<%= b.id %>">
     <span class="office-no"><%= b.number || '·' %></span>
     <span class="person-text">
-      <strong><%= b.name %></strong>
-      <span class="meta"><%= [b.city && b.state ? b.city + ', ' + b.state : '', b.street, b.region].filter(Boolean).join(' · ') %><%= b.people ? ' · ' + b.people + (b.people === 1 ? ' person' : ' people') + ' here' : '' %></span>
+      <strong><%= b.name %><% if (b.marketing_name && b.marketing_name.toLowerCase() !== b.name.toLowerCase()) { %> <span class="aka">“<%= b.marketing_name %>”</span><% } %></strong>
+      <span class="meta"><%= [b.city && b.state ? b.city + ', ' + b.state : '', b.street, b.market || b.region].filter(Boolean).join(' · ') %><%= b.people ? ' · ' + b.people + (b.people === 1 ? ' person' : ' people') + ' here' : '' %></span>
       <% if (b.services.length) { %><span class="chips"><% b.services.forEach(function (s) { %><span class="skill" title="<%= s.name %>"><%= s.code %></span><% }) %></span><% } %>
     </span>
   </a></li>

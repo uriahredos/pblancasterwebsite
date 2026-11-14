@@ -841,3 +841,7 @@ a.skill:hover { outline: 1px solid var(--accent); }
 .office-links a:hover { background: var(--accent-soft); }
 .svc-row { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; width: 100%; }
 .svc-row .grow { flex: 1 1 12rem; margin: 0; }
+
+.aka { font-weight: 400; color: var(--muted); }
+.office-reach { margin: .2rem 0; }
+.office-reach a { overflow-wrap: anywhere; }

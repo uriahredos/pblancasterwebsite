@@ -90,12 +90,13 @@
 <h2 id="company">Company information</h2>
 <div class="card stack">
   <p class="plain"><strong>Office list.</strong> <% if (list.missing.length) { %><%= list.missing.length %> of the company's <%= listOptions.length %> offices are not on the site yet.<% } else { %>All <%= listOptions.length %> offices on the company list are on the site.<% } %></p>
+  <% if (!list.missing.length) { %><form method="post" action="/admin/company/offices"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn small" type="submit">Fill in any missing office details from the list</button></form><% } %>
   <% if (list.missing.length) { %>
   <form method="post" action="/admin/company/offices" class="stack" data-confirm="Add <%= list.missing.length %> offices to the site?">
     <input type="hidden" name="_csrf" value="<%= csrf %>">
     <% list.unnumbered.forEach(function (u) { %>
     <label>"<%= u.name %>" is already here. Which office on the company list is it? <span class="hint">So it is not added a second time. It keeps its name and everything in it.</span>
-      <select name="is_<%= u.id %>"><option value="">It is not on the list</option><% list.missing.forEach(function (o) { %><option value="<%= o.number %>"><%= o.number %> · <%= o.labelCity %>, <%= o.labelState %> · <%= o.street %><%= o.division ? ' · ' + o.division : '' %></option><% }) %></select></label>
+      <select name="is_<%= u.id %>"><option value="">It is not on the list</option><% list.missing.forEach(function (o) { %><option value="<%= o.number %>" <%= u.guess === o.number ? 'selected' : '' %>><%= o.number %> · <%= o.labelCity %>, <%= o.labelState %> · <%= o.street %><%= o.division ? ' · ' + o.division : '' %><%= o.marketing ? ' (known as ' + o.marketing + ')' : '' %></option><% }) %></select></label>
     <% }) %>
     <button class="btn primary" type="submit">Add the <%= list.missing.length %> offices</button>
   </form>

@@ -23,8 +23,8 @@ function findOffices({ q = '', region = '', state = '', service = null } = {}) {
   const where = []; const params = [];
   if (q) {
     const like = '%' + q.replace(/[\\%_]/g, '\\$&') + '%';
-    where.push("(b.name LIKE ? ESCAPE '\\' OR b.city LIKE ? ESCAPE '\\' OR b.number LIKE ? ESCAPE '\\' OR b.street LIKE ? ESCAPE '\\' OR b.about LIKE ? ESCAPE '\\')");
-    params.push(like, like, like, like, like);
+    where.push("(b.name LIKE ? ESCAPE '\\' OR b.city LIKE ? ESCAPE '\\' OR b.number LIKE ? ESCAPE '\\' OR b.street LIKE ? ESCAPE '\\' OR b.about LIKE ? ESCAPE '\\' OR b.marketing_name LIKE ? ESCAPE '\\' OR b.market LIKE ? ESCAPE '\\' OR b.product_lines LIKE ? ESCAPE '\\' OR b.address LIKE ? ESCAPE '\\')");
+    params.push(like, like, like, like, like, like, like, like, like);
   }
   if (region) { where.push('b.region = ?'); params.push(region); }
   if (state) { where.push('b.state = ?'); params.push(state); }
@@ -112,9 +112,12 @@ router.post('/admin/company/contacts', everyOffice, (req, res, next) => upload(r
 /** Offices on the list that are not on the site yet, and offices here that have no number (so might be one of them). */
 function officeListStatus() {
   const have = new Set(db.prepare('SELECT number FROM branches WHERE number IS NOT NULL').all().map((r) => r.number));
+  const missing = offices.all().filter((o) => !have.has(o.number));
   return {
-    missing: offices.all().filter((o) => !have.has(o.number)),
-    unnumbered: db.prepare('SELECT id, name FROM branches WHERE number IS NULL ORDER BY name COLLATE NOCASE').all(),
+    missing,
+    // An office here whose name is what a listed office goes by ("Lancaster" for the Ephrata office) is offered as that one.
+    unnumbered: db.prepare('SELECT id, name FROM branches WHERE number IS NULL ORDER BY name COLLATE NOCASE').all()
+      .map((u) => ({ ...u, guess: (missing.find((o) => [o.marketing, o.name, o.labelCity].some((n) => n && n.toLowerCase() === u.name.toLowerCase())) || {}).number || '' })),
   };
 }
 
@@ -122,11 +125,18 @@ router.post('/admin/company/offices', everyOffice, (req, res) => {
   const list = offices.all();
   const byNumber = new Map(list.map((o) => [o.number, o]));
   const codes = new Map(db.prepare('SELECT id, code FROM services').all().map((s) => [s.code.toUpperCase(), s.id]));
-  const result = { added: 0, linked: 0 };
+  const result = { added: 0, linked: 0, filled: 0 };
   db.transaction(() => {
     const fill = db.prepare('UPDATE branches SET number = ?, city = ?, state = ?, street = ?, region = ? WHERE id = ?');
     const tick = db.prepare('INSERT OR IGNORE INTO branch_services (branch_id, service_id) VALUES (?, ?)');
-    const hint = (id, o) => o.services.forEach((code) => { if (codes.has(code)) tick.run(id, codes.get(code)); });
+    // What the company list says about an office goes in wherever the site has nothing yet; it never overwrites what an office's admin has put in.
+    const details = db.prepare(`UPDATE branches SET address = COALESCE(address, NULLIF(?, '')), phone = COALESCE(phone, NULLIF(?, '')), marketing_name = COALESCE(marketing_name, NULLIF(?, '')),
+                                 market = COALESCE(market, NULLIF(?, '')), product_lines = COALESCE(product_lines, NULLIF(?, '')) WHERE id = ?`);
+    const hint = (id, o) => {
+      const changed = details.run(o.address, o.phone, o.marketing, o.market, o.products, id).changes;
+      if (!db.prepare('SELECT 1 FROM branch_services WHERE branch_id = ?').get(id)) o.services.forEach((code) => { if (codes.has(code)) tick.run(id, codes.get(code)); });
+      return changed;
+    };
     // First, offices that are already here under another name ("Lancaster" being the Ephrata office, say).
     for (const b of db.prepare('SELECT id FROM branches WHERE number IS NULL').all()) {
       const o = byNumber.get(String(req.body[`is_${b.id}`] || ''));
@@ -134,7 +144,8 @@ router.post('/admin/company/offices', everyOffice, (req, res) => {
     }
     const add = db.prepare('INSERT INTO branches (name, created_at, number, city, state, street, region) VALUES (?, ?, ?, ?, ?, ?, ?)');
     for (const o of list) {
-      if (db.prepare('SELECT 1 FROM branches WHERE number = ?').get(o.number)) continue;
+      const here = db.prepare('SELECT id, address, phone, market FROM branches WHERE number = ?').get(o.number);
+      if (here) { if (!here.address || !here.phone || !here.market) result.filled++; hint(here.id, o); continue; }
       let name = o.name;
       if (db.prepare('SELECT 1 FROM branches WHERE name = ?').get(name)) name = `${o.name} (${o.number})`;
       const id = add.run(name, new Date().toISOString(), o.number, o.city, o.state, o.street, o.region).lastInsertRowid;
@@ -143,7 +154,7 @@ router.post('/admin/company/offices', everyOffice, (req, res) => {
     }
   })();
   activity.log(req.user, 'Office list loaded', `${result.added} offices added, ${result.linked} matched to offices already here`);
-  flash(req, 'ok', `${result.added} offices added${result.linked ? `, ${result.linked} matched to an office already here` : ''}. Each office's own admin can now tick what it does.`);
+  flash(req, 'ok', `${result.added} offices added${result.linked ? `, ${result.linked} matched to an office already here` : ''}, each with its services, address and phone from the company list. An office's own admin can correct them on the office's page.`);
   res.redirect('/admin/branches#company');
 });
 

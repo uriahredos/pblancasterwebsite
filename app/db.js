@@ -547,11 +547,14 @@ addColumn('branches', 'city', 'TEXT');
 addColumn('branches', 'state', 'TEXT');
 addColumn('branches', 'street', 'TEXT');
 addColumn('branches', 'region', 'TEXT');
+addColumn('branches', 'marketing_name', 'TEXT');   // the name the office goes by, when it differs from its town
+addColumn('branches', 'market', 'TEXT');
+addColumn('branches', 'product_lines', 'TEXT');
 if (!db.prepare('SELECT 1 FROM services').get()) {
   const add = db.prepare('INSERT INTO services (code, name, sort) VALUES (?, ?, ?)');
-  [['FA', 'Fire Alarm'], ['FE', 'Fire Extinguishers'], ['KH', 'Kitchen Hood Suppression'], ['SI', 'Sprinkler Inspection'], ['SP', 'Sprinkler Install and Service'],
-    ['BF', 'Backflow Testing'], ['SH', 'Special Hazard Suppression'], ['EL', 'Emergency and Exit Lighting'], ['SEC', 'Security and Intrusion'], ['AC', 'Access Control'],
-    ['CCTV', 'Video Surveillance'], ['MON', 'Alarm Monitoring']].forEach(([code, name], i) => add.run(code, name, i + 1));
+  // The company's own list of services, as its branch finder names them.
+  [['FA', 'Fire Alarms & Detection'], ['FS', 'Fire Sprinklers'], ['FE', 'Fire Extinguishers'], ['SUP', 'Fire Suppression Systems'],
+    ['SEC', 'Security'], ['PVM', 'Proactive Video Monitoring'], ['LSE', 'Life Safety Equipment'], ['MN', 'Mass Notification']].forEach(([code, name], i) => add.run(code, name, i + 1));
 }
 
 // ---- Face ID / fingerprint sign-in (passkeys) ----
