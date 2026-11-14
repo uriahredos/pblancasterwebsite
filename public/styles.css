@@ -964,3 +964,10 @@ td.row-more { width: 1%; white-space: nowrap; text-align: right; vertical-align:
 @media print { th, td { padding: 3pt 5pt; } th { background: none; } }
 .table-wrap:has(.row-menu) { overflow: visible; }
 .card.does { margin-bottom: 1rem; }
+
+/* Your name in the banner opens your account and settings */
+.acct.who-name { max-width: none; overflow: visible; }
+.acct > summary { width: auto; height: 40px; gap: .35rem; padding: 0 .7rem 0 .9rem; font-size: .95rem; font-weight: 700; color: var(--banner-ink); }
+.acct-name { max-width: 14ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acct .row-menu-list { z-index: 40; top: calc(100% + 10px); min-width: 14rem; }
+.acct .row-menu-list hr { border: 0; border-top: 1px solid var(--line); margin: .3rem .2rem; }

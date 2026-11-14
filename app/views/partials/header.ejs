@@ -41,8 +41,23 @@
       </form>
       <% } %>
         <% if (user && !isLocked) { %>
-        <a class="who-name" href="/people/<%= user.id %>" title="My profile"><%= user.display_name %></a>
+        <% if (user.must_change_password) { %>
+        <span class="who-name"><%= user.display_name %></span>
         <form method="post" action="/logout" class="who-out"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Sign out</button></form>
+        <% } else { %>
+        <details class="row-menu acct who-name">
+          <summary title="Your account and settings"><span class="acct-name"><%= user.display_name %></span><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="row-menu-list">
+            <a href="/profile">My profile</a>
+            <a href="/my">My activity</a>
+            <p class="bell-title">Settings</p>
+            <a href="/settings/notifications">Notifications</a>
+            <a href="/account/password">Password and Face ID</a>
+            <hr>
+            <form method="post" action="/logout"><input type="hidden" name="_csrf" value="<%= csrf %>"><button type="submit">Sign out</button></form>
+          </div>
+        </details>
+        <% } %>
         <% } %>
         <% if (user && !user.must_change_password && !isLocked) { var alertTotal = alerts.reduce(function (n, a) { return n + a[0]; }, 0) + badges.tasks; %>
         <details class="bell" id="bell">
