@@ -47,17 +47,6 @@
 </div>
 <% } %>
 
-<% if (branch.length) { %>
-<section class="panel branch-panel" aria-labelledby="branch-h">
-  <div class="panel-head"><h2 id="branch-h"><%= branchTitle %></h2></div>
-  <div class="branch-stats">
-    <% branch.forEach(function (s) { %>
-    <a href="<%= s.url %>" class="<%= s.level %>"><span class="mini-num"><%= s.value %></span><span class="mini-label"><%= s.label %></span><span class="mini-sub"><%= s.sub %></span></a>
-    <% }) %>
-  </div>
-</section>
-<% } %>
-
 <% if (myCerts.length || replies.length) { %>
 <section class="attention" aria-label="Needs your attention">
 <% if (replies.length) { %>
@@ -78,51 +67,6 @@
 
 <div class="dash">
   <div class="dash-main">
-    <% if (myTasks.length) { %>
-    <section class="panel p-tasks" aria-labelledby="tasks-h">
-      <div class="panel-head"><h2 id="tasks-h">Your tasks</h2><a href="/tasks">All tasks</a></div>
-      <ul class="todo">
-        <% myTasks.forEach(function (t) { %>
-        <li class="<%= t.overdue ? 'overdue' : t.days !== null && t.days <= 1 ? 'soon' : '' %>"><a href="/tasks#t<%= t.id %>"><strong><%= t.title %></strong><span class="todo-when"><%= t.when %> · from <%= t.by_name %></span></a></li>
-        <% }) %>
-      </ul>
-      <% if (badges.tasks > myTasks.length) { %><p class="panel-foot"><a href="/tasks">and <%= badges.tasks - myTasks.length %> more</a></p><% } %>
-    </section>
-    <% } %>
-    <% if (welcomes.length) { %>
-    <section class="panel p-welcome" aria-labelledby="welcome-h" id="welcome">
-      <div class="panel-head"><h2 id="welcome-h">Welcome aboard</h2><a href="/people">Everyone</a></div>
-      <ul class="hires">
-        <% welcomes.forEach(function (w) { %>
-        <li>
-          <a class="hire" href="/people/<%= w.user_id %>">
-            <%- include('partials/avatar', { who: { id: w.user_id, display_name: w.display_name, photo_path: w.photo_path }, size: 'lg' }) %>
-            <span class="person-text"><strong><%= w.display_name %></strong><span class="meta"><%= [w.job_title, w.branch ? w.branch + ' office' : ''].filter(Boolean).join(' · ') || 'New to the team' %></span></span>
-          </a>
-          <% if (w.intro) { %><p class="hire-intro"><%= w.intro %></p><% } %>
-          <div class="hire-foot">
-            <span class="meta"><%= w.waves ? w.waves + (w.waves === 1 ? ' person has' : ' people have') + ' said welcome' : 'Be the first to say welcome' %></span>
-            <% if (w.user_id === user.id) { %><a class="btn small" href="/people/<%= w.user_id %>#welcome">See your messages</a>
-            <% } else if (w.waved) { %><a class="btn small" href="/people/<%= w.user_id %>#welcome">You said welcome ✓</a>
-            <% } else { %><form method="post" action="/welcome/<%= w.id %>/wave"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="back" value="home"><button class="btn primary small" type="submit">👋 Say welcome</button></form><% } %>
-          </div>
-        </li>
-        <% }) %>
-      </ul>
-    </section>
-    <% } %>
-    <section class="panel p-shouts" aria-labelledby="shouts-h" id="shoutouts">
-      <div class="panel-head"><h2 id="shouts-h">Shout-outs</h2><a href="/shoutouts">All shout-outs</a></div>
-      <% if (!shouts.length) { %><p class="empty">Nobody has been thanked yet. Who did a great job this week?</p><% } %>
-      <ul class="shouts"><% shouts.forEach(function (s) { %><%- include('partials/shout', { s: s, back: 'home' }) %><% }) %></ul>
-      <p class="panel-foot"><a class="btn small" href="/shoutouts#give">👏 Give a shout-out</a></p>
-    </section>
-    <% if (wallPhotos.length) { %>
-    <section class="panel p-photos" aria-labelledby="photos-h">
-      <div class="panel-head"><h2 id="photos-h">Latest photos</h2><a href="/photos">All photos</a></div>
-      <div class="thumbs photo-grid"><% wallPhotos.forEach(function (p) { %><a href="/wall/photo/<%= p.id %>"><img src="/wall/photo/<%= p.id %>" alt="<%= p.caption || 'Photo from ' + p.display_name %>" loading="lazy"></a><% }) %></div>
-    </section>
-    <% } %>
     <section class="panel p-board" aria-labelledby="board-h">
       <div class="panel-head"><h2 id="board-h">Announcements</h2><a href="/notices">All announcements</a></div>
       <% notices.forEach(function (n) { %>
@@ -178,6 +122,40 @@
       <p class="empty">No newsletter has been posted yet.<% if (can('newsletters.manage')) { %> <a href="/admin/newsletters">Upload the first one</a>.<% } %></p>
       <% } %>
     </section>
+    <section class="panel p-shouts" aria-labelledby="shouts-h" id="shoutouts">
+      <div class="panel-head"><h2 id="shouts-h">Shout-outs</h2><a href="/shoutouts">All shout-outs</a></div>
+      <% if (!shouts.length) { %><p class="empty">Nobody has been thanked yet. Who did a great job this week?</p><% } %>
+      <ul class="shouts"><% shouts.forEach(function (s) { %><%- include('partials/shout', { s: s, back: 'home' }) %><% }) %></ul>
+      <p class="panel-foot"><a class="btn small" href="/shoutouts#give">👏 Give a shout-out</a></p>
+    </section>
+    <% if (welcomes.length) { %>
+    <section class="panel p-welcome" aria-labelledby="welcome-h" id="welcome">
+      <div class="panel-head"><h2 id="welcome-h">Welcome aboard</h2><a href="/people">Everyone</a></div>
+      <ul class="hires">
+        <% welcomes.forEach(function (w) { %>
+        <li>
+          <a class="hire" href="/people/<%= w.user_id %>">
+            <%- include('partials/avatar', { who: { id: w.user_id, display_name: w.display_name, photo_path: w.photo_path }, size: 'lg' }) %>
+            <span class="person-text"><strong><%= w.display_name %></strong><span class="meta"><%= [w.job_title, w.branch ? w.branch + ' office' : ''].filter(Boolean).join(' · ') || 'New to the team' %></span></span>
+          </a>
+          <% if (w.intro) { %><p class="hire-intro"><%= w.intro %></p><% } %>
+          <div class="hire-foot">
+            <span class="meta"><%= w.waves ? w.waves + (w.waves === 1 ? ' person has' : ' people have') + ' said welcome' : 'Be the first to say welcome' %></span>
+            <% if (w.user_id === user.id) { %><a class="btn small" href="/people/<%= w.user_id %>#welcome">See your messages</a>
+            <% } else if (w.waved) { %><a class="btn small" href="/people/<%= w.user_id %>#welcome">You said welcome ✓</a>
+            <% } else { %><form method="post" action="/welcome/<%= w.id %>/wave"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="back" value="home"><button class="btn primary small" type="submit">👋 Say welcome</button></form><% } %>
+          </div>
+        </li>
+        <% }) %>
+      </ul>
+    </section>
+    <% } %>
+    <% if (wallPhotos.length) { %>
+    <section class="panel p-photos" aria-labelledby="photos-h">
+      <div class="panel-head"><h2 id="photos-h">Latest photos</h2><a href="/photos">All photos</a></div>
+      <div class="thumbs photo-grid"><% wallPhotos.forEach(function (p) { %><a href="/wall/photo/<%= p.id %>"><img src="/wall/photo/<%= p.id %>" alt="<%= p.caption || 'Photo from ' + p.display_name %>" loading="lazy"></a><% }) %></div>
+    </section>
+    <% } %>
     <% if (can('forum.use')) { %>
     <section class="panel p-talk" aria-labelledby="talk-h">
       <div class="panel-head"><h2 id="talk-h">Discussions</h2><a href="/discussions">All discussions</a></div>
@@ -201,6 +179,25 @@
   </div>
 
   <div class="dash-side">
+    <section class="panel branch-panel p-glance" aria-labelledby="branch-h">
+      <div class="panel-head"><h2 id="branch-h"><%= branchTitle %></h2><% if (officeId) { %><a href="/branches/<%= officeId %>">Office page</a><% } %></div>
+      <div class="branch-stats">
+        <% branch.forEach(function (s) { %>
+        <a href="<%= s.url %>" class="<%= s.level %>"><span class="mini-num"><%= s.value %></span><span class="mini-label"><%= s.label %></span><span class="mini-sub"><%= s.sub %></span></a>
+        <% }) %>
+      </div>
+    </section>
+    <% if (myTasks.length) { %>
+    <section class="panel p-tasks" aria-labelledby="tasks-h">
+      <div class="panel-head"><h2 id="tasks-h">Your tasks</h2><a href="/tasks">All tasks</a></div>
+      <ul class="todo">
+        <% myTasks.forEach(function (t) { %>
+        <li class="<%= t.overdue ? 'overdue' : t.days !== null && t.days <= 1 ? 'soon' : '' %>"><a href="/tasks#t<%= t.id %>"><strong><%= t.title %></strong><span class="todo-when"><%= t.when %> · from <%= t.by_name %></span></a></li>
+        <% }) %>
+      </ul>
+      <% if (badges.tasks > myTasks.length) { %><p class="panel-foot"><a href="/tasks">and <%= badges.tasks - myTasks.length %> more</a></p><% } %>
+    </section>
+    <% } %>
     <section class="panel actions p-actions" aria-labelledby="act-h">
       <div class="panel-head"><h2 id="act-h">What do you need to do?</h2></div>
       <div class="quick">

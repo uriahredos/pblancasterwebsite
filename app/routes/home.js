@@ -144,13 +144,31 @@ router.get('/', requireLogin, (req, res) => {
     branch.push({ label: 'Audit', value: n, sub: n === 1 ? 'entry not checked, last 30 days' : 'entries not checked, last 30 days', level: '', url: `/admin/parts/audit?from=${fromYmd}&to=${today}&show=unchecked` });
   }
 
+  // Office at a glance: a few quick facts about the office that fit anyone, then the things waiting on this
+  // person because of what they run. A number that is zero and needs nothing from them is left out,
+  // so someone who never touches parts or trucks is not shown empty parts and truck boxes.
+  const waiting = branch.filter((t) => Number(t.value) > 0);
+  branch.length = 0;
+  const office = db.prepare('SELECT id, name FROM branches WHERE id = ?').get(req.user.branch_id);
+  const inOffice = db.prepare('SELECT COUNT(*) AS n FROM users WHERE branch_id = ? AND (active = 1 OR in_directory = 1)').get(req.user.branch_id).n;
+  branch.push({ label: 'People', value: inOffice, sub: office ? `in the ${office.name} office` : 'in your office', level: '', url: office ? `/branches/${office.id}` : '/people' });
+  const unread = res.locals.badges.notices;
+  branch.push({ label: 'Announcements', value: unread, sub: unread ? 'for you to read' : 'all read', level: unread ? 'warn' : '', url: '/notices' });
+  const mineWeek = social.thisWeek(req.user, today).filter((o) => o.branch_id === req.user.branch_id);
+  branch.push({ label: 'This week', value: mineWeek.length, sub: mineWeek.length === 1 ? 'birthday or anniversary here' : 'birthdays and anniversaries here', level: '', url: '/#thisweek' });
+  const soon = upcoming.length;
+  branch.push({ label: 'Coming up', value: soon, sub: soon === 1 ? 'event or training session' : 'events and training sessions', level: '', url: '/events' });
+  const newFaces = db.prepare('SELECT COUNT(*) AS n FROM welcomes w JOIN users u ON u.id = w.user_id WHERE u.branch_id = ? AND u.active = 1 AND w.created_at >= ?').get(req.user.branch_id, new Date(Date.now() - 14 * 86400000).toISOString()).n;
+  if (newFaces) branch.push({ label: 'New faces', value: newFaces, sub: newFaces === 1 ? 'person to welcome' : 'people to welcome', level: '', url: '/#welcome' });
+  branch.push(...waiting);
+
   const now = new Date();
   const dateLine = new Intl.DateTimeFormat('en-US', { timeZone: config.timezone, weekday: 'long', month: 'long', day: 'numeric' }).format(now);
   res.render('home', {
     shouts: social.recentShoutouts(me, 3), thisWeek: social.thisWeek(req.user, today), wallPhotos: social.recentPhotos(me, 4),
     dailyCard: require('../daily').card(me), welcomes: require('./community').recentWelcomes(me),
     profileEmpty: !req.user.photo_path && !req.user.about && !req.user.skills,
-    title: 'Home', wide: true, hasPasskey: db.prepare('SELECT 1 FROM passkeys WHERE user_id = ?').get(me) !== undefined, branch, branchTitle: req.user.scope === 'team' ? 'Your team at a glance' : ids ? 'Office at a glance' : 'All offices at a glance', critical, notices, board, replies, talk, myCerts, issue: issues[0] || null, pastIssues: issues.slice(1), upcoming, status, dateLine,
+    title: 'Home', wide: true, hasPasskey: db.prepare('SELECT 1 FROM passkeys WHERE user_id = ?').get(me) !== undefined, branch, branchTitle: 'Office at a glance', officeId: office ? office.id : null, critical, notices, board, replies, talk, myCerts, issue: issues[0] || null, pastIssues: issues.slice(1), upcoming, status, dateLine,
     categories: require('./announcements').CATEGORIES,
   });
 });

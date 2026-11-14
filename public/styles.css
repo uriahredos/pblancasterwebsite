@@ -399,8 +399,8 @@ table.audit .check-cell form { display: block; margin: 0 0 .2rem; }
 .dash { display: flex; flex-direction: column; gap: 1rem; }
 .dash-main, .dash-side { display: contents; }
 /* One column on a phone, in the order people need things: tasks, the form buttons, announcements, then the rest. */
-.dash .p-tasks { order: 1; } .dash .p-actions { order: 2; } .dash .p-daily { order: 3; } .dash .p-welcome { order: 4; } .dash .p-board { order: 5; }
-.dash .p-week { order: 6; } .dash .p-shouts { order: 7; } .dash .p-up { order: 8; } .dash .p-photos { order: 9; } .dash .p-status { order: 10; } .dash .p-news { order: 11; } .dash .p-talk { order: 12; }
+.dash .p-board { order: 1; } .dash .p-news { order: 2; } .dash .p-shouts { order: 3; } .dash .p-glance { order: 4; } .dash .p-tasks { order: 5; } .dash .p-actions { order: 6; }
+.dash .p-daily { order: 7; } .dash .p-welcome { order: 8; } .dash .p-week { order: 9; } .dash .p-up { order: 10; } .dash .p-photos { order: 11; } .dash .p-status { order: 12; } .dash .p-talk { order: 13; }
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 1rem; min-width: 0; }
 .panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: .75rem; margin-bottom: .85rem; }
 .panel-head h2 { margin: 0; font-size: .82rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
@@ -628,7 +628,7 @@ table.audit .check-cell form { display: block; margin: 0 0 .2rem; }
 .todo li.overdue .todo-when { color: var(--err); font-weight: 600; }
 .unread-card { border: 1px solid var(--line); border-left: 5px solid var(--green); border-radius: 10px; padding: .75rem .85rem; margin-bottom: .6rem; background: color-mix(in srgb, var(--ok-bg) 45%, var(--surface)); }
 .unread-card .pre { margin: .4rem 0 .6rem; }
-.branch-panel { margin-bottom: 1rem; }
+.branch-panel { margin-bottom: 0; }
 .branch-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; }
 @media (min-width: 600px) { .branch-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (min-width: 1000px) { .branch-stats { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); } }
@@ -845,3 +845,7 @@ a.skill:hover { outline: 1px solid var(--accent); }
 .aka { font-weight: 400; color: var(--muted); }
 .office-reach { margin: .2rem 0; }
 .office-reach a { overflow-wrap: anywhere; }
+
+/* Office at a glance now sits in the narrower column: two tiles across */
+.dash .branch-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.dash .branch-stats .mini-num { font-size: 1.6rem; }

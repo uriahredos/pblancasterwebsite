@@ -182,20 +182,16 @@ Record each person's licenses and certifications with an optional issuer, number
 
 ## Home page
 
-The home page is laid out in the order people need it. From the top:
+The home page, from the top:
 
-- **Critical announcements**: announcements marked critical, always first and shown every time, read or not.
-- **Office at a glance** (only for people who run things): a row of numbers, each one a link to the list behind it: open **parts requests** (and how many are past their needed-by date), **truck problems** not fixed, **low stock** (parts at or below their minimum), **overdue tasks** among the ones they gave out, **certifications** expired or expiring within 30 days, and parts entries from the last 30 days not yet checked in the **audit**. A person only gets the numbers their profile lets them act on. A manager's panel is headed **Your team at a glance** and counts only the people assigned to them (stock is the office's). Technicians do not see it.
-- New replies in discussion threads they follow, and their own certifications that are expired or expire within 30 days.
-- **Your tasks**: what they have been given, overdue first, with when each is due and who it is from. Left out when there is nothing to do.
-- **What do you need to do?**: the forms their profile allows, as buttons.
-- **Announcements**: ones they have not read yet first, marked New, each with its **I have read this** button; then the latest ones they have read, pinned ones first.
-- **Coming up**: the next training sessions on the calendar. Sessions scheduled from a private request are not shown.
-- **My status**: their tasks, open parts and training requests, days since their last truck inspection, and their certifications.
-- **The Monthly Barker**: the newest newsletter with its cover and highlights, and the three before it.
-- **Discussions**: the latest threads.
+- **Critical announcements**: always first and shown every time, read or not.
+- **Announcements**: unread ones first, marked New, each with its **I have read this** button; then the latest ones already read.
+- **The Monthly Barker**: the newest newsletter and the three before it.
+- **Shout-outs**: the latest three, with a button to give one.
+- **Office at a glance**: a few quick facts about the person's own office that suit anyone (how many people are in it, announcements still to read, birthdays and anniversaries there this week, events and training coming up, new people to welcome), followed by anything waiting on that person because of what they run: open parts requests, truck problems, low stock, overdue tasks they gave out, certifications running out, entries not yet checked in the audit. Those only appear when the number is above zero, so someone with nothing to chase is not shown empty boxes. A manager's numbers cover their own people.
+- **Your tasks**, then the form buttons (**What do you need to do?**), today's question, new hires, this week's birthdays and anniversaries, what is coming up, latest photos, **My status** and discussions.
 
-On a phone it is one column in that order; on a wider screen tasks, announcements, the newsletter and discussions sit on the left, with the buttons, what is coming up and My status on the right.
+On a phone it is one column in that order. On a wider screen announcements, the newsletter, shout-outs, new hires, photos and discussions are on the left; office at a glance, tasks, the buttons and the rest are on the right.
 
 ## Discussions (`/discussions`)
 

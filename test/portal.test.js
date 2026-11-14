@@ -2612,12 +2612,12 @@ test('phone bottom bar: Home, Parts, Tasks, Alerts and More, with the bell list 
   db.prepare('DELETE FROM tasks').run();
 });
 
-test('home page: tasks first, then the form buttons, then announcements; branch numbers only for people who run things', async () => {
+test('home page: announcements, newsletter and shout-outs first; office at a glance fits the person looking', async () => {
   const flat = async (c) => (await c.get('/')).text.replace(/\s+/g, ' ');
   const order = (html, ...marks) => marks.map((m) => html.indexOf(m));
   const rising = (list) => list.every((n, i) => n >= 0 && (i === 0 || n > list[i - 1]));
 
-  // A technician: their tasks, the buttons, then announcements, in that order on a phone.
+  // A technician: announcements, the newsletter and shout-outs lead, then the office at a glance, their tasks and the buttons.
   const owner = await loggedIn('owner');
   await owner.post('/admin/tasks', [['title', 'Home task late'], ['due_on', ymdFromNow(-2)], ['to', String(userId('tech2'))]], { page: '/admin/tasks' });
   await owner.post('/admin/tasks', [['title', 'Home task later'], ['due_on', ymdFromNow(20)], ['to', String(userId('tech2'))]], { page: '/admin/tasks' });
@@ -2630,24 +2630,31 @@ test('home page: tasks first, then the form buttons, then announcements; branch 
   assert.match(/<section class="panel p-board"[\s\S]*?<\/section>/.exec(home)[0], /<span class="tag new">New<\/span><strong>Home order news[\s\S]*I have read this/);
   assert.match(/<section class="panel p-status"[\s\S]*?<\/section>/.exec(home)[0], /<a href="\/tasks" class="warn"><span class="mini-label">Tasks<\/span><span class="mini-num">2<\/span><span class="mini-sub">1 overdue/);
   const css = (await new Client().get('/styles.css')).text;
-  assert.match(css, /\.dash \.p-tasks \{ order: 1; \} \.dash \.p-actions \{ order: 2; \} \.dash \.p-daily \{ order: 3; \} \.dash \.p-welcome \{ order: 4; \} \.dash \.p-board \{ order: 5; \}/);
-  assert.doesNotMatch(home, /class="panel branch-panel"/);                                   // nothing about the branch for a technician
+  assert.match(css, /\.dash \.p-board \{ order: 1; \} \.dash \.p-news \{ order: 2; \} \.dash \.p-shouts \{ order: 3; \} \.dash \.p-glance \{ order: 4; \} \.dash \.p-tasks \{ order: 5; \} \.dash \.p-actions \{ order: 6; \}/);
+  assert.deepEqual(order(home, 'class="dash-hello"', 'class="panel p-board"', 'p-news"', 'class="panel p-shouts"', 'class="panel branch-panel', 'class="panel p-tasks"', 'id="act-h"').map((n, i, l) => n >= 0 && (i === 0 || n > l[i - 1])), [true, true, true, true, true, true, true]);
+  // Office at a glance for someone who runs nothing: facts about the office, and none of the parts, stock or truck numbers.
+  const tGlance = /<section class="panel branch-panel[\s\S]*?<\/section>/.exec(home)[0];
+  assert.match(tGlance, /<span class="mini-num">\d+<\/span><span class="mini-label">People<\/span><span class="mini-sub">in the Lancaster office/);
+  assert.match(tGlance, /class="warn"><span class="mini-num">\d+<\/span><span class="mini-label">Announcements<\/span><span class="mini-sub">for you to read/);
+  assert.match(tGlance, /This week<\/span>/); assert.match(tGlance, /Coming up<\/span>/); assert.match(tGlance, /href="\/branches\/1">Office page/);
+  assert.doesNotMatch(tGlance, /Parts requests|Low stock|Truck problems|Overdue tasks|Certifications|Audit/);
   assert.doesNotMatch(home, /href="\/admin\//);
 
   // Nothing to do: no empty tasks box in the way of the buttons.
   makeUser('home1', 'Holly Home');
   assert.doesNotMatch(await flat(await loggedIn('home1')), /p-tasks/);
 
-  // The owner: branch numbers on top, each a link to the list behind it.
+  // The owner: the same facts, plus whatever is waiting on them, each a link to the list behind it. Numbers that are zero are left out.
   await t2.post('/parts', [['action', 'request'], ['part_name', 'HOME-PART'], ['quantity', '1'], ['source', 'van'], ['needed_by', '2031-09-01']], { multipart: true });
   const reqId = lastParts().id;
   db.prepare('UPDATE parts_submissions SET needed_by = ? WHERE id = ?').run(ymdFromNow(-3), reqId);
   const oh = await flat(owner);
-  const branch = /<section class="panel branch-panel"[\s\S]*?<\/section>/.exec(oh)[0];
+  const branch = /<section class="panel branch-panel[\s\S]*?<\/section>/.exec(oh)[0];
   assert.match(branch, /Office at a glance/);
-  assert.ok(rising(order(oh, 'class="dash-hello"', 'class="panel branch-panel"', 'class="dash"')));
+  assert.match(branch, /People<\/span>/);
   const tile = (html, label) => { const m = new RegExp(`<a href="([^"]+)" class="([a-z]*)"><span class="mini-num">(\\d+)</span><span class="mini-label">${label}</span><span class="mini-sub">([^<]*)`).exec(html); return m ? { url: m[1], level: m[2], n: Number(m[3]), sub: m[4] } : null; };
-  for (const label of ['Parts requests', 'Truck problems', 'Low stock', 'Overdue tasks', 'Certifications', 'Audit']) assert.ok(tile(branch, label), label);
+  for (const label of ['Parts requests', 'Overdue tasks', 'Audit']) assert.ok(tile(branch, label), label);
+  for (const label of ['Truck problems', 'Low stock', 'Certifications']) { const t = tile(branch, label); assert.ok(t === null || t.n > 0, label); }   // shown only when there is something waiting
   const reqs = tile(branch, 'Parts requests');
   assert.equal(reqs.url, '/admin/requests'); assert.equal(reqs.level, 'bad'); assert.ok(reqs.n >= 1); assert.match(reqs.sub, /\d+ past the needed-by date/);
   const late = tile(branch, 'Overdue tasks');
@@ -2658,24 +2665,27 @@ test('home page: tasks first, then the form buttons, then announcements; branch 
   // The number on the tile is the number of entries the page behind it lists.
   const auditPage = (await owner.get(audit.url.replace(/&amp;/g, '&'))).text;
   assert.match(auditPage, /HOME-PART/);
-  assert.equal(tile(branch, 'Truck problems').url, '/admin/inspections?show=open');
-  assert.equal(tile(branch, 'Low stock').url, '/admin/stock?low=1');
-  assert.equal(tile(branch, 'Low stock').n, stockLib.lowCount(1));
+  assert.equal((tile(branch, 'Low stock') || { n: 0 }).n, stockLib.lowCount(1));
+  // A profile that can manage parts but has nothing waiting sees no parts boxes at all (the case that looked wrong).
+  const quietProfile = access.ensureProfile('Quiet parts', 'team', ['training.submit', 'forum.use', 'parts.view', 'parts.manage', 'stock.manage']);
+  makeUser('home2', 'Zed Zeroparts'); db.prepare('UPDATE users SET profile_id = ? WHERE username = ?').run(quietProfile, 'home2');
+  const quiet = /<section class="panel branch-panel[\s\S]*?<\/section>/.exec(await flat(await loggedIn('home2')))[0];
+  assert.doesNotMatch(quiet, /Parts requests/); assert.equal(/Low stock/.test(quiet), stockLib.lowCount(1) > 0); assert.match(quiet, /People<\/span>/);   // nothing open for their people: no box
 
   // A manager sees their own people only: Terry Tech's request counts, Uma Tech's does not.
   const mh = await flat(await loggedIn('mgr1'));
-  const team = /<section class="panel branch-panel"[\s\S]*?<\/section>/.exec(mh)[0];
-  assert.match(team, /Your team at a glance/);
-  const before = tile(team, 'Parts requests').n;
+  const team = /<section class="panel branch-panel[\s\S]*?<\/section>/.exec(mh)[0];
+  assert.match(team, /Office at a glance/);
+  const before = (tile(team, 'Parts requests') || { n: 0 }).n;
   const t1 = await loggedIn('tech1');
   await t1.post('/parts', [['action', 'request'], ['part_name', 'HOME-TEAM'], ['quantity', '1'], ['source', 'van'], ['needed_by', '2031-09-01']], { multipart: true });
   const teamReq = lastParts().id;
-  const after = /<section class="panel branch-panel"[\s\S]*?<\/section>/.exec(await flat(await loggedIn('mgr1')))[0];
+  const after = /<section class="panel branch-panel[\s\S]*?<\/section>/.exec(await flat(await loggedIn('mgr1')))[0];
   assert.equal(tile(after, 'Parts requests').n, before + 1);
-  assert.equal(tile(after, 'Overdue tasks').n, 0);                                     // the owner's task for Uma is not theirs to chase
+  assert.equal(tile(after, 'Overdue tasks'), null);                                   // the owner's task for Uma is not theirs to chase
   // Only what the profile allows: the Warehouse profile has no tasks or certifications to manage.
-  const wh = /<section class="panel branch-panel"[\s\S]*?<\/section>/.exec(await flat(await loggedIn('wh1')))[0];
-  assert.ok(tile(wh, 'Parts requests')); assert.ok(tile(wh, 'Low stock'));
+  const wh = /<section class="panel branch-panel[\s\S]*?<\/section>/.exec(await flat(await loggedIn('wh1')))[0];
+  assert.ok(tile(wh, 'Parts requests')); assert.equal(Boolean(tile(wh, 'Low stock')), stockLib.lowCount(1) > 0);
   assert.equal(tile(wh, 'Overdue tasks'), null); assert.equal(tile(wh, 'Certifications'), null);
 
   db.prepare('DELETE FROM parts_submissions WHERE id IN (?, ?)').run(reqId, teamReq);
@@ -3241,7 +3251,7 @@ test('branches: each branch sees only its own parts, stock, trucks, tasks, train
   await owner.post('/branch/view', { branch: 'all' }, { page: '/' });
   const both = (await owner.get('/admin/complaints')).text;
   assert.match(both, /HBG-ONLY complaint/); assert.match(both, /LANC-ONLY complaint/);
-  assert.match((await owner.get('/')).text, /All offices at a glance/);
+  assert.match((await owner.get('/')).text, /Office at a glance/);
   assert.match((await owner.get('/admin/users')).text, /Holly Harrisburg[\s\S]*<span class="pill">Harrisburg<\/span>|<span class="pill">Harrisburg<\/span>/);
   await owner.post('/branch/view', { branch: String(lanc) }, { page: '/' });
 
