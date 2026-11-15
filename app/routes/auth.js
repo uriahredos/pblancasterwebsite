@@ -83,6 +83,12 @@ router.post('/login', loginLimiter, (req, res, next) => {
 // The lock gate has already refreshed the idle clock by the time a request gets here.
 router.get('/alive', (req, res) => res.status(req.user && !res.locals.locked ? 204 : 401).end());
 
+// The page asks for this every half minute to keep the bell and the counts current. It is only the header.
+router.get('/pulse', (req, res) => {
+  if (!req.user || res.locals.locked) return res.status(401).end();
+  res.render('pulse', { title: 'Alerts' });
+});
+
 // ---- Lock and unlock --------------------------------------------------------
 // The page calls this when it finds the site was closed and opened again.
 router.post('/lock', (req, res) => {

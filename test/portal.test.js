@@ -3724,9 +3724,16 @@ test('idle lock: counts from the last thing the person did, so typing for a whil
   assert.equal((await t1.get('/alive')).status, 204);
   assert.ok(Date.now() - sess().d.seenAt < 5000);
   assert.equal((await t1.get('/profile')).status, 200);
+  // The page's background check for new alerts returns the header with its counts, and does not count as activity.
+  age(3 * 60000);
+  const pulse = await t1.get('/pulse');
+  assert.equal(pulse.status, 200); assert.match(pulse.text, /id="bell"/); assert.match(pulse.text, /id="tabbar"/);
+  assert.ok(Date.now() - sess().d.seenAt > 2.9 * 60000);
+  assert.equal((await new Client().get('/pulse')).status, 401);
   // Truly idle past the limit: locked, and the call says so without unlocking anything.
   age(6 * 60000);
   assert.equal((await t1.get('/alive')).status, 302);
+  assert.equal((await t1.get('/pulse')).status, 302);            // locked: the background check gets nothing either
   assert.equal((await t1.get('/profile')).location, '/unlock?next=%2Fprofile');
   assert.equal((await new Client().get('/alive')).status, 401);
 });

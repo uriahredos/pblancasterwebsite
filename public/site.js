@@ -86,12 +86,147 @@
   document.addEventListener('DOMContentLoaded', function () {
     try { var kept = sessionStorage.getItem('toast'); if (kept) { sessionStorage.removeItem('toast'); if (!document.querySelector('main .flash')) toast(kept); } } catch (e) {}
   });
+  // Runs a swapped-in part's own scripts again, in order, and says when they have all loaded.
   function rerun(root) {
-    Array.prototype.forEach.call(root.querySelectorAll('script[src]'), function (old) {
-      var fresh = document.createElement('script'); fresh.src = old.src; old.parentNode.replaceChild(fresh, old);
-    });
     spellCheck(root);
+    var waits = Array.prototype.map.call(root.querySelectorAll('script[src]'), function (old) {
+      return new Promise(function (done) {
+        var fresh = document.createElement('script'); fresh.async = false; fresh.onload = fresh.onerror = done; fresh.src = old.src;
+        old.parentNode.replaceChild(fresh, old);
+      });
+    });
+    return Promise.all(waits);
   }
+
+  // ---- Moving between pages without a full reload. The next page is fetched, and only the middle of the screen
+  // (and what is highlighted in the menus) changes, so the header and the bottom bar never blink. Anything this
+  // cannot handle (a download, the lock screen, a failed fetch) falls back to an ordinary page load.
+  var softUrl = location.pathname + location.search;
+  var softSeq = 0;
+  function markCurrent(doc) {
+    [['#navbar a[href]', function (a) { return a.getAttribute('href'); }], ['#tabbar a[href]', function (a) { return a.getAttribute('href'); }],
+      ['#navbar details.menu > summary', function (el) { return (el.childNodes[0] && el.childNodes[0].nodeValue || el.textContent).trim(); }]].forEach(function (g) {
+      var fresh = {};
+      Array.prototype.forEach.call(doc.querySelectorAll(g[0]), function (el) { fresh[g[1](el)] = el; });
+      Array.prototype.forEach.call(document.querySelectorAll(g[0]), function (el) {
+        var next = fresh[g[1](el)];
+        if (!next) return;
+        if (next.hasAttribute('aria-current')) el.setAttribute('aria-current', next.getAttribute('aria-current')); else el.removeAttribute('aria-current');
+      });
+    });
+  }
+  function showPage(doc, to, opts) {
+    var main = document.querySelector('main'); var next = doc.querySelector('main');
+    Array.prototype.forEach.call(document.querySelectorAll('details.menu[open], details.bell[open], details.row-menu[open]'), function (d) { d.open = false; });
+    main.className = next.className;
+    main.innerHTML = next.innerHTML;
+    var keepSheet = document.body.classList.contains('sheet-open');
+    document.body.className = doc.body.className;
+    document.title = doc.title || document.title;
+    // The office name beside the logo shows only on pages about one office.
+    var brand = document.querySelector('.banner .brand'), newBrand = doc.querySelector('.banner .brand');
+    if (brand && newBrand && brand.textContent.trim() !== newBrand.textContent.trim()) brand.innerHTML = newBrand.innerHTML;
+    Array.prototype.forEach.call(document.querySelectorAll('.nav-branch input[name="back"]'), function (i) { i.value = to.pathname; });
+    markCurrent(doc); syncCounts(doc);
+    softUrl = to.pathname + to.search;
+    if (opts.push) history.pushState({ soft: true }, '', softUrl + to.hash);
+    else if (opts.replace) history.replaceState({ soft: true }, '', softUrl + to.hash);
+    var spot = to.hash && to.hash.length > 1 ? document.getElementById(to.hash.slice(1)) : null;
+    if (spot) spot.scrollIntoView(); else if (!opts.keepScroll) window.scrollTo(0, 0);
+    return rerun(main).then(function () {
+      var again = document.createElement('script'); again.src = '/passkey.js?soft=' + Date.now(); document.head.appendChild(again);   // its buttons live inside pages
+      initMain();
+      try { var kept = sessionStorage.getItem('toast'); if (kept) { sessionStorage.removeItem('toast'); if (!main.querySelector('.flash')) toast(kept); } } catch (e) {}
+    });
+  }
+  function softGo(url, opts) {
+    opts = opts || { push: true };
+    var mine = ++softSeq;
+    var root = document.documentElement;
+    if (!window.fetch || !window.DOMParser || !root.hasAttribute('data-in') || !document.querySelector('main')) { location.assign(url); return; }
+    root.classList.add('going');
+    fetch(url, { credentials: 'same-origin', headers: { 'X-Requested-With': 'fetch' } }).then(function (res) {
+      if (mine !== softSeq) return null;
+      if (!res.ok || !/text\/html/.test(res.headers.get('content-type') || '')) throw new Error('not a page');
+      return res.text().then(function (html) { return { to: new URL(res.url), html: html }; });
+    }).then(function (r) {
+      if (!r || mine !== softSeq) return;
+      var doc = new DOMParser().parseFromString(r.html, 'text/html');
+      if (!doc.querySelector('main') || !doc.documentElement.hasAttribute('data-in') || doc.querySelector('.lock-screen, .logo-hero')) throw new Error('not signed in');
+      if (new URL(url, location.href).hash && !r.to.hash) r.to.hash = new URL(url, location.href).hash;
+      return showPage(doc, r.to, opts);
+    }).catch(function () { if (mine === softSeq) { if (opts.pop) location.reload(); else location.assign(url); } })
+      .then(function () { if (mine === softSeq) root.classList.remove('going'); });
+  }
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a[href]');
+    if (!a || e.defaultPrevented || e.button || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    if (a.target || a.hasAttribute('download') || a.getAttribute('role') === 'button' || a.hasAttribute('data-full')) return;
+    var to;
+    try { to = new URL(a.href, location.href); } catch (err) { return; }
+    if (to.origin !== location.origin) return;
+    if (to.pathname === location.pathname && to.search === location.search && to.hash) return;   // a jump within this page
+    if (/\.(csv|pdf|png|jpe?g|webp|gif|json|zip|xlsx?)$|\/pdf$|\/photo\/|\/page\/\d+$|^\/(logout|lock|unlock|login|poster)\b|\/backups?\//i.test(to.pathname)) return;
+    e.preventDefault();
+    // Show straight away which tab was pressed, before the page arrives.
+    var bar = a.closest('#tabbar');
+    if (bar) { Array.prototype.forEach.call(bar.querySelectorAll('a[aria-current]'), function (x) { x.removeAttribute('aria-current'); }); a.setAttribute('aria-current', 'page'); }
+    softGo(to.pathname + to.search + to.hash, { push: true });
+  });
+  window.addEventListener('popstate', function () {
+    if (location.pathname + location.search === softUrl) return;   // only a menu or a photo closing
+    softGo(location.pathname + location.search + location.hash, { pop: true, keepScroll: false });
+  });
+
+  // ---- The bell keeps itself up to date. Every half minute, while the page is on screen, the counts are fetched
+  // and copied in. This does not count as "using the site", so it never keeps a forgotten phone unlocked.
+  (function () {
+    if (!document.documentElement.hasAttribute('data-in') || !window.fetch || !window.DOMParser) return;
+    var busy = false, stopped = false;
+    function pulse() {
+      if (busy || stopped || document.hidden || document.documentElement.classList.contains('going')) return;
+      busy = true;
+      fetch('/pulse', { credentials: 'same-origin', cache: 'no-store', headers: { 'X-Requested-With': 'fetch' } }).then(function (res) {
+        if (!res.ok || new URL(res.url).pathname !== '/pulse') { stopped = true; return null; }   // locked or signed out: nothing more to fetch
+        return res.text();
+      }).then(function (html) {
+        if (!html) return;
+        var doc = new DOMParser().parseFromString(html, 'text/html');
+        if (doc.documentElement.hasAttribute('data-in')) syncCounts(doc);
+      }).catch(function () {}).then(function () { busy = false; });
+    }
+    setInterval(pulse, 30000);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) setTimeout(pulse, 1500); });
+  })();
+  var initMain = function () {};   // set once the page is ready: what to run again on a page that was swapped in
+
+  // A form that should only be sent once (posting a reply): a second tap while the first is sending does nothing.
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (!form || !form.hasAttribute || !form.hasAttribute('data-once')) return;
+    if (form.getAttribute('data-sending')) { e.preventDefault(); e.stopImmediatePropagation(); return; }
+    form.setAttribute('data-sending', '1');
+    var btn = form.querySelector('button[type="submit"]');
+    if (btn) { btn.setAttribute('data-label', btn.textContent); btn.setAttribute('aria-disabled', 'true'); btn.textContent = 'Posting\u2026'; }
+  }, true);
+  window.addEventListener('pageshow', function () {
+    Array.prototype.forEach.call(document.querySelectorAll('form[data-sending]'), function (form) {
+      form.removeAttribute('data-sending');
+      var btn = form.querySelector('button[data-label]');
+      if (btn) { btn.removeAttribute('aria-disabled'); btn.textContent = btn.getAttribute('data-label'); }
+    });
+  });
+  // Do not let a form vanish into a "no internet" page.
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (!form || !form.hasAttribute || !form.hasAttribute('data-offline-guard')) return;
+    var msg = form.querySelector('#offline-msg');
+    if (navigator.onLine === false) {
+      e.preventDefault(); e.stopImmediatePropagation();
+      if (msg) { msg.hidden = false; msg.scrollIntoView({ block: 'center' }); }
+    } else if (msg) msg.hidden = true;
+  }, true);
+
   // The counts around the page (the bell and its list, the numbers in the menu and on the phone's bottom bar)
   // are copied across from the fresh copy of the page, so they keep up without a reload.
   function syncCounts(doc) {
@@ -154,7 +289,8 @@
         // Sent somewhere else (another page, the lock screen): go there properly, carrying the message along.
         if (r.to.pathname !== here || !newMain || !doc.documentElement.hasAttribute('data-in')) {
           try { if (note) sessionStorage.setItem('toast', note); } catch (e2) {}
-          location.assign(r.to.pathname + r.to.search + r.to.hash);
+          if (newMain && doc.documentElement.hasAttribute('data-in') && !doc.querySelector('.lock-screen, .logo-hero')) { softSeq++; showPage(doc, r.to, { push: true }); }
+          else location.assign(r.to.pathname + r.to.search + r.to.hash);
           return;
         }
         var fresh = regionId ? doc.getElementById(regionId) : null;
@@ -166,7 +302,7 @@
         } else {
           if (flash) flash.remove();
           main.innerHTML = newMain.innerHTML;
-          rerun(main);
+          rerun(main).then(function () { initMain(); });
           toast(note);
           if (bad) { var shown = main.querySelector('.flash.err, .errors'); if (shown) shown.scrollIntoView({ block: 'center' }); }
         }
@@ -349,7 +485,9 @@
       navbar.addEventListener('click', function (e) {
         var link = e.target.closest('a[href]');
         if (!link || !sheetOpen() || e.ctrlKey || e.metaKey || e.shiftKey || e.button) return;
-        if (history.state && history.state.menuSheet) { e.preventDefault(); location.replace(link.href); }
+        if (history.state && history.state.menuSheet && !link.target && link.origin === location.origin && !/^\/(logout|poster)\b/.test(link.pathname)) {
+          e.preventDefault(); closeSheet(true); softGo(link.pathname + link.search + link.hash, { replace: true });
+        } else if (history.state && history.state.menuSheet) { e.preventDefault(); location.replace(link.href); }
       });
       document.addEventListener('click', function (e) {
         if (sheetOpen() && !e.target.closest('#navbar, #more-toggle')) closeSheet(false);
@@ -421,33 +559,7 @@
       else if (e.key === 'ArrowRight' && viewerLinks.length > 1) showPhoto(viewerAt + 1);
     });
 
-    // A form that should only be sent once: a second tap while the first is still sending does nothing.
-    document.querySelectorAll('form[data-once]').forEach(function (form) {
-      var btn = form.querySelector('button[type="submit"]');
-      var label = btn ? btn.textContent : '';
-      form.addEventListener('submit', function (e) {
-        if (form.getAttribute('data-sending')) { e.preventDefault(); return; }
-        form.setAttribute('data-sending', '1');
-        if (btn) { btn.setAttribute('aria-disabled', 'true'); btn.textContent = 'Posting…'; }
-      });
-      // Coming back to the page with the Back button makes the form usable again.
-      window.addEventListener('pageshow', function () {
-        form.removeAttribute('data-sending');
-        if (btn) { btn.removeAttribute('aria-disabled'); btn.textContent = label; }
-      });
-    });
-
-    // Do not let a form vanish into a "no internet" page.
-    document.querySelectorAll('form[data-offline-guard]').forEach(function (form) {
-      var msg = form.querySelector('#offline-msg');
-      form.addEventListener('submit', function (e) {
-        if (navigator.onLine === false) {
-          e.preventDefault();
-          if (msg) { msg.hidden = false; msg.scrollIntoView({ block: 'center' }); }
-        } else if (msg) msg.hidden = true;
-      });
-    });
-
+    function initDraft() {
     var form = document.querySelector('form[data-draft]');
     if (!form) return;
     var key = 'draft:' + form.getAttribute('data-draft');
@@ -509,5 +621,8 @@
     form.addEventListener('change', queue);
     form.addEventListener('click', function (e) { if (e.target.closest('#add-row, .remove-row')) queue(); });
     form.addEventListener('submit', save);
+    }
+    initDraft();
+    initMain = initDraft;
   });
 })();

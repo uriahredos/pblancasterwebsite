@@ -95,7 +95,8 @@ app.use((req, res, next) => {
   const now = Date.now();
   if (!s.locked && config.lockAfterMs && s.seenAt && now - s.seenAt > config.lockAfterMs) s.locked = true;
   if (!s.locked) {
-    s.seenAt = now;
+    // The page's own background check for new alerts is not the person doing something: it must not hold off the lock.
+    if (req.path !== '/pulse') s.seenAt = now;
     if (s.fresh && req.method === 'GET') { res.locals.fresh = true; delete s.fresh; }
     return next();
   }
