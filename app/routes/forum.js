@@ -152,7 +152,10 @@ function threadPage(req, res, t, extra = {}) {
   posts.forEach((p, i) => { p.first = i === 0; p.isNew = Boolean(since) && p.created_at > since && p.user_id !== req.user.id; });
   markRead(t.id, req.user.id, false);
   // Opening the thread clears it from the "new replies" count shown in the menu on this very page.
-  if (mine && mine.following && t.last_post_user_id !== req.user.id && (!since || t.last_post_at > since)) res.locals.badges.forum = Math.max(0, res.locals.badges.forum - 1);
+  if (mine && mine.following && t.last_post_user_id !== req.user.id && (!since || t.last_post_at > since)) {
+    res.locals.badges.forum = Math.max(0, res.locals.badges.forum - 1);
+    res.locals.newThreads = (res.locals.newThreads || []).filter((x) => x.id !== t.id);   // and off the bell on this very page
+  }
   res.status(extra.errors ? 400 : 200).render('forum_thread', {
     title: t.title, t, posts, following: Boolean(mine && mine.following), mod: isMod(req.user), owner: t.user_id === req.user.id,
     sections: isMod(req.user) ? sections() : [], errors: [], values: {}, maxPhotos: MAX_PHOTOS, ...extra,

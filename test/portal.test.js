@@ -3850,3 +3850,23 @@ test('vehicle inspection as a task: assigned by a manager, finished only by send
     assert.equal(r.status, 400); assert.match(r.text, /cannot send vehicle inspections with their profile/);
   }
 });
+
+test('bell: a discussion with new replies is listed by name and opens at the newest reply', async () => {
+  const owner = await loggedIn('owner'); const t2 = await loggedIn('tech2');
+  const total = (html) => { const m = /class="bell-count">(\d+)</.exec(html); return m ? Number(m[1]) : 0; };
+  const sec = db.prepare('SELECT id FROM forum_sections ORDER BY sort_order LIMIT 1').get().id;
+  const before = total((await owner.get('/')).text);
+  await owner.post('/discussions/new', { section_id: String(sec), title: 'BELL-LINK thread', body: 'Question' }, { page: '/discussions/new', multipart: true });
+  const thread = db.prepare("SELECT id FROM forum_threads WHERE title = 'BELL-LINK thread'").get().id;
+  await t2.post(`/discussions/t/${thread}/reply`, { body: 'An answer' }, { page: `/discussions/t/${thread}`, multipart: true });
+  const last = db.prepare('SELECT MAX(id) id FROM forum_posts WHERE thread_id = ?').get(thread).id;
+  const home = (await owner.get('/')).text;
+  assert.equal(total(home), before + 1);
+  assert.match(home, new RegExp(`<p class="bell-title">New replies</p>\\s*<a href="/discussions/t/${thread}#p${last}" class="bell-task is-new">[\\s\\S]*?<strong>BELL-LINK thread</strong><span class="bell-due">Uma Tech replied</span>`));
+  assert.doesNotMatch(home, /discussions? with new replies/);                       // no bare count pointing at the front page
+  // Opening it clears it, on that page too.
+  const opened = (await owner.get(`/discussions/t/${thread}`)).text;
+  assert.equal(total(opened), before); assert.doesNotMatch(/id="bell"[\s\S]*?<\/details>/.exec(opened)[0], /BELL-LINK thread/);
+  assert.equal(total((await owner.get('/')).text), before);
+  await owner.post(`/discussions/t/${thread}/delete`, {}, { page: `/discussions/t/${thread}` });
+});

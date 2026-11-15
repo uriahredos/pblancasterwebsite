@@ -2,7 +2,7 @@
 <% if (user && !user.must_change_password && !(typeof locked !== 'undefined' && locked)) {
   // Phones: five fixed buttons along the bottom. Everything else is behind More.
   var at = function () { return Array.prototype.some.call(arguments, function (p) { return path === p || path.indexOf(p + '/') === 0; }); };
-  var alertCount = alerts.reduce(function (n, a) { return n + a[0]; }, 0);
+  var alertCount = alerts.reduce(function (n, a) { return n + a[0]; }, 0) + newThreads.length;
   var partsTab = can('parts.submit') ? '/parts' : can('parts.view') ? '/admin/parts' : '';
 %>
 <nav class="tabbar no-print" id="tabbar" aria-label="Quick links">

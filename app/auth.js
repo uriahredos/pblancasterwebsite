@@ -52,6 +52,7 @@ function loadUser(req, res, next) {
   res.locals.can = (perm) => access.can(req.user, perm);
   res.locals.badges = { updates: 0, requests: 0, notices: 0, certs: 0, inspections: 0, forum: 0, tasks: 0, newTasks: 0 };
   res.locals.myTasks = [];
+  res.locals.newThreads = [];
   res.locals.alerts = [];
   res.locals.branchName = null; res.locals.branchChoices = [];
   if (req.user) {
@@ -105,9 +106,17 @@ function loadUser(req, res, next) {
     // Everything waiting on this person apart from tasks, for the bell and the Alerts page.
     // Each entry is [count, link, wording for one, wording for several].
     const b = res.locals.badges;
+    // Discussions with new replies are listed by name, each going straight to its newest reply.
+    if (b.forum) {
+      res.locals.newThreads = db.prepare(
+        `SELECT t.id, t.title, u.display_name AS last_author, (SELECT MAX(p.id) FROM forum_posts p WHERE p.thread_id = t.id) AS last_post
+         FROM forum_threads t JOIN forum_reads r ON r.thread_id = t.id AND r.user_id = @me JOIN users u ON u.id = t.last_post_user_id
+         WHERE r.following = 1 AND t.last_post_user_id <> @me AND (r.last_read_at IS NULL OR t.last_post_at > r.last_read_at)
+         ORDER BY t.last_post_at DESC LIMIT 5`).all({ me: req.user.id });
+    }
     res.locals.alerts = [
       [b.notices, '/notices', 'unread announcement', 'unread announcements'],
-      [b.forum, '/discussions', 'discussion with new replies', 'discussions with new replies'],
+      [Math.max(0, b.forum - res.locals.newThreads.length), '/discussions', 'more discussion with new replies', 'more discussions with new replies'],
       [b.updates, '/my', 'update on your requests', 'updates on your requests'],
       [b.requests, '/admin/requests', 'open parts request', 'open parts requests'],
       [b.inspections, '/admin/inspections?show=open', 'truck problem not fixed', 'truck problems not fixed'],
