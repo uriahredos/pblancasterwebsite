@@ -92,22 +92,54 @@
     });
     spellCheck(root);
   }
+  // The counts around the page (the bell and its list, the numbers in the menu and on the phone's bottom bar)
+  // are copied across from the fresh copy of the page, so they keep up without a reload.
+  function syncCounts(doc) {
+    var pairs = [['#bell > summary', true], ['#bell > .bell-list', true]];
+    pairs.forEach(function (pr) {
+      var now = document.querySelector(pr[0]), next = doc.querySelector(pr[0]);
+      if (now && next && now.innerHTML !== next.innerHTML) {
+        now.innerHTML = next.innerHTML;
+        ['aria-label', 'title'].forEach(function (a) { if (next.hasAttribute(a)) now.setAttribute(a, next.getAttribute(a)); });
+      }
+    });
+    // Links and menu headings are matched by where they go (or what they say), so only their numbers change.
+    [['#navbar a[href]', 'href'], ['#tabbar a[href]', 'href']].forEach(function (g) {
+      var fresh = {};
+      Array.prototype.forEach.call(doc.querySelectorAll(g[0]), function (a) { fresh[a.getAttribute(g[1])] = a; });
+      Array.prototype.forEach.call(document.querySelectorAll(g[0]), function (a) {
+        var next = fresh[a.getAttribute(g[1])];
+        if (next && a.innerHTML !== next.innerHTML) a.innerHTML = next.innerHTML;
+      });
+    });
+    var heads = {};
+    var label = function (el) { return (el.childNodes[0] && el.childNodes[0].nodeValue || el.textContent).trim(); };
+    Array.prototype.forEach.call(doc.querySelectorAll('#navbar details.menu > summary'), function (el) { heads[label(el)] = el; });
+    Array.prototype.forEach.call(document.querySelectorAll('#navbar details.menu > summary'), function (el) {
+      var next = heads[label(el)];
+      if (next && el.innerHTML !== next.innerHTML) el.innerHTML = next.innerHTML;
+    });
+  }
+
   document.addEventListener('submit', function (e) {
     var form = e.target;
     var main = document.querySelector('main');
     if (e.defaultPrevented || !window.fetch || !window.DOMParser || !window.URLSearchParams || !main || !form || form.tagName !== 'FORM') return;
     if (!document.documentElement.hasAttribute('data-in') || !main.contains(form)) return;
-    if ((form.method || '').toLowerCase() !== 'post' || /multipart/i.test(form.enctype || '') || form.target === '_blank') return;
-    if (form.hasAttribute('data-no-live') || form.hasAttribute('data-once') || form.hasAttribute('data-offline-guard') || form.hasAttribute('data-draft')) return;
+    if ((form.method || '').toLowerCase() !== 'post' || form.target === '_blank') return;
+    if (form.hasAttribute('data-no-live') || form.hasAttribute('data-offline-guard') || form.hasAttribute('data-draft')) return;
     e.preventDefault();
     if (form.getAttribute('data-busy')) return;
     form.setAttribute('data-busy', '1');
-    var body = new URLSearchParams(new FormData(form));
+    // A form with photos or files goes as it is; the rest go as plain fields.
+    var files = /multipart/i.test(form.enctype || '');
+    var body = files ? new FormData(form) : new URLSearchParams(new FormData(form));
     if (e.submitter && e.submitter.name) body.append(e.submitter.name, e.submitter.value);
     var region = form.closest('main [id]');
     var regionId = region && region.id;
     var here = location.pathname;
-    fetch(form.action, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'fetch' }, body: body.toString() })
+    fetch(form.action, files ? { method: 'POST', credentials: 'same-origin', headers: { 'X-Requested-With': 'fetch' }, body: body }
+      : { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'fetch' }, body: body.toString() })
       .then(function (res) {
         var to = new URL(res.url);
         if (!/text\/html/.test(res.headers.get('content-type') || '')) { location.reload(); return null; }
@@ -138,7 +170,11 @@
           toast(note);
           if (bad) { var shown = main.querySelector('.flash.err, .errors'); if (shown) shown.scrollIntoView({ block: 'center' }); }
         }
+        syncCounts(doc);
         document.title = doc.title || document.title;
+        // Where the site pointed at something new (a reply just posted), bring it into view.
+        var spot = r.to.hash && r.to.hash.length > 1 ? document.getElementById(r.to.hash.slice(1)) : null;
+        if (spot && (!regionId || spot.id !== regionId)) spot.scrollIntoView({ block: 'center', behavior: 'smooth' });
       })
       .catch(function () { form.removeAttribute('data-busy'); form.setAttribute('data-no-live', ''); if (form.requestSubmit) form.requestSubmit(e.submitter || undefined); else form.submit(); })
       .then(function () { form.removeAttribute('data-busy'); });
