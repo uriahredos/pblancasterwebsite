@@ -3693,6 +3693,10 @@ test('tasks: the person doing one sets where it stands and leaves notes without 
   await t1.post(`/tasks/${tid}/update`, { status: 'bogus', note: 'Still waiting' }, { page: '/tasks' });
   assert.equal(db.prepare('SELECT status FROM tasks WHERE id = ?').get(tid).status, 'waiting');
   assert.equal(db.prepare('SELECT COUNT(*) n FROM task_notes WHERE task_id = ?').get(tid).n, 2);
+  // The same note sent again straight away (a double tap on a slow connection) is not saved twice.
+  await t1.post(`/tasks/${tid}/update`, { status: 'waiting', note: 'Still waiting' }, { page: '/tasks' });
+  await t1.post(`/tasks/${tid}/update`, { status: 'waiting', note: 'Still waiting' }, { page: '/tasks' });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM task_notes WHERE task_id = ?').get(tid).n, 2);
   // The manager sees the status and the latest note in the list, the whole thread on the task, and can answer.
   const list = (await owner.get('/admin/tasks')).text.replace(/\s+/g, ' ');
   assert.match(list, /STATUS-TEST order strobes<\/strong><br><span class="hint">Latest note: Still waiting \(Terry Tech,/);

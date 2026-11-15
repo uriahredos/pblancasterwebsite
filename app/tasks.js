@@ -44,4 +44,10 @@ function openFor(userId, limit = 200) {
 }
 const openCount = (userId) => db.prepare('SELECT COUNT(*) AS n FROM tasks WHERE assigned_to = ? AND done_at IS NULL').get(userId).n;
 
-module.exports = { decorate, openFor, openCount, ORDER, STATUSES, statusName, withNotes };
+/** True when this person's newest note on the task is this same text, written in the last ten minutes. */
+function sameAsLast(taskId, userId, body) {
+  const last = db.prepare('SELECT user_id, body, created_at FROM task_notes WHERE task_id = ? ORDER BY id DESC LIMIT 1').get(taskId);
+  return Boolean(last && body && last.user_id === userId && last.body === body && Date.now() - new Date(last.created_at).getTime() < 10 * 60000);
+}
+
+module.exports = { sameAsLast, decorate, openFor, openCount, ORDER, STATUSES, statusName, withNotes };

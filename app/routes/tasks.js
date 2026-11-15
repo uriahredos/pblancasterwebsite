@@ -33,6 +33,8 @@ router.post('/tasks/:id/update', requireLogin, (req, res) => {
   const now = new Date().toISOString();
   if (t.done_at) return res.redirect('/tasks');
   if (status === t.status && !note) { flash(req, 'ok', 'Nothing was changed.'); return res.redirect(`/tasks#t${t.id}`); }
+  // The same note sent again straight away (a double tap, a retry on a slow connection) is not added twice.
+  if (status === t.status && tasks.sameAsLast(t.id, req.user.id, note)) return res.redirect(`/tasks#t${t.id}`);
   if (status === 'done') db.prepare('UPDATE tasks SET done_at = ?, done_note = ? WHERE id = ?').run(now, note, t.id);
   else db.prepare('UPDATE tasks SET status = ? WHERE id = ?').run(status, t.id);
   db.prepare('INSERT INTO task_notes (task_id, user_id, status, body, created_at) VALUES (?, ?, ?, ?, ?)').run(t.id, req.user.id, status !== t.status ? status : null, note, now);
@@ -187,7 +189,7 @@ router.post('/admin/tasks/:id/note', assign, (req, res) => {
   const t = load(req, res);
   if (!t) return;
   const note = clean(req.body.note, 500);
-  if (note) {
+  if (note && !tasks.sameAsLast(t.id, req.user.id, note)) {
     db.prepare('INSERT INTO task_notes (task_id, user_id, status, body, created_at) VALUES (?, ?, NULL, ?, ?)').run(t.id, req.user.id, note, new Date().toISOString());
     if (t.assigned_to !== req.user.id) push.notify([t.assigned_to], 'task_assigned', { title: `Note on: ${t.title}`, body: `${req.user.display_name}: "${note}"`, url: `/tasks#t${t.id}` });
     flash(req, 'ok', 'Note added.');

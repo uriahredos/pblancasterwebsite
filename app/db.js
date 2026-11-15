@@ -560,6 +560,11 @@ addColumn('branches', 'marketing_name', 'TEXT');   // the name the office goes b
 addColumn('branches', 'market', 'TEXT');
 addColumn('branches', 'product_lines', 'TEXT');
 addColumn('tasks', 'status', "TEXT NOT NULL DEFAULT 'new'");
+// Tidy up notes that were saved two or three times by repeated taps: the same person, task and words,
+// with no status change, within ten minutes of an earlier copy. The first copy stays.
+db.exec(`DELETE FROM task_notes WHERE status IS NULL AND body IS NOT NULL AND EXISTS (
+  SELECT 1 FROM task_notes o WHERE o.task_id = task_notes.task_id AND o.user_id = task_notes.user_id AND o.body = task_notes.body
+    AND o.id < task_notes.id AND (julianday(task_notes.created_at) - julianday(o.created_at)) * 1440 < 10)`);
 if (!db.prepare('SELECT 1 FROM services').get()) {
   const add = db.prepare('INSERT INTO services (code, name, sort) VALUES (?, ?, ?)');
   // The company's own list of services, as its branch finder names them.

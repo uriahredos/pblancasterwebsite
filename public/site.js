@@ -41,6 +41,24 @@
     showInstallBar();
   });
   window.addEventListener('appinstalled', function () { installEvent = null; hideInstallBar(90); });
+  // A form is sent once. On a slow connection a second or third tap on the button used to send it again.
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (!form || form.tagName !== 'FORM' || (form.method || '').toLowerCase() !== 'post') return;
+    if (form.getAttribute('data-sent')) { e.preventDefault(); return; }
+    form.setAttribute('data-sent', '1');
+    setTimeout(function () {
+      if (e.defaultPrevented) { form.removeAttribute('data-sent'); return; }   // a confirm box was cancelled, or the page handles it itself
+      Array.prototype.forEach.call(form.querySelectorAll('button[type=submit], button:not([type])'), function (b) { b.disabled = true; b.setAttribute('aria-busy', 'true'); });
+    }, 0);
+  });
+  window.addEventListener('pageshow', function () {
+    Array.prototype.forEach.call(document.querySelectorAll('form[data-sent]'), function (form) {
+      form.removeAttribute('data-sent');
+      Array.prototype.forEach.call(form.querySelectorAll('button[aria-busy]'), function (b) { b.disabled = false; b.removeAttribute('aria-busy'); });
+    });
+  });
+
   document.addEventListener('DOMContentLoaded', function () {
     var go = document.getElementById('install-go');
     var later = document.getElementById('install-later');
