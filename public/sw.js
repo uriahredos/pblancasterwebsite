@@ -1,7 +1,7 @@
 // Service worker: lets the site be installed on a phone's home screen and shows a
 // friendly page when there is no signal. Pages themselves are never stored, so
 // nothing private is kept on the phone by this file.
-var CACHE = 'portal-static-v37';
+var CACHE = 'portal-static-v38';
 var ASSETS = ['/offline.html', '/offline.js', '/styles.css', '/site.js', '/passkey.js', '/theme.js', '/logo.png', '/logo-p.png', '/logo-b.png', '/logo-flame.png', '/parts-form.js', '/scan.js', '/inspection-form.js', '/icons/icon-192.png'];
 
 self.addEventListener('install', function (event) {
@@ -17,8 +17,8 @@ self.addEventListener('activate', function (event) {
 // A push alert from the site: show it. The message carries only a short title, a line of text and where to go.
 self.addEventListener('push', function (event) {
   var data = {};
-  try { data = event.data ? event.data.json() : {}; } catch (e) { data = { title: 'Pye-Barker Lancaster', body: event.data ? event.data.text() : '' }; }
-  event.waitUntil(self.registration.showNotification(data.title || 'Pye-Barker Lancaster', {
+  try { data = event.data ? event.data.json() : {}; } catch (e) { data = { title: 'PB Portal', body: event.data ? event.data.text() : '' }; }
+  event.waitUntil(self.registration.showNotification(data.title || 'PB Portal', {
     body: data.body || '', icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', tag: data.tag || undefined, renotify: Boolean(data.tag),
     data: { url: data.url || '/' }
   }));
