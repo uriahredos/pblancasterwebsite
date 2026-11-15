@@ -54,6 +54,19 @@
     });
   });
 
+  // Still here: while someone is typing or tapping, tell the site about once a minute, so the idle lock
+  // counts from when they last did something, not from when the page was opened.
+  (function () {
+    if (!document.documentElement.hasAttribute('data-in')) return;
+    var last = Date.now();
+    function ping() {
+      if (Date.now() - last < 60000) return;
+      last = Date.now();
+      try { fetch('/alive', { method: 'HEAD', credentials: 'same-origin', cache: 'no-store' }).catch(function () {}); } catch (e) {}
+    }
+    ['keydown', 'input', 'pointerdown', 'scroll'].forEach(function (n) { document.addEventListener(n, ping, { passive: true, capture: true }); });
+  })();
+
   // A form is sent once. On a slow connection a second or third tap on the button used to send it again.
   document.addEventListener('submit', function (e) {
     var form = e.target;

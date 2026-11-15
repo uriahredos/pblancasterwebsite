@@ -78,6 +78,11 @@ router.post('/login', loginLimiter, (req, res, next) => {
   });
 });
 
+// The page calls this now and then while someone is typing or tapping, so that writing a long post or
+// filling in a profile does not count as "left unused" and lock the site just as they press Save.
+// The lock gate has already refreshed the idle clock by the time a request gets here.
+router.get('/alive', (req, res) => res.status(req.user && !res.locals.locked ? 204 : 401).end());
+
 // ---- Lock and unlock --------------------------------------------------------
 // The page calls this when it finds the site was closed and opened again.
 router.post('/lock', (req, res) => {

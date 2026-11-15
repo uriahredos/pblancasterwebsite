@@ -3714,3 +3714,19 @@ test('tasks: the person doing one sets where it stands and leaves notes without 
   await owner.post(`/admin/tasks/${tid}/delete`, {}, { page: `/admin/tasks/${tid}` });
   assert.equal(db.prepare('SELECT COUNT(*) n FROM task_notes WHERE task_id = ?').get(tid).n, 0);
 });
+
+test('idle lock: counts from the last thing the person did, so typing for a while does not lock the site on Save', async () => {
+  const t1 = await loggedIn('tech1');
+  const sess = () => { const rows = db.prepare('SELECT sid, data FROM sessions').all().map((r) => ({ sid: r.sid, d: JSON.parse(r.data) })); return rows.filter((r) => r.d.userId === userId('tech1')).pop(); };
+  const age = (ms) => { const r = sess(); r.d.seenAt = Date.now() - ms; db.prepare('UPDATE sessions SET data = ? WHERE sid = ?').run(JSON.stringify(r.d), r.sid); };
+  // Four minutes into writing: the page's "still here" call resets the clock.
+  age(4 * 60000);
+  assert.equal((await t1.get('/alive')).status, 204);
+  assert.ok(Date.now() - sess().d.seenAt < 5000);
+  assert.equal((await t1.get('/profile')).status, 200);
+  // Truly idle past the limit: locked, and the call says so without unlocking anything.
+  age(6 * 60000);
+  assert.equal((await t1.get('/alive')).status, 302);
+  assert.equal((await t1.get('/profile')).location, '/unlock?next=%2Fprofile');
+  assert.equal((await new Client().get('/alive')).status, 401);
+});
