@@ -20,7 +20,28 @@ router.get('/tasks', requireLogin, (req, res) => {
   const done = db.prepare(
     `SELECT t.*, b.display_name AS by_name FROM tasks t JOIN users b ON b.id = t.assigned_by
      WHERE t.assigned_to = ? AND t.done_at IS NOT NULL ORDER BY t.done_at DESC LIMIT 30`).all(req.user.id).map((t) => tasks.decorate(t, today));
-  res.render('tasks', { title: 'Tasks', open: tasks.openFor(req.user.id), done });
+  res.render('tasks', { title: 'Tasks', open: tasks.withNotes(tasks.openFor(req.user.id)), done: tasks.withNotes(done), statuses: tasks.STATUSES });
+});
+
+// Say where my task stands and leave a note, without closing it. Choosing "Finished" closes it.
+router.post('/tasks/:id/update', requireLogin, (req, res) => {
+  const t = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
+  if (!t) return res.redirect('/tasks');
+  if (t.assigned_to !== req.user.id) return forbidden(res);
+  const note = clean(req.body.note, 500) || null;
+  const status = req.body.status === 'done' ? 'done' : Object.keys(tasks.STATUSES).includes(req.body.status) ? req.body.status : t.status;
+  const now = new Date().toISOString();
+  if (t.done_at) return res.redirect('/tasks');
+  if (status === t.status && !note) { flash(req, 'ok', 'Nothing was changed.'); return res.redirect(`/tasks#t${t.id}`); }
+  if (status === 'done') db.prepare('UPDATE tasks SET done_at = ?, done_note = ? WHERE id = ?').run(now, note, t.id);
+  else db.prepare('UPDATE tasks SET status = ? WHERE id = ?').run(status, t.id);
+  db.prepare('INSERT INTO task_notes (task_id, user_id, status, body, created_at) VALUES (?, ?, ?, ?, ?)').run(t.id, req.user.id, status !== t.status ? status : null, note, now);
+  if (t.assigned_by !== req.user.id) {
+    const name = status === 'done' ? 'Finished' : tasks.STATUSES[status];
+    push.notify([t.assigned_by], 'task_done', { title: `${status === 'done' ? 'Done' : name}: ${t.title}`, body: `${req.user.display_name}${status === 'done' ? ' marked it done.' : status !== t.status ? ' set it to ' + name + '.' : ' added a note.'}${note ? ' "' + note + '"' : ''}`, url: status === 'done' ? '/admin/tasks?show=done' : `/admin/tasks/${t.id}` });
+  }
+  flash(req, 'ok', status === 'done' ? 'Task marked as finished.' : 'Update saved.');
+  res.redirect(status === 'done' ? '/tasks' : `/tasks#t${t.id}`);
 });
 
 // Mark my own task done (with an optional note), or put it back.
@@ -82,6 +103,7 @@ function listPage(req, res, extra = {}) {
      ORDER BY t.done_at IS NOT NULL, ${tasks.ORDER} LIMIT 1000`).all()
     .filter((t) => mine(req.user, t) && (!person || t.assigned_to === person))
     .map((t) => tasks.decorate(t, today));
+  tasks.withNotes(rows);
   const counts = { open: rows.filter((t) => !t.done_at).length, overdue: rows.filter((t) => t.overdue).length, done: rows.filter((t) => t.done_at).length };
   const shown = rows.filter((t) => (show === 'all' ? true : show === 'done' ? t.done_at : show === 'overdue' ? t.overdue : !t.done_at));
   res.status(extra.errors ? 400 : 200).render('admin_tasks', {
@@ -134,7 +156,7 @@ function load(req, res) {
 
 router.get('/admin/tasks/:id', assign, (req, res) => {
   const t = load(req, res);
-  if (t) res.render('admin_task_edit', { title: 'Edit task', t: tasks.decorate(t), values: t, errors: [], people: assignable(req.user) });
+  if (t) res.render('admin_task_edit', { title: 'Edit task', t: tasks.withNotes([tasks.decorate(t)])[0], values: t, errors: [], people: assignable(req.user) });
 });
 
 router.post('/admin/tasks/:id', assign, (req, res) => {
@@ -144,7 +166,7 @@ router.post('/admin/tasks/:id', assign, (req, res) => {
   const people = assignable(req.user);
   const to = people.find((u) => String(u.id) === String(req.body.assigned_to)) || (String(req.body.assigned_to) === String(t.assigned_to) ? { id: t.assigned_to } : null);
   if (!to) errors.unshift('Choose who the task is for.');
-  if (errors.length) return res.status(400).render('admin_task_edit', { title: 'Edit task', t: tasks.decorate(t), values: { ...t, ...values, assigned_to: Number(req.body.assigned_to) }, errors, people });
+  if (errors.length) return res.status(400).render('admin_task_edit', { title: 'Edit task', t: tasks.withNotes([tasks.decorate(t)])[0], values: { ...t, ...values, assigned_to: Number(req.body.assigned_to) }, errors, people });
   db.prepare('UPDATE tasks SET title = ?, details = ?, due_on = ?, assigned_to = ? WHERE id = ?')
     .run(values.title, values.details || null, values.due_on || null, to.id, t.id);
   flash(req, 'ok', 'Task saved.');
@@ -160,9 +182,23 @@ router.post('/admin/tasks/:id/done', assign, (req, res) => {
   res.redirect('/admin/tasks' + (req.body.show ? '?show=' + encodeURIComponent(req.body.show) : ''));
 });
 
+// A manager can answer in the same thread of updates.
+router.post('/admin/tasks/:id/note', assign, (req, res) => {
+  const t = load(req, res);
+  if (!t) return;
+  const note = clean(req.body.note, 500);
+  if (note) {
+    db.prepare('INSERT INTO task_notes (task_id, user_id, status, body, created_at) VALUES (?, ?, NULL, ?, ?)').run(t.id, req.user.id, note, new Date().toISOString());
+    if (t.assigned_to !== req.user.id) push.notify([t.assigned_to], 'task_assigned', { title: `Note on: ${t.title}`, body: `${req.user.display_name}: "${note}"`, url: `/tasks#t${t.id}` });
+    flash(req, 'ok', 'Note added.');
+  }
+  res.redirect(`/admin/tasks/${t.id}`);
+});
+
 router.post('/admin/tasks/:id/delete', assign, (req, res) => {
   const t = load(req, res);
   if (!t) return;
+  db.prepare('DELETE FROM task_notes WHERE task_id = ?').run(t.id);
   db.prepare('DELETE FROM tasks WHERE id = ?').run(t.id);
   activity.log(req.user, 'Task removed', `"${t.title}" for ${t.to_name}`);
   flash(req, 'ok', 'Task removed.');

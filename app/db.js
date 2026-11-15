@@ -358,6 +358,15 @@ CREATE TABLE IF NOT EXISTS tasks (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS tasks_assignee ON tasks(assigned_to, done_at);
+CREATE TABLE IF NOT EXISTS task_notes (
+  id INTEGER PRIMARY KEY,
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  status TEXT,
+  body TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS task_notes_task ON task_notes(task_id, id);
 `);
 
 // ---- Community: branches, personal profiles, new-hire welcomes, the daily question ----
@@ -550,6 +559,7 @@ addColumn('branches', 'region', 'TEXT');
 addColumn('branches', 'marketing_name', 'TEXT');   // the name the office goes by, when it differs from its town
 addColumn('branches', 'market', 'TEXT');
 addColumn('branches', 'product_lines', 'TEXT');
+addColumn('tasks', 'status', "TEXT NOT NULL DEFAULT 'new'");
 if (!db.prepare('SELECT 1 FROM services').get()) {
   const add = db.prepare('INSERT INTO services (code, name, sort) VALUES (?, ?, ?)');
   // The company's own list of services, as its branch finder names them.

@@ -2334,7 +2334,7 @@ test('tasks: assigned with a due date, shown in the bell with when they are due,
   const after = (await tess.get('/')).text;
   assert.equal(total(after), before + 3);
   assert.doesNotMatch(bellOf(after), /timesheet/);
-  assert.match((await owner.get(page + '?show=done')).text.replace(/\s+/g, ' '), /timesheet.*Note: Emailed it Monday.*Done/);
+  assert.match((await owner.get(page + '?show=done')).text.replace(/\s+/g, ' '), /timesheet.*Note: Emailed it Monday.*Finished/);
   await tess.post(`/tasks/${tid}/done`, {}, { page: '/tasks' });                                                // changed her mind
   assert.equal(db.prepare('SELECT done_at FROM tasks WHERE id = ?').get(tid).done_at, null);
   // Nobody can tick off someone else's task from their own page.
@@ -3673,4 +3673,40 @@ test('Teams: a chat button for people whose work email is shown on their profile
   assert.doesNotMatch((await t1.get(`/people/${a}`)).text, /teams\.microsoft|tech\.two/);
   assert.doesNotMatch((await t1.get('/people')).text, /tech\.two/);
   db.prepare('UPDATE users SET email = ?, show_email = ? WHERE id = ?').run(was.email, was.show_email, a);
+});
+
+test('tasks: the person doing one sets where it stands and leaves notes without closing it; the manager sees them and can answer', async () => {
+  const owner = await loggedIn('owner'); const t1 = await loggedIn('tech1'); const t2 = await loggedIn('tech2');
+  await owner.post('/admin/tasks', [['title', 'STATUS-TEST order strobes'], ['to', String(userId('tech1'))]], { page: '/admin/tasks' });
+  const tid = db.prepare("SELECT id FROM tasks WHERE title = 'STATUS-TEST order strobes'").get().id;
+  assert.equal(db.prepare('SELECT status FROM tasks WHERE id = ?').get(tid).status, 'new');
+  assert.match((await t1.get('/tasks')).text, /<span class="tag st-new">Not started<\/span>/);
+  // Someone else cannot update it.
+  assert.equal((await t2.post(`/tasks/${tid}/update`, { status: 'progress', note: 'mine now' }, { page: '/tasks' })).status, 403);
+  // An update: status and a note. The task stays open.
+  assert.equal((await t1.post(`/tasks/${tid}/update`, { status: 'waiting', note: 'Vendor says <b>Thursday</b>' }, { page: '/tasks' })).location, `/tasks#t${tid}`);
+  assert.deepEqual(db.prepare('SELECT status, done_at FROM tasks WHERE id = ?').get(tid), { status: 'waiting', done_at: null });
+  const mine = (await t1.get('/tasks')).text.replace(/\s+/g, ' ');
+  assert.match(mine, /<span class="tag st-waiting">Waiting<\/span>/);
+  assert.match(mine, /set to <strong>Waiting<\/strong><\/span><span class="note-body">Vendor says &lt;b&gt;Thursday&lt;\/b&gt;<\/span>/);
+  // A note alone, and an unknown status is ignored.
+  await t1.post(`/tasks/${tid}/update`, { status: 'bogus', note: 'Still waiting' }, { page: '/tasks' });
+  assert.equal(db.prepare('SELECT status FROM tasks WHERE id = ?').get(tid).status, 'waiting');
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM task_notes WHERE task_id = ?').get(tid).n, 2);
+  // The manager sees the status and the latest note in the list, the whole thread on the task, and can answer.
+  const list = (await owner.get('/admin/tasks')).text.replace(/\s+/g, ' ');
+  assert.match(list, /STATUS-TEST order strobes<\/strong><br><span class="hint">Latest note: Still waiting \(Terry Tech,/);
+  assert.match(list, /<span class="tag st-waiting">Waiting<\/span>/);
+  await owner.post(`/admin/tasks/${tid}/note`, { note: 'Use the other supplier' }, { page: `/admin/tasks/${tid}` });
+  assert.match((await owner.get(`/admin/tasks/${tid}`)).text, /Vendor says[\s\S]*Still waiting[\s\S]*Use the other supplier/);
+  assert.match((await t1.get('/tasks')).text, /Olive Owner ·[\s\S]*Use the other supplier/);
+  assert.equal((await t2.post(`/admin/tasks/${tid}/note`, { note: 'x' }, { page: '/' })).status, 403);
+  // Choosing Finished closes it, with the note kept.
+  assert.equal((await t1.post(`/tasks/${tid}/update`, { status: 'done', note: 'Arrived and installed' }, { page: '/tasks' })).location, '/tasks');
+  const row = db.prepare('SELECT done_at, done_note FROM tasks WHERE id = ?').get(tid);
+  assert.ok(row.done_at); assert.equal(row.done_note, 'Arrived and installed');
+  assert.match((await t1.get('/tasks')).text.replace(/\s+/g, ' '), /<span class="tag return">Finished<\/span><strong>STATUS-TEST order strobes/);
+  // Removing the task removes its notes.
+  await owner.post(`/admin/tasks/${tid}/delete`, {}, { page: `/admin/tasks/${tid}` });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM task_notes WHERE task_id = ?').get(tid).n, 0);
 });

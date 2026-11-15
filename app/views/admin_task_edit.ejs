@@ -16,5 +16,13 @@
   </label>
   <button class="btn primary" type="submit">Save</button>
 </form>
+<h2>Updates</h2>
+<p class="meta">Status: <span class="tag st-<%= t.done_at ? 'done' : t.status %>"><%= t.statusName %></span></p>
+<% if (!t.notes.length) { %><p class="card empty">No updates yet.</p><% } else { %><div class="card"><%- include('partials/task_notes', { t: t }) %></div><% } %>
+<form method="post" action="/admin/tasks/<%= t.id %>/note" class="filters spaced">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label class="grow">Add a note <input name="note" maxlength="500" autocomplete="off" required placeholder="A question or reply for the person doing it"></label>
+  <div class="filter-actions"><button class="btn small" type="submit">Add note</button></div>
+</form>
 <form method="post" action="/admin/tasks/<%= t.id %>/delete" class="spaced" data-confirm="Remove this task?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Remove this task</button></form>
 <%- include('partials/footer') %>

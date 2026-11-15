@@ -1012,3 +1012,16 @@ table.positions tr.focus td:first-child { box-shadow: inset 4px 0 0 var(--warn);
 .people li:has(.teams-mini) > a:first-child { padding-right: 3.6rem; }
 .people a.teams-mini { position: absolute; right: .7rem; top: 50%; transform: translateY(-50%); display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; padding: 0; border-radius: 999px; border: 1px solid var(--line); background: var(--accent-soft); color: var(--accent); }
 .people a.teams-mini:hover { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); transform: translateY(-50%); }
+
+/* Tasks: where each one stands, and the running notes on it */
+.tag.st-new { background: var(--surface); color: var(--muted); }
+.tag.st-progress { background: var(--info-bg); color: var(--accent); border-color: var(--accent); }
+.tag.st-waiting { background: var(--warn-bg); color: var(--warn); border-color: var(--warn); }
+.tag.st-done { background: var(--ok-bg); color: var(--ok); }
+.task-notes { list-style: none; margin: .6rem 0; padding: 0; display: grid; gap: .4rem; }
+.task-notes li { display: grid; gap: .1rem; padding: .5rem .7rem; border-left: 4px solid var(--pb-blue); border-radius: 8px; background: color-mix(in srgb, var(--accent-soft) 55%, var(--surface)); }
+.task-notes .meta { font-size: .82rem; }
+.task-notes .note-body { overflow-wrap: anywhere; }
+.task-update { margin-top: .6rem; }
+td.row-actions { display: table-cell; min-width: 0; white-space: nowrap; }
+td.row-actions > * { display: inline-block; margin-right: .9rem; vertical-align: baseline; }

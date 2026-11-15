@@ -21,12 +21,27 @@ function decorate(t, today = localDate()) {
 
 const ORDER = 't.due_on IS NULL, t.due_on, t.id';
 
+/** Where an open task stands. "Finished" is not in this list: finishing a task closes it (done_at). */
+const STATUSES = { new: 'Not started', progress: 'In progress', waiting: 'Waiting' };
+const statusName = (t) => (t.done_at ? 'Finished' : STATUSES[t.status] || STATUSES.new);
+
+/** Attaches each task's updates (oldest first) as .notes, and its status name as .statusName. */
+function withNotes(list) {
+  if (!list.length) return list;
+  const rows = db.prepare(
+    `SELECT n.*, u.display_name AS author FROM task_notes n JOIN users u ON u.id = n.user_id
+     WHERE n.task_id IN (${list.map((t) => Number(t.id)).join(',')}) ORDER BY n.id`).all();
+  for (const t of list) { t.notes = rows.filter((n) => n.task_id === t.id); t.statusName = statusName(t); }
+  return list;
+}
+
 function openFor(userId, limit = 200) {
   const today = localDate();
   return db.prepare(
     `SELECT t.*, b.display_name AS by_name FROM tasks t JOIN users b ON b.id = t.assigned_by
-     WHERE t.assigned_to = ? AND t.done_at IS NULL ORDER BY ${ORDER} LIMIT ?`).all(userId, limit).map((t) => decorate(t, today));
+     WHERE t.assigned_to = ? AND t.done_at IS NULL ORDER BY ${ORDER} LIMIT ?`).all(userId, limit).map((t) => decorate(t, today))
+    .map((t) => { t.statusName = statusName(t); return t; });
 }
 const openCount = (userId) => db.prepare('SELECT COUNT(*) AS n FROM tasks WHERE assigned_to = ? AND done_at IS NULL').get(userId).n;
 
-module.exports = { decorate, openFor, openCount, ORDER };
+module.exports = { decorate, openFor, openCount, ORDER, STATUSES, statusName, withNotes };

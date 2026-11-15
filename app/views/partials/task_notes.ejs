@@ -1,0 +1,8 @@
+<%# The updates on one task, oldest first. Pass `t` with .notes. %>
+<% if (t.notes && t.notes.length) { %>
+<ul class="task-notes">
+  <% t.notes.forEach(function (n) { %>
+  <li><span class="meta"><%= n.author %> · <%= fmtDateTime(n.created_at) %><% if (n.status) { %> · set to <strong><%= n.status === 'done' ? 'Finished' : ({ new: 'Not started', progress: 'In progress', waiting: 'Waiting' })[n.status] %></strong><% } %></span><% if (n.body) { %><span class="note-body"><%= n.body %></span><% } %></li>
+  <% }) %>
+</ul>
+<% } %>

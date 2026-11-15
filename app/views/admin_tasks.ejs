@@ -24,14 +24,14 @@
   <tbody>
   <% rows.forEach(function (t) { %>
   <tr class="<%= t.done_at ? 'off' : '' %>">
-    <td><strong><%= t.title %></strong><% if (t.details) { %><br><span class="hint"><%= t.details.length > 120 ? t.details.slice(0, 120) + '…' : t.details %></span><% } %><% if (t.done_note) { %><br><span class="hint">Note: <%= t.done_note %></span><% } %></td>
+    <td><strong><%= t.title %></strong><% if (t.details) { %><br><span class="hint"><%= t.details.length > 120 ? t.details.slice(0, 120) + '…' : t.details %></span><% } %><% var last = t.notes.filter(function (n) { return n.body; }).pop(); if (last) { %><br><span class="hint">Latest note: <%= last.body.length > 120 ? last.body.slice(0, 120) + '…' : last.body %> (<%= last.author %>, <%= fmtDateTime(last.created_at) %>)</span><% } else if (t.done_note) { %><br><span class="hint">Note: <%= t.done_note %></span><% } %></td>
     <td><%= t.to_name %></td>
     <td class="nowrap"><%= t.due_on ? fmtDate(t.due_on) : '' %></td>
     <td><%= t.by_name %></td>
-    <td><% if (t.done_at) { %><span class="tag return">Done</span> <span class="hint"><%= fmtDateTime(t.done_at) %></span><% } else if (t.overdue) { %><span class="tag overdue">Overdue <%= -t.days %> <%= t.days === -1 ? 'day' : 'days' %></span><% } else { %><span class="tag request">Open</span><% } %></td>
+    <td><% if (t.done_at) { %><span class="tag return">Finished</span> <span class="hint"><%= fmtDateTime(t.done_at) %></span><% } else { %><span class="tag st-<%= t.status %>"><%= t.statusName %></span><% if (t.overdue) { %> <span class="tag overdue">Overdue <%= -t.days %> <%= t.days === -1 ? 'day' : 'days' %></span><% } %><% } %></td>
     <td class="row-actions">
       <a href="/admin/tasks/<%= t.id %>">Edit</a>
-      <form method="post" action="/admin/tasks/<%= t.id %>/done"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="show" value="<%= show %>"><button class="link" type="submit"><%= t.done_at ? 'Reopen' : 'Mark done' %></button></form>
+      <form method="post" action="/admin/tasks/<%= t.id %>/done"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="show" value="<%= show %>"><button class="link" type="submit"><%= t.done_at ? 'Reopen' : 'Mark finished' %></button></form>
     </td>
   </tr>
   <% }) %>

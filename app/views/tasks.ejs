@@ -6,27 +6,35 @@
   <li class="card task <%= t.overdue ? 'overdue' : t.days !== null && t.days <= 1 ? 'soon' : '' %>" id="t<%= t.id %>">
     <div class="rec-head">
       <strong><%= t.title %></strong>
+      <span class="tag st-<%= t.status %>"><%= t.statusName %></span>
       <% if (t.overdue) { %><span class="tag overdue">Overdue</span><% } %>
       <time><%= t.when %></time>
     </div>
     <% if (t.details) { %><p class="pre"><%= t.details %></p><% } %>
     <p class="meta">From <%= t.by_name %>, <%= fmtDateTime(t.created_at) %></p>
-    <form method="post" action="/tasks/<%= t.id %>/done" class="filters">
+    <%- include('partials/task_notes', { t: t }) %>
+    <form method="post" action="/tasks/<%= t.id %>/update" class="filters task-update">
       <input type="hidden" name="_csrf" value="<%= csrf %>">
-      <label class="grow"><span class="sr">Note</span><input name="done_note" maxlength="500" autocomplete="off" placeholder="Optional note for <%= t.by_name %>"></label>
-      <div class="filter-actions"><button class="btn primary small" type="submit">Mark as done</button></div>
+      <label>Status
+        <select name="status">
+          <% Object.keys(statuses).forEach(function (k) { %><option value="<%= k %>" <%= t.status === k ? 'selected' : '' %>><%= statuses[k] %></option><% }) %>
+          <option value="done">Finished</option>
+        </select>
+      </label>
+      <label class="grow">Note <span class="hint">Optional</span><input name="note" maxlength="500" autocomplete="off" placeholder="Where it stands, for <%= t.by_name %>"></label>
+      <div class="filter-actions"><button class="btn primary small" type="submit">Save update</button></div>
     </form>
   </li>
 <% }) %>
 </ul>
 <% if (done.length) { %>
-<h2>Done</h2>
+<h2>Finished</h2>
 <ul class="records">
 <% done.forEach(function (t) { %>
   <li class="card cancelled">
-    <div class="rec-head"><span class="tag return">Done</span><strong><%= t.title %></strong><time><%= fmtDateTime(t.done_at) %></time></div>
-    <% if (t.done_note) { %><p class="meta">Note: <%= t.done_note %></p><% } %>
-    <form method="post" action="/tasks/<%= t.id %>/done"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Not done after all</button></form>
+    <div class="rec-head"><span class="tag return">Finished</span><strong><%= t.title %></strong><time><%= fmtDateTime(t.done_at) %></time></div>
+    <% if (t.notes.length) { %><%- include('partials/task_notes', { t: t }) %><% } else if (t.done_note) { %><p class="meta">Note: <%= t.done_note %></p><% } %>
+    <form method="post" action="/tasks/<%= t.id %>/done"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Not finished after all</button></form>
   </li>
 <% }) %>
 </ul>
