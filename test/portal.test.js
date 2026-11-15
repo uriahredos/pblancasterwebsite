@@ -2331,26 +2331,34 @@ test('tasks: assigned with a due date, shown in the bell with when they are due,
   assert.match(mine, /Ten 12V 7Ah\./); assert.match(mine, /From Olive Owner/); assert.match(mine, /class="tag overdue">Overdue</);
   const tid = db.prepare("SELECT id FROM tasks WHERE title LIKE 'Send in%'").get().id;
   await tess.post(`/tasks/${tid}/done`, { done_note: 'Emailed it Monday' }, { page: '/tasks' });
-  // Opening the Tasks page is seeing them: they stay listed in the bell but stop counting as new,
-  // on that very page and afterwards. The Tasks number still shows how many are open.
-  assert.match(mine, /<span class="tag new">New<\/span>\s*<span class="tag st-new">Not started/);
-  assert.equal(total(mine), before);
+  // A task counts as new on the bell until that one task is opened. Looking at the Tasks page is not enough:
+  // new tasks are folded shut there. Opening one tells the site, and only that one stops counting.
+  assert.match(mine, /<details class="task-fold" data-task="\d+" >[\s\S]*?<span class="tag new">New<\/span>\s*<span class="tag st-new">Not started[\s\S]*?Tap to open this task\./);
+  assert.equal(total(mine), before + 4);                                         // looking at the page opened none of them
+  const restock = db.prepare("SELECT id FROM tasks WHERE title = 'Restock truck 309 batteries' AND assigned_to = ?").get(userId('task1')).id;
+  const opened = await tess.post(`/tasks/${restock}/seen`, {}, { page: '/tasks' });
+  assert.equal(opened.status, 200); assert.equal(total(opened.text), before + 2);   // the answer carries the fresh counts
+  assert.equal((await (await loggedIn('task2')).post(`/tasks/${restock}/seen`, {}, { page: '/tasks' })).status, 403);
   const after = (await tess.get('/')).text;
-  assert.equal(total(after), before);
+  assert.equal(total(after), before + 2);
   assert.match(bellOf(after), /class="bell-task\s+seen">.*?Restock truck 309 batteries<\/strong><span class="bell-due">/);
+  assert.match(bellOf(after), /Annual fit test<\/strong> <span class="tag new">New<\/span>/);
   assert.match(after, /href="\/tasks"[^>]*>Tasks <span class="badge"[^>]*>3<\/span>/);
-  assert.doesNotMatch((await tess.get('/tasks')).text, /<span class="tag new">New<\/span>\s*<span class="tag st-/);   // second visit: nothing is new
+  const again = (await tess.get('/tasks')).text;
+  assert.match(again, new RegExp(`<details class="task-fold" data-task="${restock}" open>`));   // opened once, it stays open
+  for (const row of db.prepare('SELECT id FROM tasks WHERE assigned_to = ? AND done_at IS NULL').all(userId('task1'))) await tess.post(`/tasks/${row.id}/seen`, {}, { page: '/tasks' });
+  assert.equal(total((await tess.get('/')).text), before);
   assert.doesNotMatch(bellOf(after), /timesheet/);
   assert.match((await owner.get(page + '?show=done')).text.replace(/\s+/g, ' '), /timesheet.*Note: Emailed it Monday.*Finished/);
   await tess.post(`/tasks/${tid}/done`, {}, { page: '/tasks' });                                                // changed her mind
   assert.equal(db.prepare('SELECT done_at FROM tasks WHERE id = ?').get(tid).done_at, null);
   // A note from the manager makes a seen task new again, so it counts on the bell once more.
   const fitNow = db.prepare("SELECT id FROM tasks WHERE title = 'Annual fit test' AND assigned_to = ?").get(userId('task1')).id;
-  await tess.get('/tasks');
+  for (const row of db.prepare('SELECT id FROM tasks WHERE assigned_to = ? AND done_at IS NULL').all(userId('task1'))) await tess.post(`/tasks/${row.id}/seen`, {}, { page: '/tasks' });
   const quiet = total((await tess.get('/')).text);
   await owner.post(`/admin/tasks/${fitNow}/note`, { note: 'Bring your own mask' }, { page: `/admin/tasks/${fitNow}` });
   assert.equal(total((await tess.get('/')).text), quiet + 1);
-  await tess.get('/tasks');
+  await tess.post(`/tasks/${fitNow}/seen`, {}, { page: '/tasks' });
   // Nobody can tick off someone else's task from their own page.
   assert.equal((await (await loggedIn('task2')).post(`/tasks/${tid}/done`, {})).status, 403);
 

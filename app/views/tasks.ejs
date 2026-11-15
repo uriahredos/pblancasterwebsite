@@ -4,6 +4,8 @@
 <ul class="records">
 <% open.forEach(function (t) { %>
   <li class="card task <%= t.overdue ? 'overdue' : t.days !== null && t.days <= 1 ? 'soon' : '' %>" id="t<%= t.id %>">
+    <details class="task-fold" data-task="<%= t.id %>" <%= t.isNew ? '' : 'open' %>>
+    <summary>
     <div class="rec-head">
       <strong><%= t.title %></strong>
       <% if (t.isNew) { %><span class="tag new">New</span><% } %>
@@ -11,6 +13,8 @@
       <% if (t.overdue) { %><span class="tag overdue">Overdue</span><% } %>
       <time><%= t.when %></time>
     </div>
+    <% if (t.isNew) { %><p class="hint fold-hint">Tap to open this task.</p><% } %>
+    </summary>
     <% if (t.details) { %><p class="pre"><%= t.details %></p><% } %>
     <p class="meta">From <%= t.by_name %>, <%= fmtDateTime(t.created_at) %></p>
     <% if (t.kind === 'inspection') { %><p class="task-go"><a class="btn primary" href="/inspection?task=<%= t.id %>">Do the vehicle inspection</a> <span class="hint">Sending it finishes this task. Six photos are required.</span></p><% } %>
@@ -26,6 +30,7 @@
       <label class="grow">Note <span class="hint">Optional</span><input name="note" maxlength="500" autocomplete="off" placeholder="Where it stands, for <%= t.by_name %>"></label>
       <div class="filter-actions"><button class="btn primary small" type="submit">Save update</button></div>
     </form>
+    </details>
   </li>
 <% }) %>
 </ul>
@@ -41,4 +46,5 @@
 <% }) %>
 </ul>
 <% } %>
+<script src="/tasks.js?v=<%= assetV %>" defer></script>
 <%- include('partials/footer') %>

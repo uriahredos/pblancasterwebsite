@@ -276,6 +276,12 @@
     });
   }
 
+  // For small scripts on a page that changed something themselves: bring the counts up to date from a fresh header.
+  window.portalSync = function (html) {
+    var doc = new DOMParser().parseFromString(html, 'text/html');
+    if (doc.documentElement.hasAttribute('data-in')) syncCounts(doc);
+  };
+
   document.addEventListener('submit', function (e) {
     var form = e.target;
     var main = document.querySelector('main');

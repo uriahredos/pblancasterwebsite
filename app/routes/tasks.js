@@ -21,14 +21,22 @@ router.get('/tasks', requireLogin, (req, res) => {
     `SELECT t.*, b.display_name AS by_name FROM tasks t JOIN users b ON b.id = t.assigned_by
      WHERE t.assigned_to = ? AND t.done_at IS NOT NULL ORDER BY t.done_at DESC LIMIT 30`).all(req.user.id).map((t) => tasks.decorate(t, today));
   const open = tasks.withNotes(tasks.openFor(req.user.id));
-  // Opening this page is "seeing" the tasks: they stop counting as new on the bell, on this very page too.
-  // The ones that were new this time keep a "New" label until the next visit.
+  // A task is new until the person opens that one task. New ones are folded shut here with a "New" label.
   for (const t of open) t.isNew = !t.seen_at;
-  if (tasks.markSeen(req.user.id)) {
-    res.locals.badges.newTasks = 0;
-    res.locals.myTasks.forEach((t) => { t.seen_at = t.seen_at || 'now'; });
-  }
   res.render('tasks', { title: 'Tasks', open, done: tasks.withNotes(done), statuses: tasks.STATUSES });
+});
+
+// The person opened one of their tasks: it stops counting as new. Answers with the page header, so the
+// bell and the counts on the page can be brought up to date without a reload.
+router.post('/tasks/:id/seen', requireLogin, (req, res) => {
+  const t = /^\d+$/.test(req.params.id) ? db.prepare('SELECT id, assigned_to FROM tasks WHERE id = ?').get(req.params.id) : null;
+  if (!t) return res.status(404).end();
+  if (t.assigned_to !== req.user.id) return forbidden(res);
+  if (tasks.markSeen(t.id)) {
+    res.locals.badges.newTasks = tasks.newCount(req.user.id);
+    res.locals.myTasks = tasks.openFor(req.user.id, 6);
+  }
+  res.render('pulse', { title: 'Tasks' });
 });
 
 // Say where my task stands and leave a note, without closing it. Choosing "Finished" closes it.

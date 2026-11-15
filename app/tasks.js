@@ -44,8 +44,8 @@ function openFor(userId, limit = 200) {
 }
 /** Open tasks the person has not looked at yet: these are what the bell counts. */
 const newCount = (userId) => db.prepare('SELECT COUNT(*) AS n FROM tasks WHERE assigned_to = ? AND done_at IS NULL AND seen_at IS NULL').get(userId).n;
-/** The person has now seen their open tasks. */
-const markSeen = (userId) => db.prepare('UPDATE tasks SET seen_at = ? WHERE assigned_to = ? AND done_at IS NULL AND seen_at IS NULL').run(new Date().toISOString(), userId).changes;
+/** The person has opened this one task. */
+const markSeen = (taskId) => db.prepare('UPDATE tasks SET seen_at = ? WHERE id = ? AND seen_at IS NULL').run(new Date().toISOString(), taskId).changes;
 const openCount = (userId) => db.prepare('SELECT COUNT(*) AS n FROM tasks WHERE assigned_to = ? AND done_at IS NULL').get(userId).n;
 
 /** True when this person's newest note on the task is this same text, written in the last ten minutes. */
