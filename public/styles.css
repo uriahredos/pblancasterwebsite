@@ -1039,3 +1039,9 @@ td.row-actions > * { display: inline-block; margin-right: .9rem; vertical-align:
 .logo-plate img { height: 52px; }
 @media (max-width: 520px) { .logo-plate img { height: 40px; } }
 .photo-pick { flex-wrap: wrap; }
+
+/* Reactions under a discussion message or an announcement */
+.reactions { display: flex; flex-wrap: wrap; gap: .35rem; margin: .5rem 0 .2rem; }
+.reactions .react { min-height: 36px; padding: .1rem .6rem; }
+.reactions .react.none { opacity: .55; border-style: dashed; }
+.reactions .react.none:hover, .reactions .react.none:focus-visible { opacity: 1; }

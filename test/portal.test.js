@@ -3730,3 +3730,37 @@ test('idle lock: counts from the last thing the person did, so typing for a whil
   assert.equal((await t1.get('/profile')).location, '/unlock?next=%2Fprofile');
   assert.equal((await new Client().get('/alive')).status, 401);
 });
+
+test('reactions: on discussion messages and announcements, one of each per person, taken back with a second press', async () => {
+  const owner = await loggedIn('owner'); const t2 = await loggedIn('tech2');
+  const react = (c, kind, id, emoji, page) => c.post('/react', { kind, id: String(id), emoji }, { page });
+  const sec = db.prepare('SELECT id FROM forum_sections ORDER BY sort_order LIMIT 1').get().id;
+  await owner.post('/discussions/new', { section_id: String(sec), title: 'REACT-TEST thread', body: 'Anyone seen this fault?' }, { page: '/discussions/new', multipart: true });
+  const thread = db.prepare("SELECT id FROM forum_threads WHERE title = 'REACT-TEST thread'").get().id;
+  const post = db.prepare('SELECT id FROM forum_posts WHERE thread_id = ?').get(thread).id;
+  const tp = `/discussions/t/${thread}`;
+  assert.equal((await react(t2, 'post', post, 'like', tp)).location, `${tp}#p${post}`);
+  await react(owner, 'post', post, 'like', tp); await react(owner, 'post', post, 'thanks', tp);
+  await react(t2, 'post', post, 'nonsense', tp); await react(t2, 'post', 999999, 'like', tp);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM reactions WHERE kind = 'post' AND target_id = ?").get(post).n, 3);
+  const page = (await t2.get(tp)).text.replace(/\s+/g, ' ');
+  assert.match(page, /<button class="react on " type="submit" name="emoji" value="like" aria-pressed="true" title="Like: Uma Tech, Olive Owner"><span aria-hidden="true">👍<\/span><span>2<\/span>/);
+  assert.match(page, /<button class="react " type="submit" name="emoji" value="thanks" aria-pressed="false" title="Thanks: Olive Owner">/);
+  assert.match(page, /<button class="react none" type="submit" name="emoji" value="laugh"/);
+  await react(t2, 'post', post, 'like', tp);                                   // a second press takes it back
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM reactions WHERE kind = 'post' AND target_id = ? AND emoji = 'like'").get(post).n, 1);
+  // Announcements: only ones this person can see.
+  await owner.post('/admin/announcements', { title: 'REACT-TEST notice', body: 'Cookout Friday', audience: 'all', category: 'general' }, { page: '/admin/announcements' });
+  const nid = db.prepare("SELECT id FROM announcements WHERE title = 'REACT-TEST notice'").get().id;
+  assert.equal((await react(t2, 'notice', nid, 'party', '/notices')).location, `/notices#n${nid}`);
+  assert.match((await t2.get('/notices')).text, /value="party" aria-pressed="true" title="Congratulations: Uma Tech"/);
+  const other = db.prepare("SELECT u.username FROM users u WHERE u.branch_id IS NOT NULL AND u.branch_id <> 1 AND u.active = 1 LIMIT 1").get();
+  db.prepare('UPDATE announcements SET branch_id = 1 WHERE id = ?').run(nid);
+  if (other) assert.equal((await react(await loggedIn(other.username), 'notice', nid, 'like', '/notices')).status, 403);
+  assert.equal((await react(t2, 'thing', 1, 'like', '/')).status, 403);
+  assert.equal((await new Client().post('/react', { kind: 'post', id: String(post), emoji: 'like' }, { csrf: false })).status, 403);
+  // Removing the thing removes its reactions.
+  await owner.post(`/admin/announcements/${nid}/delete`, {}, { page: '/admin/announcements' });
+  await owner.post(`${tp}/delete`, {}, { page: tp });
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM reactions WHERE (kind = 'notice' AND target_id = ?) OR (kind = 'post' AND target_id = ?)").get(nid, post).n, 0);
+});

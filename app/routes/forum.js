@@ -145,6 +145,7 @@ function threadPage(req, res, t, extra = {}) {
   const photos = db.prepare(
     `SELECT ph.id, ph.post_id FROM forum_photos ph JOIN forum_posts p ON p.id = ph.post_id WHERE p.thread_id = ? ORDER BY ph.id`).all(t.id);
   for (const p of posts) p.photos = photos.filter((ph) => ph.post_id === p.id);
+  require('../reactions').attach('post', posts, req.user.id);
   const mine = db.prepare('SELECT last_read_at, following FROM forum_reads WHERE thread_id = ? AND user_id = ?').get(t.id, req.user.id);
   // Replies that arrived since this person last opened the thread get a "New" label.
   const since = mine && mine.last_read_at;
@@ -262,6 +263,7 @@ router.post('/discussions/t/:id/delete', use, (req, res) => {
   const own = t.user_id === req.user.id && t.reply_count === 0;
   if (!own && !isMod(req.user)) return res.status(403).render('error', { title: 'Not allowed', message: 'You cannot remove this thread.' });
   removePhotosOf('p.thread_id = ?', t.id);
+  db.prepare("DELETE FROM reactions WHERE kind = 'post' AND target_id IN (SELECT id FROM forum_posts WHERE thread_id = ?)").run(t.id);
   db.prepare('DELETE FROM forum_threads WHERE id = ?').run(t.id);
   activity.log(req.user, 'Discussion removed', `${t.title} (started by ${t.author})`);
   flash(req, 'ok', 'Thread removed.');
@@ -278,6 +280,7 @@ router.post('/discussions/p/:id/delete', use, (req, res) => {
   const t = loadThread(p.thread_id);
   db.transaction(() => {
     removePhotosOf('p.id = ?', p.id);
+    require('../reactions').clear('post', p.id);
     db.prepare('DELETE FROM forum_posts WHERE id = ?').run(p.id);
     const last = db.prepare('SELECT user_id, created_at FROM forum_posts WHERE thread_id = ? ORDER BY id DESC LIMIT 1').get(t.id);
     db.prepare('UPDATE forum_threads SET reply_count = (SELECT COUNT(*) - 1 FROM forum_posts WHERE thread_id = @t), last_post_at = @at, last_post_user_id = @u WHERE id = @t')

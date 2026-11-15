@@ -36,7 +36,7 @@ function audience(a) {
 }
 
 router.get('/notices', requireLogin, (req, res) => {
-  res.render('notices', { title: 'Announcements', notices: forUser(req.user.id), categories: CATEGORIES });
+  res.render('notices', { title: 'Announcements', notices: require('../reactions').attach('notice', forUser(req.user.id), req.user.id), categories: CATEGORIES });
 });
 
 router.post('/notices/:id/read', requireLogin, (req, res) => {
@@ -137,6 +137,7 @@ router.post('/admin/announcements/:id/pin', requirePerm('announcements.post'), (
 router.post('/admin/announcements/:id/delete', requirePerm('announcements.post'), (req, res) => {
   const a = load(req, res);
   if (!a) return;
+  require('../reactions').clear('notice', a.id);
   db.prepare('DELETE FROM announcements WHERE id = ?').run(a.id);
   activity.log(req.user, 'Announcement removed', a.title);
   flash(req, 'ok', 'Announcement removed.');

@@ -38,6 +38,7 @@
     <% if (p.photos.length) { %>
     <div class="photo-grid"><% p.photos.forEach(function (ph) { %><a href="/discussions/photo/<%= ph.id %>"><img src="/discussions/photo/<%= ph.id %>" alt="Photo from <%= p.author %>" loading="lazy"></a><% }) %></div>
     <% } %>
+    <%- include('partials/reactions', { kind: 'post', item: p }) %>
     <% if (!p.first && (mod || p.user_id === user.id)) { %>
     <form method="post" action="/discussions/p/<%= p.id %>/delete" data-confirm="Remove this reply?" class="post-foot"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Remove reply</button></form>
     <% } %>
