@@ -3744,9 +3744,12 @@ test('reactions: on discussion messages and announcements, one of each per perso
   await react(t2, 'post', post, 'nonsense', tp); await react(t2, 'post', 999999, 'like', tp);
   assert.equal(db.prepare("SELECT COUNT(*) n FROM reactions WHERE kind = 'post' AND target_id = ?").get(post).n, 3);
   const page = (await t2.get(tp)).text.replace(/\s+/g, ' ');
-  assert.match(page, /<button class="react on " type="submit" name="emoji" value="like" aria-pressed="true" title="Like: Uma Tech, Olive Owner"><span aria-hidden="true">👍<\/span><span>2<\/span>/);
+  assert.match(page, /<button class="react on" type="submit" name="emoji" value="like" aria-pressed="true" title="Like: Uma Tech, Olive Owner"><span aria-hidden="true">👍<\/span><span>2<\/span>/);
   assert.match(page, /<button class="react " type="submit" name="emoji" value="thanks" aria-pressed="false" title="Thanks: Olive Owner">/);
-  assert.match(page, /<button class="react none" type="submit" name="emoji" value="laugh"/);
+  // Reactions nobody has given are not laid out under the message: they sit behind one "React" button.
+  const shown = /<form method="post" action="\/react" class="reactions">[\s\S]*?<details class="react-more">/.exec(page)[0];
+  assert.doesNotMatch(shown, /value="laugh"|value="love"|value="party"/);
+  assert.match(page, /<summary class="react add" title="Add a reaction">[\s\S]*?<span>React<\/span><\/summary> <div class="react-pick"[\s\S]*?<button class="react pick " type="submit" name="emoji" value="laugh"/);
   await react(t2, 'post', post, 'like', tp);                                   // a second press takes it back
   assert.equal(db.prepare("SELECT COUNT(*) n FROM reactions WHERE kind = 'post' AND target_id = ? AND emoji = 'like'").get(post).n, 1);
   // Announcements: only ones this person can see.

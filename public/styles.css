@@ -1055,3 +1055,38 @@ td.row-actions > * { display: inline-block; margin-right: .9rem; vertical-align:
 .task-go { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .8rem; margin: .5rem 0; }
 .photo-grid a.labelled { position: relative; display: block; }
 .photo-grid a.labelled span { position: absolute; left: 0; right: 0; bottom: 0; padding: .2rem .45rem; background: rgba(10, 49, 82, .78); color: #fff; font-size: .8rem; border-radius: 0 0 8px 8px; }
+
+/* Reactions: the ones given show under the message; one "React" button opens the rest */
+.reactions { align-items: center; }
+.reactions .react.none { opacity: 1; border-style: solid; }
+.react-more { position: relative; }
+.react-more > summary { list-style: none; user-select: none; color: var(--muted); font-weight: 600; }
+.react-more > summary::-webkit-details-marker { display: none; }
+.react-more[open] > summary { border-color: var(--accent); color: var(--accent); }
+.react-pick { position: absolute; z-index: 15; left: 0; bottom: calc(100% + 6px); display: flex; gap: .3rem; padding: .35rem; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; box-shadow: 0 10px 26px rgba(0, 0, 0, .25); }
+.react-pick .react { min-width: 44px; min-height: 44px; justify-content: center; padding: 0; border-color: transparent; background: none; font-size: 1.35rem; transition: transform .1s ease; }
+.react-pick .react:hover, .react-pick .react:focus-visible { transform: scale(1.25); background: var(--accent-soft); }
+.react-pick .react.on { background: var(--ok-bg); border-color: var(--green); }
+
+/* Plain text buttons become proper small buttons everywhere: "Remove reply", "Not now", "Reopen" and the like */
+button.link { display: inline-flex; align-items: center; gap: .35rem; min-height: 36px; padding: .25rem .8rem; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--accent); font: inherit; font-size: .9rem; font-weight: 600; text-decoration: none; line-height: 1.2; box-shadow: 0 1px 2px rgba(10, 49, 82, .06); }
+button.link:hover { border-color: var(--accent); background: var(--accent-soft); }
+button.link.danger { color: var(--err); border-color: color-mix(in srgb, var(--err) 45%, var(--line)); }
+button.link.danger::before { content: ""; width: 14px; height: 14px; flex: none; background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3'/%3E%3C/svg%3E") center / contain no-repeat; }
+button.link.danger:hover { background: var(--err-bg); border-color: var(--err); }
+.row-menu-list button.link, .nav-account button.link { border: 0; box-shadow: none; border-radius: 7px; }
+.post-foot { margin-top: .5rem; }
+
+/* The browser's own "Choose File" button, dressed like the site's buttons */
+input[type=file] { font: inherit; color: var(--muted); max-width: 100%; }
+input[type=file]::file-selector-button { margin-right: .7rem; min-height: 40px; padding: .35rem .9rem; border: 1px solid var(--field-line); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; font-weight: 700; cursor: pointer; }
+input[type=file]::file-selector-button:hover { border-color: var(--accent); background: var(--accent-soft); }
+
+/* Fold-out sections ("Moderator tools") get a proper header instead of the browser's triangle */
+.mod-tools { border-style: solid; padding: 0; overflow: hidden; }
+.mod-tools summary { list-style: none; display: flex; align-items: center; justify-content: space-between; padding: .7rem .9rem; font-weight: 700; }
+.mod-tools summary::-webkit-details-marker { display: none; }
+.mod-tools summary::after { content: ""; width: 10px; height: 10px; border-right: 2.5px solid currentColor; border-bottom: 2.5px solid currentColor; transform: rotate(45deg); transition: transform .15s ease; margin-right: .2rem; }
+.mod-tools[open] summary::after { transform: rotate(-135deg); }
+.mod-tools[open] summary { border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--accent-soft) 50%, var(--surface)); }
+.mod-tools .thread-tools { margin: 0; padding: .8rem .9rem; }

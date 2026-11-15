@@ -1,5 +1,12 @@
-<%# Reaction buttons under a post or announcement. Pass `kind`, `item` (with .reactions) and optionally `back`. %>
+<%# Reactions under a post or announcement: the ones people have given, then one button that opens the choices.
+    Pass `kind`, `item` (with .reactions) and optionally `back`. %>
 <form method="post" action="/react" class="reactions">
   <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="kind" value="<%= kind %>"><input type="hidden" name="id" value="<%= item.id %>"><% if (typeof back !== 'undefined' && back) { %><input type="hidden" name="back" value="<%= back %>"><% } %>
-  <% item.reactions.forEach(function (r) { %><button class="react <%= r.mine ? 'on' : '' %> <%= r.n ? '' : 'none' %>" type="submit" name="emoji" value="<%= r.key %>" aria-pressed="<%= r.mine ? 'true' : 'false' %>" title="<%= r.n ? r.label + ': ' + r.names : r.label %>"><span aria-hidden="true"><%= r.emoji %></span><% if (r.n) { %><span><%= r.n %></span><% } %><span class="sr"><%= r.label %><%= r.mine ? ', given by you' : '' %></span></button><% }) %>
+  <% item.reactions.filter(function (r) { return r.n; }).forEach(function (r) { %><button class="react <%= r.mine ? 'on' : '' %>" type="submit" name="emoji" value="<%= r.key %>" aria-pressed="<%= r.mine ? 'true' : 'false' %>" title="<%= r.label + ': ' + r.names %>"><span aria-hidden="true"><%= r.emoji %></span><span><%= r.n %></span><span class="sr"><%= r.label %><%= r.mine ? ', given by you' : '' %></span></button><% }) %>
+  <details class="react-more">
+    <summary class="react add" title="Add a reaction"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.500" cy="13" r="8"/><path d="M7.500 14.500c.8 1.300 1.800 1.900 3 1.900s2.200-.6 3-1.900M8 10.500v.5M13 10.500v.5M19.500 2.500v6M16.500 5.500h6"/></svg><span>React</span></summary>
+    <div class="react-pick" role="group" aria-label="Choose a reaction">
+      <% item.reactions.forEach(function (r) { %><button class="react pick <%= r.mine ? 'on' : '' %>" type="submit" name="emoji" value="<%= r.key %>" title="<%= r.label %><%= r.mine ? ' (tap to take it back)' : '' %>"><span aria-hidden="true"><%= r.emoji %></span><span class="sr"><%= r.label %></span></button><% }) %>
+    </div>
+  </details>
 </form>
