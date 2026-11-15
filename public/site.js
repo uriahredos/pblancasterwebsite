@@ -44,14 +44,104 @@
   // Spell check: boxes where people write sentences get the browser's spell checker (the red underline, and
   // suggestions on a right-click or long press) and the phone keyboard's autocorrect. Names, usernames, emails,
   // part numbers and search boxes are left alone, where "corrections" would only get in the way.
-  document.addEventListener('DOMContentLoaded', function () {
+  function spellCheck(root) {
     var skip = /user|name|email|phone|part|qty|quantity|number|code|skill|birth|date|address|street|truck|^q$|^oq$|search|password|token/i;
-    Array.prototype.forEach.call(document.querySelectorAll('textarea, input[type=text], input:not([type])'), function (el) {
+    Array.prototype.forEach.call((root || document).querySelectorAll('textarea, input[type=text], input:not([type])'), function (el) {
       var prose = !(skip.test(el.name || '') || skip.test(el.id || '') || el.getAttribute('autocapitalize') === 'none' || el.hasAttribute('list'));
       if (!prose) return;
       el.spellcheck = true; el.setAttribute('autocorrect', 'on');
       if (!el.hasAttribute('autocapitalize')) el.setAttribute('autocapitalize', 'sentences');
     });
+  }
+  document.addEventListener('DOMContentLoaded', function () { spellCheck(document); });
+
+  // "Are you sure?" questions. Asked here, for the whole page, so they still work on parts of a page
+  // that were swapped in without a reload.
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (form && form.getAttribute && form.getAttribute('data-confirm') && !window.confirm(form.getAttribute('data-confirm'))) { e.preventDefault(); e.stopImmediatePropagation(); }
+  }, true);
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest && e.target.closest('button[data-confirm-button]');
+    if (btn && !window.confirm(btn.getAttribute('data-confirm-button'))) e.preventDefault();
+    var print = e.target.closest && e.target.closest('[data-print]');
+    if (print) window.print();
+    // Small pop-ups inside the page (the reaction choices, row menus) close on a tap elsewhere.
+    Array.prototype.forEach.call(document.querySelectorAll('main details.react-more[open], main details.row-menu[open]'), function (d) { if (!d.contains(e.target)) d.open = false; });
+  });
+  document.addEventListener('change', function (e) {
+    var sel = e.target;
+    if (sel && sel.matches && sel.matches('select[data-autosubmit]') && sel.form) sel.form.submit();
+  });
+
+  // ---- No reload: a button inside the page sends its form quietly and only the part that changed is redrawn,
+  // so reacting, ticking something off or saving an update does not flash the whole page or jump to the top.
+  function toast(text) {
+    if (!text) return;
+    var t = document.createElement('div');
+    t.className = 'toast'; t.setAttribute('role', 'status'); t.textContent = text;
+    document.body.appendChild(t);
+    setTimeout(function () { t.classList.add('gone'); setTimeout(function () { t.remove(); }, 400); }, 3200);
+  }
+  document.addEventListener('DOMContentLoaded', function () {
+    try { var kept = sessionStorage.getItem('toast'); if (kept) { sessionStorage.removeItem('toast'); if (!document.querySelector('main .flash')) toast(kept); } } catch (e) {}
+  });
+  function rerun(root) {
+    Array.prototype.forEach.call(root.querySelectorAll('script[src]'), function (old) {
+      var fresh = document.createElement('script'); fresh.src = old.src; old.parentNode.replaceChild(fresh, old);
+    });
+    spellCheck(root);
+  }
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    var main = document.querySelector('main');
+    if (e.defaultPrevented || !window.fetch || !window.DOMParser || !window.URLSearchParams || !main || !form || form.tagName !== 'FORM') return;
+    if (!document.documentElement.hasAttribute('data-in') || !main.contains(form)) return;
+    if ((form.method || '').toLowerCase() !== 'post' || /multipart/i.test(form.enctype || '') || form.target === '_blank') return;
+    if (form.hasAttribute('data-no-live') || form.hasAttribute('data-once') || form.hasAttribute('data-offline-guard') || form.hasAttribute('data-draft')) return;
+    e.preventDefault();
+    if (form.getAttribute('data-busy')) return;
+    form.setAttribute('data-busy', '1');
+    var body = new URLSearchParams(new FormData(form));
+    if (e.submitter && e.submitter.name) body.append(e.submitter.name, e.submitter.value);
+    var region = form.closest('main [id]');
+    var regionId = region && region.id;
+    var here = location.pathname;
+    fetch(form.action, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'fetch' }, body: body.toString() })
+      .then(function (res) {
+        var to = new URL(res.url);
+        if (!/text\/html/.test(res.headers.get('content-type') || '')) { location.reload(); return null; }
+        return res.text().then(function (html) { return { to: to, html: html }; });
+      })
+      .then(function (r) {
+        if (!r) return;
+        var doc = new DOMParser().parseFromString(r.html, 'text/html');
+        var newMain = doc.querySelector('main');
+        var flash = doc.querySelector('main .flash.ok');
+        var note = flash ? flash.textContent.trim() : '';
+        // Sent somewhere else (another page, the lock screen): go there properly, carrying the message along.
+        if (r.to.pathname !== here || !newMain || !doc.documentElement.hasAttribute('data-in')) {
+          try { if (note) sessionStorage.setItem('toast', note); } catch (e2) {}
+          location.assign(r.to.pathname + r.to.search + r.to.hash);
+          return;
+        }
+        var fresh = regionId ? doc.getElementById(regionId) : null;
+        var bad = doc.querySelector('main .flash.err, main .errors');
+        if (fresh && !bad) {
+          region.parentNode.replaceChild(document.importNode(fresh, true), region);
+          rerun(document.getElementById(regionId));
+          toast(note);
+        } else {
+          if (flash) flash.remove();
+          main.innerHTML = newMain.innerHTML;
+          rerun(main);
+          toast(note);
+          if (bad) { var shown = main.querySelector('.flash.err, .errors'); if (shown) shown.scrollIntoView({ block: 'center' }); }
+        }
+        document.title = doc.title || document.title;
+      })
+      .catch(function () { form.removeAttribute('data-busy'); form.setAttribute('data-no-live', ''); if (form.requestSubmit) form.requestSubmit(e.submitter || undefined); else form.submit(); })
+      .then(function () { form.removeAttribute('data-busy'); });
   });
 
   // Still here: while someone is typing or tapping, tell the site about once a minute, so the idle lock
@@ -293,28 +383,6 @@
       if (e.key === 'Escape') closeViewer(false);
       else if (e.key === 'ArrowLeft' && viewerLinks.length > 1) showPhoto(viewerAt - 1);
       else if (e.key === 'ArrowRight' && viewerLinks.length > 1) showPhoto(viewerAt + 1);
-    });
-
-    // A drop-down that acts as soon as it is changed (the branch chooser).
-    document.querySelectorAll('select[data-autosubmit]').forEach(function (sel) {
-      sel.addEventListener('change', function () { if (sel.form) sel.form.submit(); });
-    });
-
-    // Print buttons.
-    document.querySelectorAll('[data-print]').forEach(function (btn) {
-      btn.addEventListener('click', function () { window.print(); });
-    });
-
-    // "Are you sure?" on cancel buttons.
-    document.querySelectorAll('form[data-confirm]').forEach(function (form) {
-      form.addEventListener('submit', function (e) {
-        if (!window.confirm(form.getAttribute('data-confirm'))) e.preventDefault();
-      });
-    });
-
-    // The same question on a single button of a form (the others go straight through).
-    document.querySelectorAll('button[data-confirm-button]').forEach(function (btn) {
-      btn.addEventListener('click', function (e) { if (!window.confirm(btn.getAttribute('data-confirm-button'))) e.preventDefault(); });
     });
 
     // A form that should only be sent once: a second tap while the first is still sending does nothing.

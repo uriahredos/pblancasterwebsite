@@ -1090,3 +1090,10 @@ input[type=file]::file-selector-button:hover { border-color: var(--accent); back
 .mod-tools[open] summary::after { transform: rotate(-135deg); }
 .mod-tools[open] summary { border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--accent-soft) 50%, var(--surface)); }
 .mod-tools .thread-tools { margin: 0; padding: .8rem .9rem; }
+
+/* A short message that appears at the bottom after something is saved without reloading the page */
+.toast { position: fixed; left: 50%; bottom: calc(1.2rem + env(safe-area-inset-bottom, 0px)); z-index: 70; transform: translateX(-50%); max-width: min(92vw, 28rem); padding: .65rem 1.1rem; border-radius: 999px; background: var(--pb-navy); color: #fff; font-weight: 600; text-align: center; box-shadow: 0 10px 28px rgba(0, 0, 0, .35); border: 1px solid rgba(255, 255, 255, .18); transition: opacity .35s ease, transform .35s ease; }
+.has-tabbar .toast { bottom: calc(1.2rem + env(safe-area-inset-bottom, 0px)); }
+@media (max-width: 899px) { .has-tabbar .toast { bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + .8rem); } }
+.toast.gone { opacity: 0; transform: translate(-50%, 8px); }
+form[data-busy] button { opacity: .7; }
