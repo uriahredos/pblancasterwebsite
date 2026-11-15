@@ -1025,3 +1025,7 @@ table.positions tr.focus td:first-child { box-shadow: inset 4px 0 0 var(--warn);
 .task-update { margin-top: .6rem; }
 td.row-actions { display: table-cell; min-width: 0; white-space: nowrap; }
 td.row-actions > * { display: inline-block; margin-right: .9rem; vertical-align: baseline; }
+
+/* The flame sits fully inside the welcome band, not half below its edge */
+.hero-mark { bottom: -.5rem; }
+@media (max-width: 520px) { .hero-mark { width: 13rem; right: -4.2rem; bottom: -.35rem; opacity: .3; } .embers { width: 8rem; } }
