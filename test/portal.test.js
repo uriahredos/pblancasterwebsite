@@ -3660,3 +3660,17 @@ test('positions: job titles and departments for the office are edited in one tab
     }
   }
 });
+
+test('Teams: a chat button for people whose work email is shown on their profile, and nobody else', async () => {
+  const t1 = await loggedIn('tech1'); const a = userId('tech2');
+  const was = db.prepare('SELECT email, show_email FROM users WHERE id = ?').get(a);
+  db.prepare("UPDATE users SET email = 'tech.two@example.com', show_email = 1 WHERE id = ?").run(a);
+  const link = /href="https:\/\/teams\.microsoft\.com\/l\/chat\/0\/0\?users=tech\.two%40example\.com" target="_blank" rel="noopener noreferrer"/;
+  assert.match((await t1.get(`/people/${a}`)).text, new RegExp(link.source + '>Chat in Teams'));
+  assert.match((await t1.get('/people')).text, new RegExp('class="teams-mini" ' + link.source));
+  assert.doesNotMatch((await (await loggedIn('tech2')).get(`/people/${a}`)).text, /Chat in Teams/);   // not on your own page
+  db.prepare('UPDATE users SET show_email = 0 WHERE id = ?').run(a);
+  assert.doesNotMatch((await t1.get(`/people/${a}`)).text, /teams\.microsoft|tech\.two/);
+  assert.doesNotMatch((await t1.get('/people')).text, /tech\.two/);
+  db.prepare('UPDATE users SET email = ?, show_email = ? WHERE id = ?').run(was.email, was.show_email, a);
+});

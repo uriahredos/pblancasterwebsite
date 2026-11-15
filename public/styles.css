@@ -1006,3 +1006,9 @@ table.positions tr.focus td:first-child { box-shadow: inset 4px 0 0 var(--warn);
   table.positions td[data-label]:not(:first-child)::before { content: attr(data-label); display: block; font-size: .74rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
 }
 @media (max-width: 899px) { .has-tabbar .save-bar { bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + .5rem); } }
+
+/* Chat in Teams: a button on a person's page and a small one on their card in People */
+.people li { position: relative; }
+.people li:has(.teams-mini) > a:first-child { padding-right: 3.6rem; }
+.people a.teams-mini { position: absolute; right: .7rem; top: 50%; transform: translateY(-50%); display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; padding: 0; border-radius: 999px; border: 1px solid var(--line); background: var(--accent-soft); color: var(--accent); }
+.people a.teams-mini:hover { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); transform: translateY(-50%); }
