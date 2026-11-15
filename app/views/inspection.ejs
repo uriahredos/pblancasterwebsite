@@ -9,8 +9,8 @@
   <p class="flash info">This inspection is for the task <strong><%= task.title %></strong> from <%= task.by_name %>. Sending it finishes the task. Six photos are required.</p>
   <% } %>
   <div class="filters">
-    <label>Truck <input name="truck" value="<%= values.truck || '' %>" required maxlength="20" autocomplete="off" placeholder="e.g. 309"></label>
-    <label>Odometer <span class="hint">Optional</span> <input name="odometer" value="<%= values.odometer || '' %>" inputmode="numeric" maxlength="12" autocomplete="off"></label>
+    <label>License plate # <input name="truck" value="<%= values.truck || '' %>" required maxlength="20" autocomplete="off" autocapitalize="characters" placeholder="e.g. ZAB-1234"></label>
+    <label>Odometer <input name="odometer" value="<%= values.odometer || '' %>" required inputmode="numeric" maxlength="12" autocomplete="off" placeholder="Miles on the vehicle"></label>
   </div>
   <fieldset>
     <legend>Checklist</legend>

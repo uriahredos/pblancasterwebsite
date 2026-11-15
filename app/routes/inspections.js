@@ -33,7 +33,8 @@ router.post('/inspection', requirePerm('inspections.submit'), uploads.photos(nul
   const shotFiles = task ? req.files.filter(shotOf) : [];
   const values = { truck: clean(req.body.truck, 20), odometer: clean(req.body.odometer, 12), notes_all: clean(req.body.notes, 1000), results: {}, notes: {} };
   const errors = [];
-  if (!values.truck) errors.push('Enter the truck number.');
+  if (!values.truck) errors.push('Enter the license plate number.');
+  if (!values.odometer) errors.push('Enter the odometer reading.');
   for (const it of items) {
     const v = req.body[`item_${it.id}`];
     values.results[it.id] = v;

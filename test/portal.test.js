@@ -1550,11 +1550,11 @@ test('truck inspections: checklist with OK/Problem, photos, problems followed up
   const form = (await tech.get('/inspection')).text;
   for (const it of items) assert.ok(form.includes(it.label.replace('&', '&amp;')), it.label);
   assert.equal((await send([['truck', ''], ...answers(-1)])).status, 400);                         // no truck
-  assert.equal((await send([['truck', '309'], ...answers(-1).slice(1)])).status, 400);             // one item unanswered
-  assert.equal((await send([['truck', '309'], ...answers(2)])).status, 400);                       // problem without saying what
+  assert.equal((await send([['truck', '309'], ['odometer', '84210'], ...answers(-1).slice(1)])).status, 400);             // one item unanswered
+  assert.equal((await send([['truck', '309'], ['odometer', '84210'], ...answers(2)])).status, 400);                       // problem without saying what
   const five = Array.from({ length: 5 }, (_, i) => ['photos', new File([PNG], `p${i}.png`, { type: 'image/png' })]);
-  assert.equal((await send([['truck', '309'], ...answers(-1), ...five])).status, 400);             // too many photos
-  assert.equal((await send([['truck', '309'], ...answers(-1), ['photos', new File(['not an image'], 'x.png', { type: 'image/png' })]])).status, 400);
+  assert.equal((await send([['truck', '309'], ['odometer', '84210'], ...answers(-1), ...five])).status, 400);             // too many photos
+  assert.equal((await send([['truck', '309'], ['odometer', '84210'], ...answers(-1), ['photos', new File(['not an image'], 'x.png', { type: 'image/png' })]])).status, 400);
   await new Promise((r) => setTimeout(r, 100));
   assert.equal(count(), 0); assert.equal(files(), before);                                          // nothing kept from failed tries
 
@@ -1562,7 +1562,7 @@ test('truck inspections: checklist with OK/Problem, photos, problems followed up
   assert.equal((await send([['truck', '309'], ['odometer', '84210'], ...answers(-1)])).location, '/my?sent=inspection');
   assert.equal(sent.length, 0);                                                                     // all OK: no email
   const photo = (n) => ['photos', new File([PNG], `p${n}.png`, { type: 'image/png' })];
-  await send([['truck', '309'], ...answers(2, 'Pulls left under braking'), photo(1), photo(2), ['notes', 'Needs the shop']]);
+  await send([['truck', '309'], ['odometer', '84300'], ...answers(2, 'Pulls left under braking'), photo(1), photo(2), ['notes', 'Needs the shop']]);
   const insp = db.prepare('SELECT * FROM inspections ORDER BY id DESC').get();
   assert.deepEqual([insp.truck, insp.problems, insp.resolved_at], ['309', 1, null]);
   assert.equal(db.prepare('SELECT COUNT(*) n FROM inspection_photos WHERE inspection_id = ?').get(insp.id).n, 2);
@@ -1588,7 +1588,7 @@ test('truck inspections: checklist with OK/Problem, photos, problems followed up
   assert.ok(db.prepare('SELECT resolved_at FROM inspections WHERE id = ?').get(insp.id).resolved_at);
   assert.doesNotMatch((await wh.get('/')).text, /Inspections <span class="badge"/);
   assert.match((await tech.get('/my')).text.replace(/\s+/g, ' '), /Truck inspections.*Fixed.*Front pads replaced/);
-  assert.match((await wh.get('/admin/inspections.csv?show=problems')).text, new RegExp(`Terry Tech,309,,${items[2].label},Problem,Pulls left under braking,`));
+  assert.match((await wh.get('/admin/inspections.csv?show=problems')).text, new RegExp(`Terry Tech,309,84300,${items[2].label},Problem,Pulls left under braking,`));
 
   // Changing the checklist changes the form, not inspections already sent.
   const cl = '/admin/inspections/checklist';
@@ -1605,7 +1605,7 @@ test('truck inspections: checklist with OK/Problem, photos, problems followed up
   for (const url of ['/admin/inspections', `/admin/inspections/${insp.id}`, cl, '/admin/inspections.csv']) assert.equal((await tech.get(url)).status, 403, url);
   const mgr = await loggedIn('mgr1');
   assert.equal((await mgr.get(`/admin/inspections/${insp.id}`)).status, 200);                      // tech1 is theirs
-  await (await loggedIn('tech2')).post('/inspection', [['truck', '310'], ...db.prepare('SELECT id FROM inspection_items WHERE active = 1').all().map((it) => [`item_${it.id}`, 'ok'])], { multipart: true, page: '/inspection' });
+  await (await loggedIn('tech2')).post('/inspection', [['truck', '310'], ['odometer', '500'], ...db.prepare('SELECT id FROM inspection_items WHERE active = 1').all().map((it) => [`item_${it.id}`, 'ok'])], { multipart: true, page: '/inspection' });
   const other = db.prepare('SELECT MAX(id) id FROM inspections').get().id;
   assert.equal((await mgr.get(`/admin/inspections/${other}`)).status, 403);
   assert.doesNotMatch((await mgr.get('/admin/inspections')).text, /Uma Tech/);
@@ -2444,7 +2444,7 @@ test('push alerts: sent for the chosen events, to the right people, and each per
 
   // 4. A truck problem: people who can see inspections for that person.
   const items = db.prepare('SELECT id FROM inspection_items WHERE active = 1 ORDER BY sort').all();
-  await petra.post('/inspection', [['truck', '311'], ...items.map((it, i) => (i === 0 ? [`item_${it.id}`, 'problem'] : [`item_${it.id}`, 'ok'])), [`note_${items[0].id}`, 'Flat tire']], { multipart: true, page: '/inspection' });
+  await petra.post('/inspection', [['truck', '311'], ['odometer', '900'], ...items.map((it, i) => (i === 0 ? [`item_${it.id}`, 'problem'] : [`item_${it.id}`, 'ok'])), [`note_${items[0].id}`, 'Flat tire']], { multipart: true, page: '/inspection' });
   got = await take();
   assert.deepEqual(who(got), ['owner', 'wh1']);
   assert.match(got[0].title, /Truck 311: 1 problem reported/); assert.match(got[0].body, /Petra Push: .*Flat tire/);
@@ -3787,7 +3787,7 @@ test('vehicle inspection as a task: assigned by a manager, finished only by send
   for (const k of ['front', 'rear', 'driver', 'passenger', 'cab', 'back']) assert.match(form, new RegExp(`name="shot_${k}"[^>]* required`));
   assert.doesNotMatch((await t2.get(page)).text, /name="shot_front"/);
   const items = db.prepare('SELECT id FROM inspection_items WHERE active = 1 AND branch_id = 1').all();
-  const base = () => { const f = { task: String(tid), truck: '309' }; for (const it of items) f[`item_${it.id}`] = 'ok'; return f; };
+  const base = () => { const f = { task: String(tid), truck: '309', odometer: '84400' }; for (const it of items) f[`item_${it.id}`] = 'ok'; return f; };
   const img = () => new Blob([PNG], { type: 'image/png' });
   const before = db.prepare('SELECT COUNT(*) n FROM inspections').get().n;
   // Five of six: refused, nothing saved, task still open.
