@@ -12,16 +12,25 @@ const { clean, isYmd, localDate, fmtDateTime } = require('../util');
 
 const router = express.Router();
 const MAX_PHOTOS = 4;
+// When an inspection is done for a task a manager assigned, these six photos are required.
+const SHOTS = [['front', 'Front of the vehicle'], ['rear', 'Rear of the vehicle'], ['driver', 'Driver side'], ['passenger', 'Passenger side'], ['cab', 'Front interior'], ['back', 'Rear interior']];
+/** The open vehicle-inspection task this person is answering, if the form was opened from one. */
+const taskFor = (user, id) => (/^\d+$/.test(String(id || '')) ? db.prepare("SELECT t.*, b.display_name AS by_name FROM tasks t JOIN users b ON b.id = t.assigned_by WHERE t.id = ? AND t.assigned_to = ? AND t.kind = 'inspection' AND t.done_at IS NULL").get(id, user.id) : null) || null;
 const activeItems = (branchId) => db.prepare('SELECT * FROM inspection_items WHERE active = 1 AND branch_id = ? ORDER BY sort, id').all(branchId);
 
 // ---- The form ---------------------------------------------------------------
 
 router.get('/inspection', requirePerm('inspections.submit'), (req, res) => {
-  res.render('inspection', { title: 'Truck inspection', items: activeItems(req.user.branch_id), values: { truck: req.user.default_truck || '', results: {}, notes: {} }, errors: [], maxPhotos: MAX_PHOTOS });
+  res.render('inspection', { title: 'Truck inspection', items: activeItems(req.user.branch_id), values: { truck: req.user.default_truck || '', results: {}, notes: {} }, errors: [], maxPhotos: MAX_PHOTOS, task: taskFor(req.user, req.query.task), shots: SHOTS });
 });
 
-router.post('/inspection', requirePerm('inspections.submit'), uploads.photos('photos', MAX_PHOTOS), verifyCsrf, (req, res) => {
+router.post('/inspection', requirePerm('inspections.submit'), uploads.photos(null, MAX_PHOTOS + SHOTS.length), verifyCsrf, (req, res) => {
   const items = activeItems(req.user.branch_id);
+  const task = taskFor(req.user, req.body.task);
+  // Photos arrive in named boxes: the six required views (for a task) and the optional extras.
+  const shotOf = (f) => SHOTS.find((s) => f.fieldname === `shot_${s[0]}`);
+  const extras = req.files.filter((f) => f.fieldname === 'photos');
+  const shotFiles = task ? req.files.filter(shotOf) : [];
   const values = { truck: clean(req.body.truck, 20), odometer: clean(req.body.odometer, 12), notes_all: clean(req.body.notes, 1000), results: {}, notes: {} };
   const errors = [];
   if (!values.truck) errors.push('Enter the truck number.');
@@ -33,10 +42,12 @@ router.post('/inspection', requirePerm('inspections.submit'), uploads.photos('ph
     else if (v === 'problem' && !values.notes[it.id]) errors.push(`${it.label}: say what is wrong.`);
   }
   if (req.photoError) errors.push(req.photoError);
+  if (extras.length > MAX_PHOTOS) errors.push(`No more than ${MAX_PHOTOS} extra photos.`);
+  if (task) for (const [key, label] of SHOTS) if (shotFiles.filter((f) => f.fieldname === `shot_${key}`).length !== 1) errors.push(`Add the photo: ${label}.`);
   for (const f of req.files) if (!uploads.looksLikeImage(f.path)) { errors.push('Photos must be JPEG, PNG, WebP or GIF images.'); break; }
   if (errors.length) {
     req.files.forEach((f) => uploads.remove(f.filename));
-    return res.status(400).render('inspection', { title: 'Truck inspection', items, values: { ...values, notes_text: values.notes_all }, errors, maxPhotos: MAX_PHOTOS });
+    return res.status(400).render('inspection', { title: 'Truck inspection', items, values: { ...values, notes_text: values.notes_all }, errors, maxPhotos: MAX_PHOTOS, task, shots: SHOTS });
   }
 
   const now = new Date();
@@ -47,11 +58,22 @@ router.post('/inspection', requirePerm('inspections.submit'), uploads.photos('ph
     ).run(req.user.id, values.truck, values.odometer || null, values.notes_all || null, problems.length, now.toISOString(), localDate(now));
     const add = db.prepare('INSERT INTO inspection_results (inspection_id, label, ok, note) VALUES (?, ?, ?, ?)');
     for (const it of items) add.run(info.lastInsertRowid, it.label, values.results[it.id] === 'ok' ? 1 : 0, values.notes[it.id] || null);
-    const photo = db.prepare('INSERT INTO inspection_photos (inspection_id, path) VALUES (?, ?)');
-    for (const f of req.files) photo.run(info.lastInsertRowid, f.filename);
+    const photo = db.prepare('INSERT INTO inspection_photos (inspection_id, path, label) VALUES (?, ?, ?)');
+    for (const [key, label] of SHOTS) for (const f of shotFiles.filter((x) => x.fieldname === `shot_${key}`)) photo.run(info.lastInsertRowid, f.filename, label);
+    for (const f of extras) photo.run(info.lastInsertRowid, f.filename, null);
+    // Sending the inspection is what finishes the task it was assigned as.
+    if (task) {
+      db.prepare('UPDATE tasks SET done_at = ?, done_note = ?, inspection_id = ? WHERE id = ?').run(now.toISOString(), `Inspection sent for truck ${values.truck}`, info.lastInsertRowid, task.id);
+      db.prepare("INSERT INTO task_notes (task_id, user_id, status, body, created_at) VALUES (?, ?, 'done', ?, ?)").run(task.id, req.user.id, `Inspection sent for truck ${values.truck}`, now.toISOString());
+    }
     db.prepare('UPDATE users SET default_truck = ? WHERE id = ?').run(values.truck, req.user.id);
     return info.lastInsertRowid;
   })();
+  // Anything uploaded in a box this form does not use is not kept.
+  req.files.filter((f) => !extras.includes(f) && !shotFiles.includes(f)).forEach((f) => uploads.remove(f.filename));
+  if (task && task.assigned_by !== req.user.id) {
+    require('../push').notify([task.assigned_by], 'task_done', { title: `Done: ${task.title}`, body: `${req.user.display_name} sent the inspection for truck ${values.truck}.`, url: `/admin/inspections/${id}` });
+  }
 
   if (problems.length) {
     const push = require('../push');
@@ -62,8 +84,8 @@ router.post('/inspection', requirePerm('inspections.submit'), uploads.photos('ph
       `${req.user.display_name} inspected truck ${values.truck} and reported:\n\n` +
       problems.map((it) => `  ${it.label}: ${values.notes[it.id]}`).join('\n') + `\n\n${config.baseUrl}/admin/inspections/${id}\n`);
   }
-  flash(req, 'ok', problems.length ? `Inspection sent with ${problems.length} ${problems.length === 1 ? 'problem' : 'problems'} reported. Thank you.` : 'Inspection sent. Thank you.');
-  res.redirect('/my?sent=inspection');
+  flash(req, 'ok', (task ? 'Task finished. ' : '') + (problems.length ? `Inspection sent with ${problems.length} ${problems.length === 1 ? 'problem' : 'problems'} reported. Thank you.` : 'Inspection sent. Thank you.'));
+  res.redirect(task ? '/tasks' : '/my?sent=inspection');
 });
 
 // Photos: the person who took them, or someone allowed to see that person's inspections.
@@ -181,7 +203,7 @@ router.get('/admin/inspections/:id', requirePerm('inspections.view'), (req, res)
   res.render('admin_inspection', {
     title: `Inspection: truck ${i.truck}`, i,
     results: db.prepare('SELECT * FROM inspection_results WHERE inspection_id = ? ORDER BY id').all(i.id),
-    photos: db.prepare('SELECT id FROM inspection_photos WHERE inspection_id = ? ORDER BY id').all(i.id),
+    photos: db.prepare('SELECT id, label FROM inspection_photos WHERE inspection_id = ? ORDER BY id').all(i.id),
   });
 });
 

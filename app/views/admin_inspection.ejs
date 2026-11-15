@@ -13,7 +13,7 @@
 <% if (i.notes) { %><h2>Notes</h2><p class="pre"><%= i.notes %></p><% } %>
 <% if (photos.length) { %>
 <h2>Photos</h2>
-<div class="photo-grid"><% photos.forEach(function (p) { %><a href="/inspection/photo/<%= p.id %>"><img src="/inspection/photo/<%= p.id %>" alt="Inspection photo" loading="lazy"></a><% }) %></div>
+<div class="photo-grid"><% photos.forEach(function (p) { %><a href="/inspection/photo/<%= p.id %>" class="labelled"><img src="/inspection/photo/<%= p.id %>" alt="<%= p.label || 'Inspection photo' %>" loading="lazy"><% if (p.label) { %><span><%= p.label %></span><% } %></a><% }) %></div>
 <% } %>
 <% if (i.problems) { %>
 <h2>Problems</h2>

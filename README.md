@@ -407,6 +407,7 @@ The **Community** menu holds People, Discussions, Daily question and Newsletters
 - The People page can be filtered by department.
 
 **New hires**
+- **Vehicle inspection as a task:** in Manage tasks, choose "A vehicle inspection" as the kind of task. The person gets a **Do the vehicle inspection** button; the task cannot be ticked off by hand and finishes only when the inspection is sent with six required photos (front, rear, driver side, passenger side, front interior, rear interior). The finished task links to the inspection. It can only be given to people whose profile lets them send inspections.
 - **Task status and notes:** the person doing a task sets where it stands (Not started, In progress, Waiting) and can leave notes without closing it; choosing Finished closes it. The manager sees the status and latest note in Manage tasks, the full thread on the task's Edit page, and can add a note back. Updates send an alert to whoever assigned the task.
 - **Team > Positions** lists everyone in the office with their job title and department in one table; change as many as needed and save once. A department box suggests the departments already in use. People who manage users also get an **Edit job title and department** button on a person's page and an **Edit positions** button on People. Each change is written to the activity log.
 - On **Edit person** (Team > Users), **Announce as a new hire** takes a job title, start date and a few words. The person then appears under **Welcome aboard** (in Around the company) on everyone's home page for 14 days.

@@ -32,6 +32,7 @@ router.post('/tasks/:id/update', requireLogin, (req, res) => {
   const status = req.body.status === 'done' ? 'done' : Object.keys(tasks.STATUSES).includes(req.body.status) ? req.body.status : t.status;
   const now = new Date().toISOString();
   if (t.done_at) return res.redirect('/tasks');
+  if (status === 'done' && t.kind === 'inspection') { flash(req, 'err', 'This task is finished by doing the vehicle inspection.'); return res.redirect(`/tasks#t${t.id}`); }
   if (status === t.status && !note) { flash(req, 'ok', 'Nothing was changed.'); return res.redirect(`/tasks#t${t.id}`); }
   // The same note sent again straight away (a double tap, a retry on a slow connection) is not added twice.
   if (status === t.status && tasks.sameAsLast(t.id, req.user.id, note)) return res.redirect(`/tasks#t${t.id}`);
@@ -52,6 +53,7 @@ router.post('/tasks/:id/done', requireLogin, (req, res) => {
   if (!t) return res.redirect('/tasks');
   if (t.assigned_to !== req.user.id) return forbidden(res);
   if (t.done_at) db.prepare('UPDATE tasks SET done_at = NULL, done_note = NULL WHERE id = ?').run(t.id);
+  else if (t.kind === 'inspection') { flash(req, 'err', 'This task is finished by doing the vehicle inspection.'); return res.redirect(`/tasks#t${t.id}`); }
   else {
     const note = clean(req.body.done_note, 500) || null;
     db.prepare('UPDATE tasks SET done_at = ?, done_note = ? WHERE id = ?').run(new Date().toISOString(), note, t.id);
@@ -88,7 +90,8 @@ function groups(people) {
 const mine = (viewer, t) => t.assigned_by === viewer.id || access.canSee(viewer, t.assigned_to);
 
 function readForm(body) {
-  const values = { title: clean(body.title, 150), details: clean(body.details, 2000), due_on: clean(body.due_on, 10) };
+  const kind = body.kind === 'inspection' ? 'inspection' : 'general';
+  const values = { kind, title: clean(body.title, 150) || (kind === 'inspection' ? 'Vehicle inspection' : ''), details: clean(body.details, 2000), due_on: clean(body.due_on, 10) };
   const errors = [];
   if (!values.title) errors.push('Say what needs doing.');
   if (values.due_on && !isYmd(values.due_on)) errors.push('The due date does not look right.');
@@ -125,11 +128,16 @@ router.post('/admin/tasks', assign, (req, res) => {
   const to = allowed.filter((u) => everyone || picked.includes(String(u.id)) || pickedGroups.includes(String(u.profile_id)));
   values.to = picked; values.groups = pickedGroups;
   if (!to.length) errors.unshift('Choose who the task is for.');
+  // A vehicle inspection can only go to people whose profile lets them send inspections.
+  if (values.kind === 'inspection') {
+    const cannot = to.filter((u) => !access.can(access.loadAccess(db.prepare('SELECT * FROM users WHERE id = ?').get(u.id)), 'inspections.submit'));
+    if (cannot.length) errors.push(`${cannot.slice(0, 5).map((u) => u.display_name).join(', ')}${cannot.length > 5 ? ' and others' : ''} cannot send vehicle inspections with their profile.`);
+  }
   if (errors.length) return listPage(req, res, { errors, values });
 
   const now = new Date().toISOString();
-  const add = db.prepare('INSERT INTO tasks (title, details, assigned_to, assigned_by, due_on, created_at) VALUES (?, ?, ?, ?, ?, ?)');
-  db.transaction(() => { for (const u of to) add.run(values.title, values.details || null, u.id, req.user.id, values.due_on || null, now); })();
+  const add = db.prepare('INSERT INTO tasks (title, details, assigned_to, assigned_by, due_on, created_at, kind) VALUES (?, ?, ?, ?, ?, ?, ?)');
+  db.transaction(() => { for (const u of to) add.run(values.title, values.details || null, u.id, req.user.id, values.due_on || null, now, values.kind); })();
   activity.log(req.user, 'Task assigned', `"${values.title}" to ${to.length > 6 ? to.length + ' people' : to.map((u) => u.display_name).join(', ')}${values.due_on ? ', due ' + fmtDate(values.due_on) : ''}`);
   push.notify(to.filter((u) => u.id !== req.user.id).map((u) => u.id), 'task_assigned',
     { title: `New task: ${values.title}`, body: `From ${req.user.display_name}. ${values.due_on ? 'Due ' + fmtDate(values.due_on) : 'No due date'}.`, url: '/tasks' });

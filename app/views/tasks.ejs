@@ -12,13 +12,14 @@
     </div>
     <% if (t.details) { %><p class="pre"><%= t.details %></p><% } %>
     <p class="meta">From <%= t.by_name %>, <%= fmtDateTime(t.created_at) %></p>
+    <% if (t.kind === 'inspection') { %><p class="task-go"><a class="btn primary" href="/inspection?task=<%= t.id %>">Do the vehicle inspection</a> <span class="hint">Sending it finishes this task. Six photos are required.</span></p><% } %>
     <%- include('partials/task_notes', { t: t }) %>
     <form method="post" action="/tasks/<%= t.id %>/update" class="filters task-update">
       <input type="hidden" name="_csrf" value="<%= csrf %>">
       <label>Status
         <select name="status">
           <% Object.keys(statuses).forEach(function (k) { %><option value="<%= k %>" <%= t.status === k ? 'selected' : '' %>><%= statuses[k] %></option><% }) %>
-          <option value="done">Finished</option>
+          <% if (t.kind !== 'inspection') { %><option value="done">Finished</option><% } %>
         </select>
       </label>
       <label class="grow">Note <span class="hint">Optional</span><input name="note" maxlength="500" autocomplete="off" placeholder="Where it stands, for <%= t.by_name %>"></label>
@@ -34,7 +35,7 @@
   <li class="card cancelled">
     <div class="rec-head"><span class="tag return">Finished</span><strong><%= t.title %></strong><time><%= fmtDateTime(t.done_at) %></time></div>
     <% if (t.notes.length) { %><%- include('partials/task_notes', { t: t }) %><% } else if (t.done_note) { %><p class="meta">Note: <%= t.done_note %></p><% } %>
-    <form method="post" action="/tasks/<%= t.id %>/done"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Not finished after all</button></form>
+    <% if (t.kind !== 'inspection') { %><form method="post" action="/tasks/<%= t.id %>/done"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Not finished after all</button></form><% } %>
   </li>
 <% }) %>
 </ul>

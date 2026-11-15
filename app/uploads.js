@@ -10,6 +10,7 @@ const EXT = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 
 
 /** Middleware that accepts up to `max` photos in `field`. Problems are left in req.photoError rather than thrown. */
 function photos(field, max) {
+  const any = field === null;
   const upload = multer({
     storage: multer.diskStorage({
       destination: uploadDir,
@@ -21,8 +22,9 @@ function photos(field, max) {
       req.photoError = 'Photos must be JPEG, PNG, WebP or GIF images.';
       cb(null, false);
     },
-  }).array(field, max);
-  return (req, res, next) => upload(req, res, (err) => {
+  });
+  const run = any ? upload.any() : upload.array(field, max);
+  return (req, res, next) => run(req, res, (err) => {
     if (err) {
       req.photoError = err.code === 'LIMIT_FILE_SIZE' ? 'A photo is larger than 10 MB.'
         : err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE' ? `No more than ${max} photos.` : 'The photos could not be uploaded.';

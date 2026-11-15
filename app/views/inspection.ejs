@@ -4,6 +4,10 @@
 <%- include('partials/errors') %>
 <form method="post" action="/inspection" enctype="multipart/form-data" class="card stack" id="inspection-form" data-draft="inspection:<%= user.id %>" <%- errors.length ? '' : 'data-draft-restore' %> data-offline-guard>
   <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <% if (task) { %>
+  <input type="hidden" name="task" value="<%= task.id %>">
+  <p class="flash info">This inspection is for the task <strong><%= task.title %></strong> from <%= task.by_name %>. Sending it finishes the task. Six photos are required.</p>
+  <% } %>
   <div class="filters">
     <label>Truck <input name="truck" value="<%= values.truck || '' %>" required maxlength="20" autocomplete="off" placeholder="e.g. 309"></label>
     <label>Odometer <span class="hint">Optional</span> <input name="odometer" value="<%= values.odometer || '' %>" inputmode="numeric" maxlength="12" autocomplete="off"></label>
@@ -23,8 +27,21 @@
     </div>
     <% }) %>
   </fieldset>
-  <label>Photos <span class="hint">Optional, up to <%= maxPhotos %>. Damage, tires, anything worth showing.</span>
-    <input type="file" name="photos" accept="image/jpeg,image/png,image/webp,image/gif" multiple>
+  <% if (task) { %>
+  <fieldset>
+    <legend>Required photos</legend>
+    <p class="hint">One of each. Take them now or choose them from your phone.</p>
+    <div class="shot-grid">
+      <% shots.forEach(function (s, i) { %>
+      <label class="shot"><span class="shot-n"><%= i + 1 %></span> <%= s[1] %>
+        <input type="file" name="shot_<%= s[0] %>" accept="image/jpeg,image/png,image/webp" required data-shrink="1600">
+      </label>
+      <% }) %>
+    </div>
+  </fieldset>
+  <% } %>
+  <label><%= task ? 'More photos' : 'Photos' %> <span class="hint">Optional, up to <%= maxPhotos %>. Damage, tires, anything worth showing.</span>
+    <input type="file" name="photos" accept="image/jpeg,image/png,image/webp,image/gif" multiple data-shrink="1600">
   </label>
   <label>Anything else? <span class="hint">Optional</span>
     <textarea name="notes" rows="2" maxlength="1000"><%= values.notes_text || '' %></textarea>
@@ -33,4 +50,5 @@
   <button class="btn primary" type="submit">Send inspection</button>
 </form>
 <script src="/inspection-form.js?v=<%= assetV %>" defer></script>
+<script src="/shrink.js?v=<%= assetV %>" defer></script>
 <%- include('partials/footer') %>

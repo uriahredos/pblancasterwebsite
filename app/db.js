@@ -560,6 +560,10 @@ addColumn('branches', 'marketing_name', 'TEXT');   // the name the office goes b
 addColumn('branches', 'market', 'TEXT');
 addColumn('branches', 'product_lines', 'TEXT');
 addColumn('tasks', 'status', "TEXT NOT NULL DEFAULT 'new'");
+// A task can be a vehicle inspection: it is finished by sending the inspection, which is then linked here.
+addColumn('tasks', 'kind', "TEXT NOT NULL DEFAULT 'general'");
+addColumn('tasks', 'inspection_id', 'INTEGER');
+addColumn('inspection_photos', 'label', 'TEXT');
 // Tidy up notes that were saved two or three times by repeated taps: the same person, task and words,
 // with no status change, within ten minutes of an earlier copy. The first copy stays.
 db.exec(`DELETE FROM task_notes WHERE status IS NULL AND body IS NOT NULL AND EXISTS (

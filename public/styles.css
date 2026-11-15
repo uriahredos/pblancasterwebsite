@@ -1045,3 +1045,13 @@ td.row-actions > * { display: inline-block; margin-right: .9rem; vertical-align:
 .reactions .react { min-height: 36px; padding: .1rem .6rem; }
 .reactions .react.none { opacity: .55; border-style: dashed; }
 .reactions .react.none:hover, .reactions .react.none:focus-visible { opacity: 1; }
+
+/* Vehicle inspection as a task: the six required photos */
+.shot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: .6rem; margin-top: .5rem; }
+.shot { display: block; padding: .7rem .8rem; border: 2px dashed var(--field-line); border-radius: 10px; font-weight: 700; }
+.shot:has(input:valid) { border-style: solid; border-color: var(--pb-green); background: color-mix(in srgb, var(--ok-bg) 55%, var(--surface)); }
+.shot input[type=file] { display: block; width: 100%; margin-top: .45rem; font-weight: 400; }
+.shot-n { display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; border-radius: 50%; background: var(--pb-navy); color: #fff; font-size: .85rem; }
+.task-go { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .8rem; margin: .5rem 0; }
+.photo-grid a.labelled { position: relative; display: block; }
+.photo-grid a.labelled span { position: absolute; left: 0; right: 0; bottom: 0; padding: .2rem .45rem; background: rgba(10, 49, 82, .78); color: #fff; font-size: .8rem; border-radius: 0 0 8px 8px; }

@@ -24,7 +24,7 @@
   <tbody>
   <% rows.forEach(function (t) { %>
   <tr class="<%= t.done_at ? 'off' : '' %>">
-    <td><strong><%= t.title %></strong><% if (t.details) { %><br><span class="hint"><%= t.details.length > 120 ? t.details.slice(0, 120) + '…' : t.details %></span><% } %><% var last = t.notes.filter(function (n) { return n.body; }).pop(); if (last) { %><br><span class="hint">Latest note: <%= last.body.length > 120 ? last.body.slice(0, 120) + '…' : last.body %> (<%= last.author %>, <%= fmtDateTime(last.created_at) %>)</span><% } else if (t.done_note) { %><br><span class="hint">Note: <%= t.done_note %></span><% } %></td>
+    <td><strong><%= t.title %></strong><% if (t.kind === 'inspection') { %> <span class="pill">Vehicle inspection</span><% if (t.inspection_id) { %> <a href="/admin/inspections/<%= t.inspection_id %>">See the inspection</a><% } %><% } %><% if (t.details) { %><br><span class="hint"><%= t.details.length > 120 ? t.details.slice(0, 120) + '…' : t.details %></span><% } %><% var last = t.notes.filter(function (n) { return n.body; }).pop(); if (last) { %><br><span class="hint">Latest note: <%= last.body.length > 120 ? last.body.slice(0, 120) + '…' : last.body %> (<%= last.author %>, <%= fmtDateTime(last.created_at) %>)</span><% } else if (t.done_note) { %><br><span class="hint">Note: <%= t.done_note %></span><% } %></td>
     <td><%= t.to_name %></td>
     <td class="nowrap"><%= t.due_on ? fmtDate(t.due_on) : '' %></td>
     <td><%= t.by_name %></td>
@@ -43,7 +43,13 @@
 <%- include('partials/errors') %>
 <form method="post" action="/admin/tasks" class="card stack">
   <input type="hidden" name="_csrf" value="<%= csrf %>">
-  <label>What needs doing <input name="title" value="<%= values.title || '' %>" required maxlength="150" autocomplete="off" placeholder="e.g. Restock truck 309 batteries"></label>
+  <label>Kind of task
+    <select name="kind" id="task-kind">
+      <option value="general" <%= values.kind === 'inspection' ? '' : 'selected' %>>A regular task</option>
+      <option value="inspection" <%= values.kind === 'inspection' ? 'selected' : '' %>>A vehicle inspection (finished by sending the inspection with 6 photos)</option>
+    </select>
+  </label>
+  <label>What needs doing <span class="hint">For a vehicle inspection you can leave this blank.</span><input name="title" value="<%= values.title || '' %>" maxlength="150" autocomplete="off" placeholder="e.g. Restock truck 309 batteries"></label>
   <label>Details <span class="hint">Optional</span> <textarea name="details" rows="3" maxlength="2000"><%= values.details || '' %></textarea></label>
   <label>Due by <span class="hint">Optional</span> <input type="date" name="due_on" value="<%= values.due_on || '' %>"></label>
   <fieldset id="assign-to">

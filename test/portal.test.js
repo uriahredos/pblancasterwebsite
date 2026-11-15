@@ -3764,3 +3764,57 @@ test('reactions: on discussion messages and announcements, one of each per perso
   await owner.post(`${tp}/delete`, {}, { page: tp });
   assert.equal(db.prepare("SELECT COUNT(*) n FROM reactions WHERE (kind = 'notice' AND target_id = ?) OR (kind = 'post' AND target_id = ?)").get(nid, post).n, 0);
 });
+
+test('vehicle inspection as a task: assigned by a manager, finished only by sending the inspection with all six photos', async () => {
+  const owner = await loggedIn('owner'); const t1 = await loggedIn('tech1'); const t2 = await loggedIn('tech2');
+  // No title needed; it goes to people who can send inspections.
+  await owner.post('/admin/tasks', [['kind', 'inspection'], ['to', String(userId('tech1'))]], { page: '/admin/tasks' });
+  const task = db.prepare("SELECT * FROM tasks WHERE kind = 'inspection' AND assigned_to = ? ORDER BY id DESC").get(userId('tech1'));
+  assert.equal(task.title, 'Vehicle inspection');
+  const tid = task.id;
+  const mine = (await t1.get('/tasks')).text;
+  assert.match(mine, new RegExp(`href="/inspection\\?task=${tid}">Do the vehicle inspection`));
+  // It cannot be ticked off by hand.
+  await t1.post(`/tasks/${tid}/update`, { status: 'done', note: 'done it honest' }, { page: '/tasks' });
+  await t1.post(`/tasks/${tid}/done`, {}, { page: '/tasks' });
+  assert.equal(db.prepare('SELECT done_at FROM tasks WHERE id = ?').get(tid).done_at, null);
+  // A note and a status are still fine.
+  await t1.post(`/tasks/${tid}/update`, { status: 'progress', note: 'Truck is out until 2' }, { page: '/tasks' });
+  assert.equal(db.prepare('SELECT status FROM tasks WHERE id = ?').get(tid).status, 'progress');
+  // The form asks for the six photos, and only for the person the task belongs to.
+  const page = `/inspection?task=${tid}`;
+  const form = (await t1.get(page)).text;
+  for (const k of ['front', 'rear', 'driver', 'passenger', 'cab', 'back']) assert.match(form, new RegExp(`name="shot_${k}"[^>]* required`));
+  assert.doesNotMatch((await t2.get(page)).text, /name="shot_front"/);
+  const items = db.prepare('SELECT id FROM inspection_items WHERE active = 1 AND branch_id = 1').all();
+  const base = () => { const f = { task: String(tid), truck: '309' }; for (const it of items) f[`item_${it.id}`] = 'ok'; return f; };
+  const img = () => new Blob([PNG], { type: 'image/png' });
+  const before = db.prepare('SELECT COUNT(*) n FROM inspections').get().n;
+  // Five of six: refused, nothing saved, task still open.
+  const five = base(); for (const k of ['front', 'rear', 'driver', 'passenger', 'cab']) five[`shot_${k}`] = img();
+  const bad = await t1.post('/inspection', five, { page, multipart: true });
+  assert.equal(bad.status, 400); assert.match(bad.text, /Add the photo: Rear interior\./);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM inspections').get().n, before);
+  assert.equal(db.prepare('SELECT done_at FROM tasks WHERE id = ?').get(tid).done_at, null);
+  // All six: saved with their labels, and the task is finished and linked to the inspection.
+  const six = base(); for (const k of ['front', 'rear', 'driver', 'passenger', 'cab', 'back']) six[`shot_${k}`] = img();
+  const ok = await t1.post('/inspection', six, { page, multipart: true });
+  assert.equal(ok.location, '/tasks');
+  const done = db.prepare('SELECT done_at, inspection_id FROM tasks WHERE id = ?').get(tid);
+  assert.ok(done.done_at); assert.ok(done.inspection_id);
+  assert.deepEqual(db.prepare('SELECT label FROM inspection_photos WHERE inspection_id = ? ORDER BY id').all(done.inspection_id).map((r) => r.label),
+    ['Front of the vehicle', 'Rear of the vehicle', 'Driver side', 'Passenger side', 'Front interior', 'Rear interior']);
+  const list = (await owner.get('/admin/tasks?show=done')).text;
+  assert.match(list, new RegExp(`Vehicle inspection</span> <a href="/admin/inspections/${done.inspection_id}">See the inspection`));
+  assert.match((await owner.get(`/admin/inspections/${done.inspection_id}`)).text, /<span>Front interior<\/span>/);
+  // An ordinary inspection still needs no photos.
+  const plain = base(); delete plain.task;
+  assert.equal((await t1.post('/inspection', plain, { page: '/inspection', multipart: true })).location, '/my?sent=inspection');
+  // It cannot be given to someone whose profile cannot send inspections.
+  const noInspect = db.prepare(`SELECT u.id, u.display_name FROM users u WHERE u.active = 1 AND u.branch_id = 1 AND u.is_master = 0 AND NOT EXISTS
+    (SELECT 1 FROM profile_permissions pp WHERE pp.profile_id = u.profile_id AND pp.permission = 'inspections.submit') LIMIT 1`).get();
+  if (noInspect) {
+    const r = await owner.post('/admin/tasks', [['kind', 'inspection'], ['to', String(noInspect.id)]], { page: '/admin/tasks' });
+    assert.equal(r.status, 400); assert.match(r.text, /cannot send vehicle inspections with their profile/);
+  }
+});
