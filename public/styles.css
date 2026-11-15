@@ -1029,3 +1029,13 @@ td.row-actions > * { display: inline-block; margin-right: .9rem; vertical-align:
 /* The flame sits fully inside the welcome band, not half below its edge */
 .hero-mark { bottom: -.5rem; }
 @media (max-width: 520px) { .hero-mark { width: 13rem; right: -4.2rem; bottom: -.35rem; opacity: .3; } .embers { width: 8rem; } }
+
+/* Profile photo: zoom and drag inside the round frame before saving */
+.photo-canvas { display: block; width: 208px; height: 208px; border-radius: 50%; border: 3px solid var(--pb-green); cursor: grab; touch-action: none; background: var(--accent-soft); }
+.photo-canvas:active { cursor: grabbing; }
+.photo-crop { flex-basis: 100%; }
+.photo-crop input[type=range] { width: 100%; max-width: 20rem; min-height: 44px; padding: 0; border: 0; background: none; accent-color: var(--pb-green); }
+/* A slightly larger logo in the top bar */
+.logo-plate img { height: 52px; }
+@media (max-width: 520px) { .logo-plate img { height: 40px; } }
+.photo-pick { flex-wrap: wrap; }
