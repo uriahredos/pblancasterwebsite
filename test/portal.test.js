@@ -2637,8 +2637,8 @@ test('home page: announcements, newsletter and shout-outs first; office at a gla
   assert.match(/<section class="panel p-board"[\s\S]*?<\/section>/.exec(home)[0], /<span class="tag new">New<\/span><strong>Home order news[\s\S]*I have read this/);
   assert.doesNotMatch(home, /p-status|My status/);   // a person's own numbers now sit inside Office at a glance
   const css = (await new Client().get('/styles.css')).text;
-  assert.match(css, /\.dash \.p-board \{ order: 1; \} \.dash \.p-news \{ order: 2; \} \.dash \.p-shouts \{ order: 3; \} \.dash \.p-glance \{ order: 4; \} \.dash \.p-tasks \{ order: 5; \} \.dash \.p-actions \{ order: 6; \}/);
-  assert.deepEqual(order(home, 'class="dash-hello', 'class="panel p-board"', 'p-shouts"', 'class="panel p-around"', 'class="panel branch-panel', 'class="panel p-tasks"', 'id="act-h"').map((n, i, l) => n >= 0 && (i === 0 || n > l[i - 1])), [true, true, true, true, true, true, true]);
+  assert.match(css, /\.dash \.p-board \{ order: 1; \} \.dash \.p-news \{ order: 2; \} \.dash \.p-shouts \{ order: 3; \} \.dash \.p-up \{ order: 4; \} \.dash \.p-tasks \{ order: 5; \} \.dash \.p-glance \{ order: 6; \}/);
+  assert.deepEqual(order(home, 'class="dash-hello', 'class="panel p-board"', 'p-shouts"', 'class="panel p-around"', 'class="panel p-tasks"', 'class="panel branch-panel', 'id="act-h"').map((n, i, l) => n >= 0 && (i === 0 || n > l[i - 1])), [true, true, true, true, true, true, true]);
   // Office at a glance for someone who runs nothing: facts about the office, and none of the parts, stock or truck numbers.
   const tGlance = /<section class="panel branch-panel[\s\S]*?<\/section>/.exec(home)[0];
   assert.match(tGlance, /<span class="mini-num">\d+<\/span><span class="mini-label">People<\/span><span class="mini-sub">in the Lancaster office/);

@@ -176,65 +176,6 @@
   </div>
 
   <div class="dash-side">
-    <section class="panel branch-panel p-glance" aria-labelledby="branch-h">
-      <div class="panel-head"><h2 id="branch-h"><%= branchTitle %></h2><% if (officeId) { %><a href="/branches/<%= officeId %>">Office page</a><% } %></div>
-      <div class="branch-stats">
-        <% branch.forEach(function (s) { %>
-        <a href="<%= s.url %>" class="<%= s.level %>"><span class="mini-num"><%= s.value %></span><span class="mini-label"><%= s.label %></span><span class="mini-sub"><%= s.sub %></span></a>
-        <% }) %>
-      </div>
-      <% if (mine.length) { %>
-      <h3 class="sub-h">Yours <a href="/my">My activity</a></h3>
-      <div class="branch-stats">
-        <% mine.forEach(function (t) { %>
-        <a href="<%= t.url || '/my' %>" class="<%= t.warn ? 'warn' : '' %>"><span class="mini-num"><%= t.value %></span><span class="mini-label"><%= t.label %></span><span class="mini-sub"><%= t.sub %></span></a>
-        <% }) %>
-      </div>
-      <% } %>
-    </section>
-    <% if (myTasks.length) { %>
-    <section class="panel p-tasks" aria-labelledby="tasks-h">
-      <div class="panel-head"><h2 id="tasks-h">Your tasks</h2><a href="/tasks">All tasks</a></div>
-      <ul class="todo">
-        <% myTasks.forEach(function (t) { %>
-        <li class="<%= t.overdue ? 'overdue' : t.days !== null && t.days <= 1 ? 'soon' : '' %>"><a href="/tasks#t<%= t.id %>"><strong><%= t.title %></strong><span class="todo-when"><%= t.when %> · from <%= t.by_name %></span></a></li>
-        <% }) %>
-      </ul>
-      <% if (badges.tasks > myTasks.length) { %><p class="panel-foot"><a href="/tasks">and <%= badges.tasks - myTasks.length %> more</a></p><% } %>
-    </section>
-    <% } %>
-    <section class="panel actions p-actions" aria-labelledby="act-h">
-      <div class="panel-head"><h2 id="act-h">What do you need to do?</h2></div>
-      <div class="quick">
-        <% if (can('parts.submit')) { %>
-        <a href="/parts?action=take"><%- icon('take') %><span>Take parts</span></a>
-        <a href="/parts?action=return"><%- icon('back') %><span>Return parts</span></a>
-        <a href="/parts?action=request"><%- icon('request') %><span>Request parts</span></a>
-        <% } %>
-        <% if (can('training.submit')) { %>
-        <a href="/training"><%- icon('training') %><span>Training request</span></a>
-        <% } %>
-        <% if (can('inspections.submit')) { %>
-        <a href="/inspection"><%- icon('truck') %><span>Truck inspection</span></a>
-        <% } %>
-        <% if (can('forum.use')) { %>
-        <a href="/discussions"><%- icon('talk') %><span>Discussions</span></a>
-        <% } %>
-        <a href="/people"><%- icon('people') %><span>People</span></a>
-        <% if (can('complaints.submit')) { %>
-        <a class="quiet" href="/complaint"><%- icon('complaint') %><span>Anonymous complaint</span></a>
-        <% } %>
-        <a class="quiet" href="/my"><%- icon('mine') %><span>My activity</span></a>
-      </div>
-    </section>
-
-    <% if (dailyCard) { %>
-    <section class="panel p-daily daily" aria-labelledby="daily-h" id="daily">
-      <div class="panel-head"><h2 id="daily-h">Today's question</h2><a href="/daily">Earlier ones</a></div>
-      <%- include('partials/daily_card', { d: dailyCard, back: 'home' }) %>
-    </section>
-    <% } %>
-
     <% if (thisWeek.length || upcoming.length) { %>
     <section class="panel p-up" aria-labelledby="up-h" id="thisweek">
       <div class="panel-head"><h2 id="up-h">Coming up</h2><a href="/events">Events</a></div>
@@ -267,6 +208,65 @@
       <% } %>
     </section>
     <% } %>
+    <% if (myTasks.length) { %>
+    <section class="panel p-tasks" aria-labelledby="tasks-h">
+      <div class="panel-head"><h2 id="tasks-h">Your tasks</h2><a href="/tasks">All tasks</a></div>
+      <ul class="todo">
+        <% myTasks.forEach(function (t) { %>
+        <li class="<%= t.overdue ? 'overdue' : t.days !== null && t.days <= 1 ? 'soon' : '' %>"><a href="/tasks#t<%= t.id %>"><strong><%= t.title %></strong><span class="todo-when"><%= t.when %> · from <%= t.by_name %></span></a></li>
+        <% }) %>
+      </ul>
+      <% if (badges.tasks > myTasks.length) { %><p class="panel-foot"><a href="/tasks">and <%= badges.tasks - myTasks.length %> more</a></p><% } %>
+    </section>
+    <% } %>
+    <section class="panel branch-panel p-glance" aria-labelledby="branch-h">
+      <div class="panel-head"><h2 id="branch-h"><%= branchTitle %></h2><% if (officeId) { %><a href="/branches/<%= officeId %>">Office page</a><% } %></div>
+      <div class="branch-stats">
+        <% branch.forEach(function (s) { %>
+        <a href="<%= s.url %>" class="<%= s.level %>"><span class="mini-num"><%= s.value %></span><span class="mini-label"><%= s.label %></span><span class="mini-sub"><%= s.sub %></span></a>
+        <% }) %>
+      </div>
+      <% if (mine.length) { %>
+      <h3 class="sub-h">Yours <a href="/my">My activity</a></h3>
+      <div class="branch-stats">
+        <% mine.forEach(function (t) { %>
+        <a href="<%= t.url || '/my' %>" class="<%= t.warn ? 'warn' : '' %>"><span class="mini-num"><%= t.value %></span><span class="mini-label"><%= t.label %></span><span class="mini-sub"><%= t.sub %></span></a>
+        <% }) %>
+      </div>
+      <% } %>
+    </section>
+    <section class="panel actions p-actions" aria-labelledby="act-h">
+      <div class="panel-head"><h2 id="act-h">What do you need to do?</h2></div>
+      <div class="quick">
+        <% if (can('parts.submit')) { %>
+        <a href="/parts?action=take"><%- icon('take') %><span>Take parts</span></a>
+        <a href="/parts?action=return"><%- icon('back') %><span>Return parts</span></a>
+        <a href="/parts?action=request"><%- icon('request') %><span>Request parts</span></a>
+        <% } %>
+        <% if (can('training.submit')) { %>
+        <a href="/training"><%- icon('training') %><span>Training request</span></a>
+        <% } %>
+        <% if (can('inspections.submit')) { %>
+        <a href="/inspection"><%- icon('truck') %><span>Truck inspection</span></a>
+        <% } %>
+        <% if (can('forum.use')) { %>
+        <a href="/discussions"><%- icon('talk') %><span>Discussions</span></a>
+        <% } %>
+        <a href="/people"><%- icon('people') %><span>People</span></a>
+        <% if (can('complaints.submit')) { %>
+        <a class="quiet" href="/complaint"><%- icon('complaint') %><span>Anonymous complaint</span></a>
+        <% } %>
+        <a class="quiet" href="/my"><%- icon('mine') %><span>My activity</span></a>
+      </div>
+    </section>
+
+    <% if (dailyCard) { %>
+    <section class="panel p-daily daily" aria-labelledby="daily-h" id="daily">
+      <div class="panel-head"><h2 id="daily-h">Today's question</h2><a href="/daily">Earlier ones</a></div>
+      <%- include('partials/daily_card', { d: dailyCard, back: 'home' }) %>
+    </section>
+    <% } %>
+
   </div>
 </div>
 <%- include('partials/footer') %>
