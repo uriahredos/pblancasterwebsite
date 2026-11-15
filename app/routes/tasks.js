@@ -20,7 +20,15 @@ router.get('/tasks', requireLogin, (req, res) => {
   const done = db.prepare(
     `SELECT t.*, b.display_name AS by_name FROM tasks t JOIN users b ON b.id = t.assigned_by
      WHERE t.assigned_to = ? AND t.done_at IS NOT NULL ORDER BY t.done_at DESC LIMIT 30`).all(req.user.id).map((t) => tasks.decorate(t, today));
-  res.render('tasks', { title: 'Tasks', open: tasks.withNotes(tasks.openFor(req.user.id)), done: tasks.withNotes(done), statuses: tasks.STATUSES });
+  const open = tasks.withNotes(tasks.openFor(req.user.id));
+  // Opening this page is "seeing" the tasks: they stop counting as new on the bell, on this very page too.
+  // The ones that were new this time keep a "New" label until the next visit.
+  for (const t of open) t.isNew = !t.seen_at;
+  if (tasks.markSeen(req.user.id)) {
+    res.locals.badges.newTasks = 0;
+    res.locals.myTasks.forEach((t) => { t.seen_at = t.seen_at || 'now'; });
+  }
+  res.render('tasks', { title: 'Tasks', open, done: tasks.withNotes(done), statuses: tasks.STATUSES });
 });
 
 // Say where my task stands and leave a note, without closing it. Choosing "Finished" closes it.
@@ -52,7 +60,7 @@ router.post('/tasks/:id/done', requireLogin, (req, res) => {
   const t = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
   if (!t) return res.redirect('/tasks');
   if (t.assigned_to !== req.user.id) return forbidden(res);
-  if (t.done_at) db.prepare('UPDATE tasks SET done_at = NULL, done_note = NULL WHERE id = ?').run(t.id);
+  if (t.done_at) db.prepare('UPDATE tasks SET done_at = NULL, done_note = NULL, seen_at = NULL WHERE id = ?').run(t.id);
   else if (t.kind === 'inspection') { flash(req, 'err', 'This task is finished by doing the vehicle inspection.'); return res.redirect(`/tasks#t${t.id}`); }
   else {
     const note = clean(req.body.done_note, 500) || null;
@@ -179,6 +187,7 @@ router.post('/admin/tasks/:id', assign, (req, res) => {
   if (errors.length) return res.status(400).render('admin_task_edit', { title: 'Edit task', t: tasks.withNotes([tasks.decorate(t)])[0], values: { ...t, ...values, assigned_to: Number(req.body.assigned_to) }, errors, people });
   db.prepare('UPDATE tasks SET title = ?, details = ?, due_on = ?, assigned_to = ? WHERE id = ?')
     .run(values.title, values.details || null, values.due_on || null, to.id, t.id);
+  if (to.id !== t.assigned_to) db.prepare('UPDATE tasks SET seen_at = NULL WHERE id = ?').run(t.id);
   flash(req, 'ok', 'Task saved.');
   res.redirect('/admin/tasks');
 });
@@ -187,7 +196,7 @@ router.post('/admin/tasks/:id', assign, (req, res) => {
 router.post('/admin/tasks/:id/done', assign, (req, res) => {
   const t = load(req, res);
   if (!t) return;
-  if (t.done_at) db.prepare('UPDATE tasks SET done_at = NULL, done_note = NULL WHERE id = ?').run(t.id);
+  if (t.done_at) db.prepare('UPDATE tasks SET done_at = NULL, done_note = NULL, seen_at = NULL WHERE id = ?').run(t.id);
   else db.prepare('UPDATE tasks SET done_at = ?, done_note = ? WHERE id = ?').run(new Date().toISOString(), `Marked done by ${req.user.display_name}`, t.id);
   res.redirect('/admin/tasks' + (req.body.show ? '?show=' + encodeURIComponent(req.body.show) : ''));
 });
@@ -199,6 +208,7 @@ router.post('/admin/tasks/:id/note', assign, (req, res) => {
   const note = clean(req.body.note, 500);
   if (note && !tasks.sameAsLast(t.id, req.user.id, note)) {
     db.prepare('INSERT INTO task_notes (task_id, user_id, status, body, created_at) VALUES (?, ?, NULL, ?, ?)').run(t.id, req.user.id, note, new Date().toISOString());
+    if (t.assigned_to !== req.user.id) db.prepare('UPDATE tasks SET seen_at = NULL WHERE id = ?').run(t.id);   // a note from the manager makes it new again
     if (t.assigned_to !== req.user.id) push.notify([t.assigned_to], 'task_assigned', { title: `Note on: ${t.title}`, body: `${req.user.display_name}: "${note}"`, url: `/tasks#t${t.id}` });
     flash(req, 'ok', 'Note added.');
   }

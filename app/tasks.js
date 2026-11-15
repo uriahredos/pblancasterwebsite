@@ -42,6 +42,10 @@ function openFor(userId, limit = 200) {
      WHERE t.assigned_to = ? AND t.done_at IS NULL ORDER BY ${ORDER} LIMIT ?`).all(userId, limit).map((t) => decorate(t, today))
     .map((t) => { t.statusName = statusName(t); return t; });
 }
+/** Open tasks the person has not looked at yet: these are what the bell counts. */
+const newCount = (userId) => db.prepare('SELECT COUNT(*) AS n FROM tasks WHERE assigned_to = ? AND done_at IS NULL AND seen_at IS NULL').get(userId).n;
+/** The person has now seen their open tasks. */
+const markSeen = (userId) => db.prepare('UPDATE tasks SET seen_at = ? WHERE assigned_to = ? AND done_at IS NULL AND seen_at IS NULL').run(new Date().toISOString(), userId).changes;
 const openCount = (userId) => db.prepare('SELECT COUNT(*) AS n FROM tasks WHERE assigned_to = ? AND done_at IS NULL').get(userId).n;
 
 /** True when this person's newest note on the task is this same text, written in the last ten minutes. */
@@ -50,4 +54,4 @@ function sameAsLast(taskId, userId, body) {
   return Boolean(last && body && last.user_id === userId && last.body === body && Date.now() - new Date(last.created_at).getTime() < 10 * 60000);
 }
 
-module.exports = { sameAsLast, decorate, openFor, openCount, ORDER, STATUSES, statusName, withNotes };
+module.exports = { newCount, markSeen, sameAsLast, decorate, openFor, openCount, ORDER, STATUSES, statusName, withNotes };

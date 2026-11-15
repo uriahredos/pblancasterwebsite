@@ -1,7 +1,7 @@
 <%# What is waiting on this person: their tasks, then counts of everything else. Used by the bell and the Alerts page. %>
 <% if (myTasks.length) { %>
 <p class="bell-title">Your tasks</p>
-<% myTasks.forEach(function (t) { %><a href="/tasks#t<%= t.id %>" class="bell-task <%= t.overdue ? 'overdue' : '' %>"><span class="bell-dot" aria-hidden="true"></span><span><strong><%= t.title %></strong><span class="bell-due"><%= t.when %></span></span></a><% }) %>
+<% myTasks.forEach(function (t) { %><a href="/tasks#t<%= t.id %>" class="bell-task <%= t.overdue ? 'overdue' : '' %> <%= t.seen_at ? 'seen' : 'is-new' %>"><span class="bell-dot" aria-hidden="true"></span><span><strong><%= t.title %></strong><% if (!t.seen_at) { %> <span class="tag new">New</span><% } %><span class="bell-due"><%= t.when %></span></span></a><% }) %>
 <% if (badges.tasks > myTasks.length) { %><a href="/tasks" class="bell-more">and <%= badges.tasks - myTasks.length %> more <%= badges.tasks - myTasks.length === 1 ? 'task' : 'tasks' %></a><% } %>
 <% } %>
 <% if (alerts.length || !myTasks.length) { %><p class="bell-title">Notifications</p><% } %>

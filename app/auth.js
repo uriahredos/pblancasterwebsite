@@ -50,7 +50,7 @@ function loadUser(req, res, next) {
   }
   res.locals.user = req.user;
   res.locals.can = (perm) => access.can(req.user, perm);
-  res.locals.badges = { updates: 0, requests: 0, notices: 0, certs: 0, inspections: 0, forum: 0, tasks: 0 };
+  res.locals.badges = { updates: 0, requests: 0, notices: 0, certs: 0, inspections: 0, forum: 0, tasks: 0, newTasks: 0 };
   res.locals.myTasks = [];
   res.locals.alerts = [];
   res.locals.branchName = null; res.locals.branchChoices = [];
@@ -68,6 +68,7 @@ function loadUser(req, res, next) {
     const tasks = require('./tasks');
     res.locals.myTasks = tasks.openFor(req.user.id, 6);
     res.locals.badges.tasks = tasks.openCount(req.user.id);
+    res.locals.badges.newTasks = tasks.newCount(req.user.id);
     // "My activity": status changes this person has not looked at yet.
     res.locals.badges.updates =
       db.prepare('SELECT COUNT(*) AS n FROM parts_submissions WHERE user_id = ? AND unseen = 1').get(req.user.id).n +

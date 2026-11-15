@@ -562,6 +562,8 @@ addColumn('branches', 'product_lines', 'TEXT');
 addColumn('tasks', 'status', "TEXT NOT NULL DEFAULT 'new'");
 // A task can be a vehicle inspection: it is finished by sending the inspection, which is then linked here.
 addColumn('tasks', 'kind', "TEXT NOT NULL DEFAULT 'general'");
+// When the person it is for last opened their Tasks page with it on. Empty = still new to them (it counts on the bell).
+addColumn('tasks', 'seen_at', 'TEXT');
 addColumn('tasks', 'inspection_id', 'INTEGER');
 addColumn('inspection_photos', 'label', 'TEXT');
 // Tidy up notes that were saved two or three times by repeated taps: the same person, task and words,

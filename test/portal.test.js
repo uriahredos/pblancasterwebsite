@@ -2318,10 +2318,10 @@ test('tasks: assigned with a due date, shown in the bell with when they are due,
   const bell = bellOf(home);
   const order = ['Send in last week&#39;s timesheet', 'Restock truck 309 batteries', 'Annual fit test', 'Read the new ladder policy'].map((t) => bell.indexOf(t));
   assert.ok(order.every((pos, i) => pos > 0 && (i === 0 || pos > order[i - 1])), order.join(','));
-  assert.match(bell, /class="bell-task overdue">.*?timesheet<\/strong><span class="bell-due">Overdue by 3 days \(was due \d+\/\d+\/\d{4}\)/);
-  assert.match(bell, /Restock truck 309 batteries<\/strong><span class="bell-due">Due tomorrow</);
-  assert.match(bell, /Annual fit test<\/strong><span class="bell-due">Due \d+\/\d+\/\d{4}</);
-  assert.match(bell, /Read the new ladder policy<\/strong><span class="bell-due">No due date</);
+  assert.match(bell, /class="bell-task overdue is-new">.*?timesheet<\/strong> <span class="tag new">New<\/span><span class="bell-due">Overdue by 3 days \(was due \d+\/\d+\/\d{4}\)/);
+  assert.match(bell, /Restock truck 309 batteries<\/strong> <span class="tag new">New<\/span><span class="bell-due">Due tomorrow</);
+  assert.match(bell, /Annual fit test<\/strong> <span class="tag new">New<\/span><span class="bell-due">Due \d+\/\d+\/\d{4}</);
+  assert.match(bell, /Read the new ladder policy<\/strong> <span class="tag new">New<\/span><span class="bell-due">No due date</);
   assert.match(home, /href="\/tasks"[^>]*>Tasks <span class="badge"[^>]*>4<\/span>/);
   assert.equal(total((await (await loggedIn('task2')).get('/')).text) >= 1, true);
   assert.doesNotMatch(bellOf((await (await loggedIn('task2')).get('/')).text), /timesheet/);                    // only your own
@@ -2331,12 +2331,26 @@ test('tasks: assigned with a due date, shown in the bell with when they are due,
   assert.match(mine, /Ten 12V 7Ah\./); assert.match(mine, /From Olive Owner/); assert.match(mine, /class="tag overdue">Overdue</);
   const tid = db.prepare("SELECT id FROM tasks WHERE title LIKE 'Send in%'").get().id;
   await tess.post(`/tasks/${tid}/done`, { done_note: 'Emailed it Monday' }, { page: '/tasks' });
+  // Opening the Tasks page is seeing them: they stay listed in the bell but stop counting as new,
+  // on that very page and afterwards. The Tasks number still shows how many are open.
+  assert.match(mine, /<span class="tag new">New<\/span>\s*<span class="tag st-new">Not started/);
+  assert.equal(total(mine), before);
   const after = (await tess.get('/')).text;
-  assert.equal(total(after), before + 3);
+  assert.equal(total(after), before);
+  assert.match(bellOf(after), /class="bell-task\s+seen">.*?Restock truck 309 batteries<\/strong><span class="bell-due">/);
+  assert.match(after, /href="\/tasks"[^>]*>Tasks <span class="badge"[^>]*>3<\/span>/);
+  assert.doesNotMatch((await tess.get('/tasks')).text, /<span class="tag new">New<\/span>\s*<span class="tag st-/);   // second visit: nothing is new
   assert.doesNotMatch(bellOf(after), /timesheet/);
   assert.match((await owner.get(page + '?show=done')).text.replace(/\s+/g, ' '), /timesheet.*Note: Emailed it Monday.*Finished/);
   await tess.post(`/tasks/${tid}/done`, {}, { page: '/tasks' });                                                // changed her mind
   assert.equal(db.prepare('SELECT done_at FROM tasks WHERE id = ?').get(tid).done_at, null);
+  // A note from the manager makes a seen task new again, so it counts on the bell once more.
+  const fitNow = db.prepare("SELECT id FROM tasks WHERE title = 'Annual fit test' AND assigned_to = ?").get(userId('task1')).id;
+  await tess.get('/tasks');
+  const quiet = total((await tess.get('/')).text);
+  await owner.post(`/admin/tasks/${fitNow}/note`, { note: 'Bring your own mask' }, { page: `/admin/tasks/${fitNow}` });
+  assert.equal(total((await tess.get('/')).text), quiet + 1);
+  await tess.get('/tasks');
   // Nobody can tick off someone else's task from their own page.
   assert.equal((await (await loggedIn('task2')).post(`/tasks/${tid}/done`, {})).status, 403);
 
@@ -2368,7 +2382,7 @@ test('tasks: assigned with a due date, shown in the bell with when they are due,
   assert.match(form, /Terry Tech/); assert.doesNotMatch(form, /Tess Tasker|Uma Tech|Annual fit test/);
   assert.equal((await mgr.post(page, { title: 'Outside my team', to: String(userId('task1')) }, { page })).status, 400);
   assert.equal((await mgr.post(page, { title: 'Clean out the van', due_on: ymdFromNow(0), to: String(userId('tech1')) }, { page })).status, 302);
-  assert.match(bellOf((await (await loggedIn('tech1')).get('/')).text), /Clean out the van<\/strong><span class="bell-due">Due today</);
+  assert.match(bellOf((await (await loggedIn('tech1')).get('/')).text), /Clean out the van<\/strong> <span class="tag new">New<\/span><span class="bell-due">Due today</);
   const fit = db.prepare("SELECT id FROM tasks WHERE title = 'Annual fit test'").get().id;
   assert.equal((await mgr.get(`${page}/${fit}`)).status, 403);
   assert.equal((await mgr.post(`${page}/${fit}/delete`, {})).status, 403);

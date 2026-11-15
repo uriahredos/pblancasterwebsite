@@ -6,6 +6,7 @@
   <li class="card task <%= t.overdue ? 'overdue' : t.days !== null && t.days <= 1 ? 'soon' : '' %>" id="t<%= t.id %>">
     <div class="rec-head">
       <strong><%= t.title %></strong>
+      <% if (t.isNew) { %><span class="tag new">New</span><% } %>
       <span class="tag st-<%= t.status %>"><%= t.statusName %></span>
       <% if (t.overdue) { %><span class="tag overdue">Overdue</span><% } %>
       <time><%= t.when %></time>

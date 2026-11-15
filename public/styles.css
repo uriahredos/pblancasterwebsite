@@ -1103,3 +1103,8 @@ html.page-loading::before { content: ""; position: fixed; z-index: 90; left: 0; 
 @keyframes going { from { background-position: -50% 0; } to { background-position: 150% 0; } }
 html.page-loading main { opacity: .8; transition: opacity .2s ease .25s; }
 @media (prefers-reduced-motion: reduce) { html.page-loading::before { animation: none; background-size: 100% 100%; } }
+
+/* The bell: tasks already looked at stay listed but no longer stand out or count */
+.bell-task.seen .bell-dot { background: transparent; border: 2px solid var(--field-line); }
+.bell-task.seen strong { font-weight: 600; }
+.bell-task .tag.new { font-size: .7rem; padding: .02rem .4rem; vertical-align: 1px; }
