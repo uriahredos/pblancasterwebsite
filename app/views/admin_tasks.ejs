@@ -45,8 +45,8 @@
   <input type="hidden" name="_csrf" value="<%= csrf %>">
   <label>Kind of task
     <select name="kind" id="task-kind">
-      <option value="general" <%= values.kind === 'inspection' ? '' : 'selected' %>>A regular task</option>
-      <option value="inspection" <%= values.kind === 'inspection' ? 'selected' : '' %>>A vehicle inspection (finished by sending the inspection with 6 photos)</option>
+      <option value="general" <%= values.kind === 'inspection' ? '' : 'selected' %>>Regular Task</option>
+      <option value="inspection" <%= values.kind === 'inspection' ? 'selected' : '' %>>Vehicle Inspection</option>
     </select>
   </label>
   <label>What needs doing <span class="hint">For a vehicle inspection you can leave this blank.</span><input name="title" value="<%= values.title || '' %>" maxlength="150" autocomplete="off" placeholder="e.g. Restock truck 309 batteries"></label>
