@@ -144,8 +144,11 @@
     var mine = ++softSeq;
     var root = document.documentElement;
     if (!window.fetch || !window.DOMParser || !root.hasAttribute('data-in') || !document.querySelector('main')) { location.assign(url); return; }
-    root.classList.add('going');
-    fetch(url, { credentials: 'same-origin', headers: { 'X-Requested-With': 'fetch' } }).then(function (res) {
+    root.classList.add('page-loading');
+    // The page may already be on its way: it is asked for the moment a finger touches the link, before the tap ends.
+    var early = warm && warm.url === url && Date.now() - warm.at < 4000 ? warm.req : null;
+    warm = null;
+    (early || fetch(url, { credentials: 'same-origin', headers: { 'X-Requested-With': 'fetch' } })).then(function (res) {
       if (mine !== softSeq) return null;
       if (!res.ok || !/text\/html/.test(res.headers.get('content-type') || '')) throw new Error('not a page');
       return res.text().then(function (html) { return { to: new URL(res.url), html: html }; });
@@ -156,17 +159,34 @@
       if (new URL(url, location.href).hash && !r.to.hash) r.to.hash = new URL(url, location.href).hash;
       return showPage(doc, r.to, opts);
     }).catch(function () { if (mine === softSeq) { if (opts.pop) location.reload(); else location.assign(url); } })
-      .then(function () { if (mine === softSeq) root.classList.remove('going'); });
+      .then(function () { if (mine === softSeq) root.classList.remove('page-loading'); });
   }
+  var warm = null;
+  function softLink(a) {
+    if (!a || a.target || a.hasAttribute('download') || a.getAttribute('role') === 'button' || a.hasAttribute('data-full')) return null;
+    var to;
+    try { to = new URL(a.href, location.href); } catch (err) { return null; }
+    if (to.origin !== location.origin) return null;
+    if (to.pathname === location.pathname && to.search === location.search && to.hash) return null;   // a jump within this page
+    if (/\.(csv|pdf|png|jpe?g|webp|gif|json|zip|xlsx?)$|\/pdf$|\/photo\/|\/page\/\d+$|^\/(logout|lock|unlock|login|poster)\b|\/backups?\//i.test(to.pathname)) return null;
+    return to;
+  }
+  document.addEventListener('pointerdown', function (e) {
+    if (e.button || !document.documentElement.hasAttribute('data-in') || !window.fetch) return;
+    // Only the bottom tabs, where a touch is always a deliberate press. Elsewhere a finger may just be scrolling
+    // past a link, and opening some pages marks things as read.
+    var to = softLink(e.target.closest && e.target.closest('#tabbar a[href]'));
+    if (!to) return;
+    var url = to.pathname + to.search + to.hash;
+    if (warm && warm.url === url && Date.now() - warm.at < 4000) return;
+    warm = { url: url, at: Date.now(), req: fetch(url, { credentials: 'same-origin', headers: { 'X-Requested-With': 'fetch' } }) };
+    warm.req.catch(function () {});
+  }, { passive: true });
   document.addEventListener('click', function (e) {
     var a = e.target.closest && e.target.closest('a[href]');
     if (!a || e.defaultPrevented || e.button || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
-    if (a.target || a.hasAttribute('download') || a.getAttribute('role') === 'button' || a.hasAttribute('data-full')) return;
-    var to;
-    try { to = new URL(a.href, location.href); } catch (err) { return; }
-    if (to.origin !== location.origin) return;
-    if (to.pathname === location.pathname && to.search === location.search && to.hash) return;   // a jump within this page
-    if (/\.(csv|pdf|png|jpe?g|webp|gif|json|zip|xlsx?)$|\/pdf$|\/photo\/|\/page\/\d+$|^\/(logout|lock|unlock|login|poster)\b|\/backups?\//i.test(to.pathname)) return;
+    var to = softLink(a);
+    if (!to) return;
     e.preventDefault();
     // Show straight away which tab was pressed, before the page arrives.
     var bar = a.closest('#tabbar');
@@ -184,7 +204,7 @@
     if (!document.documentElement.hasAttribute('data-in') || !window.fetch || !window.DOMParser) return;
     var busy = false, stopped = false;
     function pulse() {
-      if (busy || stopped || document.hidden || document.documentElement.classList.contains('going')) return;
+      if (busy || stopped || document.hidden || document.documentElement.classList.contains('page-loading')) return;
       busy = true;
       fetch('/pulse', { credentials: 'same-origin', cache: 'no-store', headers: { 'X-Requested-With': 'fetch' } }).then(function (res) {
         if (!res.ok || new URL(res.url).pathname !== '/pulse') { stopped = true; return null; }   // locked or signed out: nothing more to fetch

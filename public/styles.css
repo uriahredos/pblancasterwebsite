@@ -1099,7 +1099,7 @@ input[type=file]::file-selector-button:hover { border-color: var(--accent); back
 form[data-busy] button { opacity: .7; }
 
 /* While the next page is on its way: a thin moving line under the top bar, so a tap is answered at once */
-html.going::before { content: ""; position: fixed; z-index: 90; left: 0; top: 0; height: 3px; width: 100%; background: linear-gradient(90deg, transparent, var(--pb-green), var(--pb-blue), transparent); background-size: 50% 100%; background-repeat: no-repeat; animation: going 1s linear infinite; }
+html.page-loading::before { content: ""; position: fixed; z-index: 90; left: 0; top: 0; height: 3px; width: 100%; background: linear-gradient(90deg, transparent, var(--pb-green), var(--pb-blue), transparent); background-size: 50% 100%; background-repeat: no-repeat; animation: going 1s linear infinite; }
 @keyframes going { from { background-position: -50% 0; } to { background-position: 150% 0; } }
-html.going main { opacity: .6; transition: opacity .15s ease .12s; }
-@media (prefers-reduced-motion: reduce) { html.going::before { animation: none; background-size: 100% 100%; } }
+html.page-loading main { opacity: .8; transition: opacity .2s ease .25s; }
+@media (prefers-reduced-motion: reduce) { html.page-loading::before { animation: none; background-size: 100% 100%; } }
