@@ -41,6 +41,19 @@
     showInstallBar();
   });
   window.addEventListener('appinstalled', function () { installEvent = null; hideInstallBar(90); });
+  // Spell check: boxes where people write sentences get the browser's spell checker (the red underline, and
+  // suggestions on a right-click or long press) and the phone keyboard's autocorrect. Names, usernames, emails,
+  // part numbers and search boxes are left alone, where "corrections" would only get in the way.
+  document.addEventListener('DOMContentLoaded', function () {
+    var skip = /user|name|email|phone|part|qty|quantity|number|code|skill|birth|date|address|street|truck|^q$|^oq$|search|password|token/i;
+    Array.prototype.forEach.call(document.querySelectorAll('textarea, input[type=text], input:not([type])'), function (el) {
+      var prose = !(skip.test(el.name || '') || skip.test(el.id || '') || el.getAttribute('autocapitalize') === 'none' || el.hasAttribute('list'));
+      if (!prose) return;
+      el.spellcheck = true; el.setAttribute('autocorrect', 'on');
+      if (!el.hasAttribute('autocapitalize')) el.setAttribute('autocapitalize', 'sentences');
+    });
+  });
+
   // A form is sent once. On a slow connection a second or third tap on the button used to send it again.
   document.addEventListener('submit', function (e) {
     var form = e.target;
