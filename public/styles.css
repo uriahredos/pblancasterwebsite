@@ -1118,3 +1118,6 @@ html.page-loading main { opacity: .8; transition: opacity .2s ease .25s; }
 .task-fold[open] > summary { margin-bottom: .5rem; }
 .fold-hint { margin: .3rem 0 0; }
 .task:not(.overdue):not(.soon):has(.task-fold:not([open])) { border-left: 5px solid var(--pb-green); }
+.task-when { margin: .3rem 0 0 1.3rem; color: var(--muted); font-size: .95rem; }
+.task.overdue .task-when { color: var(--err); font-weight: 600; }
+.task-fold .fold-hint { margin-left: 1.3rem; }

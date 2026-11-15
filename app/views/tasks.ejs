@@ -11,8 +11,8 @@
       <% if (t.isNew) { %><span class="tag new">New</span><% } %>
       <span class="tag st-<%= t.status %>"><%= t.statusName %></span>
       <% if (t.overdue) { %><span class="tag overdue">Overdue</span><% } %>
-      <time><%= t.when %></time>
     </div>
+    <p class="task-when"><%= t.when %></p>
     <% if (t.isNew) { %><p class="hint fold-hint">Tap to open this task.</p><% } %>
     </summary>
     <% if (t.details) { %><p class="pre"><%= t.details %></p><% } %>
