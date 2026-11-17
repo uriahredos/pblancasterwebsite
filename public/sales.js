@@ -10,14 +10,12 @@
     if (q.company.length < 3 && q.phone.replace(/\D/g, '').length < 7 && q.email.indexOf('@') < 1) { box.hidden = true; return; }
     var mine = ++seq;
     fetch('/sales/check?' + new URLSearchParams(q).toString(), { credentials: 'same-origin', headers: { 'X-Requested-With': 'fetch' } })
-      .then(function (res) { return res.ok ? res.json() : { matches: [], territory: null }; })
+      .then(function (res) { return res.ok ? res.json() : { matches: [] }; })
       .then(function (data) {
         if (mine !== seq) return;
-        var list = data.matches || []; var t = data.territory;
+        var list = data.matches || [];
         box.innerHTML = '';
-        if (!list.length && !(t && !t.mine)) { box.hidden = true; return; }
-        if (t && !t.mine) box.appendChild(text('p', 'This is in ' + t.owner + '\u2019s territory (' + t.what + '). Talk to them first.', 'dupes-title'));
-        if (!list.length) { box.hidden = false; return; }
+        if (!list.length) { box.hidden = true; return; }
         box.appendChild(text('p', 'Already being worked?', 'dupes-title'));
         var ul = document.createElement('ul'); ul.className = 'plain-rows';
         list.forEach(function (m) {

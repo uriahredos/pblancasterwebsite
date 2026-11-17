@@ -16,7 +16,6 @@
     <% if (lead.open) { %><dt>Follow up</dt><dd class="<%= lead.due ? 'due-text' : '' %>"><%= lead.next_on ? fmtDate(lead.next_on) + (lead.overdue ? ' (overdue)' : lead.due ? ' (today)' : '') : 'No date set' %></dd><% } %>
     <% if (lead.quote_amount) { %><dt>Quoted</dt><dd>$<%= money(lead.quote_amount) %><%= lead.quoted_on ? ' on ' + fmtDate(lead.quoted_on) : '' %></dd><% } %>
     <% if (lead.stage === 'won' && lead.renew_on) { %><dt>Due again</dt><dd><%= fmtDate(lead.renew_on) %><%= lead.renewed_as ? ' (new lead started)' : '' %></dd><% } %>
-    <% if (territory) { %><dt>Territory</dt><dd><%= territory.owner %> <span class="meta">· <%= territory.what %></span></dd><% } %>
     <% if (lead.referrer) { %><dt>Passed on by</dt><dd><%= lead.referrer %><%= lead.referrer_office ? ' · ' + lead.referrer_office + ' office' : '' %></dd><% } %>
     <% if (lead.lost_reason) { %><dt>Why lost</dt><dd><%= lead.lost_reason %></dd><% } %>
   </dl>

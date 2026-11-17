@@ -3937,19 +3937,7 @@ test('sales: leads seen only by sales, owned by one person, guarded against doub
   await s3.post(`/sales/${sj}/owner`, { owner: 'me' }, { page: `/sales/${sj}` });
   assert.equal(db.prepare('SELECT owner_id FROM leads WHERE id = ?').get(sj).owner_id, userId('sales3'));
 
-  // --- Territories: a sales manager says who covers what; a lead in a colleague's patch is flagged before it is added.
-  assert.equal((await s1.post('/sales/territories', { [`town_${sam}`]: 'Lititz' }, { page: '/sales/territories' })).status, 403);
-  const terr = { [`town_${sam}`]: 'Lititz, Manheim', [`zip_${userId('sales2')}`]: '17522', [`account_${userId('sales2')}`]: 'Keystone Machine Works' };
-  assert.equal((await mgr.post('/sales/territories', { ...terr, [`town_${userId('sales2')}`]: 'Lititz' }, { page: '/sales/territories' })).status, 400);   // one town, two people
-  assert.equal((await mgr.post('/sales/territories', { ...terr, [`zip_${sam}`]: '1752' }, { page: '/sales/territories' })).status, 400);
-  assert.equal((await mgr.post('/sales/territories', terr, { page: '/sales/territories' })).location, '/sales/territories');
-  assert.match((await s1.get('/sales/territories')).text, /Sally Seller[\s\S]*17522[\s\S]*Keystone Machine Works/);
-  const tcheck = JSON.parse((await s1.get('/sales/check?company=New%20Cafe&address=5%20Oak%20St%2C%20Ephrata%20PA%2017522')).text).territory;
-  assert.deepEqual([tcheck.owner, tcheck.what, tcheck.mine], ['Sally Seller', 'zip code 17522', false]);
-  assert.equal(JSON.parse((await s1.get('/sales/check?company=Corner%20Deli&address=9%20Main%20St%20Lititz')).text).territory.mine, true);
-  const blocked = await s1.post('/sales', { company: 'Keystone Machine Works Inc' }, { page: '/sales' });
-  assert.equal(blocked.status, 400); assert.match(blocked.text, /in Sally Seller&#39;s territory \(Keystone Machine Works is their account\)/);
-  await s1.post('/sales', { company: 'Corner Deli', address: '9 Main St, Lititz' }, { page: '/sales' });                 // his own town: straight in
+  await s1.post('/sales', { company: 'Corner Deli', address: '9 Main St, Lititz' }, { page: '/sales' });
   const deli = db.prepare("SELECT id FROM leads WHERE company = 'Corner Deli'").get().id;
 
   // Amounts can carry cents; they are stored and shown as typed, with cents only when there are any.
@@ -3960,6 +3948,8 @@ test('sales: leads seen only by sales, owned by one person, guarded against doub
   assert.match((await s1.get(`/sales/${lead.id}`)).text, /\$4,500 estimated/);
   assert.equal((await s1.post('/sales', { company: 'Bad Amount', value: '12.345' }, { page: '/sales' })).status, 400);
   db.prepare('DELETE FROM leads WHERE id = ?').run(cents.id);
+
+  assert.equal((await s1.get('/sales/territories')).status, 404);          // territories were taken out
 
   // --- Quotes, and the day they went out.
   const dp = `/sales/${deli}`;
@@ -4017,10 +4007,10 @@ test('sales: leads seen only by sales, owned by one person, guarded against doub
   assert.doesNotMatch(libPage, /Add to the library/);
   const dl = await s1.get(`/sales/library/${fileRow.id}`);
   assert.equal(dl.status, 200); assert.match(dl.headers.get('content-disposition'), /attachment; filename="Hood service sheet\.pdf"/); assert.match(dl.text, /^%PDF-/);
-  for (const url of [lib, `/sales/library/${fileRow.id}`, '/sales/territories', '/sales/summary']) assert.equal((await t1.get(url)).status, 403, url);
+  for (const url of [lib, `/sales/library/${fileRow.id}`, '/sales/summary']) assert.equal((await t1.get(url)).status, 403, url);
   await mgr.post(`/sales/library/${fileRow.id}/delete`, {}, { page: lib });
   assert.equal(db.prepare('SELECT COUNT(*) n FROM sales_files').get().n, 1);
-  db.prepare('DELETE FROM sales_files').run(); db.prepare('DELETE FROM sales_territories').run();
+  db.prepare('DELETE FROM sales_files').run();
 
   // Export and removal are for the sales manager.
   assert.equal((await s1.get('/sales.csv')).status, 403);

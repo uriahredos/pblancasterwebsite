@@ -97,7 +97,7 @@ function board(req, res, extra = {}) {
   const byPerson = [...all.filter((l) => l.open && l.owner).reduce((m, l) => m.set(l.owner, (m.get(l.owner) || 0) + 1), new Map())].sort((a, b) => b[1] - a[1]);
   res.status(extra.errors ? 400 : 200).render('sales', {
     title: 'Sales', wide: true, summary, groups, show, q, count: rows.length, unowned, byPerson, sources: sales.SOURCES,
-    canExport: access.can(req.user, 'sales.manage'), allOffices: office === null, errors: [], values: {}, matches: [], territory: null, myDay, ...extra,
+    canExport: access.can(req.user, 'sales.manage'), allOffices: office === null, errors: [], values: {}, matches: [], myDay, ...extra,
   });
 }
 router.get('/sales', use, (req, res) => board(req, res));
@@ -106,8 +106,7 @@ router.get('/sales', use, (req, res) => board(req, res));
 router.get('/sales/check', use, (req, res) => {
   const office = officeOf(req.user);
   const matches = sales.similar({ company: clean(req.query.company, 120), phone: clean(req.query.phone, 30), email: clean(req.query.email, 120), address: clean(req.query.address, 200) });
-  const t = sales.territoryFor(req.user.workBranch, { company: clean(req.query.company, 120), address: clean(req.query.address, 200) });
-  res.json({ territory: t ? { owner: t.owner, what: t.what, mine: t.user_id === req.user.id } : null, matches: matches.map((m) => ({
+  res.json({ matches: matches.map((m) => ({
     company: m.company, owner: m.owner || 'nobody yet', office: m.office, stage: m.stageName, why: m.why,
     url: office === null || m.branch_id === office ? `/sales/${m.id}` : null,      // another office's lead is named, not opened
   })) });
@@ -117,11 +116,8 @@ router.post('/sales', use, (req, res) => {
   const { v, errors } = readLead(req.body);
   const matches = errors.length ? [] : sales.similar(v);
   // Someone may already be on this customer: say so once, and let the person decide.
-  const territory = errors.length ? null : sales.territoryFor(req.user.workBranch, v);
-  const theirs = territory && territory.user_id !== req.user.id ? territory : null;
-  if (!errors.length && (matches.length || theirs) && req.body.anyway !== '1') {
-    const why = [matches.length ? 'This looks like a customer someone is already working.' : '', theirs ? `This is in ${theirs.owner}'s territory (${theirs.what}).` : ''].filter(Boolean).join(' ');
-    return board(req, res, { errors: [`${why} Check below, then tick the box to add it anyway.`], values: v, matches, territory: theirs, addOpen: true });
+  if (!errors.length && matches.length && req.body.anyway !== '1') {
+    return board(req, res, { errors: ['This looks like a customer someone is already working. Check the list below, then tick the box to add it anyway.'], values: v, matches, addOpen: true });
   }
   if (errors.length) return board(req, res, { errors, values: v, addOpen: true });
   const now = new Date().toISOString();
@@ -146,41 +142,7 @@ router.get('/sales.csv', requirePerm('sales.manage'), (req, res) => {
     rows.map((l) => [l.id, l.office, l.company, l.contact_name, l.phone, l.email, l.address, l.interest, l.source, l.value, sales.stageName(l.stage), l.owner, l.next_on, (l.created_at || '').slice(0, 10), (l.closed_at || '').slice(0, 10), l.lost_reason]));
 });
 
-// ---- Territories: who covers which towns, zip codes and named accounts ---------------
-
 const manage = requirePerm('sales.manage');
-const listOf = (text, max) => [...new Set(String(text || '').split(/[,\n]/).map((x) => x.trim().slice(0, max)).filter(Boolean))].slice(0, 200);
-function territoryPage(req, res, extra = {}) {
-  const people = salesPeople(req.user.workBranch);
-  const rows = db.prepare('SELECT * FROM sales_territories WHERE branch_id = ? ORDER BY value COLLATE NOCASE').all(req.user.workBranch);
-  for (const p of people) for (const kind of ['town', 'zip', 'account']) p[kind] = rows.filter((r) => r.user_id === p.id && r.kind === kind).map((r) => r.value).join(', ');
-  res.status(extra.errors ? 400 : 200).render('sales_territories', { title: 'Territories', people, canManage: access.can(req.user, 'sales.manage'), errors: [], ...extra });
-}
-router.get('/sales/territories', use, (req, res) => territoryPage(req, res));
-router.post('/sales/territories', manage, (req, res) => {
-  const people = salesPeople(req.user.workBranch);
-  const wanted = []; const seen = new Map(); const errors = [];
-  for (const p of people) {
-    for (const [kind, max] of [['town', 60], ['zip', 5], ['account', 120]]) {
-      for (const value of listOf(req.body[`${kind}_${p.id}`], max)) {
-        if (kind === 'zip' && !/^\d{5}$/.test(value)) { errors.push(`"${value}" is not a five-digit zip code.`); continue; }
-        const key = `${kind}:${value.toLowerCase()}`;
-        if (seen.has(key) && seen.get(key) !== p.display_name) errors.push(`${value} is listed for both ${seen.get(key)} and ${p.display_name}. Give it to one of them.`);
-        seen.set(key, p.display_name);
-        wanted.push([p.id, kind, value]);
-      }
-    }
-  }
-  if (errors.length) return territoryPage(req, res, { errors: [...new Set(errors)] });
-  db.transaction(() => {
-    db.prepare('DELETE FROM sales_territories WHERE branch_id = ?').run(req.user.workBranch);
-    const add = db.prepare('INSERT INTO sales_territories (branch_id, user_id, kind, value) VALUES (?, ?, ?, ?)');
-    for (const w of wanted) add.run(req.user.workBranch, ...w);
-  })();
-  activity.log(req.user, 'Sales territories changed', `${wanted.length} entries`);
-  flash(req, 'ok', 'Territories saved.');
-  res.redirect('/sales/territories');
-});
 
 // ---- The manager's view: how the team is doing ----------------------------------------
 
@@ -274,7 +236,7 @@ function page(req, res, lead, extra = {}) {
   const offices = db.prepare('SELECT id, name, number FROM branches WHERE id <> ? ORDER BY name COLLATE NOCASE').all(lead.branch_id);
   res.status(extra.errors ? 400 : 200).render('sales_lead', {
     title: lead.company, lead, notes, stages: sales.STAGES, sources: sales.SOURCES, people: salesPeople(lead.branch_id), offices,
-    territory: sales.territoryFor(lead.branch_id, lead), mayTake: lead.open && lead.owner_id !== req.user.id && (lead.owner_id === null || lead.released), releaseDays: sales.RELEASE_DAYS,
+    mayTake: lead.open && lead.owner_id !== req.user.id && (lead.owner_id === null || lead.released), releaseDays: sales.RELEASE_DAYS,
     canEdit: mayEdit(req.user, lead), isManager: access.can(req.user, 'sales.manage'), errors: [], values: lead, ...extra,
   });
 }

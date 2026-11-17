@@ -31,15 +31,6 @@ CREATE TABLE IF NOT EXISTS leads (
   referred_by INTEGER REFERENCES users(id),      -- who passed it from another office
   referred_from INTEGER REFERENCES branches(id)
 );
--- Who covers what: a town, a zip code or a named account belongs to one salesperson in an office.
-CREATE TABLE IF NOT EXISTS sales_territories (
-  id INTEGER PRIMARY KEY,
-  branch_id INTEGER NOT NULL REFERENCES branches(id),
-  user_id INTEGER NOT NULL REFERENCES users(id),
-  kind TEXT NOT NULL CHECK (kind IN ('town','zip','account')),
-  value TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS sales_territories_branch ON sales_territories(branch_id);
 -- Brochures, service sheets and standard answers the whole sales team shares.
 CREATE TABLE IF NOT EXISTS sales_files (
   id INTEGER PRIMARY KEY,
@@ -84,18 +75,6 @@ function dueCount(userId, today = localDate()) {
   return follow + renew;
 }
 
-// ---- Territories ----------------------------------------------------------------
-const words = (text) => ` ${String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()} `;
-/** Whose patch a customer falls in, by named account first, then zip code, then town. Null when nobody's. */
-function territoryFor(branchId, { company, address }) {
-  const rows = db.prepare(`SELECT t.*, u.display_name AS owner FROM sales_territories t JOIN users u ON u.id = t.user_id WHERE t.branch_id = ? AND u.active = 1`).all(branchId);
-  const n = nameKey(company); const zips = String(address || '').match(/\b\d{5}\b/g) || []; const w = words(address);
-  const hit = rows.find((r) => r.kind === 'account' && n && (nameKey(r.value) === n || (nameKey(r.value).length >= 5 && n.includes(nameKey(r.value)))))
-    || rows.find((r) => r.kind === 'zip' && zips.includes(r.value))
-    || rows.find((r) => r.kind === 'town' && w.includes(words(r.value)) && words(r.value).trim());
-  return hit ? { user_id: hit.user_id, owner: hit.owner, kind: hit.kind, value: hit.value, what: hit.kind === 'account' ? `${hit.value} is their account` : hit.kind === 'zip' ? `zip code ${hit.value}` : hit.value } : null;
-}
-
 // ---- "Is someone already on this?" ----------------------------------------------
 // Names are compared loosely: case, punctuation and words like Inc or LLC are ignored.
 const DROP = new Set(['inc', 'incorporated', 'llc', 'ltd', 'co', 'corp', 'corporation', 'company', 'the', 'and', 'of']);
@@ -129,4 +108,4 @@ function similar({ company, phone, email, address }, exceptId) {
   return out;
 }
 
-module.exports = { STAGES, OPEN, SOURCES, STALE_DAYS, RELEASE_DAYS, QUOTE_WAIT_DAYS, RENEW_AHEAD_DAYS, addDays, daysSince, stageName, dueCount, similar, territoryFor };
+module.exports = { STAGES, OPEN, SOURCES, STALE_DAYS, RELEASE_DAYS, QUOTE_WAIT_DAYS, RENEW_AHEAD_DAYS, addDays, daysSince, stageName, dueCount, similar };
