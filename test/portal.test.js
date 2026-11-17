@@ -4142,8 +4142,9 @@ test('sign-in details: a manager picks a few people who have not signed in and g
   const out = (await owner.get(page)).text;
   const pw = /Username: invitee1\nTemporary password: (\S+)/.exec(out);
   assert.ok(pw, 'the message carries the username and a temporary password');
-  assert.match(out, /Hi Ivy, here is your sign-in for the PB Portal\./);
-  assert.match(out, /href="https:\/\/teams\.microsoft\.com\/l\/chat\/0\/0\?users=ivy%40example\.com&amp;message=Hi%20Ivy/);
+  assert.match(out, /Hi Ivy, you&#39;re invited to try out the new PB Portal\./);
+  assert.doesNotMatch(out, /Site: http:\/\/localhost:3000/);                                                       // the address the page was opened on, not a placeholder
+  assert.match(out, /href="https:\/\/teams\.microsoft\.com\/l\/chat\/0\/0\?users=ivy%40example\.com&amp;message=Hi%20Ivy%2C%20you&#39;re%20invited/);
   assert.match(out, /Ned Noemail<\/strong><span class="pill">No email on file/);
   assert.doesNotMatch(out, /Sid Signedin/);
   assert.equal(db.prepare('SELECT password_hash FROM users WHERE id = ?').get(c).password_hash, before);               // someone who has signed in is never touched

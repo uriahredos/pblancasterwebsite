@@ -439,9 +439,9 @@ function waitingToSignIn(actor) {
     .filter((u) => (!ids || ids.includes(u.id)) && mayManage(actor, u));
 }
 
-function signInMessage(u, password) {
+function signInMessage(u, password, site) {
   const first = u.display_name.split(' ')[0];
-  const lines = [`Hi ${first}, here is your sign-in for the PB Portal.`, `Site: ${config.baseUrl}`, `Username: ${u.username}`, `Temporary password: ${password}`,
+  const lines = [`Hi ${first}, you're invited to try out the new PB Portal.`, `Site: ${site}`, `Username: ${u.username}`, `Temporary password: ${password}`,
     'You will be asked to choose your own password the first time you sign in.'];
   return { text: lines.join('\n'), oneLine: lines.join('  ') };
 }
@@ -457,12 +457,14 @@ router.post('/admin/users/invite', requirePerm('users.manage'), (req, res) => {
   const people = waitingToSignIn(req.user).filter((u) => picked.includes(u.id)).slice(0, 25);
   if (!people.length) { flash(req, 'err', 'Tick at least one person first.'); return res.redirect('/admin/users/invite'); }
   const made = [];
+  // The address people are sent to: the configured one, or else the address this page was opened on.
+  const site = process.env.BASE_URL ? config.baseUrl : `${req.protocol}://${req.get('host')}`;
   db.transaction(() => {
     for (const u of people) {
       const password = auth.tempPassword();
       db.prepare('UPDATE users SET password_hash = ?, must_change_password = 1 WHERE id = ?').run(auth.hashPassword(password), u.id);
       auth.endSessions(u.id);
-      const m = signInMessage(u, password);
+      const m = signInMessage(u, password, site);
       made.push({ id: u.id, name: u.display_name, email: u.email || '', text: m.text,
         teams: u.email ? `https://teams.microsoft.com/l/chat/0/0?users=${encodeURIComponent(u.email)}&message=${encodeURIComponent(m.oneLine)}` : '' });
     }
