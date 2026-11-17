@@ -9,7 +9,7 @@ const SqliteStore = require('./sessionStore');
 const auth = require('./auth');
 const util = require('./util');
 
-const MULTIPART_PATHS = /^\/(parts|parts\/\d+\/edit|admin\/catalog\/import|admin\/stock\/import|admin\/import|admin\/newsletters|inspection|profile|admin\/people\/import|admin\/company\/contacts|admin\/company\/details|photos|branches\/\d+|discussions\/new|discussions\/t\/\d+\/reply|sales\/library)$/;
+const MULTIPART_PATHS = /^\/(parts|parts\/\d+\/edit|admin\/catalog\/import|admin\/stock\/import|admin\/import|admin\/newsletters|inspection|profile|admin\/people\/import|admin\/company\/contacts|admin\/company\/details|photos|branches\/\d+|discussions\/new|discussions\/t\/\d+\/reply|sales\/library|admin\/oncall\/import)$/;
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000; // stay signed in on a phone for 30 days
 
 const app = express();
@@ -127,6 +127,7 @@ app.use(require('./routes/company'));
 app.use(require('./routes/forum'));
 app.use(require('./routes/reactions'));
 app.use(require('./routes/sales'));
+app.use(require('./routes/oncall'));
 app.use(require('./routes/digest'));
 app.use(require('./routes/import'));
 app.use(require('./routes/backups'));

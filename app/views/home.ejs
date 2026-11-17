@@ -176,6 +176,16 @@
   </div>
 
   <div class="dash-side">
+    <% if (onCall.length) { %>
+    <section class="panel p-oncall" aria-labelledby="oncall-h">
+      <div class="panel-head"><h2 id="oncall-h">On call now</h2><a href="/oncall">Schedule</a></div>
+      <ul class="oncall-people compact">
+        <% onCall.forEach(function (p) { %>
+        <li class="role-<%= p.role %>"><span class="oncall-who"><span class="tag <%= p.role === 'tech' ? 'new' : '' %>"><%= p.role === 'tech' ? 'On call' : 'Backup' %></span><strong><%= p.name %></strong></span><% if (p.phone) { %><a class="btn small <%= p.role === 'tech' ? 'primary' : '' %>" href="tel:<%= p.tel %>" data-full>Call</a><% } %></li>
+        <% }) %>
+      </ul>
+    </section>
+    <% } %>
     <% if (thisWeek.length || upcoming.length) { %>
     <section class="panel p-up" aria-labelledby="up-h" id="thisweek">
       <div class="panel-head"><h2 id="up-h">Coming up</h2><a href="/events">Events</a></div>
@@ -255,6 +265,7 @@
         <% if (can('forum.use')) { %>
         <a href="/discussions"><%- icon('talk') %><span>Discussions</span></a>
         <% } %>
+        <a href="/oncall"><%- icon('talk') %><span>On call</span></a>
         <a href="/people"><%- icon('people') %><span>People</span></a>
         <% if (can('complaints.submit')) { %>
         <a class="quiet" href="/complaint"><%- icon('complaint') %><span>Anonymous complaint</span></a>

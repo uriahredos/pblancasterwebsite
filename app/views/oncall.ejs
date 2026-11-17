@@ -1,0 +1,95 @@
+<%- include('partials/header', { wide: true }) %>
+<h1>On call</h1>
+<p class="lede">Who to ring out of hours<%= many && market ? ' in the ' + market + ' market' : '' %>, and who is up next.</p>
+
+<section class="panel oncall-now" aria-labelledby="now-h">
+  <div class="panel-head"><h2 id="now-h">On call now</h2></div>
+  <% if (!current.length) { %><p class="empty">Nobody is listed as on call today.<%= canManage ? ' Add the rota below.' : '' %></p><% } %>
+  <% current.forEach(function (g) { %>
+  <% if (many) { %><h3 class="sub-h"><%= g.office %> office</h3><% } %>
+  <p class="meta oncall-range"><%= g.label %><%= g.note ? ' · ' + g.note : '' %></p>
+  <ul class="oncall-people">
+    <% g.tech.concat(g.backup).forEach(function (p) { %>
+    <li class="role-<%= p.role %>">
+      <span class="oncall-who"><span class="tag <%= p.role === 'tech' ? 'new' : '' %>"><%= roles[p.role] %></span><strong><%= p.name %></strong><% if (p.phone) { %><span class="meta"><%= p.phone %></span><% } %></span>
+      <% if (p.phone) { %><a class="btn <%= p.role === 'tech' ? 'primary' : '' %>" href="tel:<%= p.tel %>" data-full>Call</a><% } else { %><span class="hint">No number listed</span><% } %>
+    </li>
+    <% }) %>
+  </ul>
+  <% }) %>
+</section>
+
+<h2 id="schedule">Coming up</h2>
+<%- include('partials/errors') %>
+<% if (problems.length) { %><ul class="card hint"><% problems.forEach(function (p) { %><li><%= p %></li><% }) %></ul><% } %>
+<% if (!upcoming.length) { %><p class="card empty">Nothing scheduled after the current stretch.</p><% } else { %>
+<div class="table-wrap">
+<table class="oncall-table">
+  <thead><tr><th>Days</th><% if (many) { %><th>Office</th><% } %><th>On call</th><th>Backup</th><th>Holiday</th></tr></thead>
+  <tbody>
+  <% var lastYear = ''; upcoming.forEach(function (g) { %>
+  <% if (g.year !== lastYear) { lastYear = g.year; %><tr class="year-row"><td colspan="<%= many ? 5 : 4 %>"><%= g.year %></td></tr><% } %>
+  <tr>
+    <td class="nowrap" data-label="Days"><strong><%= g.label %></strong></td>
+    <% if (many) { %><td data-label="Office"><%= g.office %></td><% } %>
+    <% ['tech', 'backup'].forEach(function (role) { %>
+    <td data-label="<%= roles[role] %>">
+      <% g[role].forEach(function (p) { %>
+      <div class="oncall-cell"><span><%= p.name %><% if (p.phone) { %> <a href="tel:<%= p.tel %>" data-full class="meta"><%= p.phone %></a><% } %></span>
+        <% if (canManage && g.branch_id === mine) { %>
+        <details class="row-menu"><summary aria-label="Change <%= p.name %>, <%= g.label %>" title="Change">⋯</summary>
+          <div class="row-menu-list">
+            <form method="post" action="/admin/oncall/<%= p.id %>" class="stack swap"><input type="hidden" name="_csrf" value="<%= csrf %>">
+              <label>Swap for <input name="name" value="<%= p.name %>" maxlength="80" required autocomplete="off"></label>
+              <label>Phone <input name="phone" type="tel" value="<%= p.phone || '' %>" maxlength="30" autocomplete="off"></label>
+              <button class="btn small" type="submit">Save</button>
+            </form>
+            <form method="post" action="/admin/oncall/<%= p.id %>/delete" data-confirm="Take <%= p.name %> off <%= g.label %>?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button type="submit">Remove from this stretch</button></form>
+          </div>
+        </details>
+        <% } %>
+      </div>
+      <% }) %>
+    </td>
+    <% }) %>
+    <td data-label="Holiday"><%= g.note %></td>
+  </tr>
+  <% }) %>
+  </tbody>
+</table>
+</div>
+<% } %>
+
+<% if (canManage) { %>
+<details class="mod-tools spaced" <%= typeof addOpen !== 'undefined' && addOpen ? 'open' : '' %>>
+  <summary>Add someone to the rota</summary>
+  <form method="post" action="/admin/oncall" class="stack thread-tools">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <div class="two">
+      <label>First day <input type="date" name="start_on" value="<%= values.start_on || '' %>" required></label>
+      <label>Handed on <span class="hint">The day the next person takes over</span><input type="date" name="end_on" value="<%= values.end_on || '' %>" required></label>
+    </div>
+    <div class="two">
+      <label>Name <input name="name" value="<%= values.name || '' %>" required maxlength="80" autocomplete="off"></label>
+      <label>Phone <input name="phone" type="tel" value="<%= values.phone || '' %>" maxlength="30" autocomplete="off"></label>
+    </div>
+    <div class="two">
+      <label>Role <select name="role"><option value="tech" <%= values.role === 'backup' ? '' : 'selected' %>>On call</option><option value="backup" <%= values.role === 'backup' ? 'selected' : '' %>>Backup</option></select></label>
+      <label>Holiday <span class="hint">Optional</span><input name="note" value="<%= values.note || '' %>" maxlength="120" autocomplete="off"></label>
+    </div>
+    <button class="btn primary" type="submit">Add to the rota</button>
+    <p class="hint">Add as many people as you need for the same days: three or four on call, and three or four backups.</p>
+  </form>
+</details>
+<details class="mod-tools" <%= typeof importOpen !== 'undefined' && importOpen ? 'open' : '' %>>
+  <summary>Load the year from the spreadsheet</summary>
+  <form method="post" action="/admin/oncall/import" enctype="multipart/form-data" class="stack thread-tools" data-confirm="Load this file? It replaces the rota for the days it covers.">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <p>Upload the on-call schedule saved as CSV (in Excel: File &gt; Save As &gt; CSV). The year goes on the first line; then one line per stretch with the month, the days, the technician and the manager, as the sheet is kept today.</p>
+    <p class="hint">Extra columns of people are read too. A column headed "Backup" or "Manager" is a backup; any other is on call. Uploading again replaces the rota for the days in the file.</p>
+    <label>File <input type="file" name="file" accept=".csv,text/csv" required></label>
+    <button class="btn primary" type="submit">Load the rota</button>
+  </form>
+</details>
+<% } %>
+<%- include('partials/footer') %>

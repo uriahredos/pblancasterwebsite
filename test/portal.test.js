@@ -1679,7 +1679,7 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
 
   const owner = (await (await loggedIn('owner')).get('/admin/users')).text;
   assert.deepEqual(groupsOf(owner), ['Community', 'Parts', 'Trucks', 'Training', 'Team', 'Setup', 'Corporate']);
-  assert.deepEqual(barLinks(owner), ['/', '/tasks', '/discussions', '/sales']);   // the master account also sees the sales side
+  assert.deepEqual(barLinks(owner), ['/', '/tasks', '/discussions', '/oncall', '/sales']);   // the master account also sees the sales side
   // What used to be one long Admin list is two: Team (people and what goes out to them) and Setup (the site itself).
   const team = /<summary[^>]*>Team[\s\S]*?<\/details>/.exec(owner)[0];
   const setup = /<summary[^>]*>Setup[\s\S]*?<\/details>/.exec(owner)[0];
@@ -1701,7 +1701,7 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
   // A technician: no Team or Setup; Trucks has one thing, so it is a plain "Truck inspection" link.
   const tech = (await (await loggedIn('tech1')).get('/')).text;
   assert.deepEqual(groupsOf(tech), ['Community', 'Parts', 'Training']);
-  assert.deepEqual(barLinks(tech), ['/', '/tasks', '/discussions', '/inspection', '/complaint']); // one-item groups show as plain links
+  assert.deepEqual(barLinks(tech), ['/', '/tasks', '/discussions', '/inspection', '/oncall', '/complaint']); // one-item groups show as plain links
   assert.doesNotMatch(tech, /href="\/admin\//);
   assert.match(tech, /<a href="\/inspection"[^>]*>Truck inspection<\/a>/);
   assert.doesNotMatch(/<summary[^>]*>Parts[\s\S]*?<\/details>/.exec(tech)[0], /<hr>/); // no stray divider
@@ -1709,7 +1709,7 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
   // A manager's Team group holds only what their profile allows, and they have no Setup group.
   const mgr = (await (await loggedIn('mgr1')).get('/')).text;
   assert.deepEqual(groupsOf(mgr), ['Community', 'Parts', 'Trucks', 'Training', 'Team']);           // Manage tasks and Post announcements
-  assert.deepEqual(barLinks(mgr), ['/', '/tasks', '/discussions']);
+  assert.deepEqual(barLinks(mgr), ['/', '/tasks', '/discussions', '/oncall']);
   assert.doesNotMatch(mgr, /admin\/(users|profiles|complaints|backups|activity)"/);
 
   // Styles and scripts carry a version so a new release is not shown with old files.
@@ -4021,4 +4021,66 @@ test('sales: leads seen only by sales, owned by one person, guarded against doub
   assert.equal(db.prepare('SELECT COUNT(*) n FROM leads WHERE id = ?').get(lead.id).n, 0);
   assert.equal(db.prepare('SELECT COUNT(*) n FROM lead_notes WHERE lead_id = ?').get(lead.id).n, 0);
   db.prepare('DELETE FROM lead_notes'); db.prepare('DELETE FROM leads').run();
+});
+
+test('on call: the rota is loaded from the spreadsheet, everyone sees who is on call now, and several people can share a stretch', async () => {
+  const owner = await loggedIn('owner'); const t1 = await loggedIn('tech1');
+  const oncall = require('../app/oncall');
+  const today = ymdFromNow(0);
+  // The sheet as the office keeps it: a year, a heading line, then a line per stretch. Dates roll over year ends by themselves.
+  const sheet = ['2027,,,,11/13/2026', ',,,,', '2027,,Technician,Manager,Holiday', ',,,,',
+    'December,28-Jan. 04,D. Mowbray 717-371-8185,T. Walton 717-406-6389,New Years Eve',
+    'January,04-11,J. Zug 717-517-2281,D. Anderson 717-468-8370,',
+    'January,25-Feb 01,P. Caraballo 717-740-1957,,',
+    'February,22-MAR 01,M. Stough 717-874-0348,J. Negron 717-371-5609,',
+    'May,17-24,M. Wise,J. Negron 717-371-5609,',
+    'June ,28- July 06,P. Candelaria 717-917-2860,J. Negron 717-371-5609,Independence Day',
+    'October,18-25,"M. Mcdonnell 717-740-9178\n",T. Walton 717-406-6389,',
+    'December,27-JAN 03,C. McCurdy 717-829-6147,S. Aviles 717-435-0581,New Years Eve',
+    'January,03-10,M. Stough 717-874-0348,J. Moyer 717-344-9533,'].join('\n');
+  const read = oncall.parseSheet(require('../app/routes/catalog').parseCsv(sheet));
+  assert.deepEqual(read.problems, []);
+  assert.deepEqual([...new Set(read.shifts.map((x) => `${x.start_on}>${x.end_on}`))], ['2026-12-28>2027-01-04', '2027-01-04>2027-01-11', '2027-01-25>2027-02-01', '2027-02-22>2027-03-01',
+    '2027-05-17>2027-05-24', '2027-06-28>2027-07-06', '2027-10-18>2027-10-25', '2027-12-27>2028-01-03', '2028-01-03>2028-01-10']);
+  assert.deepEqual(read.shifts.find((x) => x.name === 'M. Wise'), { start_on: '2027-05-17', end_on: '2027-05-24', role: 'tech', name: 'M. Wise', phone: null, note: null });
+  assert.deepEqual(read.shifts.filter((x) => x.start_on === '2026-12-28').map((x) => [x.role, x.name, x.phone, x.note]),
+    [['tech', 'D. Mowbray', '717-371-8185', 'New Years Eve'], ['backup', 'T. Walton', '717-406-6389', 'New Years Eve']]);
+  assert.equal(read.shifts.find((x) => /Mcdonnell/.test(x.name)).phone, '717-740-9178');           // a line break inside the cell is fine
+  assert.match(oncall.parseSheet([['no year here']]).problems[0], /needs the year/);
+
+  // Only people who keep the rota can change it.
+  const page = '/oncall';
+  assert.equal((await t1.post('/admin/oncall', { start_on: today, end_on: ymdFromNow(7), name: 'Sneaky' }, { page })).status, 403);
+  assert.equal((await t1.post('/admin/oncall/import', { file: new File([sheet], 'rota.csv', { type: 'text/csv' }) }, { page, multipart: true })).status, 403);
+  assert.match((await t1.get(page)).text, /Nobody is listed as on call today/); assert.doesNotMatch((await t1.get(page)).text, /Load the year from the spreadsheet/);
+  // Loading the sheet, then a stretch that covers today with three on call and two backups.
+  const up = await owner.post('/admin/oncall/import', { file: new File([sheet], 'rota.csv', { type: 'text/csv' }) }, { page, multipart: true });
+  assert.equal(up.location, '/oncall#schedule');
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM oncall_shifts WHERE branch_id = 1').get().n, read.shifts.length);
+  await owner.post('/admin/oncall/import', { file: new File([sheet], 'rota.csv', { type: 'text/csv' }) }, { page, multipart: true });     // loading it again does not double it
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM oncall_shifts WHERE branch_id = 1').get().n, read.shifts.length);
+  assert.equal((await owner.post('/admin/oncall', { start_on: today, end_on: today, name: 'Zero Days' }, { page })).status, 400);
+  for (const [name, phone, role] of [['Ann Alpha', '717-555-0001', 'tech'], ['Bo Bravo', '717-555-0002', 'tech'], ['Cy Charlie', '', 'tech'], ['Di Delta', '717-555-0004', 'backup'], ['Ed Echo', '717-555-0005', 'backup']]) {
+    await owner.post('/admin/oncall', { start_on: ymdFromNow(-2), end_on: ymdFromNow(5), name, phone, role, note: 'Test week' }, { page });
+  }
+  const seen = (await t1.get(page)).text.replace(/\s+/g, ' ');
+  assert.match(seen, /id="now-h">On call now<[\s\S]*Ann Alpha<\/strong><span class="meta">717-555-0001<\/span><\/span> <a class="btn primary" href="tel:7175550001"[^>]*>Call<\/a>[\s\S]*Bo Bravo[\s\S]*Cy Charlie<\/strong><\/span> <span class="hint">No number listed[\s\S]*<span class="tag ">Backup<\/span><strong>Di Delta[\s\S]*Ed Echo/);
+  assert.match(seen, /Coming up[\s\S]*2027[\s\S]*Jan 4 to Jan 11[\s\S]*J\. Zug[\s\S]*D\. Anderson/);
+  assert.doesNotMatch(seen, /Remove from this stretch/);
+  // The home page shows who is on call now, with a call button.
+  assert.match((await t1.get('/')).text.replace(/\s+/g, ' '), /id="oncall-h">On call now<[\s\S]*Ann Alpha<\/strong><\/span><a class="btn small primary" href="tel:7175550001"/);
+  // The hand-over day belongs to the next person.
+  assert.deepEqual(oncall.covering([1], '2027-01-04').map((x) => x.name), ['J. Zug', 'D. Anderson']);
+  assert.deepEqual(oncall.covering([1], '2027-01-03').map((x) => x.name), ['D. Mowbray', 'T. Walton']);
+  // Swapping one person for another, and taking someone off.
+  const cy = db.prepare("SELECT id FROM oncall_shifts WHERE name = 'Cy Charlie'").get().id;
+  await owner.post(`/admin/oncall/${cy}`, { name: 'Fay Foxtrot', phone: '717-555-0006' }, { page });
+  assert.deepEqual(db.prepare('SELECT name, phone FROM oncall_shifts WHERE id = ?').get(cy), { name: 'Fay Foxtrot', phone: '717-555-0006' });
+  assert.equal((await t1.post(`/admin/oncall/${cy}/delete`, {}, { page })).status, 403);
+  await owner.post(`/admin/oncall/${cy}/delete`, {}, { page });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM oncall_shifts WHERE id = ?').get(cy).n, 0);
+  // Another office in a different market does not see this rota.
+  const other = db.prepare("SELECT u.username FROM users u JOIN branches b ON b.id = u.branch_id WHERE u.branch_id <> 1 AND u.active = 1 AND COALESCE(b.market, '') <> COALESCE((SELECT market FROM branches WHERE id = 1), '') LIMIT 1").get();
+  if (other) assert.doesNotMatch((await (await loggedIn(other.username)).get(page)).text, /Ann Alpha/);
+  db.prepare('DELETE FROM oncall_shifts').run();
 });

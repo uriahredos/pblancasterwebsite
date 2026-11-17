@@ -170,7 +170,9 @@ router.get('/', requireLogin, (req, res) => {
 
   const now = new Date();
   const dateLine = new Intl.DateTimeFormat('en-US', { timeZone: config.timezone, weekday: 'long', month: 'long', day: 'numeric' }).format(now);
+  const onCall = require('../oncall').now(req.user, today).map((p) => ({ ...p, tel: String(p.phone || '').replace(/[^0-9+]/g, '') }));
   res.render('home', {
+    onCall,
     shouts: social.recentShoutouts(me, 3), thisWeek: social.thisWeek(req.user, today), wallPhotos: social.recentPhotos(me, 4),
     dailyCard: require('../daily').card(me), welcomes: require('./community').recentWelcomes(me),
     profileEmpty: !req.user.photo_path && !req.user.about && !req.user.skills,

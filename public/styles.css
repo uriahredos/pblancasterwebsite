@@ -399,6 +399,7 @@ table.audit .check-cell form { display: block; margin: 0 0 .2rem; }
 .dash { display: flex; flex-direction: column; gap: 1rem; }
 .dash-main, .dash-side { display: contents; }
 /* One column on a phone, in the order people need things: tasks, the form buttons, announcements, then the rest. */
+.dash .p-oncall { order: 0; }
 .dash .p-board { order: 1; } .dash .p-news { order: 2; } .dash .p-shouts { order: 3; } .dash .p-up { order: 4; } .dash .p-tasks { order: 5; } .dash .p-glance { order: 6; }
 .dash .p-actions { order: 7; } .dash .p-daily { order: 8; } .dash .p-around { order: 9; }
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 1rem; min-width: 0; }
@@ -1157,3 +1158,28 @@ details.spaced { margin-top: 1.25rem; }
 .my-day { margin-bottom: 1.25rem; }
 .my-day .sub-h .meta { font-weight: 400; letter-spacing: 0; text-transform: none; font-size: .85rem; }
 .lead-next.why { color: var(--warn); font-weight: 700; }
+
+/* On call: who to ring now, and the rota */
+.oncall-now { margin-bottom: 1.25rem; }
+.oncall-range { margin: 0 0 .5rem; }
+.oncall-people { list-style: none; margin: 0 0 .5rem; padding: 0; display: grid; gap: .5rem; }
+.oncall-people li { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .7rem .85rem; border-left: 5px solid var(--pb-green); border-radius: 10px; background: color-mix(in srgb, var(--ok-bg) 55%, var(--surface)); }
+.oncall-people li.role-backup { border-left-color: var(--pb-blue); background: color-mix(in srgb, var(--accent-soft) 55%, var(--surface)); }
+.oncall-who { display: flex; flex-wrap: wrap; align-items: baseline; gap: .2rem .6rem; min-width: 0; }
+.oncall-who strong { font-size: 1.1rem; font-weight: 800; }
+.oncall-people .btn { flex: none; min-width: 5.5rem; }
+.oncall-people.compact li { padding: .5rem .7rem; } .oncall-people.compact strong { font-size: 1rem; } .oncall-people.compact .btn { min-width: 0; }
+.oncall-table td { vertical-align: top; }
+.oncall-table tr.year-row td { background: var(--pb-navy); color: #fff; font-weight: 800; padding: .35rem .9rem; }
+.oncall-cell { display: flex; align-items: center; justify-content: space-between; gap: .5rem; min-height: 2rem; }
+.oncall-cell .row-menu > summary { width: 32px; height: 32px; font-size: 1.1rem; }
+.row-menu-list .swap { padding: .5rem .6rem; min-width: 14rem; border-bottom: 1px solid var(--line); margin-bottom: .3rem; }
+.table-wrap:has(.oncall-table) { overflow: visible; }
+@media (max-width: 700px) {
+  .oncall-table thead { display: none; }
+  .oncall-table tr { display: block; padding: .6rem .8rem; border-bottom: 1px solid var(--line); }
+  .oncall-table tr.year-row { padding: 0; }
+  .oncall-table td { display: block; padding: .1rem 0; border: 0; }
+  .oncall-table td:empty { display: none; }
+  .oncall-table td[data-label]:not(:first-child)::before { content: attr(data-label); display: block; margin-top: .3rem; font-size: .72rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+}
