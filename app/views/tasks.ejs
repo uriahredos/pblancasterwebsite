@@ -27,7 +27,7 @@
           <% if (t.kind !== 'inspection') { %><option value="done">Finished</option><% } %>
         </select>
       </label>
-      <label class="grow">Note <span class="hint">Optional</span><input name="note" maxlength="500" autocomplete="off" placeholder="Where it stands, for <%= t.by_name %>"></label>
+      <label class="grow">Note<input name="note" maxlength="500" autocomplete="off" placeholder="Optional. Where it stands, for <%= t.by_name %>"></label>
       <div class="filter-actions"><button class="btn primary small" type="submit">Save update</button></div>
     </form>
     </details>

@@ -63,11 +63,11 @@ function company(user, today = localDate()) {
   const stats = [
     { value: n('SELECT COUNT(*) AS n FROM branches'), label: 'Offices', url: '/branches' },
     { value: n('SELECT COUNT(*) AS n FROM users WHERE active = 1 OR in_directory = 1'), label: 'People Here', url: '/people' },
-    { value: n('SELECT COUNT(*) AS n FROM shoutouts WHERE created_at >= ?', month), label: 'Shout-Outs This Month', url: '/shoutouts' },
+    { value: n('SELECT COUNT(*) AS n FROM shoutouts WHERE created_at >= ?', month), label: 'Shout-Outs This Month', one: 'Shout-Out This Month', url: '/shoutouts' },
     // Discussions only for people who can open them; everyone else sees how many photos were shared.
     user.perms && user.perms.has('forum.use')
-      ? { value: n('SELECT COUNT(*) AS n FROM forum_threads WHERE created_at >= ?', new Date(Date.now() - 30 * 86400000).toISOString()), label: 'New Discussions', url: '/discussions' }
-      : { value: n('SELECT COUNT(*) AS n FROM wall_photos WHERE created_at >= ?', new Date(Date.now() - 30 * 86400000).toISOString()), label: 'New Photos', url: '/photos' },
+      ? { value: n('SELECT COUNT(*) AS n FROM forum_threads WHERE created_at >= ?', new Date(Date.now() - 30 * 86400000).toISOString()), label: 'New Discussions', one: 'New Discussion', url: '/discussions' }
+      : { value: n('SELECT COUNT(*) AS n FROM wall_photos WHERE created_at >= ?', new Date(Date.now() - 30 * 86400000).toISOString()), label: 'New Photos', one: 'New Photo', url: '/photos' },
   ];
   // The office of the week: the same one all week for everyone, a different one next week. Offices that say what they do come first.
   const offices = db.prepare(`SELECT b.id, b.name, b.city, b.state, b.about,
@@ -76,6 +76,7 @@ function company(user, today = localDate()) {
       FROM branches b WHERE b.id <> ? ORDER BY b.id`).all(user.branch_id || 0).filter((o) => o.services || o.about || o.people);
   const week = Math.floor(new Date(`${today}T12:00:00Z`).getTime() / (7 * 86400000));
   const spot = offices.length ? offices[week % offices.length] : null;
+  for (const s of stats) if (s.value === 1 && s.one) s.label = s.one;
   return { stats, spot };
 }
 
@@ -87,7 +88,7 @@ function company(user, today = localDate()) {
 function slides(user, { around, shouts, week, spot }) {
   const out = [];
   const who = (id, name, photo) => ({ user_id: id, display_name: name, photo_path: photo });
-  for (const i of around.filter((x) => x.kind === 'hire').slice(0, 2)) out.push({ kind: 'hire', label: 'Welcome aboard', title: i.title, text: i.text, url: i.url, who: i.who, office: i.who.office, cta: 'Say hello' });
+  for (const i of around.filter((x) => x.kind === 'hire').slice(0, 2)) { i.inBanner = true; out.push({ kind: 'hire', label: 'Welcome aboard', title: i.title, text: i.text, url: i.url, who: i.who, office: i.who.office, cta: 'Say hello' }); }
   for (const o of week.filter((x) => x.today && !x.mine).slice(0, 2)) {
     out.push({ kind: 'cheer', label: o.kind === 'birthday' ? 'Birthday today' : 'Work anniversary today', title: o.kind === 'birthday' ? `Happy birthday, ${o.display_name.split(' ')[0]}!` : `${o.display_name}: ${o.text}`,
       text: o.kind === 'birthday' ? o.display_name : 'Congratulations', url: `/people/${o.id}`, who: who(o.id, o.display_name, o.photo_path), office: o.branch, cta: 'See their page' });

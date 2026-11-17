@@ -3030,7 +3030,7 @@ test('new hires: announced on everyone\'s home page for two weeks, and people sa
 
   const home = (await t1.get('/')).text.replace(/\s+/g, ' ');
   const panel = /<section class="panel p-around"[\s\S]*?<\/section>/.exec(home)[0];
-  assert.match(panel, /<li class="feed-hire" id="welcome">[\s\S]*Nora Newhire joined the Lancaster office<\/strong>/); assert.match(panel, /Nora is joining the alarm team\./);
+  assert.match(panel, /<li class="feed-hire in-banner" id="welcome">[\s\S]*Nora Newhire joined the Lancaster office<\/strong>/); assert.match(panel, /Nora is joining the alarm team\./);
   assert.match(panel, /Be the first to say welcome/); assert.match(panel, /Say welcome<\/button>/);
 
   // A wave from the home page, then a message from her profile. One note per person: the message updates it.
@@ -3637,15 +3637,15 @@ test('company: the office list loads once, offices say what they do, and anyone 
   db.prepare("DELETE FROM services WHERE code = 'GEN'").run();
 });
 
-test('the office name sits beside the logo only on pages about your own office, not on company-wide ones', async () => {
+test('your office name sits beside the logo on every page once you are signed in', async () => {
   const t1 = await loggedIn('tech1');
   const label = async (url) => { const m = /<span class="branch">([^<]*)<\/span>/.exec((await t1.get(url)).text); return m ? m[1] : null; };
   for (const url of ['/', '/parts', '/tasks', '/my', '/notices', '/training', '/inspection', '/alerts']) assert.equal(await label(url), 'Lancaster Office', url);
-  for (const url of ['/company', '/branches', '/branches/1', '/contacts', '/people', `/people/${userId('tech1')}`, '/profile', '/shoutouts', '/events', '/photos', '/discussions', '/daily', '/newsletters']) assert.equal(await label(url), null, url);
-  assert.match((await t1.get('/company')).text, /<title>Company · Pye-Barker<\/title>/);
+  for (const url of ['/company', '/branches', '/branches/1', '/contacts', '/people', `/people/${userId('tech1')}`, '/profile', '/shoutouts', '/events', '/photos', '/discussions', '/daily', '/newsletters']) assert.equal(await label(url), 'Lancaster Office', url);
+  assert.match((await t1.get('/company')).text, /<title>Company · Pye-Barker Lancaster Office<\/title>/);
   assert.match((await t1.get('/parts')).text, /<title>Parts · Pye-Barker Lancaster Office<\/title>/);
   const owner = await loggedIn('owner');
-  assert.doesNotMatch((await owner.get('/admin/branches')).text, /<span class="branch">/);       // the Corporate page is about every office
+  assert.match((await owner.get('/admin/branches')).text, /<span class="branch">Lancaster Office<\/span>/);
   assert.match((await owner.get('/admin/users')).text, /<span class="branch">Lancaster Office<\/span>/);
   assert.match((await new Client().get('/login')).text, /<span class="branch">Employee Portal<\/span>/);
 });

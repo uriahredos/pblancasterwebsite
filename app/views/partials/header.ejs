@@ -1,8 +1,6 @@
 <!doctype html>
 <% var isLocked = typeof locked !== 'undefined' && locked; var signedIn = Boolean(user) && !isLocked;
-   // Pages about the whole company carry no office name beside the logo; pages about a person's own office do.
-   var companyWide = /^\/(company|branches|contacts|people|profile|shoutouts|events|photos|wall|discussions|daily|newsletters|admin\/(branches|profiles|backups|company|corporate))(\/|$)/.test(typeof path !== 'undefined' ? path : '');
-   var officeLabel = typeof branchName !== 'undefined' && branchName && !companyWide ? branchName + ' Office' : ''; %><html lang="en"<%- signedIn ? ' data-in data-lock-after="' + lockAfterMs + '"' : '' %><%- signedIn && typeof fresh !== 'undefined' && fresh ? ' data-fresh' : '' %>>
+   var officeLabel = typeof branchName !== 'undefined' && branchName ? branchName + ' Office' : ''; %><html lang="en"<%- signedIn ? ' data-in data-lock-after="' + lockAfterMs + '"' : '' %><%- signedIn && typeof fresh !== 'undefined' && fresh ? ' data-fresh' : '' %>>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">

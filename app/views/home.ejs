@@ -169,7 +169,7 @@
       <% } else { %>
       <ul class="feed">
         <% var firstHire = true; around.forEach(function (i) { %>
-        <li class="feed-<%= i.kind %>" <%- i.kind === 'hire' && firstHire ? 'id="welcome"' : '' %>><% if (i.kind === 'hire') firstHire = false; %>
+        <li class="feed-<%= i.kind %><%= i.inBanner ? ' in-banner' : '' %>" <%- i.kind === 'hire' && firstHire ? 'id="welcome"' : '' %>><% if (i.kind === 'hire') firstHire = false; %>
           <a class="feed-who" href="/people/<%= i.who.user_id %>"><%- include('partials/avatar', { who: { id: i.who.user_id, display_name: i.who.display_name, photo_path: i.who.photo_path } }) %></a>
           <div class="feed-body">
             <p class="feed-title"><a href="<%= i.url %>"><strong><%= i.title %></strong></a></p>

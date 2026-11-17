@@ -191,7 +191,7 @@ router.post('/logout', (req, res) => {
 
 router.get('/account/password', (req, res) => {
   if (!req.user) return res.redirect('/login?next=/account/password');
-  res.render('password', { title: 'Change password', error: null, passkeys: require('./passkeys').listFor(req.user.id) });
+  res.render('password', { title: 'Password and Face ID', error: null, passkeys: require('./passkeys').listFor(req.user.id) });
 });
 
 router.post('/account/password', (req, res) => {
@@ -203,7 +203,7 @@ router.post('/account/password', (req, res) => {
   else if (password.length > 200) error = 'New password is too long.';
   else if (password !== confirm) error = 'The two new passwords do not match.';
   else if (password === current) error = 'Choose a password different from the current one.';
-  if (error) return res.status(400).render('password', { title: 'Change password', error, passkeys: require('./passkeys').listFor(req.user.id) });
+  if (error) return res.status(400).render('password', { title: 'Password and Face ID', error, passkeys: require('./passkeys').listFor(req.user.id) });
 
   db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?')
     .run(auth.hashPassword(password), req.user.id);
