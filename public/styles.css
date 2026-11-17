@@ -1245,3 +1245,5 @@ details.spaced { margin-top: 1.25rem; }
 @media (max-width: 520px) { .spot-slide { gap: .75rem; padding: .8rem .9rem; min-height: 7.5rem; } .spot-cta { display: none; } .spot-pic { width: 4rem; height: 4rem; } .spot-face .avatar { width: 48px; height: 48px; } .spot-sub { font-size: .9rem; } }
 @media (min-width: 900px) { .company-strip { grid-template-columns: 1fr; } }
 @media print { .spotlight { display: none; } }
+/* The banner is for the computer view only; on a phone the home page goes straight from the greeting to the numbers */
+@media (max-width: 899px) { .spotlight { display: none; } }
