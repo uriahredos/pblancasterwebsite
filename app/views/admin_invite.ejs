@@ -1,0 +1,38 @@
+<%- include('partials/header') %>
+<p class="back"><a href="/admin/users">Users</a></p>
+<h1>Send sign-in details</h1>
+<% if (made) { %>
+<p class="lede">Each person below has a new temporary password. Press <strong>Open Teams chat</strong> to start a chat with the message already typed, then press send in Teams. Or copy the message and paste it anywhere.</p>
+<div class="notice-box"><p><strong>This list is shown once.</strong> Send them all before you leave or refresh this page. If you lose one, come back and make a new message for that person.</p></div>
+<ul class="records invites">
+<% made.forEach(function (m) { %>
+  <li class="card" data-invite>
+    <div class="rec-head"><strong><%= m.name %></strong><% if (m.email) { %><span class="meta"><%= m.email %></span><% } else { %><span class="pill">No email on file, so no Teams button</span><% } %><span class="tag return" data-sent hidden>Opened</span></div>
+    <pre class="invite-text" data-text><%= m.text %></pre>
+    <p class="filter-actions">
+      <% if (m.teams) { %><a class="btn primary small teams" href="<%= m.teams %>" target="_blank" rel="noopener noreferrer" data-mark>Open Teams chat</a><% } %>
+      <button class="btn small" type="button" data-copy>Copy message</button>
+    </p>
+  </li>
+<% }) %>
+</ul>
+<p class="filter-actions"><a class="btn" href="/admin/users/invite">Choose more people</a><a class="btn" href="/admin/users">Back to Users</a></p>
+<script src="/invite.js?v=<%= assetV %>"></script>
+<% } else if (!people.length) { %>
+<p class="card empty">Everyone you manage has already signed in and chosen a password. For someone who is locked out, use Reset password on the Users page.</p>
+<% } else { %>
+<p class="lede">These people have an account but have not signed in yet. Tick the ones you want, and you get a ready-made message for each with their username and a new temporary password.</p>
+<form method="post" action="/admin/users/invite" class="card stack" id="invite-form">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Find a person <input type="search" id="invite-find" placeholder="Start typing a name" autocomplete="off"></label>
+  <ul class="invite-pick">
+  <% people.forEach(function (u) { %>
+    <li><label class="choice"><input type="checkbox" name="who" value="<%= u.id %>"> <span><strong><%= u.display_name %></strong> <span class="meta"><%= u.username %><%= u.email ? ' · ' + u.email : ' · no email on file' %><%= user.viewBranch === null && u.branch_name ? ' · ' + u.branch_name : '' %></span></span></label></li>
+  <% }) %>
+  </ul>
+  <p class="hint">Up to 25 at a time. Any temporary password these people were given before stops working.</p>
+  <button class="btn primary" type="submit">Make sign-in messages</button>
+</form>
+<script src="/invite.js?v=<%= assetV %>"></script>
+<% } %>
+<%- include('partials/footer') %>

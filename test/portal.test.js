@@ -4124,3 +4124,34 @@ test('community first: the company in numbers, one list of what people across th
   const thread = db.prepare("SELECT id FROM forum_threads WHERE title LIKE 'FEED-TEST%'").get().id;
   await owner.post(`/discussions/t/${thread}/delete`, {}, { page: `/discussions/t/${thread}` });
 });
+
+test('sign-in details: a manager picks a few people who have not signed in and gets a ready message with a new temporary password for each', async () => {
+  const owner = await loggedIn('owner');
+  const a = makeUser('invitee1', 'Ivy Invitee'); const b = makeUser('invitee2', 'Ned Noemail'); const c = makeUser('invitee3', 'Sid Signedin');
+  db.prepare('UPDATE users SET must_change_password = 1, email = ? WHERE id = ?').run('ivy@example.com', a);
+  db.prepare('UPDATE users SET must_change_password = 1, email = NULL WHERE id = ?').run(b);
+  db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?').run(c);
+  const page = '/admin/users/invite';
+  assert.match((await owner.get('/admin/users')).text, /href="\/admin\/users\/invite">Send sign-in details/);
+  const list = (await owner.get(page)).text;
+  assert.match(list, /Ivy Invitee/); assert.match(list, /Ned Noemail/); assert.doesNotMatch(list, /Sid Signedin/);     // only people still on a temporary password
+  assert.equal((await owner.post(page, {}, { page })).status, 302);
+  assert.match((await owner.get(page)).text, /Tick at least one person first/);
+  const before = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(c).password_hash;
+  assert.equal((await owner.post(page, [['who', String(a)], ['who', String(b)], ['who', String(c)]], { page })).status, 302);
+  const out = (await owner.get(page)).text;
+  const pw = /Username: invitee1\nTemporary password: (\S+)/.exec(out);
+  assert.ok(pw, 'the message carries the username and a temporary password');
+  assert.match(out, /Hi Ivy, here is your sign-in for the PB Portal\./);
+  assert.match(out, /href="https:\/\/teams\.microsoft\.com\/l\/chat\/0\/0\?users=ivy%40example\.com&amp;message=Hi%20Ivy/);
+  assert.match(out, /Ned Noemail<\/strong><span class="pill">No email on file/);
+  assert.doesNotMatch(out, /Sid Signedin/);
+  assert.equal(db.prepare('SELECT password_hash FROM users WHERE id = ?').get(c).password_hash, before);               // someone who has signed in is never touched
+  assert.doesNotMatch((await owner.get(page)).text, /Temporary password: /);                                         // shown once
+  const ivy = new Client(); const lp = await ivy.get('/login');
+  const signed = await ivy.post('/login', { username: 'invitee1', password: pw[1] }, { page: '/login' });
+  assert.equal(signed.location, '/account/password');                                                                // the password works, and must be changed
+  assert.doesNotMatch(db.prepare("SELECT group_concat(detail, ' ') d FROM activity_log WHERE action = 'Sign-in details made'").get().d, new RegExp(pw[1]));
+  const t1 = await loggedIn('tech1');
+  assert.equal((await t1.get(page)).status, 403); assert.equal((await t1.post(page, [['who', String(b)]], { page: '/' })).status, 403);
+});

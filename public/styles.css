@@ -1303,3 +1303,9 @@ h1, h2, h3, .hero h1, .panel-head h2 { font-weight: 700; letter-spacing: 0; }
 }
 @media (min-width: 900px) and (max-width: 1019px) { .nav > a, .menu > summary { padding: .45rem .22rem; font-size: .74rem; letter-spacing: -.01em; } }
 @media (min-width: 1520px) { .nav { gap: .1rem; } .nav > a, .menu > summary { padding: .45rem .5rem; font-size: .9rem; } .nav-sep { margin: .3rem .15rem; } }
+
+/* ===== Send sign-in details ===== */
+.invite-pick { list-style: none; margin: 0; padding: 0; display: grid; gap: .35rem; max-height: 26rem; overflow-y: auto; }
+.invite-pick .choice { display: flex; align-items: center; gap: .6rem; }
+.invite-text { margin: .2rem 0 .7rem; padding: .7rem .8rem; background: var(--accent-soft); border-radius: 8px; font: inherit; font-size: .93rem; white-space: pre-wrap; overflow-wrap: anywhere; user-select: all; }
+.invites .invite-done { opacity: .7; }

@@ -427,6 +427,51 @@ router.get('/admin/users', requirePerm('users.manage'), (req, res) => {
   renderUsers(req, res, { created });
 });
 
+// ---- Sign-in details for a chosen few ---------------------------------------------------
+// Pick people who have not signed in yet; each gets a fresh temporary password and a ready-made message
+// (with a button that opens a Teams chat with it filled in). The passwords are shown once.
+
+/** People `actor` may send sign-in details to: active, still on a temporary password, and theirs to manage. */
+function waitingToSignIn(actor) {
+  const ids = access.visibleUserIds(actor);
+  return db.prepare(`SELECT u.*, (SELECT name FROM branches b WHERE b.id = u.branch_id) AS branch_name FROM users u
+      WHERE u.active = 1 AND u.must_change_password = 1 AND u.id <> ? ORDER BY u.display_name COLLATE NOCASE`).all(actor.id)
+    .filter((u) => (!ids || ids.includes(u.id)) && mayManage(actor, u));
+}
+
+function signInMessage(u, password) {
+  const first = u.display_name.split(' ')[0];
+  const lines = [`Hi ${first}, here is your sign-in for the PB Portal.`, `Site: ${config.baseUrl}`, `Username: ${u.username}`, `Temporary password: ${password}`,
+    'You will be asked to choose your own password the first time you sign in.'];
+  return { text: lines.join('\n'), oneLine: lines.join('  ') };
+}
+
+router.get('/admin/users/invite', requirePerm('users.manage'), (req, res) => {
+  const made = req.session.invites || null;   // temporary passwords, shown once
+  delete req.session.invites;
+  res.render('admin_invite', { title: 'Send sign-in details', wide: true, people: made ? [] : waitingToSignIn(req.user), made });
+});
+
+router.post('/admin/users/invite', requirePerm('users.manage'), (req, res) => {
+  const picked = [].concat(req.body.who || []).filter((v) => /^\d+$/.test(v)).map(Number);
+  const people = waitingToSignIn(req.user).filter((u) => picked.includes(u.id)).slice(0, 25);
+  if (!people.length) { flash(req, 'err', 'Tick at least one person first.'); return res.redirect('/admin/users/invite'); }
+  const made = [];
+  db.transaction(() => {
+    for (const u of people) {
+      const password = auth.tempPassword();
+      db.prepare('UPDATE users SET password_hash = ?, must_change_password = 1 WHERE id = ?').run(auth.hashPassword(password), u.id);
+      auth.endSessions(u.id);
+      const m = signInMessage(u, password);
+      made.push({ id: u.id, name: u.display_name, email: u.email || '', text: m.text,
+        teams: u.email ? `https://teams.microsoft.com/l/chat/0/0?users=${encodeURIComponent(u.email)}&message=${encodeURIComponent(m.oneLine)}` : '' });
+    }
+  })();
+  activity.log(req.user, 'Sign-in details made', people.length === 1 ? people[0].display_name : `${people.length} people: ${people.map((u) => u.display_name).join(', ')}`.slice(0, 300));
+  req.session.invites = made;
+  res.redirect('/admin/users/invite');
+});
+
 function readPerson(body, exceptId) {
   const values = { username: clean(body.username, 40), display_name: clean(body.display_name, 80), email: clean(body.email, 120) };
   const errors = [];
