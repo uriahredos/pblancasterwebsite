@@ -6,6 +6,25 @@
   <div class="rec-head"><% if (n.critical) { %><span class="tag crit">Critical</span><% } %><% if (!n.read_at) { %><span class="tag new">New</span><% } %><% if (n.pinned) { %><span class="tag pin">Pinned</span><% } %><% if (n.category !== 'general') { %><span class="tag cat-<%= n.category %>"><%= categories[n.category] %></span><% } %><strong><%= n.title %></strong><time><%= n.author %>, <%= fmtDateTime(n.created_at) %></time></div>
   <p class="pre"><%= n.body %></p>
   <%- include('partials/reactions', { kind: 'notice', item: n }) %>
+  <details class="comments" <%= n.comments.length ? 'open' : '' %>>
+    <summary><%= n.comments.length ? n.comments.length + (n.comments.length === 1 ? ' comment' : ' comments') : 'Ask a question or comment' %></summary>
+    <% if (n.comments.length) { %>
+    <ul class="comment-list">
+      <% n.comments.forEach(function (c) { %>
+      <li><%- include('partials/avatar', { who: { id: c.user_id, display_name: c.author, photo_path: c.photo_path }, size: 'sm' }) %>
+        <div class="comment-bubble"><span class="meta"><strong><%= c.author %></strong><%= c.office ? ' · ' + c.office : '' %> · <%= fmtDateTime(c.created_at) %></span><p><%= c.body %></p>
+          <% if (c.user_id === user.id || canModerate) { %><form method="post" action="/notices/comment/<%= c.id %>/delete" data-confirm="Remove this comment?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Remove</button></form><% } %>
+        </div>
+      </li>
+      <% }) %>
+    </ul>
+    <% } %>
+    <form method="post" action="/notices/<%= n.id %>/comment" class="filters">
+      <input type="hidden" name="_csrf" value="<%= csrf %>">
+      <label class="grow"><span class="sr">Your comment</span><input name="body" maxlength="1000" required autocomplete="off" placeholder="Ask a question or add a comment"></label>
+      <div class="filter-actions"><button class="btn small" type="submit">Post</button></div>
+    </form>
+  </details>
   <% if (n.read_at) { %><p class="meta">You read this <%= fmtDateTime(n.read_at) %>.</p>
   <% } else { %><form method="post" action="/notices/<%= n.id %>/read"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn primary small" type="submit">I have read this</button></form><% } %>
 </div>

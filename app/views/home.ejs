@@ -24,6 +24,19 @@
   <span class="embers" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
 </div>
 
+<section class="company-strip" aria-label="The company at a glance">
+  <div class="strip-stats">
+    <% company.stats.forEach(function (st) { %><a href="<%= st.url %>"><strong><%= st.value.toLocaleString('en-US') %></strong><span><%= st.label %></span></a><% }) %>
+  </div>
+  <% if (company.spot) { %>
+  <a class="strip-spot" href="/branches/<%= company.spot.id %>">
+    <span class="eyebrow">Meet an office this week</span>
+    <strong><%= company.spot.name %><%= company.spot.city && company.spot.state ? ' · ' + company.spot.city + ', ' + company.spot.state : '' %></strong>
+    <span class="meta"><%= company.spot.services ? company.spot.services : company.spot.people ? company.spot.people + (company.spot.people === 1 ? ' person' : ' people') + ' on this site' : 'See what they do' %></span>
+  </a>
+  <% } %>
+</section>
+
 <% if (critical.length) { %>
 <section class="critical" aria-label="Critical announcements">
 <% critical.forEach(function (n) { %>
@@ -131,48 +144,29 @@
       <div class="one-line"><p><strong>Shout-outs</strong> <span class="meta">· who did a great job this week?</span></p><a class="btn small" href="/shoutouts#give">👏 Give a shout-out</a></div>
     </section>
     <% } %>
-    <% var showTalk = can('forum.use'); %>
-    <% if (welcomes.length || wallPhotos.length || showTalk) { %>
     <section class="panel p-around" aria-labelledby="around-h">
       <div class="panel-head"><h2 id="around-h">Around the company</h2><a href="/people">People</a></div>
-      <% if (welcomes.length) { %>
-      <h3 class="sub-h" id="welcome">Welcome aboard</h3>
-      <ul class="hires small">
-        <% welcomes.forEach(function (w) { %>
-        <li>
-          <a class="hire" href="/people/<%= w.user_id %>">
-            <%- include('partials/avatar', { who: { id: w.user_id, display_name: w.display_name, photo_path: w.photo_path } }) %>
-            <span class="person-text"><strong><%= w.display_name %></strong><span class="meta"><%= [w.job_title, w.branch ? w.branch + ' office' : ''].filter(Boolean).join(' · ') || 'New to the team' %><%= w.waves ? ' · ' + w.waves + (w.waves === 1 ? ' welcome' : ' welcomes') : '' %></span></span>
-          </a>
-          <% if (w.intro) { %><p class="hire-intro"><%= w.intro %></p><% } %>
-          <% if (w.user_id === user.id) { %><a class="btn small" href="/people/<%= w.user_id %>#welcome">See your messages</a>
-          <% } else if (w.waved) { %><span class="meta">You said welcome ✓</span>
-          <% } else { %><form method="post" action="/welcome/<%= w.id %>/wave"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="back" value="home"><button class="btn primary small" type="submit">👋 Say welcome</button></form><% } %>
+      <% if (!around.length) { %>
+      <div class="one-line"><p class="empty">Quiet so far. Be the first: add a photo or start a discussion.</p><span class="filter-actions"><a class="btn small" href="/photos">Add a photo</a><% if (can('forum.use')) { %><a class="btn small" href="/discussions/new">Start a discussion</a><% } %></span></div>
+      <% } else { %>
+      <ul class="feed">
+        <% var firstHire = true; around.forEach(function (i) { %>
+        <li class="feed-<%= i.kind %>" <%- i.kind === 'hire' && firstHire ? 'id="welcome"' : '' %>><% if (i.kind === 'hire') firstHire = false; %>
+          <a class="feed-who" href="/people/<%= i.who.user_id %>"><%- include('partials/avatar', { who: { id: i.who.user_id, display_name: i.who.display_name, photo_path: i.who.photo_path } }) %></a>
+          <div class="feed-body">
+            <p class="feed-title"><a href="<%= i.url %>"><strong><%= i.title %></strong></a></p>
+            <% if (i.text) { %><p class="feed-text"><%= i.text %></p><% } %>
+            <% if (i.photo) { %><a class="feed-photo" href="/wall/photo/<%= i.photo %>"><img src="/wall/photo/<%= i.photo %>" alt="<%= i.text || 'Photo from ' + i.who.display_name %>" loading="lazy"></a><% } %>
+            <p class="feed-meta"><% if (i.who.office) { %><span class="pill <%= i.away ? 'away' : '' %>"><%= i.who.office %> office</span> <% } %><span><%= i.when %></span><% if (i.extra) { %> · <span><%= i.extra %></span><% } %><% if (i.done) { %> · <span><%= i.done %></span><% } %></p>
+          </div>
+          <% if (i.link) { %><a class="btn small" href="<%= i.link.url %>"><%= i.link.label %></a><% } %>
+          <% if (i.action) { %><form method="post" action="<%= i.action.url %>"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="back" value="home"><button class="btn primary small" type="submit"><%= i.action.label %></button></form><% } %>
         </li>
         <% }) %>
       </ul>
-      <% } %>
-      <% if (wallPhotos.length) { %>
-      <h3 class="sub-h">Latest photos <a href="/photos">All photos</a></h3>
-      <div class="thumbs"><% wallPhotos.forEach(function (p) { %><a href="/wall/photo/<%= p.id %>"><img src="/wall/photo/<%= p.id %>" alt="<%= p.caption || 'Photo from ' + p.display_name %>" loading="lazy"></a><% }) %></div>
-      <% } %>
-      <% if (showTalk) { %>
-      <h3 class="sub-h">Discussions <a href="/discussions">All discussions</a></h3>
-      <% if (!talk.length) { %><div class="one-line"><p class="empty">Nothing posted yet.</p><a class="btn small" href="/discussions/new">Start the first thread</a></div><% } else { %>
-      <ul class="threads compact">
-        <% talk.forEach(function (t) { %>
-        <li class="<%= t.unread ? 'unread' : '' %>">
-          <a href="/discussions/t/<%= t.id %>">
-            <span class="thread-top"><% if (t.solved_at) { %><span class="tag solved">Solved</span><% } %><strong><%= t.title %></strong></span>
-            <span class="thread-meta"><%= t.section %> · <%= t.reply_count %> <%= t.reply_count === 1 ? 'reply' : 'replies' %> · <%= t.last_author %>, <%= dateOnly(t.last_post_at) %></span>
-          </a>
-        </li>
-        <% }) %>
-      </ul>
-      <% } %>
+      <p class="panel-foot filter-actions"><a class="btn small" href="/photos">Add a photo</a><% if (can('forum.use')) { %><a class="btn small" href="/discussions/new">Start a discussion</a><% } %><a class="btn small" href="/events">Events</a></p>
       <% } %>
     </section>
-    <% } %>
   </div>
 
   <div class="dash-side">

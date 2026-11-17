@@ -445,6 +445,16 @@ CREATE TABLE IF NOT EXISTS branch_stock (
 addColumn('inspection_items', 'branch_id', 'INTEGER');
 addColumn('training_sessions', 'branch_id', 'INTEGER');
 addColumn('complaints', 'branch_id', 'INTEGER');          // the branch only; still nothing about who sent it
+db.exec(`
+CREATE TABLE IF NOT EXISTS announcement_comments (
+  id INTEGER PRIMARY KEY,
+  announcement_id INTEGER NOT NULL REFERENCES announcements(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS announcement_comments_a ON announcement_comments(announcement_id, id);
+`);
 addColumn('announcements', 'branch_id', 'INTEGER');       // empty = every branch
 addColumn('stock_adjustments', 'branch_id', 'INTEGER');
 {

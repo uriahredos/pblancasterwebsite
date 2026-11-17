@@ -36,7 +36,46 @@ function audience(a) {
 }
 
 router.get('/notices', requireLogin, (req, res) => {
-  res.render('notices', { title: 'Announcements', notices: require('../reactions').attach('notice', forUser(req.user.id), req.user.id), categories: CATEGORIES });
+  const notices = require('../reactions').attach('notice', forUser(req.user.id), req.user.id);
+  withComments(notices);
+  res.render('notices', { title: 'Announcements', notices, categories: CATEGORIES, canModerate: access.can(req.user, 'announcements.post') });
+});
+
+/** Attaches each announcement's comments (oldest first) as .comments. */
+function withComments(list) {
+  if (!list.length) return list;
+  const rows = db.prepare(
+    `SELECT c.*, u.display_name AS author, u.photo_path, b.name AS office FROM announcement_comments c JOIN users u ON u.id = c.user_id LEFT JOIN branches b ON b.id = u.branch_id
+     WHERE c.announcement_id IN (${list.map((n) => Number(n.id)).join(',')}) ORDER BY c.id`).all();
+  for (const n of list) n.comments = rows.filter((c) => c.announcement_id === n.id);
+  return list;
+}
+
+// Anyone the announcement is for can ask a question or answer one under it.
+router.post('/notices/:id/comment', requireLogin, (req, res) => {
+  const a = forUser(req.user.id).find((n) => String(n.id) === String(req.params.id));
+  if (!a) return forbidden(res);
+  const body = clean(req.body.body, 1000);
+  if (body) {
+    const last = db.prepare('SELECT user_id, body FROM announcement_comments WHERE announcement_id = ? ORDER BY id DESC LIMIT 1').get(a.id);
+    if (!(last && last.user_id === req.user.id && last.body === body)) {            // a double tap does not post twice
+      db.prepare('INSERT INTO announcement_comments (announcement_id, user_id, body, created_at) VALUES (?, ?, ?, ?)').run(a.id, req.user.id, body, new Date().toISOString());
+      if (a.created_by !== req.user.id) require('../push').notify([a.created_by], 'task_done', { title: `Comment on: ${a.title}`, body: `${req.user.display_name}: "${body.slice(0, 140)}"`, url: `/notices#n${a.id}` });
+    }
+    flash(req, 'ok', 'Comment added.');
+  }
+  res.redirect(`/notices#n${a.id}`);
+});
+
+// Your own comment, or any comment if you post announcements.
+router.post('/notices/comment/:id/delete', requireLogin, (req, res) => {
+  const c = /^\d+$/.test(req.params.id) ? db.prepare('SELECT * FROM announcement_comments WHERE id = ?').get(req.params.id) : null;
+  if (!c) return res.redirect('/notices');
+  if (c.user_id !== req.user.id && !access.can(req.user, 'announcements.post')) return forbidden(res);
+  if (!forUser(req.user.id).some((n) => n.id === c.announcement_id) && c.user_id !== req.user.id) return forbidden(res);
+  db.prepare('DELETE FROM announcement_comments WHERE id = ?').run(c.id);
+  flash(req, 'ok', 'Comment removed.');
+  res.redirect(`/notices#n${c.announcement_id}`);
 });
 
 router.post('/notices/:id/read', requireLogin, (req, res) => {

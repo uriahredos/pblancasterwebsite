@@ -2152,7 +2152,7 @@ test('discussions: threads, replies with photos, following, new-reply notices, s
   assert.doesNotMatch(thread, /Discussions <span class="badge"/);
   home = (await t1.get('/')).text;
   assert.doesNotMatch(home, /New replies/); assert.doesNotMatch(home, /Discussions <span class="badge"/);
-  assert.match(home, /id="around-h">Around the company[\s\S]*Discussions <a href="\/discussions">All discussions[\s\S]*XR550 will not take a new zone[\s\S]*Tech support · 1 reply/);
+  assert.match(home, /id="around-h">Around the company[\s\S]*started a discussion[\s\S]*XR550 will not take a new zone[\s\S]*1 reply/);
   // The replier follows too, so the asker's answer reaches them; unfollowing stops that.
   await t1.post(`${tp}/reply`, { body: 'That was it, thanks.' }, { page: tp, multipart: true });
   assert.match((await t2.get('/')).text, /<strong>Terry Tech<\/strong> replied in/);
@@ -2659,7 +2659,7 @@ test('home page: announcements, newsletter and shout-outs first; office at a gla
   assert.match(/<section class="panel p-board"[\s\S]*?<\/section>/.exec(home)[0], /<span class="tag new">New<\/span><strong>Home order news[\s\S]*I have read this/);
   assert.doesNotMatch(home, /p-status|My status/);   // a person's own numbers now sit inside Office at a glance
   const css = (await new Client().get('/styles.css')).text;
-  assert.match(css, /\.dash \.p-board \{ order: 1; \} \.dash \.p-news \{ order: 2; \} \.dash \.p-shouts \{ order: 3; \} \.dash \.p-up \{ order: 4; \} \.dash \.p-tasks \{ order: 5; \} \.dash \.p-glance \{ order: 6; \}/);
+  assert.match(css, /\.dash \.p-board \{ order: 1; \} \.dash \.p-news \{ order: 2; \} \.dash \.p-shouts \{ order: 3; \} \.dash \.p-around \{ order: 4; \} \.dash \.p-up \{ order: 5; \} \.dash \.p-tasks \{ order: 6; \}/);
   assert.deepEqual(order(home, 'class="dash-hello', 'class="panel p-board"', 'p-shouts"', 'class="panel p-around"', 'class="panel p-tasks"', 'class="panel branch-panel', 'id="act-h"').map((n, i, l) => n >= 0 && (i === 0 || n > l[i - 1])), [true, true, true, true, true, true, true]);
   // Office at a glance for someone who runs nothing: facts about the office, and none of the parts, stock or truck numbers.
   const tGlance = /<section class="panel branch-panel[\s\S]*?<\/section>/.exec(home)[0];
@@ -3030,8 +3030,8 @@ test('new hires: announced on everyone\'s home page for two weeks, and people sa
 
   const home = (await t1.get('/')).text.replace(/\s+/g, ' ');
   const panel = /<section class="panel p-around"[\s\S]*?<\/section>/.exec(home)[0];
-  assert.match(panel, /Nora Newhire<\/strong><span class="meta">Apprentice · Lancaster office/); assert.match(panel, /Nora is joining the alarm team\./);
-  assert.match(panel, /id="welcome">Welcome aboard/); assert.match(panel, /Say welcome<\/button>/);
+  assert.match(panel, /<li class="feed-hire" id="welcome">[\s\S]*Nora Newhire joined the Lancaster office<\/strong>/); assert.match(panel, /Nora is joining the alarm team\./);
+  assert.match(panel, /Be the first to say welcome/); assert.match(panel, /Say welcome<\/button>/);
 
   // A wave from the home page, then a message from her profile. One note per person: the message updates it.
   assert.equal((await t1.post(`/welcome/${wid}/wave`, { back: 'home' }, { page: '/' })).location, '/#welcome');
@@ -3039,7 +3039,7 @@ test('new hires: announced on everyone\'s home page for two weeks, and people sa
   await owner.post(`/welcome/${wid}/wave`, {}, { page: '/' });
   await nora.post(`/welcome/${wid}/wave`, { message: 'hi me' }, { page: '/' });            // you cannot welcome yourself
   assert.equal(db.prepare('SELECT COUNT(*) n FROM welcome_notes WHERE welcome_id = ?').get(wid).n, 2);
-  assert.match((await t1.get('/')).text, /· 2 welcomes[\s\S]*You said welcome/);
+  assert.match((await t1.get('/')).text, /2 welcomes[\s\S]*You said welcome/);
   const hers = (await nora.get('/')).text;
   assert.match(hers, /See your messages/);
   const profile = (await nora.get(`/people/${nid}`)).text.replace(/\s+/g, ' ');
@@ -3224,7 +3224,7 @@ test('branches: each branch sees only its own parts, stock, trucks, tasks, train
     '/notices', '/admin/complaints', '/admin/activity', '/alerts']) {
     const r = await hadmin.get(url);
     assert.equal(r.status, 200, url);
-    assert.doesNotMatch(r.text, /LANC-ONLY|BR-STOCK|Terry Tech|Uma Tech/, url);
+    assert.doesNotMatch(r.text, url === '/' ? /LANC-ONLY|BR-STOCK/ : /LANC-ONLY|BR-STOCK|Terry Tech|Uma Tech/, url);
   }
   // ...and cannot reach it by address either.
   for (const url of [`/admin/parts/${lancPart}`, `/admin/training/${lancTraining}`, `/admin/training/sessions/${lancSession}`, `/admin/complaints/${lancComplaint}`, `/admin/certs/${lancCert}`,
@@ -3432,7 +3432,7 @@ test('photo wall and branch pages: photos posted and liked, a branch page with i
   assert.equal((await new Client().get(`/wall/photo/${ids[0]}`)).status, 302);
   await t2.post(`/photos/${ids[0]}/like`, {}, { page: '/photos' }); await owner.post(`/photos/${ids[0]}/like`, {}, { page: '/photos' }); await t2.post(`/photos/${ids[0]}/like`, {}, { page: '/photos' });
   assert.equal(db.prepare('SELECT COUNT(*) n FROM wall_likes WHERE photo_id = ?').get(ids[0]).n, 1);
-  assert.match((await t2.get('/')).text, /Latest photos[\s\S]*\/wall\/photo\//);
+  assert.match((await t2.get('/')).text, /added a photo[\s\S]*\/wall\/photo\//);
   assert.equal((await t2.post(`/photos/${ids[0]}/delete`, {}, { page: '/photos' })).status, 403);
 
   // The branch page: who's who by department, its shout-outs and photos; only people who manage the branch edit it.
@@ -4083,4 +4083,44 @@ test('on call: the rota is loaded from the spreadsheet, everyone sees who is on 
   const other = db.prepare("SELECT u.username FROM users u JOIN branches b ON b.id = u.branch_id WHERE u.branch_id <> 1 AND u.active = 1 AND COALESCE(b.market, '') <> COALESCE((SELECT market FROM branches WHERE id = 1), '') LIMIT 1").get();
   if (other) assert.doesNotMatch((await (await loggedIn(other.username)).get(page)).text, /Ann Alpha/);
   db.prepare('DELETE FROM oncall_shifts').run();
+});
+
+test('community first: the company in numbers, one list of what people across the offices are doing, and comments on announcements', async () => {
+  const owner = await loggedIn('owner'); const t1 = await loggedIn('tech1'); const t2 = await loggedIn('tech2');
+  // The strip under the greeting: how big the company is, each number a link.
+  const home = (await t1.get('/')).text.replace(/\s+/g, ' ');
+  const strip = /<section class="company-strip"[\s\S]*?<\/section>/.exec(home)[0];
+  const offices = db.prepare('SELECT COUNT(*) n FROM branches').get().n;
+  assert.match(strip, new RegExp(`<a href="/branches"><strong>${offices.toLocaleString('en-US')}</strong><span>offices</span></a>`));
+  assert.match(strip, /<a href="\/people"><strong>[\d,]+<\/strong><span>people here<\/span>/); assert.match(strip, /shout-outs this month/);
+  // Around the company sits straight after shout-outs in the main column, and each item names the office it came from.
+  const sec = db.prepare('SELECT id FROM forum_sections ORDER BY sort_order LIMIT 1').get().id;
+  await t2.post('/discussions/new', { section_id: String(sec), title: 'FEED-TEST best ladder rack?', body: 'Asking for the van.' }, { page: '/discussions/new', multipart: true });
+  const feed = /<section class="panel p-around"[\s\S]*?<\/section>/.exec((await t1.get('/')).text.replace(/\s+/g, ' '))[0];
+  assert.match(feed, /<li class="feed-talk"[\s\S]*?Uma Tech started a discussion<\/strong>[\s\S]*?FEED-TEST best ladder rack\?[\s\S]*?<span class="pill ">Lancaster office<\/span> <span>just now<\/span> · <span>Be the first to reply/);
+  const other = db.prepare("SELECT u.username FROM users u WHERE u.branch_id IS NOT NULL AND u.branch_id <> 1 AND u.active = 1 LIMIT 1").get();
+  if (other) assert.match((await (await loggedIn(other.username)).get('/')).text.replace(/\s+/g, ' '), /FEED-TEST best ladder rack\?[\s\S]*?<span class="pill away">Lancaster office<\/span>/);   // from another office: marked as such
+
+  // Announcements are a conversation: anyone it is for can comment, the poster is not the only voice.
+  await owner.post('/admin/announcements', { title: 'COMMENT-TEST new vans', body: 'Two vans arrive Friday.', audience: 'all', category: 'general' }, { page: '/admin/announcements' });
+  const nid = db.prepare("SELECT id FROM announcements WHERE title = 'COMMENT-TEST new vans'").get().id;
+  assert.match((await t1.get('/notices')).text, /Ask a question or comment/);
+  assert.equal((await t1.post(`/notices/${nid}/comment`, { body: 'Which trucks do they <b>replace</b>?' }, { page: '/notices' })).location, `/notices#n${nid}`);
+  await t1.post(`/notices/${nid}/comment`, { body: 'Which trucks do they <b>replace</b>?' }, { page: '/notices' });          // a double tap posts once
+  await owner.post(`/notices/${nid}/comment`, { body: '309 and 311.' }, { page: '/notices' });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM announcement_comments WHERE announcement_id = ?').get(nid).n, 2);
+  const page = (await t2.get('/notices')).text.replace(/\s+/g, ' ');
+  assert.match(page, /<summary>2 comments<\/summary>[\s\S]*Terry Tech<\/strong> · Lancaster ·[\s\S]*Which trucks do they &lt;b&gt;replace&lt;\/b&gt;\?[\s\S]*Olive Owner<\/strong>[\s\S]*309 and 311\./);
+  // Someone the announcement is not for cannot comment on it.
+  db.prepare('UPDATE announcements SET branch_id = 1 WHERE id = ?').run(nid);
+  if (other) assert.equal((await (await loggedIn(other.username)).post(`/notices/${nid}/comment`, { body: 'hello' }, { page: '/notices' })).status, 403);
+  // People remove their own comments; someone who posts announcements can remove any.
+  const [c1, c2] = db.prepare('SELECT id FROM announcement_comments WHERE announcement_id = ? ORDER BY id').all(nid).map((r) => r.id);
+  assert.equal((await t2.post(`/notices/comment/${c1}/delete`, {}, { page: '/notices' })).status, 403);
+  await t1.post(`/notices/comment/${c1}/delete`, {}, { page: '/notices' });
+  await owner.post(`/notices/comment/${c2}/delete`, {}, { page: '/notices' });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM announcement_comments WHERE announcement_id = ?').get(nid).n, 0);
+  await owner.post(`/admin/announcements/${nid}/delete`, {}, { page: '/admin/announcements' });
+  const thread = db.prepare("SELECT id FROM forum_threads WHERE title LIKE 'FEED-TEST%'").get().id;
+  await owner.post(`/discussions/t/${thread}/delete`, {}, { page: `/discussions/t/${thread}` });
 });
