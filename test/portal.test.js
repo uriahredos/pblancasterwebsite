@@ -4091,8 +4091,8 @@ test('community first: the company in numbers, one list of what people across th
   const home = (await t1.get('/')).text.replace(/\s+/g, ' ');
   const strip = /<section class="company-strip"[\s\S]*?<\/section>/.exec(home)[0];
   const offices = db.prepare('SELECT COUNT(*) n FROM branches').get().n;
-  assert.match(strip, new RegExp(`<a href="/branches"><strong>${offices.toLocaleString('en-US')}</strong><span>offices</span></a>`));
-  assert.match(strip, /<a href="\/people"><strong>[\d,]+<\/strong><span>people here<\/span>/); assert.match(strip, /shout-outs this month/);
+  assert.match(strip, new RegExp(`<a href="/branches"><strong>${offices.toLocaleString('en-US')}</strong><span>Offices</span></a>`));
+  assert.match(strip, /<a href="\/people"><strong>[\d,]+<\/strong><span>People Here<\/span>/); assert.match(strip, /Shout-Outs This Month/);
   // Around the company sits straight after shout-outs in the main column, and each item names the office it came from.
   const sec = db.prepare('SELECT id FROM forum_sections ORDER BY sort_order LIMIT 1').get().id;
   await t2.post('/discussions/new', { section_id: String(sec), title: 'FEED-TEST best ladder rack?', body: 'Asking for the van.' }, { page: '/discussions/new', multipart: true });

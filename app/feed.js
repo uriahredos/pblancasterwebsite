@@ -61,13 +61,13 @@ function company(user, today = localDate()) {
   const n = (sql, ...args) => db.prepare(sql).get(...args).n;
   const month = `${today.slice(0, 7)}-01`;
   const stats = [
-    { value: n('SELECT COUNT(*) AS n FROM branches'), label: 'offices', url: '/branches' },
-    { value: n('SELECT COUNT(*) AS n FROM users WHERE active = 1 OR in_directory = 1'), label: 'people here', url: '/people' },
-    { value: n('SELECT COUNT(*) AS n FROM shoutouts WHERE created_at >= ?', month), label: 'shout-outs this month', url: '/shoutouts' },
+    { value: n('SELECT COUNT(*) AS n FROM branches'), label: 'Offices', url: '/branches' },
+    { value: n('SELECT COUNT(*) AS n FROM users WHERE active = 1 OR in_directory = 1'), label: 'People Here', url: '/people' },
+    { value: n('SELECT COUNT(*) AS n FROM shoutouts WHERE created_at >= ?', month), label: 'Shout-Outs This Month', url: '/shoutouts' },
     // Discussions only for people who can open them; everyone else sees how many photos were shared.
     user.perms && user.perms.has('forum.use')
-      ? { value: n('SELECT COUNT(*) AS n FROM forum_threads WHERE created_at >= ?', new Date(Date.now() - 30 * 86400000).toISOString()), label: 'new discussions', url: '/discussions' }
-      : { value: n('SELECT COUNT(*) AS n FROM wall_photos WHERE created_at >= ?', new Date(Date.now() - 30 * 86400000).toISOString()), label: 'new photos', url: '/photos' },
+      ? { value: n('SELECT COUNT(*) AS n FROM forum_threads WHERE created_at >= ?', new Date(Date.now() - 30 * 86400000).toISOString()), label: 'New Discussions', url: '/discussions' }
+      : { value: n('SELECT COUNT(*) AS n FROM wall_photos WHERE created_at >= ?', new Date(Date.now() - 30 * 86400000).toISOString()), label: 'New Photos', url: '/photos' },
   ];
   // The office of the week: the same one all week for everyone, a different one next week. Offices that say what they do come first.
   const offices = db.prepare(`SELECT b.id, b.name, b.city, b.state, b.about,
