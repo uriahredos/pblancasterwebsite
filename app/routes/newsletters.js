@@ -131,7 +131,7 @@ function parseUpload(req, res, next) {
 
 function adminPage(req, res, extra = {}) {
   res.status(extra.errors ? 400 : 200).render('admin_newsletters', {
-    title: 'Newsletters', issues: latest(200), errors: [], values: {}, wide: true, ...extra,
+    title: 'Newsletters', issues: latest(200), errors: [], values: {}, ...extra,
   });
 }
 

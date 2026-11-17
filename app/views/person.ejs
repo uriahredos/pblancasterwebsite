@@ -7,8 +7,7 @@
     <p class="meta"><%= [p.job_title, p.department].filter(Boolean).join(' · ') %><% if (p.branch) { %><%= p.job_title || p.department ? ' · ' : '' %><a href="/branches/<%= p.branch_id %>"><%= p.branch %> office</a><% } %></p>
     <% if (p.tenure) { %><p class="meta"><%= p.tenure %><%= p.started_on ? ' · started ' + fmtDate(p.started_on) : '' %></p><% } %>
     <% if (bday) { %><p class="meta">🎂 <%= bday %></p><% } %>
-    <% if (me) { %><p><a class="btn small" href="/profile">Edit my profile</a></p><% } else { %><p class="filter-actions"><% if (p.email) { %><a class="btn primary small teams" href="https://teams.microsoft.com/l/chat/0/0?users=<%= encodeURIComponent(p.email) %>" target="_blank" rel="noopener noreferrer">Chat in Teams</a><% } %><a class="btn small" href="/shoutouts?to=<%= p.id %>#give">👏 Give a shout-out</a></p><% } %>
-    <% if (canPosition) { %><p><a class="btn small" href="/admin/positions?who=<%= p.id %>">Edit job title and department</a></p><% } %>
+    <p class="filter-actions"><% if (me) { %><a class="btn small" href="/profile">Edit my profile</a><% } else { %><% if (p.email) { %><a class="btn primary small teams" href="https://teams.microsoft.com/l/chat/0/0?users=<%= encodeURIComponent(p.email) %>" target="_blank" rel="noopener noreferrer">Chat in Teams</a><% } %><a class="btn small" href="/shoutouts?to=<%= p.id %>#give">👏 Give a shout-out</a><% } %><% if (canPosition) { %><a class="btn small" href="/admin/positions?who=<%= p.id %>">Edit job title and department</a><% } %></p>
   </div>
 </div>
 <% if (p.about) { %><h2>About</h2><div class="card"><p class="pre"><%= p.about %></p></div><% } %>

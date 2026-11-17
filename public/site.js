@@ -648,7 +648,18 @@
     form.addEventListener('click', function (e) { if (e.target.closest('#add-row, .remove-row')) queue(); });
     form.addEventListener('submit', save);
     }
-    initDraft();
-    initMain = initDraft;
+    // On a phone a wide table is shown as a list of cards: each cell gets its column's heading as a label.
+    function stackTables() {
+      document.querySelectorAll('main table:not(.positions):not(.oncall-table):not(.audit):not(.plain):not(.stack)').forEach(function (t) {
+        var heads = Array.prototype.map.call(t.querySelectorAll('thead th'), function (th) { return th.querySelector('.sr') ? '' : th.textContent.trim(); });
+        if (heads.length < 3) return;
+        t.querySelectorAll('tbody tr').forEach(function (tr) {
+          Array.prototype.forEach.call(tr.children, function (td, i) { if (heads[i] && td.textContent.trim()) td.setAttribute('data-label', heads[i]); });
+        });
+        t.classList.add('stack');
+      });
+    }
+    initDraft(); stackTables();
+    initMain = function () { initDraft(); stackTables(); };
   });
 })();

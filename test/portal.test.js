@@ -3837,7 +3837,7 @@ test('vehicle inspection as a task: assigned by a manager, finished only by send
   assert.deepEqual(db.prepare('SELECT label FROM inspection_photos WHERE inspection_id = ? ORDER BY id').all(done.inspection_id).map((r) => r.label),
     ['Front of the vehicle', 'Rear of the vehicle', 'Driver side', 'Passenger side', 'Front interior', 'Rear interior']);
   const list = (await owner.get('/admin/tasks?show=done')).text;
-  assert.match(list, new RegExp(`Vehicle inspection</span> <a href="/admin/inspections/${done.inspection_id}">See the inspection`));
+  assert.match(list, new RegExp(`</strong> <a href="/admin/inspections/${done.inspection_id}">See the inspection`));
   assert.match((await owner.get(`/admin/inspections/${done.inspection_id}`)).text, /<span>Front interior<\/span>/);
   // An ordinary inspection still needs no photos.
   const plain = base(); delete plain.task;

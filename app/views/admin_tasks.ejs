@@ -24,7 +24,7 @@
   <tbody>
   <% rows.forEach(function (t) { %>
   <tr class="<%= t.done_at ? 'off' : '' %>">
-    <td><strong><%= t.title %></strong><% if (t.kind === 'inspection') { %> <span class="pill">Vehicle inspection</span><% if (t.inspection_id) { %> <a href="/admin/inspections/<%= t.inspection_id %>">See the inspection</a><% } %><% } %><% if (t.details) { %><br><span class="hint"><%= t.details.length > 120 ? t.details.slice(0, 120) + '…' : t.details %></span><% } %><% var last = t.notes.filter(function (n) { return n.body; }).pop(); if (last) { %><br><span class="hint">Latest note: <%= last.body.length > 120 ? last.body.slice(0, 120) + '…' : last.body %> (<%= last.author %>, <%= fmtDateTime(last.created_at) %>)</span><% } else if (t.done_note) { %><br><span class="hint">Note: <%= t.done_note %></span><% } %></td>
+    <td><strong><%= t.title %></strong><% if (t.kind === 'inspection') { %><% if (!/^vehicle inspection$/i.test(t.title.trim())) { %> <span class="pill">Vehicle inspection</span><% } %><% if (t.inspection_id) { %> <a href="/admin/inspections/<%= t.inspection_id %>">See the inspection</a><% } %><% } %><% if (t.details) { %><br><span class="hint"><%= t.details.length > 120 ? t.details.slice(0, 120) + '…' : t.details %></span><% } %><% var last = t.notes.filter(function (n) { return n.body; }).pop(); if (last) { %><br><span class="hint">Latest note: <%= last.body.length > 120 ? last.body.slice(0, 120) + '…' : last.body %> (<%= last.author %>, <%= fmtDateTime(last.created_at) %>)</span><% } else if (t.done_note) { %><br><span class="hint">Note: <%= t.done_note %></span><% } %></td>
     <td><%= t.to_name %></td>
     <td class="nowrap"><%= t.due_on ? fmtDate(t.due_on) : '' %></td>
     <td><%= t.by_name %></td>

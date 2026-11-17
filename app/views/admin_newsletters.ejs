@@ -21,7 +21,7 @@
 </div>
 <h2>Upload a newsletter</h2>
 <%- include('partials/errors') %>
-<form method="post" action="/admin/newsletters" enctype="multipart/form-data" class="card stack narrow-form">
+<form method="post" action="/admin/newsletters" enctype="multipart/form-data" class="card stack">
   <input type="hidden" name="_csrf" value="<%= csrf %>">
   <label>Month <input type="month" name="issue_month" value="<%= values.issue_month || '' %>" required placeholder="2026-10" pattern="\d{4}-\d{2}"></label>
   <label>Newsletter PDF <span class="hint">Up to 25 MB. Each page is turned into a picture so it reads well on a phone.</span>
