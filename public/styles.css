@@ -1121,3 +1121,33 @@ html.page-loading main { opacity: .8; transition: opacity .2s ease .25s; }
 .task-when { margin: .3rem 0 0 1.3rem; color: var(--muted); font-size: .95rem; }
 .task.overdue .task-when { color: var(--err); font-weight: 600; }
 .task-fold .fold-hint { margin-left: 1.3rem; }
+
+/* Sales: the lead board and a single lead */
+.sales-stats { grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr)); margin-bottom: 1rem; }
+.presets a[aria-current] { background: var(--pb-navy); color: #fff; border-color: var(--pb-navy); }
+h2 .count { display: inline-block; margin-left: .3rem; padding: .05rem .5rem; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: .85rem; vertical-align: 2px; }
+.leads { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); gap: .6rem; }
+.leads li { border-left: 5px solid var(--pb-blue); border-radius: 10px; background: var(--surface); box-shadow: 0 1px 2px rgba(10, 49, 82, .06), 0 4px 12px rgba(10, 49, 82, .06); }
+.leads li.due { border-left-color: var(--warn); } .leads li.overdue { border-left-color: var(--err); }
+.leads li.stage-won { border-left-color: var(--pb-green); } .leads li.stage-lost { border-left-color: var(--field-line); }
+.leads a { display: grid; gap: .2rem; height: 100%; padding: .7rem .85rem; color: var(--ink); text-decoration: none; }
+.leads a:hover { background: var(--accent-soft); border-radius: 0 10px 10px 0; }
+.lead-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem .6rem; }
+.lead-top strong { font-weight: 800; overflow-wrap: anywhere; }
+.lead-value { margin-left: auto; font-weight: 700; color: var(--green-text); }
+.lead-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .2rem .8rem; margin-top: .25rem; font-size: .88rem; }
+.lead-owner { font-weight: 700; }
+.lead-next { color: var(--muted); } .leads li.due .lead-next { color: var(--warn); font-weight: 700; } .leads li.overdue .lead-next { color: var(--err); font-weight: 700; }
+.tag.st-lead-new { background: var(--surface); color: var(--muted); }
+.tag.st-lead-contacted { background: var(--info-bg); color: var(--accent); border-color: var(--accent); }
+.tag.st-lead-quoted { background: var(--warn-bg); color: var(--warn); border-color: var(--warn); }
+.tag.st-lead-won { background: var(--ok-bg); color: var(--ok); border-color: var(--green); }
+.tag.st-lead-lost { background: var(--surface); color: var(--muted); text-decoration: line-through; }
+.plain-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: .1rem; }
+.plain-rows li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .2rem 1rem; padding: .45rem 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+.plain-rows li:last-child { border-bottom: 0; }
+.dupes { border-left: 5px solid var(--warn); background: var(--warn-bg); margin-bottom: .75rem; }
+.dupes-title { margin: 0 0 .3rem; font-weight: 800; }
+.due-text { color: var(--err); }
+.lead-notes li.kind-stage, .lead-notes li.kind-owner, .lead-notes li.kind-refer { border-left-color: var(--field-line); background: none; font-style: italic; }
+details.spaced { margin-top: 1.25rem; }

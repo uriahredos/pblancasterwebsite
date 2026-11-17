@@ -1,0 +1,103 @@
+<%- include('partials/header') %>
+<p class="back"><a class="back-link" href="/sales">Sales</a></p>
+<div class="title-row"><h1><%= lead.company %></h1><span class="tag st-lead-<%= lead.stage %>"><%= lead.stageName %></span></div>
+<%- include('partials/errors') %>
+<% var phoneHref = lead.phone ? 'tel:' + lead.phone.replace(/[^0-9+]/g, '') : ''; %>
+<div class="card office-card">
+  <dl class="facts">
+    <dt>Owner</dt><dd><%= lead.owner || 'Nobody yet' %><%= lead.office ? ' · ' + lead.office + ' office' : '' %></dd>
+    <% if (lead.contact_name) { %><dt>Contact</dt><dd><%= lead.contact_name %></dd><% } %>
+    <% if (lead.phone) { %><dt>Phone</dt><dd><a href="<%= phoneHref %>"><%= lead.phone %></a></dd><% } %>
+    <% if (lead.email) { %><dt>Email</dt><dd><a href="mailto:<%= lead.email %>"><%= lead.email %></a></dd><% } %>
+    <% if (lead.address) { %><dt>Address</dt><dd><%= lead.address %></dd><% } %>
+    <% if (lead.interest) { %><dt>Interest</dt><dd><%= lead.interest %></dd><% } %>
+    <% if (lead.source) { %><dt>Source</dt><dd><%= lead.source %></dd><% } %>
+    <% if (lead.value) { %><dt>Value</dt><dd>$<%= lead.value.toLocaleString('en-US') %> estimated</dd><% } %>
+    <% if (lead.open) { %><dt>Follow up</dt><dd class="<%= lead.due ? 'due-text' : '' %>"><%= lead.next_on ? fmtDate(lead.next_on) + (lead.overdue ? ' (overdue)' : lead.due ? ' (today)' : '') : 'No date set' %></dd><% } %>
+    <% if (lead.lost_reason) { %><dt>Why lost</dt><dd><%= lead.lost_reason %></dd><% } %>
+  </dl>
+  <div class="filter-actions">
+    <% if (lead.phone) { %><a class="btn primary" href="<%= phoneHref %>">Call</a><% } %>
+    <% if (lead.email) { %><a class="btn" href="mailto:<%= lead.email %>">Email</a><% } %>
+    <% if (lead.address) { %><a class="btn" href="https://www.google.com/maps/search/?api=1&amp;query=<%= encodeURIComponent(lead.address) %>" target="_blank" rel="noopener noreferrer">Map</a><% } %>
+  </div>
+</div>
+
+<% if (!lead.owner_id && lead.open) { %>
+<form method="post" action="/sales/<%= lead.id %>/owner" class="card one-line"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="owner" value="me"><p><strong>Nobody is on this lead yet.</strong></p><button class="btn primary small" type="submit">Take this lead</button></form>
+<% } else if (!canEdit) { %>
+<p class="flash info">This is <%= lead.owner %>'s lead. You can read it and leave a note; only they or a sales manager can change it.</p>
+<% } %>
+
+<% if (canEdit) { %>
+<h2>Where it stands</h2>
+<form method="post" action="/sales/<%= lead.id %>/stage" class="card filters">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Stage <select name="stage" id="lead-stage"><% stages.forEach(function (s) { %><option value="<%= s[0] %>" <%= lead.stage === s[0] ? 'selected' : '' %>><%= s[1] %></option><% }) %></select></label>
+  <label>Follow up on <input type="date" name="next_on" value="<%= lead.next_on || '' %>"></label>
+  <label class="grow">If lost, why? <span class="hint">Optional</span><input name="lost_reason" value="<%= lead.lost_reason || '' %>" maxlength="200" autocomplete="off"></label>
+  <div class="filter-actions"><button class="btn primary small" type="submit">Save</button></div>
+</form>
+<% } %>
+
+<h2 id="notes">Notes</h2>
+<% if (!notes.length) { %><p class="card empty">No notes yet.</p><% } else { %>
+<ul class="task-notes lead-notes">
+  <% notes.forEach(function (n) { %><li class="kind-<%= n.kind %>"><span class="meta"><%= n.author %> · <%= fmtDateTime(n.created_at) %></span><span class="note-body"><%= n.body %></span></li><% }) %>
+</ul>
+<% } %>
+<form method="post" action="/sales/<%= lead.id %>/note" class="filters">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label class="grow">Add a note <input name="note" maxlength="1000" required autocomplete="off" placeholder="Called, left a message; walked the site; anything the next person should know"></label>
+  <div class="filter-actions"><button class="btn small" type="submit">Add note</button></div>
+</form>
+
+<% if (canEdit) { %>
+<details class="mod-tools spaced" <%= typeof editOpen !== 'undefined' && editOpen ? 'open' : '' %>>
+  <summary>Edit the details</summary>
+  <form method="post" action="/sales/<%= lead.id %>" class="stack thread-tools">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <label>Customer or company <input name="company" value="<%= values.company || '' %>" required maxlength="120" autocomplete="off"></label>
+    <div class="two">
+      <label>Contact person <input name="contact_name" value="<%= values.contact_name || '' %>" maxlength="80" autocomplete="off"></label>
+      <label>Phone <input name="phone" type="tel" value="<%= values.phone || '' %>" maxlength="30" autocomplete="off"></label>
+    </div>
+    <div class="two">
+      <label>Email <input name="email" type="email" value="<%= values.email || '' %>" maxlength="120" autocomplete="off"></label>
+      <label>Site address <input name="address" value="<%= values.address || '' %>" maxlength="200" autocomplete="off"></label>
+    </div>
+    <div class="two">
+      <label>Interested in <input name="interest" value="<%= values.interest || '' %>" maxlength="120" autocomplete="off"></label>
+      <label>Where it came from <select name="source"><option value="">Choose one</option><% sources.forEach(function (s) { %><option <%= values.source === s ? 'selected' : '' %>><%= s %></option><% }) %></select></label>
+    </div>
+    <label>Estimated value <span class="hint">Whole dollars</span><input name="value" value="<%= values.value || '' %>" inputmode="numeric" maxlength="12" autocomplete="off"></label>
+    <button class="btn primary" type="submit">Save details</button>
+  </form>
+</details>
+
+<details class="mod-tools">
+  <summary>Hand over or pass on</summary>
+  <div class="thread-tools stack">
+    <form method="post" action="/sales/<%= lead.id %>/owner" class="filters">
+      <input type="hidden" name="_csrf" value="<%= csrf %>">
+      <label class="grow">Hand to a colleague
+        <select name="owner"><option value="">Choose who</option><% people.forEach(function (u) { %><% if (u.id !== lead.owner_id) { %><option value="<%= u.id %>"><%= u.display_name %></option><% } %><% }) %></select>
+      </label>
+      <div class="filter-actions"><button class="btn small" type="submit">Hand over</button></div>
+    </form>
+    <form method="post" action="/sales/<%= lead.id %>/refer" class="filters" data-confirm="Pass this lead to the other office? It leaves your office's list.">
+      <input type="hidden" name="_csrf" value="<%= csrf %>">
+      <label>Pass to another office
+        <select name="office"><option value="">Choose the office</option><% offices.forEach(function (o) { %><option value="<%= o.id %>"><%= o.name %><%= o.number ? ' (' + o.number + ')' : '' %></option><% }) %></select>
+      </label>
+      <label class="grow">Why <span class="hint">Optional</span><input name="why" maxlength="300" autocomplete="off" placeholder="e.g. They need sprinkler work"></label>
+      <div class="filter-actions"><button class="btn small" type="submit">Pass it on</button></div>
+    </form>
+    <p class="hint">Not sure who does it? <a href="/branches">Find an office by service</a>.</p>
+  </div>
+</details>
+<% } %>
+<% if (isManager) { %>
+<form method="post" action="/sales/<%= lead.id %>/delete" class="spaced" data-confirm="Remove this lead and its notes? This cannot be undone."><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Remove this lead</button></form>
+<% } %>
+<%- include('partials/footer') %>

@@ -249,6 +249,9 @@
         <% if (can('inspections.submit')) { %>
         <a href="/inspection"><%- icon('truck') %><span>Truck inspection</span></a>
         <% } %>
+        <% if (can('sales.use')) { %>
+        <a href="/sales"><%- icon('request') %><span>Sales leads</span></a>
+        <% } %>
         <% if (can('forum.use')) { %>
         <a href="/discussions"><%- icon('talk') %><span>Discussions</span></a>
         <% } %>

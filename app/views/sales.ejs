@@ -1,0 +1,87 @@
+<%- include('partials/header', { wide: true }) %>
+<div class="title-row"><h1>Sales</h1><span class="filter-actions"><a class="btn primary small" href="#add">Add a lead</a><% if (canExport) { %><a class="btn small" href="/sales.csv">Export</a><% } %></span></div>
+<p class="lede">Every lead in the office<%= allOffices ? 's' : '' %>, who is working it and where it stands. Only the sales team can see this.</p>
+
+<div class="branch-stats sales-stats">
+  <% summary.forEach(function (s) { %>
+  <a href="<%= s.url %>" class="<%= s.warn ? 'warn' : '' %>"><span class="mini-num"><%= s.value %></span><span class="mini-label"><%= s.label %></span><span class="mini-sub"><%= s.sub %></span></a>
+  <% }) %>
+</div>
+
+<form method="get" action="/sales" class="filters card">
+  <label class="grow">Find a lead <input type="search" name="q" value="<%= q %>" maxlength="60" placeholder="Customer, contact, phone, address or salesperson" autocomplete="off"></label>
+  <div class="filter-actions"><button class="btn small" type="submit">Search</button></div>
+</form>
+<p class="presets">
+  <a href="/sales" <%- show === 'mine' && !q ? 'aria-current="true"' : '' %>>My leads</a>
+  <a href="/sales?show=due" <%- show === 'due' && !q ? 'aria-current="true"' : '' %>>Follow-ups due</a>
+  <a href="/sales?show=all" <%- show === 'all' && !q ? 'aria-current="true"' : '' %>>Everyone's open leads</a>
+  <a href="/sales?show=closed" <%- show === 'closed' && !q ? 'aria-current="true"' : '' %>>Won and lost</a>
+</p>
+<% if (unowned && show !== 'all') { %><p class="flash info"><%= unowned %> <%= unowned === 1 ? 'lead has' : 'leads have' %> nobody on <%= unowned === 1 ? 'it' : 'them' %> yet. <a href="/sales?show=all">See everyone's open leads</a> to take one.</p><% } %>
+
+<% if (!groups.length) { %>
+<p class="card empty"><%= q ? 'No lead matches that.' : show === 'due' ? 'No follow-ups due. You are caught up.' : show === 'mine' ? 'You have no open leads. Add one below.' : 'Nothing here yet.' %></p>
+<% } %>
+<% groups.forEach(function (g) { %>
+<h2><%= g.name %> <span class="count"><%= g.leads.length %></span></h2>
+<ul class="leads">
+  <% g.leads.forEach(function (l) { %>
+  <li class="stage-<%= l.stage %> <%= l.overdue ? 'overdue' : l.due ? 'due' : '' %>">
+    <a href="/sales/<%= l.id %>">
+      <span class="lead-top"><strong><%= l.company %></strong><% if (q) { %><span class="tag st-lead-<%= l.stage %>"><%= l.stageName %></span><% } %><% if (l.value) { %><span class="lead-value">$<%= l.value.toLocaleString('en-US') %></span><% } %></span>
+      <span class="meta"><%= [l.contact_name, l.interest].filter(Boolean).join(' · ') %></span>
+      <span class="lead-foot">
+        <span class="lead-owner"><%= l.owner ? l.owner : 'Nobody yet' %><%= allOffices && l.office ? ' · ' + l.office : '' %></span>
+        <% if (l.open && l.next_on) { %><span class="lead-next"><%= l.overdue ? 'Follow-up overdue, ' : l.due ? 'Follow up today, ' : 'Follow up ' %><%= fmtDate(l.next_on) %></span><% } else if (l.open) { %><span class="lead-next none">No follow-up date</span><% } else if (l.lost_reason) { %><span class="lead-next none"><%= l.lost_reason %></span><% } %>
+      </span>
+    </a>
+  </li>
+  <% }) %>
+</ul>
+<% }) %>
+
+<% if (byPerson.length > 1 && (show === 'all' || show === 'mine') && !q) { %>
+<h2>Who has what</h2>
+<div class="card"><ul class="plain-rows"><% byPerson.forEach(function (p) { %><li><span><%= p[0] %></span><strong><%= p[1] %> open</strong></li><% }) %></ul></div>
+<% } %>
+
+<h2 id="add">Add a lead</h2>
+<%- include('partials/errors') %>
+<% if (matches.length) { %>
+<div class="card dupes">
+  <p class="plain"><strong>Already being worked?</strong></p>
+  <ul class="plain-rows">
+    <% matches.forEach(function (m) { %><li><span><strong><%= m.company %></strong> <span class="meta">· <%= m.why %></span></span><span><%= m.owner || 'Nobody yet' %> · <%= m.office %> · <%= m.stageName %></span></li><% }) %>
+  </ul>
+</div>
+<% } %>
+<form method="post" action="/sales" class="card stack" id="lead-form">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Customer or company <input name="company" id="lead-company" value="<%= values.company || '' %>" required maxlength="120" autocomplete="off"></label>
+  <div class="two">
+    <label>Contact person <span class="hint">Optional</span><input name="contact_name" value="<%= values.contact_name || '' %>" maxlength="80" autocomplete="off"></label>
+    <label>Phone <span class="hint">Optional</span><input name="phone" id="lead-phone" type="tel" value="<%= values.phone || '' %>" maxlength="30" autocomplete="off"></label>
+  </div>
+  <div class="two">
+    <label>Email <span class="hint">Optional</span><input name="email" id="lead-email" type="email" value="<%= values.email || '' %>" maxlength="120" autocomplete="off"></label>
+    <label>Site address <span class="hint">Optional</span><input name="address" id="lead-address" value="<%= values.address || '' %>" maxlength="200" autocomplete="off"></label>
+  </div>
+  <div class="card dupes" id="lead-dupes" hidden aria-live="polite"></div>
+  <div class="two">
+    <label>Interested in <span class="hint">Optional</span><input name="interest" value="<%= values.interest || '' %>" maxlength="120" autocomplete="off" placeholder="e.g. Fire alarm inspection, kitchen hood"></label>
+    <label>Where it came from <span class="hint">Optional</span>
+      <select name="source"><option value="">Choose one</option><% sources.forEach(function (s) { %><option <%= values.source === s ? 'selected' : '' %>><%= s %></option><% }) %></select>
+    </label>
+  </div>
+  <div class="two">
+    <label>Estimated value <span class="hint">Optional, whole dollars</span><input name="value" value="<%= values.value || '' %>" inputmode="numeric" maxlength="12" autocomplete="off" placeholder="e.g. 4500"></label>
+    <label>Follow up on <span class="hint">Optional</span><input type="date" name="next_on" value="<%= values.next_on || '' %>"></label>
+  </div>
+  <label>First note <span class="hint">Optional</span><textarea name="note" rows="2" maxlength="1000"><%= values.note || '' %></textarea></label>
+  <% if (matches.length) { %><label class="choice"><input type="checkbox" name="anyway" value="1"> This is a different customer, or I have agreed it with them. Add it anyway.</label><% } %>
+  <button class="btn primary" type="submit">Add lead</button>
+  <p class="hint">The lead is yours until you hand it over. Need an office that does something we don't? <a href="/branches">Find an office by service</a>.</p>
+</form>
+<script src="/sales.js?v=<%= assetV %>" defer></script>
+<%- include('partials/footer') %>

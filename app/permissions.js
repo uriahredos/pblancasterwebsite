@@ -42,6 +42,10 @@ const GROUPS = [
     ['daily.manage', 'Run the daily question: approve suggestions, add and schedule questions'],
     ['activity.view', 'See the activity log (who changed what)'],
   ] },
+  { title: 'Sales', items: [
+    ['sales.use', 'Sales: add and work leads, and see the office\'s sales board (hidden from everyone without this)'],
+    ['sales.manage', 'Sales manager: edit, hand over and remove anyone\'s leads, and export them'],
+  ] },
   { title: 'Email', items: [
     ['digest.weekly', 'Receive the weekly parts summary email (needs an email address on their account)'],
   ] },
@@ -53,6 +57,8 @@ const GROUPS = [
   ] },
 ];
 const ALL = GROUPS.flatMap((g) => g.items.map((i) => i[0]));
+// Sales is its own side of the site: no starting profile but the Sales ones is given it, not even an office admin.
+const SALES = ['sales.use', 'sales.manage'];
 const SUBMIT = ['parts.submit', 'training.submit', 'complaints.submit', 'inspections.submit'];
 
 // Starting profiles. After the first start they are ordinary profiles: change them on the Profiles page.
@@ -60,7 +66,7 @@ const DEFAULTS = [
   { name: 'Technician', scope: 'all', perms: [...SUBMIT, 'forum.use'] },
   { name: 'Warehouse', scope: 'all', perms: [...SUBMIT, 'forum.use', 'parts.view', 'parts.manage', 'parts.audit', 'catalog.manage', 'stock.manage', 'inspections.view', 'inspections.manage'] },
   { name: 'Manager', scope: 'team', perms: [...SUBMIT, 'forum.use', 'parts.view', 'parts.manage', 'parts.audit', 'training.view', 'training.manage', 'digest.weekly', 'inspections.view', 'inspections.manage', 'certs.manage', 'announcements.post', 'tasks.assign'] },
-  { name: 'Admin', scope: 'all', perms: ALL.filter((p) => p !== 'branches.all') },   // an admin runs one branch
+  { name: 'Admin', scope: 'all', perms: ALL.filter((p) => p !== 'branches.all' && !SALES.includes(p)) },   // an admin runs one branch
 ];
 
 db.exec(`
@@ -118,7 +124,7 @@ function migrate() {
       for (const d of DEFAULTS) createProfile(d.name, d.scope, d.perms);
     }
     const withoutProfile = db.prepare('SELECT id, role, can_review_complaints AS reviewer FROM users WHERE profile_id IS NULL').all();
-    const oneBranch = ALL.filter((p) => p !== 'branches.all');
+    const oneBranch = ALL.filter((p) => p !== 'branches.all' && !SALES.includes(p));
     const noComplaints = oneBranch.filter((p) => p !== 'complaints.review' && p !== 'backups');
     for (const u of withoutProfile) {
       let profileId;
@@ -152,8 +158,15 @@ function migrate() {
     }
     // The corporate level: a profile that can do everything in every office. Made once; after that it is an ordinary profile.
     if (!db.prepare("SELECT 1 FROM meta WHERE key = 'corporate_profile_1'").get()) {
-      if (!db.prepare("SELECT 1 FROM profiles WHERE name = 'Corporate admin'").get()) createProfile('Corporate admin', 'all', ALL);
+      if (!db.prepare("SELECT 1 FROM profiles WHERE name = 'Corporate admin'").get()) createProfile('Corporate admin', 'all', ALL.filter((p) => !SALES.includes(p)));
       db.prepare("INSERT INTO meta (key, value) VALUES ('corporate_profile_1', '1')").run();
+    }
+    // Sales: two profiles made once, for the sales side of the site. Nobody else is given the sales permissions.
+    if (!db.prepare("SELECT 1 FROM meta WHERE key = 'sales_profiles_1'").get()) {
+      const base = ['training.submit', 'complaints.submit', 'forum.use', 'sales.use'];
+      if (!profileByName('Sales')) createProfile('Sales', 'all', base);
+      if (!profileByName('Sales manager')) createProfile('Sales manager', 'all', [...base, 'sales.manage']);
+      db.prepare("INSERT INTO meta (key, value) VALUES ('sales_profiles_1', '1')").run();
     }
     // The master account: MASTER_USERNAME if set, otherwise the first admin ever created.
     const named = process.env.MASTER_USERNAME && db.prepare('SELECT id FROM users WHERE username = ?').get(process.env.MASTER_USERNAME.trim());

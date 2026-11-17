@@ -687,10 +687,10 @@ test('a database from the first release is upgraded in place without losing data
     { username: 'plainadmin', profile: 'Admin (no complaints)', is_master: 0 },
     { username: 'rev', profile: 'Complaint reviewer', is_master: 0 },
   ]);
-  assert.equal(r.adminPerms, r.all - 1);                          // everything except seeing every branch, which is the master's
+  assert.equal(r.adminPerms, r.all - 3);                          // everything except seeing every branch (the master's) and the two sales permissions
   assert.ok(!r.plain.includes('complaints.review') && !r.plain.includes('backups') && r.plain.includes('users.manage'));
   assert.ok(r.rev.includes('complaints.review') && !r.rev.includes('parts.view'));
-  assert.deepEqual(r.profiles, ['Admin', 'Admin (no complaints)', 'Complaint reviewer', 'Corporate admin', 'Manager', 'Technician', 'Warehouse']);
+  assert.deepEqual(r.profiles, ['Admin', 'Admin (no complaints)', 'Complaint reviewer', 'Corporate admin', 'Manager', 'Sales', 'Sales manager', 'Technician', 'Warehouse']);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -1679,7 +1679,7 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
 
   const owner = (await (await loggedIn('owner')).get('/admin/users')).text;
   assert.deepEqual(groupsOf(owner), ['Community', 'Parts', 'Trucks', 'Training', 'Team', 'Setup', 'Corporate']);
-  assert.deepEqual(barLinks(owner), ['/', '/tasks', '/discussions']);
+  assert.deepEqual(barLinks(owner), ['/', '/tasks', '/discussions', '/sales']);   // the master account also sees the sales side
   // What used to be one long Admin list is two: Team (people and what goes out to them) and Setup (the site itself).
   const team = /<summary[^>]*>Team[\s\S]*?<\/details>/.exec(owner)[0];
   const setup = /<summary[^>]*>Setup[\s\S]*?<\/details>/.exec(owner)[0];
@@ -3869,4 +3869,81 @@ test('bell: a discussion with new replies is listed by name and opens at the new
   assert.equal(total(opened), before); assert.doesNotMatch(/id="bell"[\s\S]*?<\/details>/.exec(opened)[0], /BELL-LINK thread/);
   assert.equal(total((await owner.get('/')).text), before);
   await owner.post(`/discussions/t/${thread}/delete`, {}, { page: `/discussions/t/${thread}` });
+});
+
+test('sales: leads seen only by sales, owned by one person, guarded against doubling up, and followed up', async () => {
+  const mk = (username, name, profile, branch) => { const id = makeUser(username, name); db.prepare('UPDATE users SET profile_id = ?, branch_id = ? WHERE id = ?').run(profileId(profile), branch, id); return id; };
+  const other = db.prepare('SELECT id, name FROM branches WHERE id <> 1 ORDER BY id LIMIT 1').get() || { id: db.prepare("INSERT INTO branches (name, created_at) VALUES ('Sales Test Office', ?)").run(new Date().toISOString()).lastInsertRowid, name: 'Sales Test Office' };
+  const sam = mk('sales1', 'Sam Seller', 'Sales', 1); mk('sales2', 'Sally Seller', 'Sales', 1); mk('salesmgr', 'Mona Salesmanager', 'Sales manager', 1); mk('sales3', 'Otto Otheroffice', 'Sales', other.id);
+  const s1 = await loggedIn('sales1'); const s2 = await loggedIn('sales2'); const mgr = await loggedIn('salesmgr'); const s3 = await loggedIn('sales3');
+  const t1 = await loggedIn('tech1');
+  // Nobody outside sales sees any of it: no menu entry, no pages. That includes an office admin's starting profile.
+  assert.doesNotMatch((await t1.get('/')).text, /href="\/sales"/);
+  for (const url of ['/sales', '/sales/1', '/sales/check?company=acme', '/sales.csv']) assert.equal((await t1.get(url)).status, 403, url);
+  assert.equal((await t1.post('/sales', { company: 'Sneaky' }, { page: '/' })).status, 403);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM profile_permissions pp JOIN profiles p ON p.id = pp.profile_id WHERE pp.permission LIKE 'sales.%' AND p.name IN ('Technician', 'Warehouse', 'Manager', 'Corporate admin')").get().n, 0);
+  assert.match((await s1.get('/')).text, /<a href="\/sales"[^>]*>Sales/);
+
+  // Adding a lead: it belongs to the person who added it.
+  assert.equal((await s1.post('/sales', { company: '' }, { page: '/sales' })).status, 400);
+  const add = await s1.post('/sales', { company: 'Acme Bakery, Inc.', contact_name: 'Pat Baker', phone: '(717) 555-0100', email: 'pat@acme.example', address: '12 Main St, Lititz', interest: 'Kitchen hood', source: 'Referral', value: '4,500', next_on: ymdFromNow(-1), note: 'Met at the chamber lunch' }, { page: '/sales' });
+  const lead = db.prepare("SELECT * FROM leads WHERE company = 'Acme Bakery, Inc.'").get();
+  assert.equal(add.location, `/sales/${lead.id}`);
+  assert.deepEqual([lead.owner_id, lead.branch_id, lead.value, lead.stage], [sam, 1, 4500, 'new']);
+  // A colleague about to add the same customer is told who has it, by name, phone or email, and must tick a box to go on.
+  const check = JSON.parse((await s2.get('/sales/check?company=acme%20bakery')).text);
+  assert.equal(check.length, 1); assert.deepEqual([check[0].owner, check[0].why, check[0].url], ['Sam Seller', 'same name', `/sales/${lead.id}`]);
+  assert.equal(JSON.parse((await s2.get('/sales/check?company=Zed&phone=717-555-0100')).text)[0].why, 'same phone number');
+  const dup = await s2.post('/sales', { company: 'ACME Bakery' }, { page: '/sales' });
+  assert.equal(dup.status, 400); assert.match(dup.text, /already working/); assert.match(dup.text, /Sam Seller · Lancaster · New/);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM leads').get().n, 1);
+  // Another office sees that the customer is taken, and by whom, but cannot open the lead.
+  const far = JSON.parse((await s3.get('/sales/check?company=Acme%20Bakery')).text);
+  assert.deepEqual([far[0].owner, far[0].office, far[0].url], ['Sam Seller', 'Lancaster', null]);
+  assert.equal((await s3.get(`/sales/${lead.id}`)).status, 403);
+  assert.doesNotMatch((await s3.get('/sales?show=all')).text, /Acme Bakery/);
+
+  // The follow-up date has passed: it counts on the owner's bell and shows on their board.
+  assert.match((await s1.get('/')).text, /href="\/sales\?show=due"><span class="bell-n">1<\/span><span>lead to follow up/);
+  assert.match((await s1.get('/sales?show=due')).text, /Acme Bakery, Inc\.[\s\S]*Follow-up overdue/);
+  assert.doesNotMatch((await s2.get('/')).text, /lead to follow up/);
+  // A colleague can read it and leave a note, but not change it; the owner and the manager can.
+  const page = `/sales/${lead.id}`;
+  assert.match((await s2.get(page)).text, /This is Sam Seller's lead/);
+  assert.equal((await s2.post(`${page}/stage`, { stage: 'won' }, { page })).status, 403);
+  assert.equal((await s2.post(page, { company: 'Mine now' }, { page })).status, 403);
+  await s2.post(`${page}/note`, { note: 'I know the owner, happy to introduce you' }, { page });
+  await s1.post(`${page}/stage`, { stage: 'quoted', next_on: ymdFromNow(7) }, { page });
+  assert.deepEqual(db.prepare('SELECT stage, next_on FROM leads WHERE id = ?').get(lead.id), { stage: 'quoted', next_on: ymdFromNow(7) });
+  assert.doesNotMatch((await s1.get('/')).text, /lead to follow up/);
+  const detail = (await s1.get(page)).text;
+  assert.match(detail, /Met at the chamber lunch[\s\S]*happy to introduce you[\s\S]*Moved to Quote sent/);
+  // Handing over, then winning it.
+  await s1.post(`${page}/owner`, { owner: String(userId('sales2')) }, { page });
+  assert.equal(db.prepare('SELECT owner_id FROM leads WHERE id = ?').get(lead.id).owner_id, userId('sales2'));
+  assert.equal((await s1.post(`${page}/stage`, { stage: 'lost' }, { page })).status, 403);            // no longer Sam's
+  await mgr.post(`${page}/stage`, { stage: 'won' }, { page });                                          // the manager can
+  const won = db.prepare('SELECT stage, closed_at, next_on FROM leads WHERE id = ?').get(lead.id);
+  assert.equal(won.stage, 'won'); assert.ok(won.closed_at); assert.equal(won.next_on, null);
+  assert.match((await mgr.get('/sales')).text.replace(/\s+/g, ' '), /<span class="mini-num">1<\/span><span class="mini-label">Won this month<\/span><span class="mini-sub">\$4,500 estimated/);
+
+  // Passing a lead to another office: it leaves this office's list and arrives there with nobody on it.
+  await s1.post('/sales', { company: 'Sprinkler Job LLC', anyway: '1' }, { page: '/sales' });
+  const sj = db.prepare("SELECT id FROM leads WHERE company = 'Sprinkler Job LLC'").get().id;
+  await s1.post(`/sales/${sj}/refer`, { office: String(other.id), why: 'They need sprinkler work' }, { page: `/sales/${sj}` });
+  assert.deepEqual(db.prepare('SELECT branch_id, owner_id FROM leads WHERE id = ?').get(sj), { branch_id: other.id, owner_id: null });
+  assert.equal((await s1.get(`/sales/${sj}`)).status, 403);
+  assert.match((await s3.get(`/sales/${sj}`)).text, /Nobody is on this lead yet[\s\S]*Passed from the Lancaster office/);
+  await s3.post(`/sales/${sj}/owner`, { owner: 'me' }, { page: `/sales/${sj}` });
+  assert.equal(db.prepare('SELECT owner_id FROM leads WHERE id = ?').get(sj).owner_id, userId('sales3'));
+
+  // Export and removal are for the sales manager.
+  assert.equal((await s1.get('/sales.csv')).status, 403);
+  const csv = await mgr.get('/sales.csv');
+  assert.equal(csv.status, 200); assert.match(csv.text, /Acme Bakery/); assert.doesNotMatch(csv.text, /Sprinkler Job/);
+  assert.equal((await s1.post(`${page}/delete`, {}, { page })).status, 403);
+  await mgr.post(`${page}/delete`, {}, { page });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM leads WHERE id = ?').get(lead.id).n, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM lead_notes WHERE lead_id = ?').get(lead.id).n, 0);
+  db.prepare('DELETE FROM lead_notes'); db.prepare('DELETE FROM leads').run();
 });

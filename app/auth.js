@@ -50,7 +50,7 @@ function loadUser(req, res, next) {
   }
   res.locals.user = req.user;
   res.locals.can = (perm) => access.can(req.user, perm);
-  res.locals.badges = { updates: 0, requests: 0, notices: 0, certs: 0, inspections: 0, forum: 0, tasks: 0, newTasks: 0 };
+  res.locals.badges = { updates: 0, requests: 0, notices: 0, certs: 0, inspections: 0, forum: 0, tasks: 0, newTasks: 0, leads: 0 };
   res.locals.myTasks = [];
   res.locals.newThreads = [];
   res.locals.alerts = [];
@@ -114,8 +114,11 @@ function loadUser(req, res, next) {
          WHERE r.following = 1 AND t.last_post_user_id <> @me AND (r.last_read_at IS NULL OR t.last_post_at > r.last_read_at)
          ORDER BY t.last_post_at DESC LIMIT 5`).all({ me: req.user.id });
     }
+    // Sales: this person's own leads whose follow-up date has arrived.
+    if (access.can(req.user, 'sales.use')) b.leads = require('./sales').dueCount(req.user.id);
     res.locals.alerts = [
       [b.notices, '/notices', 'unread announcement', 'unread announcements'],
+      [b.leads, '/sales?show=due', 'lead to follow up', 'leads to follow up'],
       [Math.max(0, b.forum - res.locals.newThreads.length), '/discussions', 'more discussion with new replies', 'more discussions with new replies'],
       [b.updates, '/my', 'update on your requests', 'updates on your requests'],
       [b.requests, '/admin/requests', 'open parts request', 'open parts requests'],
