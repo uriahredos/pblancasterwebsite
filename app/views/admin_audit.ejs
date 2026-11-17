@@ -6,7 +6,7 @@
     <a class="btn small" href="/admin/parts/audit.csv?<%= qs %>">Download CSV</a>
   </span>
 </div>
-<p class="lede"><strong><%= fmtDate(f.from) %> to <%= fmtDate(f.to) %></strong><% if (f.user) { var who = users.find(function (u) { return String(u.id) === f.user; }); %> · <%= who ? who.display_name : '' %><% } %><% if (f.show) { %> · unchecked only<% } %>. Every part taken, returned and requested in these dates. Tick an entry once you have checked it against the shelf or the paperwork.</p>
+<p class="lede"><strong><%= fmtDate(f.from) %> to <%= fmtDate(f.to) %></strong><% if (f.user) { var who = users.find(function (u) { return String(u.id) === f.user; }); %> · <%= who ? who.display_name : '' %><% } %><% if (f.show) { %> · unchecked only<% } %>. Every part taken, returned and requested in these dates. Mark an entry once you have checked it against the shelf or the paperwork.</p>
 
 <form method="get" class="filters card no-print">
   <label>From <input type="date" name="from" value="<%= f.from %>" required></label>
@@ -80,7 +80,7 @@
       <td rowspan="<%= e.items.length %>"><% if (!e.cancelled_at && e.status) { %><span class="status s-<%= e.status %>"><%= labels.partsStatus[e.status] %></span><% } %></td>
       <% } %>
       <td rowspan="<%= e.items.length %>" class="check-cell">
-        <% if (e.cancelled_at) { %><span class="tag off">Cancelled</span>
+        <% if (e.cancelled_at) { %><span class="tag off">Canceled</span>
         <% } else { %>
         <form method="post" action="/admin/parts/<%= e.id %>/audit">
           <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="qs" value="<%= qs %>">

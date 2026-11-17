@@ -26,7 +26,7 @@
 <div class="card does">
   <p class="plain"><strong>What this office does</strong></p>
   <% if (services.length) { %><p class="chips big"><% services.forEach(function (s) { %><a class="skill" href="/branches?service=<%= s.id %>"><%= s.name %> <span class="meta"><%= s.code %></span></a><% }) %></p>
-  <% } else { %><p class="empty">Not listed yet.<%= canEdit ? ' Tick what this office does under "Edit this page".' : ' Its admin can add this.' %></p><% } %>
+  <% } else { %><p class="empty">Not listed yet.<%= canEdit ? ' Check off what this office does under "Edit this page".' : ' Its admin can add this.' %></p><% } %>
   <% if (b.product_lines) { %><p class="plain"><span class="meta">Product lines</span> <% b.product_lines.split(/,\s*/).forEach(function (pl, i) { %><%= i ? ' · ' : '' %><a href="/branches?q=<%= encodeURIComponent(pl) %>"><%= pl %></a><% }) %></p><% } %>
 </div>
 <% if (b.about) { %><div class="card"><p class="pre"><%= b.about %></p></div><% } %>
@@ -38,7 +38,7 @@
   <% if (b.photo_path) { %><label class="choice"><input type="checkbox" name="remove_photo" value="1"> Remove the photo</label><% } %>
   <fieldset>
     <legend>What this office does</legend>
-    <p class="hint">Tick everything this office offers. People across the company search by these.</p>
+    <p class="hint">Check everything this office offers. People across the company search by these.</p>
     <input type="hidden" name="services_form" value="1">
     <div class="check-grid">
       <% allServices.forEach(function (s) { %><label class="choice"><input type="checkbox" name="services" value="<%= s.id %>" <%= services.some(function (x) { return x.id === s.id; }) ? 'checked' : '' %>> <%= s.name %> <span class="hint">(<%= s.code %>)</span></label><% }) %>

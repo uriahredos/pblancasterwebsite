@@ -19,7 +19,7 @@ const GROUPS = [
   { title: 'Parts', items: [
     ['parts.view', 'See the parts log, usage summary and exports'],
     ['parts.manage', 'Update parts requests; edit or cancel other people\'s entries'],
-    ['parts.audit', 'Use the audit page and tick entries as checked'],
+    ['parts.audit', 'Use the audit page and mark entries as checked'],
     ['catalog.manage', 'Manage the parts catalog'],
     ['stock.manage', 'Manage stock: counts, deliveries, minimum levels'],
   ] },
@@ -39,7 +39,7 @@ const GROUPS = [
     ['tasks.assign', 'Assign tasks to people and see whether they are done'],
     ['newsletters.manage', 'Upload and remove the monthly newsletters'],
     ['events.post', 'Post events for people to sign up to'],
-    ['oncall.manage', 'Keep the on-call rota: load the schedule, add and swap people'],
+    ['oncall.manage', 'Keep the on-call schedule: load it from the spreadsheet, add and swap people'],
     ['daily.manage', 'Run the daily question: approve suggestions, add and schedule questions'],
     ['activity.view', 'See the activity log (who changed what)'],
   ] },

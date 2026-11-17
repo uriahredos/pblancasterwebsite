@@ -117,7 +117,7 @@ router.post('/sales', use, (req, res) => {
   const matches = errors.length ? [] : sales.similar(v);
   // Someone may already be on this customer: say so once, and let the person decide.
   if (!errors.length && matches.length && req.body.anyway !== '1') {
-    return board(req, res, { errors: ['This looks like a customer someone is already working. Check the list below, then tick the box to add it anyway.'], values: v, matches, addOpen: true });
+    return board(req, res, { errors: ['This looks like a customer someone is already working. Check the list below, then check the box to add it anyway.'], values: v, matches, addOpen: true });
   }
   if (errors.length) return board(req, res, { errors, values: v, addOpen: true });
   const now = new Date().toISOString();

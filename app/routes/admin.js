@@ -96,7 +96,7 @@ router.get('/admin/parts.csv', requirePerm('parts.view'), (req, res) => {
      ${sql} ORDER BY ${order}, i.id`).all(...params);
   sendCsv(res, `parts-${localDate()}.csv`,
     ['Id', 'Submitted', 'Name', 'Username', 'Action', 'Part', 'Quantity', 'Van stock or job', 'Job number', 'Truck',
-      'Needed by', 'Note', 'Status', 'Admin note', 'Photo', 'Edited', 'Cancelled', 'Checked'],
+      'Needed by', 'Note', 'Status', 'Admin note', 'Photo', 'Edited', 'Canceled', 'Checked'],
     rows.map((r) => [r.id, fmtDateTime(r.created_at), r.display_name, r.username, labels.action[r.action],
       r.part_name, r.quantity, labels.source[r.source], r.job_number, r.truck, r.needed_by, r.note,
       r.status ? labels.partsStatus[r.status] : '', r.admin_note,
@@ -197,7 +197,7 @@ router.get('/admin/parts/audit.csv', requirePerm('parts.audit'), (req, res) => {
   const { f, rows } = auditData(req.query, req.user);
   sendCsv(res, `parts-audit-${f.from}-to-${f.to}.csv`,
     ['Entry', 'Submitted', 'Action', 'Name', 'Part', 'Description', 'Quantity', 'Van stock or job', 'Job number', 'Truck', 'Needed by',
-      'Status', 'Note', 'Edited', 'Cancelled', 'Checked', 'Checked by'],
+      'Status', 'Note', 'Edited', 'Canceled', 'Checked', 'Checked by'],
     rows.map((r) => [r.id, fmtDateTime(r.created_at), labels.action[r.action], r.display_name, r.part_name, r.part_description,
       r.quantity, labels.source[r.source], r.job_number, r.truck, r.needed_by, r.status ? labels.partsStatus[r.status] : '', r.note,
       fmtDateTime(r.edited_at), fmtDateTime(r.cancelled_at), fmtDateTime(r.audited_at), r.audited_by_name]));
@@ -231,7 +231,7 @@ router.post('/admin/parts/audit/check-all', requirePerm('parts.audit'), (req, re
   res.redirect(auditBack(req.body));
 });
 
-// What was used: totals per part, per person and per job. Cancelled entries are left out.
+// What was used: totals per part, per person and per job. Canceled entries are left out.
 function summaryData(query, viewer) {
   const { f, sql, params } = buildFilter({ from: query.from, to: query.to, user: query.user, q: query.q }, 's',
     { statuses: {}, textCols: ['i.part_name', 's.job_number'] }, viewer);
@@ -333,7 +333,7 @@ router.get('/admin/training.csv', requirePerm('training.view'), (req, res) => {
     `SELECT t.*, u.display_name, u.username FROM training_requests t JOIN users u ON u.id = t.user_id
      ${sql} ORDER BY ${order}`).all(...params);
   sendCsv(res, `training-${localDate()}.csv`,
-    ['Id', 'Submitted', 'Name', 'Username', 'Training description', 'Wants contact', 'Private', 'Status', 'Admin note', 'Edited', 'Cancelled'],
+    ['Id', 'Submitted', 'Name', 'Username', 'Training description', 'Wants contact', 'Private', 'Status', 'Admin note', 'Edited', 'Canceled'],
     rows.map((r) => [r.id, fmtDateTime(r.created_at), r.display_name, r.username, r.description,
       r.wants_contact ? 'Yes' : 'No', r.is_private ? 'Yes' : 'No', labels.trainingStatus[r.status], r.admin_note,
       fmtDateTime(r.edited_at), fmtDateTime(r.cancelled_at)]));

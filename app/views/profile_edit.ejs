@@ -38,7 +38,7 @@
   </label>
   <fieldset>
     <legend>Contact details</legend>
-    <p class="hint">Only shown to other people if you tick the box.</p>
+    <p class="hint">Only shown to other people if you check the box.</p>
     <label>Phone <input name="phone" type="tel" value="<%= values.phone || '' %>" maxlength="30" autocomplete="tel"></label>
     <label class="choice"><input type="checkbox" name="show_phone" value="1" <%= values.show_phone ? 'checked' : '' %>> Show my phone number on my profile</label>
     <label class="choice"><input type="checkbox" name="show_email" value="1" <%= values.show_email ? 'checked' : '' %>> Show my email address on my profile<%= me.email ? ' (' + me.email + ')' : '' %></label>

@@ -1,7 +1,7 @@
 <%- include('partials/header', { wide: true }) %>
 <p class="back"><a class="back-link" href="/admin/parts">Parts log</a> <a href="/admin/weekly">Weekly summary</a></p>
 <h1>Parts usage</h1>
-<p class="lede">Totals for the dates you choose. Cancelled entries are not counted. Net used is taken minus returned.</p>
+<p class="lede">Totals for the dates you choose. Canceled entries are not counted. Net used is taken minus returned.</p>
 <form method="get" class="filters card">
   <label>From <input type="date" name="from" value="<%= f.from %>"></label>
   <label>To <input type="date" name="to" value="<%= f.to %>"></label>

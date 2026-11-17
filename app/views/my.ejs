@@ -9,7 +9,7 @@
     <div class="rec-head">
       <span class="tag <%= s.action %>"><%= labels.action[s.action] %></span>
       <% if (s.unseen) { %><span class="tag new">Updated</span><% } %>
-      <% if (s.cancelled_at) { %><span class="tag off">Cancelled</span><% } else if (s.status) { %><span class="status s-<%= s.status %>"><%= labels.partsStatus[s.status] %></span><% } %>
+      <% if (s.cancelled_at) { %><span class="tag off">Canceled</span><% } else if (s.status) { %><span class="status s-<%= s.status %>"><%= labels.partsStatus[s.status] %></span><% } %>
       <time><%= fmtDateTime(s.created_at) %></time>
     </div>
     <p class="items"><%= s.items %></p>
@@ -34,7 +34,7 @@
   <li class="card <%= t.cancelled_at ? 'cancelled' : '' %>">
     <div class="rec-head">
       <% if (t.unseen) { %><span class="tag new">Updated</span><% } %>
-      <% if (t.cancelled_at) { %><span class="tag off">Cancelled</span><% } else { %><span class="status s-<%= t.status %>"><%= labels.trainingStatus[t.status] %></span><% } %>
+      <% if (t.cancelled_at) { %><span class="tag off">Canceled</span><% } else { %><span class="status s-<%= t.status %>"><%= labels.trainingStatus[t.status] %></span><% } %>
       <% if (t.is_private) { %><span class="tag private">Private</span><% } %>
       <time><%= fmtDateTime(t.created_at) %></time>
     </div>

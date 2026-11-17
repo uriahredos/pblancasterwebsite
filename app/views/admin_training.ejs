@@ -14,7 +14,7 @@
     <td class="num"><%= t.votes || '' %></td>
     <td><%= t.wants_contact ? 'Yes' : 'No' %></td>
     <td><% if (t.is_private) { %><span class="tag private">Private</span><% } else { %>No<% } %></td>
-    <td><% if (t.cancelled_at) { %><span class="tag off">Cancelled</span><% } else { %><span class="status s-<%= t.status %>"><%= labels.trainingStatus[t.status] %></span><% } %></td>
+    <td><% if (t.cancelled_at) { %><span class="tag off">Canceled</span><% } else { %><span class="status s-<%= t.status %>"><%= labels.trainingStatus[t.status] %></span><% } %></td>
     <td><a href="/admin/training/<%= t.id %>">Open</a></td>
   </tr>
   <% }) %>

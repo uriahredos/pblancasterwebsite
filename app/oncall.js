@@ -1,5 +1,5 @@
 'use strict';
-// The on-call rota: for each stretch of days, who takes the calls and who backs them up.
+// The on-call schedule: for each shift, who takes the calls and who backs them up.
 // Several people can be on call for the same days (a market may have three or four), each with a phone number.
 const db = require('./db');
 const { localDate } = require('./util');
@@ -88,7 +88,7 @@ const covering = (branchIds, day) => (branchIds.length ? db.prepare(
   `SELECT s.*, b.name AS office FROM oncall_shifts s JOIN branches b ON b.id = s.branch_id
    WHERE s.branch_id IN (${branchIds.map(Number).join(',')}) AND s.start_on <= ? AND s.end_on > ? ORDER BY s.role = 'backup', s.id`).all(day, day) : []);
 
-/** The offices whose rota this person sees: their own, and any other office in the same market. */
+/** The offices whose schedule this person sees: their own, and any other office in the same market. */
 function officesFor(user) {
   const mine = db.prepare('SELECT id, name, market FROM branches WHERE id = ?').get(user.workBranch || user.branch_id);
   if (!mine) return [];

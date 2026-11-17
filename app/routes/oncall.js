@@ -43,7 +43,7 @@ function page(req, res, extra = {}) {
 }
 router.get('/oncall', requireLogin, (req, res) => page(req, res));
 
-// ---- Keeping the rota: one stretch at a time, or the whole year from the spreadsheet ----
+// ---- Keeping the schedule: one shift at a time, or the whole year from the spreadsheet ----
 
 router.post('/admin/oncall', manage, (req, res) => {
   const v = { start_on: clean(req.body.start_on, 10), end_on: clean(req.body.end_on, 10), role: req.body.role === 'backup' ? 'backup' : 'tech', name: clean(req.body.name, 80), phone: clean(req.body.phone, 30), note: clean(req.body.note, 120) };
@@ -54,8 +54,8 @@ router.post('/admin/oncall', manage, (req, res) => {
   if (errors.length) return page(req, res, { errors, values: v, addOpen: true });
   db.prepare('INSERT INTO oncall_shifts (branch_id, start_on, end_on, role, name, phone, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
     .run(req.user.workBranch, v.start_on, v.end_on, v.role, v.name, v.phone || null, v.note || null, new Date().toISOString());
-  activity.log(req.user, 'On-call rota changed', `${v.name} added, ${v.start_on} to ${v.end_on}`);
-  flash(req, 'ok', `${v.name} added to the rota.`);
+  activity.log(req.user, 'On-call schedule changed', `${v.name} added, ${v.start_on} to ${v.end_on}`);
+  flash(req, 'ok', `${v.name} added to the schedule.`);
   res.redirect('/oncall#schedule');
 });
 
@@ -68,8 +68,8 @@ router.post('/admin/oncall/import', manage, (req, res, next) => sheet(req, res, 
   if (req.file.buffer.subarray(0, 4).toString('latin1') === '%PDF') return fail('That is a PDF. Upload the spreadsheet saved as CSV instead.');
   const rows = require('./catalog').parseCsv(req.file.buffer.toString('utf8'));
   const { shifts, problems } = oncall.parseSheet(rows);
-  if (!shifts.length) return fail(problems[0] || 'No on-call stretches could be read from that file.', problems.slice(1));
-  // The sheet replaces whatever the rota held for the days it covers; anything outside those days is left alone.
+  if (!shifts.length) return fail(problems[0] || 'No on-call shifts could be read from that file.', problems.slice(1));
+  // The sheet replaces whatever the schedule held for the days it covers; anything outside those days is left alone.
   const from = shifts.reduce((a, s) => (s.start_on < a ? s.start_on : a), shifts[0].start_on);
   const to = shifts.reduce((a, s) => (s.end_on > a ? s.end_on : a), shifts[0].end_on);
   const now = new Date().toISOString();
@@ -78,24 +78,24 @@ router.post('/admin/oncall/import', manage, (req, res, next) => sheet(req, res, 
     const add = db.prepare('INSERT INTO oncall_shifts (branch_id, start_on, end_on, role, name, phone, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
     for (const s of shifts) add.run(req.user.workBranch, s.start_on, s.end_on, s.role, s.name, s.phone, s.note, now);
   })();
-  activity.log(req.user, 'On-call rota uploaded', `${shifts.length} entries, ${from} to ${to}`);
-  flash(req, 'ok', `Rota loaded: ${new Set(shifts.map((s) => s.start_on)).size} stretches from ${short(from)} ${from.slice(0, 4)} to ${short(to)} ${to.slice(0, 4)}.${problems.length ? ' ' + problems.length + ' line(s) could not be read: ' + problems.slice(0, 3).join(' ') : ''}`);
+  activity.log(req.user, 'On-call schedule uploaded', `${shifts.length} entries, ${from} to ${to}`);
+  flash(req, 'ok', `Schedule loaded: ${new Set(shifts.map((s) => s.start_on)).size} shifts from ${short(from)} ${from.slice(0, 4)} to ${short(to)} ${to.slice(0, 4)}.${problems.length ? ' ' + problems.length + ' line(s) could not be read: ' + problems.slice(0, 3).join(' ') : ''}`);
   res.redirect('/oncall#schedule');
 });
 
 router.post('/admin/oncall/:id/delete', manage, (req, res) => {
   const s = /^\d+$/.test(req.params.id) ? db.prepare('SELECT * FROM oncall_shifts WHERE id = ? AND branch_id = ?').get(req.params.id, req.user.workBranch) : null;
-  if (s) { db.prepare('DELETE FROM oncall_shifts WHERE id = ?').run(s.id); activity.log(req.user, 'On-call rota changed', `${s.name} removed, ${s.start_on} to ${s.end_on}`); flash(req, 'ok', `${s.name} removed from that stretch.`); }
+  if (s) { db.prepare('DELETE FROM oncall_shifts WHERE id = ?').run(s.id); activity.log(req.user, 'On-call schedule changed', `${s.name} removed, ${s.start_on} to ${s.end_on}`); flash(req, 'ok', `${s.name} removed from that shift.`); }
   res.redirect('/oncall#schedule');
 });
 
-// Swap one person for another on a stretch (someone covering for a colleague).
+// Swap one person for another on a shift (someone covering for a colleague).
 router.post('/admin/oncall/:id', manage, (req, res) => {
   const s = /^\d+$/.test(req.params.id) ? db.prepare('SELECT * FROM oncall_shifts WHERE id = ? AND branch_id = ?').get(req.params.id, req.user.workBranch) : null;
   const name = clean(req.body.name, 80);
   if (s && name) {
     db.prepare('UPDATE oncall_shifts SET name = ?, phone = ? WHERE id = ?').run(name, clean(req.body.phone, 30) || null, s.id);
-    activity.log(req.user, 'On-call rota changed', `${s.name} swapped for ${name}, ${s.start_on} to ${s.end_on}`);
+    activity.log(req.user, 'On-call schedule changed', `${s.name} swapped for ${name}, ${s.start_on} to ${s.end_on}`);
     flash(req, 'ok', 'Saved.');
   }
   res.redirect('/oncall#schedule');

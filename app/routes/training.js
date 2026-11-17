@@ -98,7 +98,7 @@ router.post('/training/:id/cancel', requireLogin, (req, res) => {
     logChange('training', row.id, req.user.id, 'cancelled', null);
     db.prepare('UPDATE training_requests SET cancelled_at = ? WHERE id = ?').run(new Date().toISOString(), row.id);
   })();
-  flash(req, 'ok', 'Request cancelled.');
+  flash(req, 'ok', 'Request canceled.');
   res.redirect(backTo(req.user, row));
 });
 

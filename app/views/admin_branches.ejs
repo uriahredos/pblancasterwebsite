@@ -119,7 +119,7 @@
 
 <h2 id="services">Services offices can offer</h2>
 <div class="card stack">
-  <p class="plain">The list every office ticks from. People search offices by these.</p>
+  <p class="plain">The list every office picks from. People search offices by these.</p>
   <ul class="plain-list">
     <% services.forEach(function (s) { %>
     <li><form method="post" action="/admin/company/services/<%= s.id %>" class="svc-row"><input type="hidden" name="_csrf" value="<%= csrf %>">

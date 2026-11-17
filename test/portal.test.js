@@ -478,9 +478,9 @@ test('edit and cancel limits: other people, the time window, acted-on requests, 
   assert.equal((await tech.post(`/parts/${c.id}/cancel`, {})).status, 302);
   assert.ok(db.prepare('SELECT cancelled_at FROM parts_submissions WHERE id = ?').get(c.id).cancelled_at);
   assert.equal(db.prepare("SELECT change FROM change_log WHERE kind = 'parts' AND record_id = ?").get(c.id).change, 'cancelled');
-  assert.match((await tech.get('/my')).text, /Cancelled/);
+  assert.match((await tech.get('/my')).text, /Canceled/);
   assert.equal((await admin.get(`/parts/${c.id}/edit`)).status, 403);
-  assert.match((await admin.get('/admin/parts?q=CANCEL-ME')).text, /Cancelled/);
+  assert.match((await admin.get('/admin/parts?q=CANCEL-ME')).text, /Canceled/);
   assert.match((await admin.get('/admin/parts.csv?q=CANCEL-ME')).text, /CANCEL-ME,9,Van stock.*\d{4}, /);
 });
 
@@ -498,7 +498,7 @@ test('training requests can be edited and cancelled the same way', async () => {
   assert.equal((await tech.get(page)).status, 403);
   db.prepare("UPDATE training_requests SET status = 'new' WHERE id = ?").run(t.id);
   assert.equal((await tech.post(`/training/${t.id}/cancel`, {})).status, 302);
-  assert.match((await tech.get('/my')).text, /Cancelled/);
+  assert.match((await tech.get('/my')).text, /Canceled/);
 });
 
 test('usage summary adds up takes and returns and leaves cancelled entries out', async () => {
@@ -4023,7 +4023,7 @@ test('sales: leads seen only by sales, owned by one person, guarded against doub
   db.prepare('DELETE FROM lead_notes'); db.prepare('DELETE FROM leads').run();
 });
 
-test('on call: the rota is loaded from the spreadsheet, everyone sees who is on call now, and several people can share a stretch', async () => {
+test('on call: the rota is loaded from the spreadsheet, everyone sees who is on call now, and several people can share a shift', async () => {
   const owner = await loggedIn('owner'); const t1 = await loggedIn('tech1');
   const oncall = require('../app/oncall');
   const today = ymdFromNow(0);
@@ -4066,7 +4066,7 @@ test('on call: the rota is loaded from the spreadsheet, everyone sees who is on 
   const seen = (await t1.get(page)).text.replace(/\s+/g, ' ');
   assert.match(seen, /id="now-h">On call now<[\s\S]*Ann Alpha<\/strong><span class="meta">717-555-0001<\/span><\/span> <a class="btn primary" href="tel:7175550001"[^>]*>Call<\/a>[\s\S]*Bo Bravo[\s\S]*Cy Charlie<\/strong><\/span> <span class="hint">No number listed[\s\S]*<span class="tag ">Backup<\/span><strong>Di Delta[\s\S]*Ed Echo/);
   assert.match(seen, /Coming up[\s\S]*2027[\s\S]*Jan 4 to Jan 11[\s\S]*J\. Zug[\s\S]*D\. Anderson/);
-  assert.doesNotMatch(seen, /Remove from this stretch/);
+  assert.doesNotMatch(seen, /Remove from this shift/);
   // The home page shows who is on call now, with a call button.
   assert.match((await t1.get('/')).text.replace(/\s+/g, ' '), /id="oncall-h">On call now<[\s\S]*Ann Alpha<\/strong><\/span><a class="btn small primary" href="tel:7175550001"/);
   // The hand-over day belongs to the next person.

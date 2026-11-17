@@ -40,7 +40,7 @@
   <% if (canSetTeam) { %>
   <fieldset>
     <legend>People <%= target.display_name %> manages</legend>
-    <p class="hint">The <%= profile.name %> profile only sees its own people. Tick everyone <%= target.display_name %> should see and manage.</p>
+    <p class="hint">The <%= profile.name %> profile only sees its own people. Check everyone <%= target.display_name %> should see and manage.</p>
     <input type="hidden" name="team_form" value="1">
     <div class="check-grid">
       <% people.forEach(function (p) { %>

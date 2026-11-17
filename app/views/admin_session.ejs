@@ -17,7 +17,7 @@
   </fieldset>
   <% if (canManage) { %>
   <div class="rec-actions">
-    <button class="btn" type="submit" name="held" value="">Save ticks</button>
+    <button class="btn" type="submit" name="held" value="">Save attendance</button>
     <% if (!session.completed_at) { %><button class="btn primary" type="submit" name="held" value="1">Mark as held: these people attended</button>
     <% } else { %><button class="btn" type="submit" name="held" value="0">Mark as not held yet</button><% } %>
   </div>

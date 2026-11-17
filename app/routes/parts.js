@@ -245,7 +245,7 @@ router.post('/parts/:id/cancel', requireLogin, (req, res) => {
     logChange('parts', row.id, req.user.id, 'cancelled', null);
     db.prepare('UPDATE parts_submissions SET cancelled_at = ? WHERE id = ?').run(new Date().toISOString(), row.id);
   })();
-  flash(req, 'ok', 'Entry cancelled.');
+  flash(req, 'ok', 'Entry canceled.');
   res.redirect(backTo(req.user, row));
 });
 
