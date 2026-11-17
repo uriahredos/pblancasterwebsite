@@ -172,9 +172,11 @@ router.get('/', requireLogin, (req, res) => {
   const dateLine = new Intl.DateTimeFormat('en-US', { timeZone: config.timezone, weekday: 'long', month: 'long', day: 'numeric' }).format(now);
   const onCall = require('../oncall').now(req.user, today).map((p) => ({ ...p, tel: String(p.phone || '').replace(/[^0-9+]/g, '') }));
   const feed = require('../feed');
+  const around = feed.recent(req.user, 8); const company = feed.company(req.user, today);
+  const homeShouts = social.recentShoutouts(me, 3); const homeWeek = social.thisWeek(req.user, today);
   res.render('home', {
-    onCall, around: feed.recent(req.user, 8), company: feed.company(req.user, today),
-    shouts: social.recentShoutouts(me, 3), thisWeek: social.thisWeek(req.user, today), wallPhotos: social.recentPhotos(me, 4),
+    onCall, around, company, slides: feed.slides(req.user, { around, shouts: homeShouts, week: homeWeek, spot: company.spot }),
+    shouts: homeShouts, thisWeek: homeWeek, wallPhotos: social.recentPhotos(me, 4),
     dailyCard: require('../daily').card(me), welcomes: require('./community').recentWelcomes(me),
     profileEmpty: !req.user.photo_path && !req.user.about && !req.user.skills,
     title: 'Home', wide: true, hasPasskey: db.prepare('SELECT 1 FROM passkeys WHERE user_id = ?').get(me) !== undefined, branch, branchTitle: 'Office at a glance', officeId: office ? office.id : null, critical, notices, board, replies, talk, myCerts, issue: issues[0] || null, issueIsNew, upcoming, mine, dateLine,

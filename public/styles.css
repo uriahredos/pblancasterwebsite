@@ -1220,3 +1220,28 @@ details.spaced { margin-top: 1.25rem; }
 .comment-bubble .meta { font-size: .8rem; }
 .comment-bubble p { margin: .1rem 0 0; overflow-wrap: anywhere; white-space: pre-wrap; }
 .comment-bubble form { margin-top: .25rem; }
+
+/* The banner under the greeting: one slide at a time from around the company */
+.spotlight { margin: 0 0 .7rem; }
+.spot-track { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; border-radius: 16px; box-shadow: 0 6px 18px rgba(10, 49, 82, .2); outline-offset: 3px; }
+.spot-track::-webkit-scrollbar { display: none; }
+.spot-slide { flex: 0 0 100%; scroll-snap-align: start; display: flex; align-items: center; gap: 1rem; min-height: 6.5rem; padding: .9rem 1.2rem; box-sizing: border-box; text-decoration: none; color: #fff; background: linear-gradient(110deg, var(--pb-navy), var(--pb-blue)); border-left: 8px solid var(--pb-green); }
+.spot-slide.spot-hire, .spot-slide.spot-cheer { background: linear-gradient(110deg, #0a5c33, #0cb04d); border-left-color: #fff; }
+.spot-slide.spot-shout { background: linear-gradient(110deg, #17477f, #245dac); }
+.spot-face { flex: none; display: inline-flex; border-radius: 50%; box-shadow: 0 0 0 3px rgba(255, 255, 255, .55); }
+.spot-icon { width: 56px; height: 56px; align-items: center; justify-content: center; background: rgba(255, 255, 255, .15); }
+.spot-pic { flex: none; width: 5.5rem; height: 5.5rem; object-fit: cover; border-radius: 12px; box-shadow: 0 0 0 3px rgba(255, 255, 255, .55); }
+.spot-text { flex: 1; min-width: 0; display: grid; gap: .1rem; }
+.spot-text .eyebrow { margin: 0; font-size: .74rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: rgba(255, 255, 255, .82); }
+.spot-text strong { font-size: clamp(1.1rem, .9rem + .9vw, 1.5rem); font-weight: 800; line-height: 1.2; overflow-wrap: anywhere; }
+.spot-sub { color: rgba(255, 255, 255, .9); font-size: .95rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.spot-cta { flex: none; padding: .45rem .9rem; border-radius: 999px; background: rgba(255, 255, 255, .18); font-weight: 700; font-size: .9rem; white-space: nowrap; }
+.spot-slide:hover .spot-cta { background: rgba(255, 255, 255, .32); }
+.spot-dots { display: flex; align-items: center; justify-content: center; gap: .1rem; margin-top: .35rem; }
+.spot-dots button[data-slide] { width: 28px; height: 24px; padding: 0; border: 0; background: none; cursor: pointer; position: relative; }
+.spot-dots button[data-slide]::before { content: ""; position: absolute; left: 50%; top: 50%; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 50%; background: var(--field-line); transition: transform .15s ease, background .15s ease; }
+.spot-dots button[aria-selected="true"]::before { background: var(--pb-green); transform: scale(1.35); }
+.spot-pause { margin-left: .5rem; padding: .1rem .6rem; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); font: inherit; font-size: .78rem; font-weight: 700; cursor: pointer; }
+@media (max-width: 520px) { .spot-slide { gap: .75rem; padding: .8rem .9rem; min-height: 7.5rem; } .spot-cta { display: none; } .spot-pic { width: 4rem; height: 4rem; } .spot-face .avatar { width: 48px; height: 48px; } .spot-sub { font-size: .9rem; } }
+@media (min-width: 900px) { .company-strip { grid-template-columns: 1fr; } }
+@media print { .spotlight { display: none; } }

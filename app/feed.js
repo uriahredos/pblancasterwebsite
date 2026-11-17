@@ -79,4 +79,28 @@ function company(user, today = localDate()) {
   return { stats, spot };
 }
 
-module.exports = { recent, company, ago };
+/**
+ * The banner under the greeting: a handful of slides, one shown at a time. People first (someone joining,
+ * a birthday today, a thank-you), then what was shared, then an office to get to know.
+ * `around` is recent(), `shouts` the latest shout-outs, `week` this week's birthdays and anniversaries, `spot` the office of the week.
+ */
+function slides(user, { around, shouts, week, spot }) {
+  const out = [];
+  const who = (id, name, photo) => ({ user_id: id, display_name: name, photo_path: photo });
+  for (const i of around.filter((x) => x.kind === 'hire').slice(0, 2)) out.push({ kind: 'hire', label: 'Welcome aboard', title: i.title, text: i.text, url: i.url, who: i.who, office: i.who.office, cta: 'Say hello' });
+  for (const o of week.filter((x) => x.today && !x.mine).slice(0, 2)) {
+    out.push({ kind: 'cheer', label: o.kind === 'birthday' ? 'Birthday today' : 'Work anniversary today', title: o.kind === 'birthday' ? `Happy birthday, ${o.display_name.split(' ')[0]}!` : `${o.display_name}: ${o.text}`,
+      text: o.kind === 'birthday' ? o.display_name : 'Congratulations', url: `/people/${o.id}`, who: who(o.id, o.display_name, o.photo_path), office: o.branch, cta: 'See their page' });
+  }
+  for (const s of shouts.slice(0, 2)) out.push({ kind: 'shout', label: 'Shout-out', title: `${s.to_name}, thank you`, text: `"${s.message}" from ${s.from_name}`, url: `/shoutouts#s${s.id}`, who: who(s.to_user, s.to_name, s.to_photo), cta: 'All shout-outs' });
+  for (const i of around.filter((x) => x.kind === 'photo').slice(0, 1)) out.push({ kind: 'photo', label: 'New photo', title: i.title, text: i.text, url: i.url, who: i.who, office: i.who.office, photo: i.photo, cta: 'See the photos' });
+  for (const i of around.filter((x) => x.kind === 'talk').slice(0, 1)) out.push({ kind: 'talk', label: 'New discussion', title: i.text, text: `${i.who.display_name} is asking. ${i.extra}.`, url: i.url, who: i.who, office: i.who.office, cta: 'Join in' });
+  for (const i of around.filter((x) => x.kind === 'event').slice(0, 1)) out.push({ kind: 'event', label: 'Coming up', title: i.text, text: `Posted by ${i.who.display_name}`, url: i.url, who: i.who, office: i.who.office, cta: "I'm in" });
+  if (spot) {
+    out.push({ kind: 'office', label: 'Meet an office this week', title: `${spot.name}${spot.city && spot.state ? ' · ' + spot.city + ', ' + spot.state : ''}`,
+      text: spot.services || (spot.people ? `${spot.people} ${spot.people === 1 ? 'person' : 'people'} on this site` : 'See what they do'), url: `/branches/${spot.id}`, cta: 'Visit their page' });
+  }
+  return out.slice(0, 8).map((x) => ({ ...x, away: Boolean(x.who && x.who.office_id && x.who.office_id !== user.branch_id) }));
+}
+
+module.exports = { recent, company, slides, ago };
