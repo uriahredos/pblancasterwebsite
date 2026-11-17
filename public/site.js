@@ -117,6 +117,10 @@
   }
   function showPage(doc, to, opts) {
     var main = document.querySelector('main'); var next = doc.querySelector('main');
+    // If the menu itself is different (someone just set their first password, or their permissions changed),
+    // swapping the middle of the page would leave the old menu behind: load the page properly instead.
+    var links = function (d) { return d.querySelectorAll('#navbar a[href]').length; };
+    if (links(document) !== links(doc)) { location.assign(to.pathname + to.search + to.hash); return Promise.resolve(); }
     Array.prototype.forEach.call(document.querySelectorAll('details.menu[open], details.bell[open], details.row-menu[open]'), function (d) { d.open = false; });
     main.className = next.className;
     main.innerHTML = next.innerHTML;
