@@ -785,7 +785,7 @@ test('logo banner and light/dark switch are on every page', async () => {
   assert.ok(login.indexOf('/theme.js') < login.indexOf('/styles.css')); // applied before the page is drawn
   assert.match((await (await loggedIn('tech1')).get('/')).text, /id="theme-toggle"/);
   const css = (await c.get('/styles.css')).text;
-  for (const color of ['#0cb04d', '#245dac', '#0a3152']) assert.ok(css.includes(color), color);
+  for (const color of ['#00b10b', '#005bb9', '#00314f']) assert.ok(css.includes(color), color);
   assert.match(css, /:root\[data-theme="dark"\]/);
   assert.match(css, /:root:not\(\[data-theme="light"\]\)/);
 });

@@ -1,11 +1,12 @@
 :root {
-  /* Pye-Barker colors, taken from the logo */
-  --pb-green: #0cb04d; --pb-blue: #245dac; --pb-navy: #0a3152;
+  /* Pye-Barker colors, from the Brand Use Guidelines: green #00B10B, blue #005BB9, navy #00314F, and gray #939598 as a complement */
+  --pb-gray: #939598;
+  --pb-green: #00b10b; --pb-blue: #005bb9; --pb-navy: #00314f;
   --bg: #f3f6f9; --surface: #ffffff; --ink: #0f2233; --muted: #55677a; --line: #d5dde6; --field-line: #93a3b3;
-  --brand: #0a3152; --brand-ink: #ffffff; --accent: #245dac; --accent-ink: #ffffff; --accent-soft: #e6eefa;
-  --green: #0cb04d; --green-text: #0b7a37;
+  --brand: #00314f; --brand-ink: #ffffff; --accent: #005bb9; --accent-ink: #ffffff; --accent-soft: #e6eefa;
+  --green: #00b10b; --green-text: #0b7a37;
   --ok: #157a35; --ok-bg: #e2f5e8; --err: #a32020; --err-bg: #fbe9e9; --info-bg: #e6eefa; --warn-bg: #fff4d6; --warn: #7a5200;
-  --banner-bg: #ffffff; --banner-ink: #0a3152; --plate-pad: 0;
+  --banner-bg: #ffffff; --banner-ink: #00314f; --plate-pad: 0;
   --radius: 10px;
   color-scheme: light;
 }
@@ -29,7 +30,7 @@
 }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
-body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 1rem/1.55 Verdana, Geneva, "DejaVu Sans", Tahoma, sans-serif; }
 a { color: var(--accent); }
 h1 { color: var(--banner-ink); font-size: 1.6rem; line-height: 1.2; margin: 0 0 .5rem; letter-spacing: -.01em; }
 h2 { font-size: 1.15rem; margin: 2rem 0 .75rem; }
@@ -557,7 +558,7 @@ table.audit .check-cell form { display: block; margin: 0 0 .2rem; }
 
 /* Printable sign with the QR code */
 .poster { max-width: 30rem; margin: 0 auto; text-align: center; background: #fff; color: #0f2233; border: 1px solid var(--line); border-radius: var(--radius); padding: 2rem 1.5rem; }
-.poster h2 { font-size: 2.2rem; letter-spacing: .04em; margin: 0 0 .25rem; color: #0a3152; }
+.poster h2 { font-size: 2.2rem; letter-spacing: .04em; margin: 0 0 .25rem; color: #00314f; }
 .poster .poster-sub { font-size: 1.15rem; margin: 0 0 1rem; }
 .poster .poster-logo { width: 62%; height: auto; margin-bottom: 1rem; }
 .poster .qr svg { width: 78%; height: auto; display: block; margin: 0 auto; }
@@ -804,9 +805,9 @@ a.skill:hover { outline: 1px solid var(--accent); }
 @keyframes lhFlicker { 0%, 100% { transform: none; } 30% { transform: skewX(-3deg) scale(1.01, 1.05); } 65% { transform: skewX(2.5deg) scale(.995, .97); } }
 @keyframes lhText { from { opacity: 0; transform: translateX(4%); } to { opacity: 1; transform: none; } }
 .lh-ember { position: absolute; left: 25%; top: 42%; width: 1.2%; aspect-ratio: 1; border-radius: 50%; background: #f5a623; opacity: 0; animation: lhEmber 2.2s ease-out 1.3s 3; }
-.lh-ember.e2 { left: 23.2%; top: 50%; width: .95%; background: #0cb04d; animation-delay: 1.7s; }
+.lh-ember.e2 { left: 23.2%; top: 50%; width: .95%; background: #00b10b; animation-delay: 1.7s; }
 .lh-ember.e3 { left: 26%; top: 47%; width: .8%; background: #f5a623; animation-delay: 2.2s; }
-.lh-ember.e4 { left: 24%; top: 45%; width: .9%; background: #245dac; animation-delay: 2.8s; }
+.lh-ember.e4 { left: 24%; top: 45%; width: .9%; background: #005bb9; animation-delay: 2.8s; }
 @keyframes lhEmber { 0% { opacity: 0; transform: translate(0, 0) scale(1); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate(170%, -1000%) scale(.4); } }
 @media (prefers-reduced-motion: reduce) { .lh-p, .lh-b, .lh-flame, .lh-text, .lh-ember { animation: none; } }
 
@@ -1226,8 +1227,8 @@ details.spaced { margin-top: 1.25rem; }
 .spot-track { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; border-radius: 16px; box-shadow: 0 6px 18px rgba(10, 49, 82, .2); outline-offset: 3px; }
 .spot-track::-webkit-scrollbar { display: none; }
 .spot-slide { flex: 0 0 100%; scroll-snap-align: start; display: flex; align-items: center; gap: 1rem; min-height: 6.5rem; padding: .9rem 1.2rem; box-sizing: border-box; text-decoration: none; color: #fff; background: linear-gradient(110deg, var(--pb-navy), var(--pb-blue)); border-left: 8px solid var(--pb-green); }
-.spot-slide.spot-hire, .spot-slide.spot-cheer { background: linear-gradient(110deg, #0a5c33, #0cb04d); border-left-color: #fff; }
-.spot-slide.spot-shout { background: linear-gradient(110deg, #17477f, #245dac); }
+.spot-slide.spot-hire, .spot-slide.spot-cheer { background: linear-gradient(110deg, #0a5c33, #00b10b); border-left-color: #fff; }
+.spot-slide.spot-shout { background: linear-gradient(110deg, #17477f, #005bb9); }
 .spot-face { flex: none; display: inline-flex; border-radius: 50%; box-shadow: 0 0 0 3px rgba(255, 255, 255, .55); }
 .spot-icon { width: 56px; height: 56px; align-items: center; justify-content: center; background: rgba(255, 255, 255, .15); }
 .spot-pic { flex: none; width: 5.5rem; height: 5.5rem; object-fit: cover; border-radius: 12px; box-shadow: 0 0 0 3px rgba(255, 255, 255, .55); }
@@ -1288,3 +1289,17 @@ details.spaced { margin-top: 1.25rem; }
   table.stack td.row-actions, table.stack td.row-more { margin-top: .35rem; }
   table.stack td.row-actions { white-space: normal; }
 }
+
+/* ===== Brand Use Guidelines: Verdana for headings and text ===== */
+/* Verdana is a wide typeface, so everything is drawn a touch smaller to keep the same amount on screen. */
+html { font-size: 93.75%; }
+h1, h2, h3, .hero h1, .panel-head h2 { font-weight: 700; letter-spacing: 0; }
+/* A wider typeface needs a tighter menu bar on smaller computer windows, so every item still fits on one line. */
+@media (min-width: 900px) and (max-width: 1239px) {
+  .nav { gap: 0; }
+  .nav > a, .menu > summary { padding: .45rem .32rem; font-size: .8rem; }
+  .nav-sep { margin: .3rem .1rem; }
+  .menu > summary svg { margin-left: -.1rem; }
+}
+@media (min-width: 900px) and (max-width: 1019px) { .nav > a, .menu > summary { padding: .45rem .22rem; font-size: .74rem; letter-spacing: -.01em; } }
+@media (min-width: 1520px) { .nav { gap: .1rem; } .nav > a, .menu > summary { padding: .45rem .5rem; font-size: .9rem; } .nav-sep { margin: .3rem .15rem; } }
