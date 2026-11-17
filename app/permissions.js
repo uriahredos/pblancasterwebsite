@@ -67,7 +67,7 @@ const DEFAULTS = [
   { name: 'Technician', scope: 'all', perms: [...SUBMIT, 'forum.use'] },
   { name: 'Warehouse', scope: 'all', perms: [...SUBMIT, 'forum.use', 'parts.view', 'parts.manage', 'parts.audit', 'catalog.manage', 'stock.manage', 'inspections.view', 'inspections.manage'] },
   { name: 'Manager', scope: 'team', perms: [...SUBMIT, 'forum.use', 'parts.view', 'parts.manage', 'parts.audit', 'training.view', 'training.manage', 'digest.weekly', 'inspections.view', 'inspections.manage', 'certs.manage', 'announcements.post', 'tasks.assign'] },
-  { name: 'Admin', scope: 'all', perms: ALL.filter((p) => p !== 'branches.all' && !SALES.includes(p)) },   // an admin runs one branch
+  { name: 'Admin', scope: 'all', perms: ALL.filter((p) => p !== 'branches.all') },   // an admin runs one branch
 ];
 
 db.exec(`
@@ -125,7 +125,7 @@ function migrate() {
       for (const d of DEFAULTS) createProfile(d.name, d.scope, d.perms);
     }
     const withoutProfile = db.prepare('SELECT id, role, can_review_complaints AS reviewer FROM users WHERE profile_id IS NULL').all();
-    const oneBranch = ALL.filter((p) => p !== 'branches.all' && !SALES.includes(p));
+    const oneBranch = ALL.filter((p) => p !== 'branches.all');
     const noComplaints = oneBranch.filter((p) => p !== 'complaints.review' && p !== 'backups');
     for (const u of withoutProfile) {
       let profileId;
@@ -159,15 +159,21 @@ function migrate() {
     }
     // The corporate level: a profile that can do everything in every office. Made once; after that it is an ordinary profile.
     if (!db.prepare("SELECT 1 FROM meta WHERE key = 'corporate_profile_1'").get()) {
-      if (!db.prepare("SELECT 1 FROM profiles WHERE name = 'Corporate admin'").get()) createProfile('Corporate admin', 'all', ALL.filter((p) => !SALES.includes(p)));
+      if (!db.prepare("SELECT 1 FROM profiles WHERE name = 'Corporate admin'").get()) createProfile('Corporate admin', 'all', ALL);
       db.prepare("INSERT INTO meta (key, value) VALUES ('corporate_profile_1', '1')").run();
     }
-    // Sales: two profiles made once, for the sales side of the site. Nobody else is given the sales permissions.
+    // Sales: two profiles made once, for the sales side of the site.
     if (!db.prepare("SELECT 1 FROM meta WHERE key = 'sales_profiles_1'").get()) {
       const base = ['training.submit', 'complaints.submit', 'forum.use', 'sales.use'];
       if (!profileByName('Sales')) createProfile('Sales', 'all', base);
       if (!profileByName('Sales manager')) createProfile('Sales manager', 'all', [...base, 'sales.manage']);
       db.prepare("INSERT INTO meta (key, value) VALUES ('sales_profiles_1', '1')").run();
+    }
+    // Admins and corporate admins see the sales side too. Given once to the profiles that exist; after that it is an ordinary setting.
+    if (!db.prepare("SELECT 1 FROM meta WHERE key = 'sales_admins_1'").get()) {
+      const give = db.prepare('INSERT OR IGNORE INTO profile_permissions (profile_id, permission) VALUES (?, ?)');
+      for (const row of db.prepare("SELECT id FROM profiles WHERE name IN ('Admin', 'Corporate admin')").all()) for (const perm of SALES) give.run(row.id, perm);
+      db.prepare("INSERT INTO meta (key, value) VALUES ('sales_admins_1', '1')").run();
     }
     // The master account: MASTER_USERNAME if set, otherwise the first admin ever created.
     const named = process.env.MASTER_USERNAME && db.prepare('SELECT id FROM users WHERE username = ?').get(process.env.MASTER_USERNAME.trim());

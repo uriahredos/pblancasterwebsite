@@ -687,7 +687,7 @@ test('a database from the first release is upgraded in place without losing data
     { username: 'plainadmin', profile: 'Admin (no complaints)', is_master: 0 },
     { username: 'rev', profile: 'Complaint reviewer', is_master: 0 },
   ]);
-  assert.equal(r.adminPerms, r.all - 3);                          // everything except seeing every branch (the master's) and the two sales permissions
+  assert.equal(r.adminPerms, r.all - 1);                          // everything except seeing every branch (the master's)
   assert.ok(!r.plain.includes('complaints.review') && !r.plain.includes('backups') && r.plain.includes('users.manage'));
   assert.ok(r.rev.includes('complaints.review') && !r.rev.includes('parts.view'));
   assert.deepEqual(r.profiles, ['Admin', 'Admin (no complaints)', 'Complaint reviewer', 'Corporate admin', 'Manager', 'Sales', 'Sales manager', 'Technician', 'Warehouse']);
@@ -3881,7 +3881,7 @@ test('sales: leads seen only by sales, owned by one person, guarded against doub
   assert.doesNotMatch((await t1.get('/')).text, /href="\/sales"/);
   for (const url of ['/sales', '/sales/1', '/sales/check?company=acme', '/sales.csv']) assert.equal((await t1.get(url)).status, 403, url);
   assert.equal((await t1.post('/sales', { company: 'Sneaky' }, { page: '/' })).status, 403);
-  assert.equal(db.prepare("SELECT COUNT(*) n FROM profile_permissions pp JOIN profiles p ON p.id = pp.profile_id WHERE pp.permission LIKE 'sales.%' AND p.name IN ('Technician', 'Warehouse', 'Manager', 'Corporate admin')").get().n, 0);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM profile_permissions pp JOIN profiles p ON p.id = pp.profile_id WHERE pp.permission LIKE 'sales.%' AND p.name IN ('Technician', 'Warehouse', 'Manager')").get().n, 0);
   assert.match((await s1.get('/')).text, /<a href="\/sales"[^>]*>Sales/);
 
   // Adding a lead: it belongs to the person who added it.
