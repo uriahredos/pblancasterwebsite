@@ -399,7 +399,7 @@ table.audit .check-cell form { display: block; margin: 0 0 .2rem; }
 .dash { display: flex; flex-direction: column; gap: 1rem; }
 .dash-main, .dash-side { display: contents; }
 /* One column on a phone, in the order people need things: tasks, the form buttons, announcements, then the rest. */
-.dash .p-oncall { order: 0; }
+.dash .p-oncall { order: 3; }   /* on a phone: straight after Shout-outs (same number, and it comes later in the page) */
 .dash .p-board { order: 1; } .dash .p-news { order: 2; } .dash .p-shouts { order: 3; } .dash .p-up { order: 4; } .dash .p-tasks { order: 5; } .dash .p-glance { order: 6; }
 .dash .p-actions { order: 7; } .dash .p-daily { order: 8; } .dash .p-around { order: 9; }
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 1rem; min-width: 0; }
