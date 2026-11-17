@@ -604,4 +604,7 @@ CREATE TABLE IF NOT EXISTS passkeys (
 CREATE INDEX IF NOT EXISTS passkeys_user ON passkeys(user_id);
 `);
 
+// The contact sheet misspells the company's email address in places; an address sent there would not arrive.
+db.prepare("UPDATE company_contacts SET email = replace(email, '@pyebarkefs.com', '@pyebarkerfs.com') WHERE email LIKE '%@pyebarkefs.com%'").run();
+
 module.exports = db;

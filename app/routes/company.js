@@ -94,7 +94,7 @@ router.post('/admin/company/contacts', everyOffice, (req, res, next) => upload(r
   let data;
   try { data = JSON.parse(req.file.buffer.toString('utf8')); } catch (e) { return fail('That file could not be read. Use the contacts file that was prepared for this site.'); }
   if (!data || data.format !== 'pb-company-contacts-1' || !Array.isArray(data.contacts) || data.contacts.length > 2000) return fail('That is not a company contacts file.');
-  const rows = data.contacts.map((c) => ({ section: clean(c.section, 80), grp: clean(c.group, 80), topic: clean(c.topic, 300), name: clean(c.name, 120), email: clean(c.email, 240), note: clean(c.note, 200) }))
+  const rows = data.contacts.map((c) => ({ section: clean(c.section, 80), grp: clean(c.group, 80), topic: clean(c.topic, 300), name: clean(c.name, 120), email: clean(c.email, 240).replace(/@pyebarkefs\.com/gi, '@pyebarkerfs.com'), note: clean(c.note, 200) }))
     .filter((c) => c.section && (c.name || c.email));
   if (!rows.length) return fail('That file has no contacts in it.');
   db.transaction(() => {
