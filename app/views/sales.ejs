@@ -1,7 +1,13 @@
 <%- include('partials/header', { wide: true }) %>
-<div class="title-row"><h1>Sales</h1><span class="filter-actions"><a class="btn primary small" href="#add">Add a lead</a><% if (canExport) { %><a class="btn small" href="/sales.csv">Export</a><% } %></span></div>
+<div class="title-row"><h1>Sales</h1><span class="filter-actions"><a class="btn primary small" href="#add">Add a lead</a></span></div>
 <p class="lede">Every lead in the office<%= allOffices ? 's' : '' %>, who is working it and where it stands. Only the sales team can see this.</p>
 
+<p class="presets tools">
+  <a href="/sales/territories">Territories</a>
+  <a href="/sales/library">Library</a>
+  <% if (canExport) { %><a href="/sales/summary">Team summary</a><a href="/sales.csv" data-full>Export</a><% } %>
+  <a href="/branches">Find an office by service</a>
+</p>
 <div class="branch-stats sales-stats">
   <% summary.forEach(function (s) { %>
   <a href="<%= s.url %>" class="<%= s.warn ? 'warn' : '' %>"><span class="mini-num"><%= s.value %></span><span class="mini-label"><%= s.label %></span><span class="mini-sub"><%= s.sub %></span></a>
@@ -20,6 +26,18 @@
 </p>
 <% if (unowned && show !== 'all') { %><p class="flash info"><%= unowned %> <%= unowned === 1 ? 'lead has' : 'leads have' %> nobody on <%= unowned === 1 ? 'it' : 'them' %> yet. <a href="/sales?show=all">See everyone's open leads</a> to take one.</p><% } %>
 
+<% if (myDay.length) { %>
+<section class="panel my-day" aria-labelledby="day-h">
+  <div class="panel-head"><h2 id="day-h">My day</h2></div>
+  <% myDay.forEach(function (g) { %>
+  <h3 class="sub-h"><%= g.title %> <span class="meta"><%= g.hint %></span></h3>
+  <ul class="leads">
+    <% g.leads.slice(0, 12).forEach(function (l) { %><%- include('partials/lead_card', { l: l, why: g.title === 'Quotes waiting on an answer' ? 'Quoted ' + fmtDate(l.quoted_on) + (l.quote_amount ? ', $' + l.quote_amount.toLocaleString('en-US') : '') : g.title === 'Repeat work coming round' ? 'Due again ' + fmtDate(l.renew_on) : g.title === 'Gone quiet' ? 'Quiet for ' + l.idleDays + ' days' : '' }) %><% }) %>
+  </ul>
+  <% }) %>
+</section>
+<h2>All my open leads</h2>
+<% } %>
 <% if (!groups.length) { %>
 <p class="card empty"><%= q ? 'No lead matches that.' : show === 'due' ? 'No follow-ups due. You are caught up.' : show === 'mine' ? 'You have no open leads. Add one below.' : 'Nothing here yet.' %></p>
 <% } %>
@@ -27,16 +45,7 @@
 <h2><%= g.name %> <span class="count"><%= g.leads.length %></span></h2>
 <ul class="leads">
   <% g.leads.forEach(function (l) { %>
-  <li class="stage-<%= l.stage %> <%= l.overdue ? 'overdue' : l.due ? 'due' : '' %>">
-    <a href="/sales/<%= l.id %>">
-      <span class="lead-top"><strong><%= l.company %></strong><% if (q) { %><span class="tag st-lead-<%= l.stage %>"><%= l.stageName %></span><% } %><% if (l.value) { %><span class="lead-value">$<%= l.value.toLocaleString('en-US') %></span><% } %></span>
-      <span class="meta"><%= [l.contact_name, l.interest].filter(Boolean).join(' · ') %></span>
-      <span class="lead-foot">
-        <span class="lead-owner"><%= l.owner ? l.owner : 'Nobody yet' %><%= allOffices && l.office ? ' · ' + l.office : '' %></span>
-        <% if (l.open && l.next_on) { %><span class="lead-next"><%= l.overdue ? 'Follow-up overdue, ' : l.due ? 'Follow up today, ' : 'Follow up ' %><%= fmtDate(l.next_on) %></span><% } else if (l.open) { %><span class="lead-next none">No follow-up date</span><% } else if (l.lost_reason) { %><span class="lead-next none"><%= l.lost_reason %></span><% } %>
-      </span>
-    </a>
-  </li>
+  <%- include('partials/lead_card', { l: l, why: '' }) %>
   <% }) %>
 </ul>
 <% }) %>
@@ -48,6 +57,7 @@
 
 <h2 id="add">Add a lead</h2>
 <%- include('partials/errors') %>
+<% if (territory) { %><p class="flash warn">This is in <strong><%= territory.owner %></strong>'s territory (<%= territory.what %>). Talk to them first, or pass it to them after adding it.</p><% } %>
 <% if (matches.length) { %>
 <div class="card dupes">
   <p class="plain"><strong>Already being worked?</strong></p>
@@ -79,7 +89,7 @@
     <label>Follow up on <span class="hint">Optional</span><input type="date" name="next_on" value="<%= values.next_on || '' %>"></label>
   </div>
   <label>First note <span class="hint">Optional</span><textarea name="note" rows="2" maxlength="1000"><%= values.note || '' %></textarea></label>
-  <% if (matches.length) { %><label class="choice"><input type="checkbox" name="anyway" value="1"> This is a different customer, or I have agreed it with them. Add it anyway.</label><% } %>
+  <% if (matches.length || territory) { %><label class="choice"><input type="checkbox" name="anyway" value="1"> This is a different customer, or I have agreed it with them. Add it anyway.</label><% } %>
   <button class="btn primary" type="submit">Add lead</button>
   <p class="hint">The lead is yours until you hand it over. Need an office that does something we don't? <a href="/branches">Find an office by service</a>.</p>
 </form>

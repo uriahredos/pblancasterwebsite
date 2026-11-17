@@ -1,0 +1,28 @@
+<%- include('partials/header', { wide: true }) %>
+<p class="back"><a class="back-link" href="/sales">Sales</a></p>
+<h1>Territories</h1>
+<p class="lede">Who covers which towns, zip codes and named accounts. When a lead comes in for one of them, the site says whose it is before anyone starts on it.</p>
+<%- include('partials/errors') %>
+<% if (!people.length) { %><p class="card empty">Nobody in this office is on a Sales profile yet. Put people on one under Team &gt; Users.</p><% } else { %>
+<form method="post" action="/sales/territories">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <div class="table-wrap">
+  <table class="positions">
+    <thead><tr><th>Salesperson</th><th>Towns</th><th>Zip codes</th><th>Named accounts</th></tr></thead>
+    <tbody>
+    <% people.forEach(function (p) { %>
+    <tr>
+      <td data-label="Salesperson"><strong><%= p.display_name %></strong></td>
+      <td data-label="Towns"><% if (canManage) { %><input name="town_<%= p.id %>" value="<%= p.town %>" autocomplete="off" placeholder="Lititz, Manheim" aria-label="Towns for <%= p.display_name %>"><% } else { %><%= p.town || 'None' %><% } %></td>
+      <td data-label="Zip codes"><% if (canManage) { %><input name="zip_<%= p.id %>" value="<%= p.zip %>" autocomplete="off" inputmode="numeric" placeholder="17543, 17545" aria-label="Zip codes for <%= p.display_name %>"><% } else { %><%= p.zip || 'None' %><% } %></td>
+      <td data-label="Named accounts"><% if (canManage) { %><input name="account_<%= p.id %>" value="<%= p.account %>" autocomplete="off" placeholder="Customers that are theirs by name" aria-label="Named accounts for <%= p.display_name %>"><% } else { %><%= p.account || 'None' %><% } %></td>
+    </tr>
+    <% }) %>
+    </tbody>
+  </table>
+  </div>
+  <% if (canManage) { %><div class="save-bar"><span class="meta">Separate entries with commas. A town, zip code or account can belong to one person only.</span><button class="btn primary" type="submit">Save territories</button></div><% } %>
+</form>
+<p class="hint spaced">A named account wins over a zip code, and a zip code wins over a town. Town and zip matching uses the site address on the lead.</p>
+<% } %>
+<%- include('partials/footer') %>

@@ -1,0 +1,29 @@
+<%- include('partials/header') %>
+<p class="back"><a class="back-link" href="/sales">Sales</a></p>
+<h1>Sales library</h1>
+<p class="lede">Brochures, service sheets and standard answers, so everyone sends the same material. Shared by the sales teams in every office.</p>
+<% if (!files.length) { %><p class="card empty">Nothing here yet.<%= canManage ? ' Add the first item below.' : ' A sales manager can add files.' %></p><% } %>
+<ul class="records">
+  <% files.forEach(function (f) { %>
+  <li class="card">
+    <div class="one-line">
+      <p><strong><%= f.title %></strong><% if (f.note) { %><br><span class="meta"><%= f.note %></span><% } %><br><span class="meta">Added by <%= f.by_name %>, <%= dateOnly(f.created_at) %></span></p>
+      <% if (f.path) { %><a class="btn small" href="/sales/library/<%= f.id %>" data-full>Download</a><% } else { %><a class="btn small" href="<%= f.link %>" target="_blank" rel="noopener noreferrer">Open link</a><% } %>
+    </div>
+    <% if (canManage) { %><form method="post" action="/sales/library/<%= f.id %>/delete" data-confirm="Remove this from the library?" class="post-foot"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Remove</button></form><% } %>
+  </li>
+  <% }) %>
+</ul>
+<% if (canManage) { %>
+<h2>Add to the library</h2>
+<%- include('partials/errors') %>
+<form method="post" action="/sales/library" enctype="multipart/form-data" class="card stack">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Name <input name="title" value="<%= values.title || '' %>" required maxlength="120" autocomplete="off" placeholder="e.g. Kitchen hood service sheet"></label>
+  <label>What it is for <span class="hint">Optional</span><input name="note" value="<%= values.note || '' %>" maxlength="300" autocomplete="off"></label>
+  <label>File <span class="hint">PDF, Word, Excel, PowerPoint or a picture, up to 10 MB</span><input type="file" name="file" accept=".pdf,.docx,.xlsx,.pptx,image/jpeg,image/png"></label>
+  <label>Or a link <span class="hint">Starts with https://</span><input name="link" type="url" value="<%= values.link || '' %>" maxlength="300" autocomplete="off"></label>
+  <button class="btn primary" type="submit">Add</button>
+</form>
+<% } %>
+<%- include('partials/footer') %>

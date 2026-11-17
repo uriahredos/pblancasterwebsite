@@ -1,0 +1,40 @@
+<%- include('partials/header', { wide: true }) %>
+<p class="back"><a class="back-link" href="/sales">Sales</a></p>
+<h1>Team summary</h1>
+<p class="lede">The last 90 days. Values are the estimates salespeople entered, not invoiced amounts.</p>
+<div class="branch-stats sales-stats">
+  <% totals.forEach(function (s) { %><a href="/sales?show=closed"><span class="mini-num"><%= s.value %></span><span class="mini-label"><%= s.label %></span><span class="mini-sub"><%= s.sub %></span></a><% }) %>
+</div>
+<h2>By salesperson</h2>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Name</th><th>Open now</th><th>Open value</th><th>Added</th><th>Won</th><th>Won value</th><th>Lost</th><th>Win rate</th><th>Gone quiet</th></tr></thead>
+  <tbody>
+  <% people.forEach(function (p) { %><tr><td><strong><%= p.name %></strong></td><td><%= p.open %></td><td>$<%= p.openValue.toLocaleString('en-US') %></td><td><%= p.added %></td><td><%= p.won %></td><td>$<%= p.wonValue.toLocaleString('en-US') %></td><td><%= p.lost %></td><td><%= p.rate === null ? '' : p.rate + '%' %></td><td><%= p.stale || '' %></td></tr><% }) %>
+  <% if (!people.length) { %><tr><td colspan="9" class="empty">No leads yet.</td></tr><% } %>
+  </tbody>
+</table>
+</div>
+<div class="dash spaced">
+  <div class="dash-main">
+    <section class="panel"><div class="panel-head"><h2>Where leads came from</h2></div>
+      <% if (!sources.length) { %><p class="empty">Nothing added in the last 90 days.</p><% } %>
+      <ul class="plain-rows"><% sources.forEach(function (r) { %><li><span><%= r[0] %></span><strong><%= r[1] %></strong></li><% }) %></ul>
+    </section>
+    <section class="panel"><div class="panel-head"><h2>Gone quiet</h2></div>
+      <% if (!stale.length) { %><p class="empty">Every open lead has had recent activity.</p><% } %>
+      <ul class="plain-rows"><% stale.forEach(function (l) { %><li><span><a href="/sales/<%= l.id %>"><strong><%= l.company %></strong></a> <span class="meta">· <%= l.owner || 'Nobody yet' %> · <%= l.stageName %></span></span><strong><%= l.idleDays %> days</strong></li><% }) %></ul>
+    </section>
+  </div>
+  <div class="dash-side">
+    <section class="panel"><div class="panel-head"><h2>Why we lost</h2></div>
+      <% if (!reasons.length) { %><p class="empty">Nothing lost in the last 90 days.</p><% } %>
+      <ul class="plain-rows"><% reasons.forEach(function (r) { %><li><span><%= r[0] %></span><strong><%= r[1] %></strong></li><% }) %></ul>
+    </section>
+    <section class="panel"><div class="panel-head"><h2>Passed between offices</h2></div>
+      <% if (!referrals.length) { %><p class="empty">None in the last 90 days.</p><% } %>
+      <ul class="plain-rows"><% referrals.forEach(function (l) { %><li><span><a href="/sales/<%= l.id %>"><strong><%= l.company %></strong></a> <span class="meta">· from <%= l.referrer %><%= l.referrer_office ? ', ' + l.referrer_office : '' %></span></span><span class="tag st-lead-<%= l.stage %>"><%= l.stageName %></span></li><% }) %></ul>
+    </section>
+  </div>
+</div>
+<%- include('partials/footer') %>

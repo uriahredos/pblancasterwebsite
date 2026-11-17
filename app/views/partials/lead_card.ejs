@@ -1,0 +1,12 @@
+<%# One lead on the sales board. Pass `l`, and optionally `why` (a line saying why it is on a "my day" list). %>
+  <li class="stage-<%= l.stage %> <%= l.overdue ? 'overdue' : l.due ? 'due' : '' %>">
+    <a href="/sales/<%= l.id %>">
+      <span class="lead-top"><strong><%= l.company %></strong><% if (q) { %><span class="tag st-lead-<%= l.stage %>"><%= l.stageName %></span><% } %><% if (l.value) { %><span class="lead-value">$<%= l.value.toLocaleString('en-US') %></span><% } %></span>
+      <span class="meta"><%= [l.contact_name, l.interest].filter(Boolean).join(' · ') %></span>
+      <span class="lead-foot">
+        <span class="lead-owner"><%= l.owner ? l.owner : 'Nobody yet' %><%= allOffices && l.office ? ' · ' + l.office : '' %></span>
+        <% if (typeof why !== 'undefined' && why) { %><span class="lead-next why"><%= why %></span>
+        <% } else if (l.open && l.next_on) { %><span class="lead-next"><%= l.overdue ? 'Follow-up overdue, ' : l.due ? 'Follow up today, ' : 'Follow up ' %><%= fmtDate(l.next_on) %></span><% } else if (l.open && l.stale) { %><span class="lead-next why">Quiet for <%= l.idleDays %> days</span><% } else if (l.open) { %><span class="lead-next none">No follow-up date</span><% } else if (l.lost_reason) { %><span class="lead-next none"><%= l.lost_reason %></span><% } %>
+      </span>
+    </a>
+  </li>

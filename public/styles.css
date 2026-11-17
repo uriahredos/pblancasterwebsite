@@ -1151,3 +1151,9 @@ h2 .count { display: inline-block; margin-left: .3rem; padding: .05rem .5rem; bo
 .due-text { color: var(--err); }
 .lead-notes li.kind-stage, .lead-notes li.kind-owner, .lead-notes li.kind-refer { border-left-color: var(--field-line); background: none; font-style: italic; }
 details.spaced { margin-top: 1.25rem; }
+
+/* Sales tools */
+.presets.tools a { background: var(--surface); font-weight: 600; }
+.my-day { margin-bottom: 1.25rem; }
+.my-day .sub-h .meta { font-weight: 400; letter-spacing: 0; text-transform: none; font-size: .85rem; }
+.lead-next.why { color: var(--warn); font-weight: 700; }

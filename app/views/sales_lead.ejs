@@ -14,6 +14,10 @@
     <% if (lead.source) { %><dt>Source</dt><dd><%= lead.source %></dd><% } %>
     <% if (lead.value) { %><dt>Value</dt><dd>$<%= lead.value.toLocaleString('en-US') %> estimated</dd><% } %>
     <% if (lead.open) { %><dt>Follow up</dt><dd class="<%= lead.due ? 'due-text' : '' %>"><%= lead.next_on ? fmtDate(lead.next_on) + (lead.overdue ? ' (overdue)' : lead.due ? ' (today)' : '') : 'No date set' %></dd><% } %>
+    <% if (lead.quote_amount) { %><dt>Quoted</dt><dd>$<%= lead.quote_amount.toLocaleString('en-US') %><%= lead.quoted_on ? ' on ' + fmtDate(lead.quoted_on) : '' %></dd><% } %>
+    <% if (lead.stage === 'won' && lead.renew_on) { %><dt>Due again</dt><dd><%= fmtDate(lead.renew_on) %><%= lead.renewed_as ? ' (new lead started)' : '' %></dd><% } %>
+    <% if (territory) { %><dt>Territory</dt><dd><%= territory.owner %> <span class="meta">· <%= territory.what %></span></dd><% } %>
+    <% if (lead.referrer) { %><dt>Passed on by</dt><dd><%= lead.referrer %><%= lead.referrer_office ? ' · ' + lead.referrer_office + ' office' : '' %></dd><% } %>
     <% if (lead.lost_reason) { %><dt>Why lost</dt><dd><%= lead.lost_reason %></dd><% } %>
   </dl>
   <div class="filter-actions">
@@ -25,8 +29,13 @@
 
 <% if (!lead.owner_id && lead.open) { %>
 <form method="post" action="/sales/<%= lead.id %>/owner" class="card one-line"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="owner" value="me"><p><strong>Nobody is on this lead yet.</strong></p><button class="btn primary small" type="submit">Take this lead</button></form>
+<% } else if (mayTake) { %>
+<form method="post" action="/sales/<%= lead.id %>/owner" class="card one-line" data-confirm="Take this lead from <%= lead.owner %>? They will be told."><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="owner" value="me"><p><strong>This lead has had no activity for <%= lead.idleDays %> days.</strong> After <%= releaseDays %> quiet days a colleague may take it.</p><button class="btn primary small" type="submit">Take this lead</button></form>
 <% } else if (!canEdit) { %>
 <p class="flash info">This is <%= lead.owner %>'s lead. You can read it and leave a note; only they or a sales manager can change it.</p>
+<% } %>
+<% if (canEdit && lead.renewDue) { %>
+<form method="post" action="/sales/<%= lead.id %>/renew" class="card one-line"><input type="hidden" name="_csrf" value="<%= csrf %>"><p><strong>This work comes round again on <%= fmtDate(lead.renew_on) %>.</strong> Start a new lead with the same details.</p><button class="btn primary small" type="submit">Start the repeat work</button></form>
 <% } %>
 
 <% if (canEdit) { %>
@@ -35,6 +44,8 @@
   <input type="hidden" name="_csrf" value="<%= csrf %>">
   <label>Stage <select name="stage" id="lead-stage"><% stages.forEach(function (s) { %><option value="<%= s[0] %>" <%= lead.stage === s[0] ? 'selected' : '' %>><%= s[1] %></option><% }) %></select></label>
   <label>Follow up on <input type="date" name="next_on" value="<%= lead.next_on || '' %>"></label>
+  <label>Quote amount <span class="hint">Whole dollars</span><input name="quote_amount" value="<%= lead.quote_amount || '' %>" inputmode="numeric" maxlength="12" autocomplete="off"></label>
+  <label>If won, due again on <span class="hint">For yearly or repeat work</span><input type="date" name="renew_on" value="<%= lead.renew_on || '' %>"></label>
   <label class="grow">If lost, why? <span class="hint">Optional</span><input name="lost_reason" value="<%= lead.lost_reason || '' %>" maxlength="200" autocomplete="off"></label>
   <div class="filter-actions"><button class="btn primary small" type="submit">Save</button></div>
 </form>

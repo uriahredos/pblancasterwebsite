@@ -3891,14 +3891,14 @@ test('sales: leads seen only by sales, owned by one person, guarded against doub
   assert.equal(add.location, `/sales/${lead.id}`);
   assert.deepEqual([lead.owner_id, lead.branch_id, lead.value, lead.stage], [sam, 1, 4500, 'new']);
   // A colleague about to add the same customer is told who has it, by name, phone or email, and must tick a box to go on.
-  const check = JSON.parse((await s2.get('/sales/check?company=acme%20bakery')).text);
+  const check = JSON.parse((await s2.get('/sales/check?company=acme%20bakery')).text).matches;
   assert.equal(check.length, 1); assert.deepEqual([check[0].owner, check[0].why, check[0].url], ['Sam Seller', 'same name', `/sales/${lead.id}`]);
-  assert.equal(JSON.parse((await s2.get('/sales/check?company=Zed&phone=717-555-0100')).text)[0].why, 'same phone number');
+  assert.equal(JSON.parse((await s2.get('/sales/check?company=Zed&phone=717-555-0100')).text).matches[0].why, 'same phone number');
   const dup = await s2.post('/sales', { company: 'ACME Bakery' }, { page: '/sales' });
   assert.equal(dup.status, 400); assert.match(dup.text, /already working/); assert.match(dup.text, /Sam Seller · Lancaster · New/);
   assert.equal(db.prepare('SELECT COUNT(*) n FROM leads').get().n, 1);
   // Another office sees that the customer is taken, and by whom, but cannot open the lead.
-  const far = JSON.parse((await s3.get('/sales/check?company=Acme%20Bakery')).text);
+  const far = JSON.parse((await s3.get('/sales/check?company=Acme%20Bakery')).text).matches;
   assert.deepEqual([far[0].owner, far[0].office, far[0].url], ['Sam Seller', 'Lancaster', null]);
   assert.equal((await s3.get(`/sales/${lead.id}`)).status, 403);
   assert.doesNotMatch((await s3.get('/sales?show=all')).text, /Acme Bakery/);
@@ -3936,6 +3936,82 @@ test('sales: leads seen only by sales, owned by one person, guarded against doub
   assert.match((await s3.get(`/sales/${sj}`)).text, /Nobody is on this lead yet[\s\S]*Passed from the Lancaster office/);
   await s3.post(`/sales/${sj}/owner`, { owner: 'me' }, { page: `/sales/${sj}` });
   assert.equal(db.prepare('SELECT owner_id FROM leads WHERE id = ?').get(sj).owner_id, userId('sales3'));
+
+  // --- Territories: a sales manager says who covers what; a lead in a colleague's patch is flagged before it is added.
+  assert.equal((await s1.post('/sales/territories', { [`town_${sam}`]: 'Lititz' }, { page: '/sales/territories' })).status, 403);
+  const terr = { [`town_${sam}`]: 'Lititz, Manheim', [`zip_${userId('sales2')}`]: '17522', [`account_${userId('sales2')}`]: 'Keystone Machine Works' };
+  assert.equal((await mgr.post('/sales/territories', { ...terr, [`town_${userId('sales2')}`]: 'Lititz' }, { page: '/sales/territories' })).status, 400);   // one town, two people
+  assert.equal((await mgr.post('/sales/territories', { ...terr, [`zip_${sam}`]: '1752' }, { page: '/sales/territories' })).status, 400);
+  assert.equal((await mgr.post('/sales/territories', terr, { page: '/sales/territories' })).location, '/sales/territories');
+  assert.match((await s1.get('/sales/territories')).text, /Sally Seller[\s\S]*17522[\s\S]*Keystone Machine Works/);
+  const tcheck = JSON.parse((await s1.get('/sales/check?company=New%20Cafe&address=5%20Oak%20St%2C%20Ephrata%20PA%2017522')).text).territory;
+  assert.deepEqual([tcheck.owner, tcheck.what, tcheck.mine], ['Sally Seller', 'zip code 17522', false]);
+  assert.equal(JSON.parse((await s1.get('/sales/check?company=Corner%20Deli&address=9%20Main%20St%20Lititz')).text).territory.mine, true);
+  const blocked = await s1.post('/sales', { company: 'Keystone Machine Works Inc' }, { page: '/sales' });
+  assert.equal(blocked.status, 400); assert.match(blocked.text, /in Sally Seller&#39;s territory \(Keystone Machine Works is their account\)/);
+  await s1.post('/sales', { company: 'Corner Deli', address: '9 Main St, Lititz' }, { page: '/sales' });                 // his own town: straight in
+  const deli = db.prepare("SELECT id FROM leads WHERE company = 'Corner Deli'").get().id;
+
+  // --- Quotes, and the day they went out.
+  const dp = `/sales/${deli}`;
+  await s1.post(`${dp}/stage`, { stage: 'quoted', quote_amount: '3,200', next_on: ymdFromNow(30) }, { page: dp });
+  const quoted = db.prepare('SELECT quote_amount, quoted_on, stage FROM leads WHERE id = ?').get(deli);
+  assert.deepEqual([quoted.quote_amount, quoted.stage, quoted.quoted_on], [3200, 'quoted', ymdFromNow(0)]);
+  // --- My day: a quote that has waited a week, a lead gone quiet, and one nobody is on.
+  db.prepare('UPDATE leads SET quoted_on = ? WHERE id = ?').run(ymdFromNow(-9), deli);
+  await s1.post('/sales', { company: 'Quiet Customer' }, { page: '/sales' });
+  const quiet = db.prepare("SELECT id FROM leads WHERE company = 'Quiet Customer'").get().id;
+  db.prepare('UPDATE leads SET updated_at = ? WHERE id = ?').run(new Date(Date.now() - 16 * 86400000).toISOString(), quiet);
+  let day = (await s1.get('/sales')).text.replace(/\s+/g, ' ');
+  assert.match(day, /id="day-h">My day<[\s\S]*Quotes waiting on an answer[\s\S]*Corner Deli[\s\S]*Quoted \d+\/\d+\/\d{4}, \$3,200[\s\S]*Gone quiet[\s\S]*Quiet Customer[\s\S]*Quiet for 1[56] days/);
+  // After 30 quiet days a colleague may take it, and the old owner is not locked in for good.
+  assert.equal((await s2.post(`/sales/${quiet}/owner`, { owner: 'me' }, { page: `/sales/${quiet}` })).status, 403);
+  db.prepare('UPDATE leads SET updated_at = ? WHERE id = ?').run(new Date(Date.now() - 31 * 86400000).toISOString(), quiet);
+  assert.match((await s2.get(`/sales/${quiet}`)).text, /no activity for 3[01] days[\s\S]*Take this lead/);
+  await s2.post(`/sales/${quiet}/owner`, { owner: 'me' }, { page: `/sales/${quiet}` });
+  assert.equal(db.prepare('SELECT owner_id FROM leads WHERE id = ?').get(quiet).owner_id, userId('sales2'));
+  assert.match((await s2.get(`/sales/${quiet}`)).text, /Took this lead from Sam Seller after 3[01] quiet days/);
+
+  // --- Repeat work: won with a date it comes round again; near that date it is on the owner's day and bell, and one press starts the new lead.
+  await s1.post(`${dp}/stage`, { stage: 'won', renew_on: ymdFromNow(20) }, { page: dp });
+  assert.match((await s1.get('/')).text, /href="\/sales\?show=due"><span class="bell-n">1<\/span><span>lead to follow up/);
+  assert.match((await s1.get('/sales')).text.replace(/\s+/g, ' '), /Repeat work coming round[\s\S]*Corner Deli[\s\S]*Due again/);
+  const renewed = await s1.post(`${dp}/renew`, {}, { page: dp });
+  const fresh = db.prepare("SELECT * FROM leads WHERE company = 'Corner Deli' AND id <> ?").get(deli);
+  assert.equal(renewed.location, `/sales/${fresh.id}`);
+  assert.deepEqual([fresh.stage, fresh.owner_id, fresh.source, fresh.next_on, fresh.address], ['new', sam, 'Existing customer', ymdFromNow(20), '9 Main St, Lititz']);
+  assert.equal(db.prepare('SELECT renewed_as FROM leads WHERE id = ?').get(deli).renewed_as, fresh.id);
+  await s1.post(`${dp}/renew`, {}, { page: dp });                                                           // pressing again makes no second copy
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM leads WHERE company = 'Corner Deli'").get().n, 2);
+
+  // --- Referral credit: the lead passed to the other office is won there, and the person who passed it is named.
+  await s3.post(`/sales/${sj}/stage`, { stage: 'won' }, { page: `/sales/${sj}` });
+  const credit = (await s3.get(`/sales/${sj}`)).text;
+  assert.match(credit, /<dt>Passed on by<\/dt><dd>Sam Seller · Lancaster office<\/dd>/); assert.match(credit, /Thank you to Sam Seller in the Lancaster office for passing it on/);
+
+  // --- The manager's summary.
+  assert.equal((await s1.get('/sales/summary')).status, 403);
+  const sum = (await mgr.get('/sales/summary')).text.replace(/\s+/g, ' ');
+  assert.match(sum, /Win rate[\s\S]*By salesperson[\s\S]*Sam Seller/); assert.match(sum, /Where leads came from/); assert.match(sum, /Why we lost/);
+
+  // --- The shared library: managers add, everyone on sales downloads, nobody else gets near it.
+  const lib = '/sales/library';
+  assert.equal((await s1.post(lib, { title: 'Sneaky', link: 'https://example.com/x' }, { page: lib, multipart: true })).status, 403);
+  assert.equal((await mgr.post(lib, { title: 'No file' }, { page: lib, multipart: true })).status, 400);
+  assert.equal((await mgr.post(lib, { title: 'Bad link', link: 'javascript:alert(1)' }, { page: lib, multipart: true })).status, 400);
+  assert.equal((await mgr.post(lib, { title: 'A script', file: new File(['<script>'], 'x.html', { type: 'text/html' }) }, { page: lib, multipart: true })).status, 400);
+  await mgr.post(lib, { title: 'Hood service sheet', note: 'Leave with the customer', file: new File([tinyPdf()], 'sheet.pdf', { type: 'application/pdf' }) }, { page: lib, multipart: true });
+  await mgr.post(lib, { title: 'Company site', link: 'https://example.com/services' }, { page: lib, multipart: true });
+  const fileRow = db.prepare("SELECT id FROM sales_files WHERE title = 'Hood service sheet'").get();
+  const libPage = (await s3.get(lib)).text;                                                                 // another office's sales team sees it too
+  assert.match(libPage, new RegExp(`Hood service sheet[\\s\\S]*href="/sales/library/${fileRow.id}"[^>]*>Download`)); assert.match(libPage, /href="https:\/\/example\.com\/services" target="_blank"/);
+  assert.doesNotMatch(libPage, /Add to the library/);
+  const dl = await s1.get(`/sales/library/${fileRow.id}`);
+  assert.equal(dl.status, 200); assert.match(dl.headers.get('content-disposition'), /attachment; filename="Hood service sheet\.pdf"/); assert.match(dl.text, /^%PDF-/);
+  for (const url of [lib, `/sales/library/${fileRow.id}`, '/sales/territories', '/sales/summary']) assert.equal((await t1.get(url)).status, 403, url);
+  await mgr.post(`/sales/library/${fileRow.id}/delete`, {}, { page: lib });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM sales_files').get().n, 1);
+  db.prepare('DELETE FROM sales_files').run(); db.prepare('DELETE FROM sales_territories').run();
 
   // Export and removal are for the sales manager.
   assert.equal((await s1.get('/sales.csv')).status, 403);
