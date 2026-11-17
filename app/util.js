@@ -60,4 +60,7 @@ const labels = {
   },
 };
 
-module.exports = { splitNote, fmtDateTime, fmtDate, localDate, localHour, isYmd, clean, labels };
+/** 4500 -> "4,500"; 4500.5 -> "4,500.50". Cents show only when there are any. */
+const money = (n) => { const v = Math.round(Number(n || 0) * 100) / 100; return v.toLocaleString('en-US', { minimumFractionDigits: v % 1 ? 2 : 0, maximumFractionDigits: 2 }); };
+
+module.exports = { money, splitNote, fmtDateTime, fmtDate, localDate, localHour, isYmd, clean, labels };

@@ -12,9 +12,9 @@
     <% if (lead.address) { %><dt>Address</dt><dd><%= lead.address %></dd><% } %>
     <% if (lead.interest) { %><dt>Interest</dt><dd><%= lead.interest %></dd><% } %>
     <% if (lead.source) { %><dt>Source</dt><dd><%= lead.source %></dd><% } %>
-    <% if (lead.value) { %><dt>Value</dt><dd>$<%= lead.value.toLocaleString('en-US') %> estimated</dd><% } %>
+    <% if (lead.value) { %><dt>Value</dt><dd>$<%= money(lead.value) %> estimated</dd><% } %>
     <% if (lead.open) { %><dt>Follow up</dt><dd class="<%= lead.due ? 'due-text' : '' %>"><%= lead.next_on ? fmtDate(lead.next_on) + (lead.overdue ? ' (overdue)' : lead.due ? ' (today)' : '') : 'No date set' %></dd><% } %>
-    <% if (lead.quote_amount) { %><dt>Quoted</dt><dd>$<%= lead.quote_amount.toLocaleString('en-US') %><%= lead.quoted_on ? ' on ' + fmtDate(lead.quoted_on) : '' %></dd><% } %>
+    <% if (lead.quote_amount) { %><dt>Quoted</dt><dd>$<%= money(lead.quote_amount) %><%= lead.quoted_on ? ' on ' + fmtDate(lead.quoted_on) : '' %></dd><% } %>
     <% if (lead.stage === 'won' && lead.renew_on) { %><dt>Due again</dt><dd><%= fmtDate(lead.renew_on) %><%= lead.renewed_as ? ' (new lead started)' : '' %></dd><% } %>
     <% if (territory) { %><dt>Territory</dt><dd><%= territory.owner %> <span class="meta">· <%= territory.what %></span></dd><% } %>
     <% if (lead.referrer) { %><dt>Passed on by</dt><dd><%= lead.referrer %><%= lead.referrer_office ? ' · ' + lead.referrer_office + ' office' : '' %></dd><% } %>
@@ -44,7 +44,7 @@
   <input type="hidden" name="_csrf" value="<%= csrf %>">
   <label>Stage <select name="stage" id="lead-stage"><% stages.forEach(function (s) { %><option value="<%= s[0] %>" <%= lead.stage === s[0] ? 'selected' : '' %>><%= s[1] %></option><% }) %></select></label>
   <label>Follow up on <input type="date" name="next_on" value="<%= lead.next_on || '' %>"></label>
-  <label>Quote amount <span class="hint">Whole dollars</span><input name="quote_amount" value="<%= lead.quote_amount || '' %>" inputmode="numeric" maxlength="12" autocomplete="off"></label>
+  <label>Quote amount <span class="hint">In dollars</span><input name="quote_amount" value="<%= lead.quote_amount || '' %>" inputmode="numeric" maxlength="12" autocomplete="off"></label>
   <label>If won, due again on <span class="hint">For yearly or repeat work</span><input type="date" name="renew_on" value="<%= lead.renew_on || '' %>"></label>
   <label class="grow">If lost, why? <span class="hint">Optional</span><input name="lost_reason" value="<%= lead.lost_reason || '' %>" maxlength="200" autocomplete="off"></label>
   <div class="filter-actions"><button class="btn primary small" type="submit">Save</button></div>
@@ -81,7 +81,7 @@
       <label>Interested in <input name="interest" value="<%= values.interest || '' %>" maxlength="120" autocomplete="off"></label>
       <label>Where it came from <select name="source"><option value="">Choose one</option><% sources.forEach(function (s) { %><option <%= values.source === s ? 'selected' : '' %>><%= s %></option><% }) %></select></label>
     </div>
-    <label>Estimated value <span class="hint">Whole dollars</span><input name="value" value="<%= values.value || '' %>" inputmode="numeric" maxlength="12" autocomplete="off"></label>
+    <label>Estimated value <span class="hint">In dollars</span><input name="value" value="<%= values.value || '' %>" inputmode="numeric" maxlength="12" autocomplete="off"></label>
     <button class="btn primary" type="submit">Save details</button>
   </form>
 </details>

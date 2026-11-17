@@ -32,7 +32,7 @@
   <% myDay.forEach(function (g) { %>
   <h3 class="sub-h"><%= g.title %> <span class="meta"><%= g.hint %></span></h3>
   <ul class="leads">
-    <% g.leads.slice(0, 12).forEach(function (l) { %><%- include('partials/lead_card', { l: l, why: g.title === 'Quotes waiting on an answer' ? 'Quoted ' + fmtDate(l.quoted_on) + (l.quote_amount ? ', $' + l.quote_amount.toLocaleString('en-US') : '') : g.title === 'Repeat work coming round' ? 'Due again ' + fmtDate(l.renew_on) : g.title === 'Gone quiet' ? 'Quiet for ' + l.idleDays + ' days' : '' }) %><% }) %>
+    <% g.leads.slice(0, 12).forEach(function (l) { %><%- include('partials/lead_card', { l: l, why: g.title === 'Quotes waiting on an answer' ? 'Quoted ' + fmtDate(l.quoted_on) + (l.quote_amount ? ', $' + money(l.quote_amount) : '') : g.title === 'Repeat work coming round' ? 'Due again ' + fmtDate(l.renew_on) : g.title === 'Gone quiet' ? 'Quiet for ' + l.idleDays + ' days' : '' }) %><% }) %>
   </ul>
   <% }) %>
 </section>
@@ -85,7 +85,7 @@
     </label>
   </div>
   <div class="two">
-    <label>Estimated value <span class="hint">Optional, whole dollars</span><input name="value" value="<%= values.value || '' %>" inputmode="numeric" maxlength="12" autocomplete="off" placeholder="e.g. 4500"></label>
+    <label>Estimated value <span class="hint">Optional, in dollars</span><input name="value" value="<%= values.value || '' %>" inputmode="numeric" maxlength="12" autocomplete="off" placeholder="e.g. 4500"></label>
     <label>Follow up on <span class="hint">Optional</span><input type="date" name="next_on" value="<%= values.next_on || '' %>"></label>
   </div>
   <label>First note <span class="hint">Optional</span><textarea name="note" rows="2" maxlength="1000"><%= values.note || '' %></textarea></label>

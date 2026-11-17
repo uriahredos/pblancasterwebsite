@@ -1,7 +1,7 @@
 <%# One lead on the sales board. Pass `l`, and optionally `why` (a line saying why it is on a "my day" list). %>
   <li class="stage-<%= l.stage %> <%= l.overdue ? 'overdue' : l.due ? 'due' : '' %>">
     <a href="/sales/<%= l.id %>">
-      <span class="lead-top"><strong><%= l.company %></strong><% if (q) { %><span class="tag st-lead-<%= l.stage %>"><%= l.stageName %></span><% } %><% if (l.value) { %><span class="lead-value">$<%= l.value.toLocaleString('en-US') %></span><% } %></span>
+      <span class="lead-top"><strong><%= l.company %></strong><% if (q) { %><span class="tag st-lead-<%= l.stage %>"><%= l.stageName %></span><% } %><% if (l.value) { %><span class="lead-value">$<%= money(l.value) %></span><% } %></span>
       <span class="meta"><%= [l.contact_name, l.interest].filter(Boolean).join(' · ') %></span>
       <span class="lead-foot">
         <span class="lead-owner"><%= l.owner ? l.owner : 'Nobody yet' %><%= allOffices && l.office ? ' · ' + l.office : '' %></span>

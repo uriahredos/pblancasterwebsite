@@ -3952,6 +3952,15 @@ test('sales: leads seen only by sales, owned by one person, guarded against doub
   await s1.post('/sales', { company: 'Corner Deli', address: '9 Main St, Lititz' }, { page: '/sales' });                 // his own town: straight in
   const deli = db.prepare("SELECT id FROM leads WHERE company = 'Corner Deli'").get().id;
 
+  // Amounts can carry cents; they are stored and shown as typed, with cents only when there are any.
+  await s1.post('/sales', { company: 'Cents Customer', value: '1,250.5' }, { page: '/sales' });
+  const cents = db.prepare("SELECT id, value FROM leads WHERE company = 'Cents Customer'").get();
+  assert.equal(cents.value, 1250.5);
+  assert.match((await s1.get(`/sales/${cents.id}`)).text, /\$1,250\.50 estimated/);
+  assert.match((await s1.get(`/sales/${lead.id}`)).text, /\$4,500 estimated/);
+  assert.equal((await s1.post('/sales', { company: 'Bad Amount', value: '12.345' }, { page: '/sales' })).status, 400);
+  db.prepare('DELETE FROM leads WHERE id = ?').run(cents.id);
+
   // --- Quotes, and the day they went out.
   const dp = `/sales/${deli}`;
   await s1.post(`${dp}/stage`, { stage: 'quoted', quote_amount: '3,200', next_on: ymdFromNow(30) }, { page: dp });

@@ -10,7 +10,7 @@
 <table>
   <thead><tr><th>Name</th><th>Open now</th><th>Open value</th><th>Added</th><th>Won</th><th>Won value</th><th>Lost</th><th>Win rate</th><th>Gone quiet</th></tr></thead>
   <tbody>
-  <% people.forEach(function (p) { %><tr><td><strong><%= p.name %></strong></td><td><%= p.open %></td><td>$<%= p.openValue.toLocaleString('en-US') %></td><td><%= p.added %></td><td><%= p.won %></td><td>$<%= p.wonValue.toLocaleString('en-US') %></td><td><%= p.lost %></td><td><%= p.rate === null ? '' : p.rate + '%' %></td><td><%= p.stale || '' %></td></tr><% }) %>
+  <% people.forEach(function (p) { %><tr><td><strong><%= p.name %></strong></td><td><%= p.open %></td><td>$<%= money(p.openValue) %></td><td><%= p.added %></td><td><%= p.won %></td><td>$<%= money(p.wonValue) %></td><td><%= p.lost %></td><td><%= p.rate === null ? '' : p.rate + '%' %></td><td><%= p.stale || '' %></td></tr><% }) %>
   <% if (!people.length) { %><tr><td colspan="9" class="empty">No leads yet.</td></tr><% } %>
   </tbody>
 </table>

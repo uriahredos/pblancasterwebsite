@@ -7,7 +7,7 @@ const sales = require('../sales');
 const push = require('../push');
 const { sendCsv } = require('../csv');
 const { requirePerm, forbidden, flash } = require('../auth');
-const { clean, isYmd, localDate, fmtDate } = require('../util');
+const { clean, isYmd, localDate, fmtDate, money: fmtMoney } = require('../util');
 const path = require('path');
 const crypto = require('crypto');
 const multer = require('multer');
@@ -57,7 +57,7 @@ function readLead(body) {
   const errors = [];
   if (!v.company) errors.push('Enter the customer or company name.');
   if (v.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email)) errors.push('That email address does not look right.');
-  if (v.value && !/^\d{1,9}$/.test(v.value)) errors.push('Enter the estimated value as a whole number of dollars.');
+  if (v.value && !/^\d{1,9}(\.\d{1,2})?$/.test(v.value)) errors.push('Enter the estimated value as an amount in dollars, such as 4500 or 4500.50.');
   if (v.next_on && !isYmd(v.next_on)) errors.push('The follow-up date does not look right.');
   return { v, errors };
 }
@@ -77,8 +77,8 @@ function board(req, res, extra = {}) {
   const summary = [
     { label: 'My open leads', value: mineOpen.length, sub: 'being worked by you', url: '/sales' },
     { label: 'Follow-ups due', value: mineOpen.filter((l) => l.due).length, sub: 'today or overdue', url: '/sales?show=due', warn: mineOpen.some((l) => l.due) },
-    { label: 'Open in the office', value: all.filter((l) => l.open).length, sub: `$${all.filter((l) => l.open).reduce((n, l) => n + (l.value || 0), 0).toLocaleString('en-US')} estimated`, url: '/sales?show=all' },
-    { label: 'Won this month', value: wonThisMonth.length, sub: `$${wonThisMonth.reduce((n, l) => n + (l.value || 0), 0).toLocaleString('en-US')} estimated`, url: '/sales?show=closed' },
+    { label: 'Open in the office', value: all.filter((l) => l.open).length, sub: `$${fmtMoney(all.filter((l) => l.open).reduce((n, l) => n + (l.value || 0), 0))} estimated`, url: '/sales?show=all' },
+    { label: 'Won this month', value: wonThisMonth.length, sub: `$${fmtMoney(wonThisMonth.reduce((n, l) => n + (l.value || 0), 0))} estimated`, url: '/sales?show=closed' },
   ];
   let rows = all.filter((l) => (show === 'closed' ? !l.open : show === 'all' ? l.open : show === 'due' ? l.open && l.owner_id === req.user.id && l.due : l.open && l.owner_id === req.user.id));
   if (q) { const k = q.toLowerCase(); rows = all.filter((l) => [l.company, l.contact_name, l.phone, l.email, l.address, l.owner].some((x) => String(x || '').toLowerCase().includes(k))); }
@@ -205,10 +205,10 @@ router.get('/sales/summary', manage, (req, res) => {
   res.render('sales_summary', {
     title: 'Sales summary', wide: true, people,
     totals: [
-      { label: 'Won, last 90 days', value: won.length, sub: `$${money(won).toLocaleString('en-US')} estimated` },
+      { label: 'Won, last 90 days', value: won.length, sub: `$${fmtMoney(money(won))} estimated` },
       { label: 'Win rate', value: closed.length ? `${Math.round((won.length / closed.length) * 100)}%` : 'n/a', sub: `${won.length} won, ${lost.length} lost` },
       { label: 'Quote to decision', value: quoted.length ? `${Math.round(quoted.reduce((n, l) => n + sales.daysSince(l.quoted_on, l.closed_at.slice(0, 10)), 0) / quoted.length)} days` : 'n/a', sub: `average over ${quoted.length} ${quoted.length === 1 ? 'quote' : 'quotes'}` },
-      { label: 'Quoted and still open', value: all.filter((l) => l.stage === 'quoted').length, sub: `$${money(all.filter((l) => l.stage === 'quoted'), 'quote_amount').toLocaleString('en-US')} quoted` },
+      { label: 'Quoted and still open', value: all.filter((l) => l.stage === 'quoted').length, sub: `$${fmtMoney(money(all.filter((l) => l.stage === 'quoted'), 'quote_amount'))} quoted` },
     ],
     sources: count(all.filter((l) => recent(l, 'created_at')), 'source'), reasons: count(lost, 'lost_reason'),
     stale: all.filter((l) => l.stale).sort((a, b) => b.idleDays - a.idleDays).slice(0, 30),
@@ -311,7 +311,7 @@ router.post('/sales/:id/stage', use, (req, res) => {
   const quote = clean(req.body.quote_amount, 12).replace(/[$,\s]/g, ''); const renew = clean(req.body.renew_on, 10);
   const errors = [];
   if (next && !isYmd(next)) errors.push('The follow-up date does not look right.');
-  if (quote && !/^\d{1,9}$/.test(quote)) errors.push('Enter the quote as a whole number of dollars.');
+  if (quote && !/^\d{1,9}(\.\d{1,2})?$/.test(quote)) errors.push('Enter the quote as an amount in dollars, such as 3200 or 3200.75.');
   if (renew && !isYmd(renew)) errors.push('The date it comes round again does not look right.');
   if (errors.length) return page(req, res, lead, { errors });
   const closing = !sales.OPEN.includes(stage);
@@ -322,7 +322,7 @@ router.post('/sales/:id/stage', use, (req, res) => {
               quote_amount = ?, quoted_on = ?, renew_on = ? WHERE id = ?`)
     .run(stage, closing ? null : next || null, stage === 'lost' ? reason || null : null, closing ? lead.closed_at || new Date().toISOString() : null, req.user.id, new Date().toISOString(),
       quote ? Number(quote) : lead.quote_amount, quotedOn || null, stage === 'won' ? renew || null : null, lead.id);
-  if (quote && Number(quote) !== lead.quote_amount) log(lead, req.user, 'stage', `Quoted $${Number(quote).toLocaleString('en-US')}`);
+  if (quote && Number(quote) !== lead.quote_amount) log(lead, req.user, 'stage', `Quoted $${fmtMoney(Number(quote))}`);
   // Credit where it is due: the person in another office who passed this lead on hears that it was won.
   if (stage === 'won' && lead.stage !== 'won' && lead.referred_by) {
     log(lead, req.user, 'refer', `Won. Thank you to ${lead.referrer || 'the colleague'}${lead.referrer_office ? ' in the ' + lead.referrer_office + ' office' : ''} for passing it on.`);
