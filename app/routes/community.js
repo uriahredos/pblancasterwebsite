@@ -73,7 +73,7 @@ router.get('/people/:id', requireLogin, (req, res) => {
   const team = require('../team');
   const reportsTo = team.managerOf(p.id);
   const theirTeam = db.prepare(`SELECT u.id, u.display_name, u.photo_path, u.job_title FROM user_managers um JOIN users u ON u.id = um.user_id WHERE um.manager_id = ? AND (u.active = 1 OR u.in_directory = 1) ORDER BY u.display_name COLLATE NOCASE`).all(p.id);
-  const canWelcome = canPosition && req.user.scope === 'all' && Boolean(welcome);
+  const canWelcome = canPosition && req.user.scope === 'all' && Boolean(welcome) && welcome.created_at >= new Date(Date.now() - WELCOME_DAYS * 86400000).toISOString();   // only while it is on the home page
   res.render('person', { canPosition, canWelcome, reportsTo, theirTeam, title: p.display_name, p: decorate(p), certs, welcome, notes, me: p.id === req.user.id, bday, shouts: social.shoutoutsFor(req.user.id, p.id) });
 });
 
@@ -503,7 +503,10 @@ router.post('/admin/users/:id/welcome', requirePerm('users.manage'), (req, res) 
   if (started && !isYmd(started)) { flash(req, 'err', 'The start date does not look right.'); return res.redirect(back); }
   if (req.body.remove === '1') {
     if (req.user.scope !== 'all') return forbidden(res);   // admins and corporate admins only
-    db.prepare('DELETE FROM welcomes WHERE user_id = ?').run(target.id);
+    // Welcome notes people wrote are kept on the person's page for good: with notes, the welcome only leaves the home page.
+    const w = db.prepare('SELECT id FROM welcomes WHERE user_id = ?').get(target.id);
+    if (w && db.prepare('SELECT 1 FROM welcome_notes WHERE welcome_id = ?').get(w.id)) db.prepare('UPDATE welcomes SET created_at = ? WHERE id = ?').run(new Date(Date.now() - (WELCOME_DAYS + 1) * 86400000).toISOString(), w.id);
+    else db.prepare('DELETE FROM welcomes WHERE user_id = ?').run(target.id);
     flash(req, 'ok', `The welcome for ${target.display_name} was taken down.`);
     activity.log(req.user, 'New hire welcome taken down', target.display_name);
     return res.redirect(req.body.back === 'person' ? `/people/${target.id}` : back);

@@ -3054,7 +3054,7 @@ test('new hires: announced on everyone\'s home page for two weeks, and people sa
   assert.doesNotMatch((await t1.get('/')).text, /id="welcome"/);
   assert.match((await t1.get(`/people/${nid}`)).text, /Welcome messages/);
   await owner.post(`/admin/users/${nid}/welcome`, { remove: '1' }, { page: `/admin/users/${nid}/edit` });
-  assert.equal(db.prepare('SELECT COUNT(*) n FROM welcomes').get().n + db.prepare('SELECT COUNT(*) n FROM welcome_notes').get().n, 0);
+  assert.ok(db.prepare('SELECT COUNT(*) n FROM welcome_notes').get().n > 0);   // taking a welcome down keeps the notes people wrote
 });
 
 test('daily question: one a day for everyone, results after you answer, suggestions approved before they run', async () => {
@@ -4423,4 +4423,24 @@ test('new-hire welcome: an admin takes it down from the person\'s page; the dail
   assert.doesNotMatch((await owner.get('/')).text, /Oops Hire joined/);
   assert.ok(db.prepare('SELECT 1 FROM users WHERE id = ? AND active = 1').get(id));                                   // the account itself is untouched
   db.prepare('DELETE FROM user_managers WHERE manager_id = ?').run(m);
+});
+
+test('welcome notes stay on the person\'s page for good: after 14 days, and after the welcome is taken down early', async () => {
+  const owner = await loggedIn('owner'); const t1 = await loggedIn('tech1');
+  const mk = (u, n) => { const id = makeUser(u, n); db.prepare('UPDATE users SET branch_id = 1 WHERE id = ?').run(id); return id; };
+  const a = mk('note.old', 'Nora Oldhire'), b = mk('note.down', 'Dale Takendown');
+  for (const id of [a, b]) {
+    await owner.post(`/admin/users/${id}/welcome`, { intro: 'Hello' }, { page: `/admin/users/${id}/edit` });
+    const w = db.prepare('SELECT id FROM welcomes WHERE user_id = ?').get(id).id;
+    await t1.post(`/welcome/${w}/wave`, { message: 'Glad you are here' }, { page: `/people/${id}` });
+  }
+  // Fifteen days on: off the home page, the note still on the profile, and no take-down button left to press.
+  db.prepare('UPDATE welcomes SET created_at = ? WHERE user_id = ?').run(new Date(Date.now() - 15 * 86400000).toISOString(), a);
+  assert.doesNotMatch((await owner.get('/')).text, /Nora Oldhire joined/);
+  const old = (await owner.get(`/people/${a}`)).text;
+  assert.match(old, /Welcome messages[\s\S]*Glad you are here/); assert.doesNotMatch(old, /Take down the new-hire welcome/);
+  // Taken down early: gone from the home page, the note kept.
+  await owner.post(`/admin/users/${b}/welcome`, { remove: '1', back: 'person' }, { page: `/people/${b}` });
+  assert.doesNotMatch((await owner.get('/')).text, /Dale Takendown joined/);
+  assert.match((await t1.get(`/people/${b}`)).text, /Welcome messages[\s\S]*Glad you are here/);
 });
