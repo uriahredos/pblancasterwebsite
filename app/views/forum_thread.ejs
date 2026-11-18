@@ -34,19 +34,20 @@
       <% if (p.isNew) { %><span class="tag new">New</span><% } %>
       <time><%= fmtDateTime(p.created_at) %></time>
     </header>
-    <p class="pre"><%= p.body %></p>
+    <% if (p.removed_at) { %><p class="meta removed-msg">Removed by the author.</p><% } else { %><p class="pre"><%= p.body %></p><% } %>
     <% if (p.edited_at) { %><p class="meta edited">Edited <%= fmtDateTime(p.edited_at) %></p><% } %>
     <% if (p.photos.length) { %>
     <div class="photo-grid"><% p.photos.forEach(function (ph) { %><a href="/discussions/photo/<%= ph.id %>"><img src="/discussions/photo/<%= ph.id %>" alt="Photo from <%= p.author %>" loading="lazy"></a><% }) %></div>
     <% } %>
     <%- include('partials/reactions', { kind: 'post', item: p }) %>
-    <% var mine = p.user_id === user.id, canEdit = mine && (!t.locked || mod), canDrop = !p.first && (mod || mine), dropThread = p.first && mine && t.reply_count === 0; if (canEdit || canDrop || dropThread) { %>
+    <% var mine = p.user_id === user.id, canEdit = mine && !p.removed_at && (!t.locked || mod), blank = p.first && mine && t.reply_count > 0 && !p.removed_at, canDrop = !p.first && (mod || mine), dropThread = p.first && mine && t.reply_count === 0; if (canEdit || canDrop || dropThread || blank) { %>
     <div class="post-foot"><details class="msg-more"><summary aria-label="Edit or remove this message" title="Edit or remove">⋯</summary><div class="msg-tools">
       <% if (canEdit) { %><details class="msg-edit"><summary class="link">Edit</summary>
         <form method="post" action="/discussions/p/<%= p.id %>/edit" class="stack" data-no-live><input type="hidden" name="_csrf" value="<%= csrf %>">
           <label><span class="sr">Your message</span><textarea name="body" rows="4" maxlength="4000" required><%= p.body %></textarea></label>
           <div class="filter-actions"><button class="btn primary small" type="submit">Save</button></div></form></details><% } %>
       <% if (canDrop) { %><form method="post" action="/discussions/p/<%= p.id %>/delete" data-confirm="<%= mine ? 'Remove this reply?' : 'Remove this reply from ' + p.author + '?' %>"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Remove<%= mine ? '' : ' (admin)' %></button></form><% } %>
+      <% if (blank) { %><form method="post" action="/discussions/p/<%= p.id %>/delete" data-confirm="Remove your message? Its words and photos go; the thread and the replies stay."><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Remove</button></form><% } %>
       <% if (dropThread) { %><form method="post" action="/discussions/t/<%= t.id %>/delete" data-confirm="Remove this message? Nobody has replied, so the thread goes with it."><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Remove</button></form><% } %>
     </div></details></div>
     <% } %>

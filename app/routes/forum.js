@@ -274,6 +274,7 @@ router.post('/discussions/t/:id/delete', use, (req, res) => {
 });
 
 // Columns for edits, added on start.
+if (!db.prepare("SELECT 1 FROM pragma_table_info('forum_posts') WHERE name = 'removed_at'").get()) db.exec('ALTER TABLE forum_posts ADD COLUMN removed_at TEXT');
 for (const t of ['forum_posts', 'announcement_comments']) if (!db.prepare(`SELECT 1 FROM pragma_table_info('${t}') WHERE name = 'edited_at'`).get()) db.exec(`ALTER TABLE ${t} ADD COLUMN edited_at TEXT`);
 
 // Change the words of your own post (the opening post or a reply). Nobody edits someone else's; a locked thread cannot be edited.
@@ -281,7 +282,7 @@ router.post('/discussions/p/:id/edit', use, (req, res) => {
   const p = isId(req.params.id) ? db.prepare('SELECT * FROM forum_posts WHERE id = ?').get(req.params.id) : null;
   if (!p) return notFound(res);
   const t = loadThread(p.thread_id);
-  if (p.user_id !== req.user.id || (t.locked && !isMod(req.user))) return res.status(403).render('error', { title: 'Not allowed', message: 'You can only edit your own messages.' });
+  if (p.removed_at || p.user_id !== req.user.id || (t.locked && !isMod(req.user))) return res.status(403).render('error', { title: 'Not allowed', message: 'You can only edit your own messages.' });
   const body = clean(req.body.body, 4000);
   if (!body) flash(req, 'err', 'A message cannot be empty. Remove it instead.');
   else if (body !== p.body) { db.prepare('UPDATE forum_posts SET body = ?, edited_at = ? WHERE id = ?').run(body, new Date().toISOString(), p.id); flash(req, 'ok', 'Message updated.'); }
@@ -293,7 +294,18 @@ router.post('/discussions/p/:id/delete', use, (req, res) => {
   const p = isId(req.params.id) ? db.prepare(
     `SELECT p.*, u.display_name AS author, (SELECT MIN(id) FROM forum_posts x WHERE x.thread_id = p.thread_id) AS first_id
      FROM forum_posts p JOIN users u ON u.id = p.user_id WHERE p.id = ?`).get(req.params.id) : null;
-  if (!p || p.id === p.first_id) return notFound(res);
+  if (!p) return notFound(res);
+  // The opening post of a thread people have replied to: its writer can blank it out. The thread and the replies stay.
+  if (p.id === p.first_id) {
+    if (p.user_id !== req.user.id || p.removed_at) return notFound(res);
+    db.transaction(() => {
+      removePhotosOf('p.id = ?', p.id);
+      require('../reactions').clear('post', p.id);
+      db.prepare("UPDATE forum_posts SET body = 'Removed by the author.', removed_at = ?, edited_at = NULL WHERE id = ?").run(new Date().toISOString(), p.id);
+    })();
+    flash(req, 'ok', 'Your message was removed. The replies are still here.');
+    return res.redirect(`/discussions/t/${p.thread_id}`);
+  }
   if (p.user_id !== req.user.id && !isMod(req.user)) return res.status(403).render('error', { title: 'Not allowed', message: 'You cannot remove this reply.' });
   const t = loadThread(p.thread_id);
   db.transaction(() => {

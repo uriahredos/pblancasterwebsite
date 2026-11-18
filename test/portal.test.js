@@ -4503,9 +4503,16 @@ test('messages: people can remove their own, including a thread they started whi
   await t2.post(`${page}/reply`, [['body', 'A reply']], { multipart: true, page });
   const reply = db.prepare('SELECT id FROM forum_posts WHERE thread_id = ? ORDER BY id DESC LIMIT 1').get(tid).id;
   assert.doesNotMatch((await t1.get(page)).text, /Nobody has replied, so the thread goes with it/);                   // once someone has replied, the opening post stays
+  // With replies, the starter can blank their opening message: the words go, the thread and the reply stay.
+  const first = db.prepare('SELECT id FROM forum_posts WHERE thread_id = ? ORDER BY id LIMIT 1').get(tid).id;
+  assert.match((await t1.get(page)).text, new RegExp(`action="/discussions/p/${first}/delete" data-confirm="Remove your message\\?`));
+  assert.equal((await t2.post(`/discussions/p/${first}/delete`, {}, { page })).status, 404);                           // not someone else's
+  await t1.post(`/discussions/p/${first}/delete`, {}, { page });
+  const blanked = (await t2.get(page)).text;
+  assert.match(blanked, /Removed by the author\./); assert.doesNotMatch(blanked, /Posted by mistake/); assert.match(blanked, /A reply/);
+  assert.equal((await t1.post(`/discussions/p/${first}/edit`, { body: 'Back again' }, { page })).status, 403);
   assert.match((await t2.get(page)).text, new RegExp(`action="/discussions/p/${reply}/delete" data-confirm="Remove this reply\\?"`));
   await t2.post(`/discussions/p/${reply}/delete`, {}, { page });
   assert.equal(db.prepare('SELECT 1 FROM forum_posts WHERE id = ?').get(reply), undefined);
-  await t1.post(`${page}/delete`, {}, { page });
-  assert.equal(db.prepare('SELECT 1 FROM forum_threads WHERE id = ?').get(tid), undefined);
+  assert.ok(db.prepare('SELECT 1 FROM forum_threads WHERE id = ?').get(tid));
 });
