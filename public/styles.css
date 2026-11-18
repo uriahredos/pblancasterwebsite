@@ -1309,3 +1309,7 @@ h1, h2, h3, .hero h1, .panel-head h2 { font-weight: 700; letter-spacing: 0; }
 .invite-pick .choice { display: flex; align-items: center; gap: .6rem; }
 .invite-text { margin: .2rem 0 .7rem; padding: .7rem .8rem; background: var(--accent-soft); border-radius: 8px; font: inherit; font-size: .93rem; white-space: pre-wrap; overflow-wrap: anywhere; user-select: all; }
 .invites .invite-done { opacity: .7; }
+
+/* Users: the search row above the list */
+.users-find { margin-bottom: .4rem; }
+#users-table tr[hidden] { display: none; }

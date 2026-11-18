@@ -30,17 +30,25 @@
 <% } %>
 
 <h2><%= canAdd ? 'Everyone' : 'Your people' %></h2>
+<div class="filters users-find">
+  <label class="grow">Find a person <input type="search" id="users-find" placeholder="Name, username, office or profile" autocomplete="off"></label>
+  <label>Account
+    <select id="users-state"><option value="">Any</option><option value="Temporary password">Temporary password (not signed in yet)</option><option value="Active">Active</option><option value="Disabled">Disabled</option></select>
+  </label>
+</div>
+<p class="meta" id="users-count" data-total="<%= users.length %>"><%= users.length %> <%= users.length === 1 ? 'person' : 'people' %></p>
 <div class="table-wrap">
-<table>
-  <thead><tr><th>Name</th><th>Username</th><th>Profile</th><th>Managed by</th><th>Account</th><th><span class="sr">Actions</span></th></tr></thead>
+<table id="users-table">
+  <thead><tr><th>Name</th><th>Office</th><th>Username</th><th>Profile</th><th>Managed by</th><th>Account</th><th><span class="sr">Actions</span></th></tr></thead>
   <tbody>
   <% users.forEach(function (u) { %>
   <tr class="<%= u.active ? '' : 'off' %>">
-    <td><%= u.display_name %><% if (u.id === user.id) { %> <span class="hint">(you)</span><% } %><% if (user.viewBranch === null && u.branch_name) { %> <span class="pill"><%= u.branch_name %></span><% } %></td>
+    <td><%= u.display_name %><% if (u.id === user.id) { %> <span class="hint">(you)</span><% } %></td>
+    <td><%= u.branch_name || '' %></td>
     <td><%= u.username %></td>
     <td><% if (u.is_master) { %><span class="tag master">Master</span><% } else { %><%= u.profile_name || 'None' %><% if (u.profile_scope === 'team') { %> <span class="hint">· <%= u.team_size %> <%= u.team_size === 1 ? 'person' : 'people' %></span><% } %><% } %></td>
     <td><%= u.managers || '' %></td>
-    <td><%= !u.active ? 'Disabled' : u.must_change_password ? 'Temporary password' : 'Active' %></td>
+    <td data-state><%= !u.active ? 'Disabled' : u.must_change_password ? 'Temporary password' : 'Active' %></td>
     <td class="row-more">
       <% if (u.manageable) { %>
       <details class="row-menu">
@@ -62,4 +70,5 @@
 </div>
 <% if (can('activity.view')) { %><p class="hint spaced"><a href="/admin/activity">Activity log</a>: who changed what.</p><% } %>
 <% if (can('backups')) { %><p class="hint spaced"><a href="/admin/backups">Backups</a>: download a copy of the site's data.</p><% } %>
+<script src="/users.js?v=<%= assetV %>"></script>
 <%- include('partials/footer') %>

@@ -3282,7 +3282,7 @@ test('branches: each branch sees only its own parts, stock, trucks, tasks, train
   const both = (await owner.get('/admin/complaints')).text;
   assert.match(both, /HBG-ONLY complaint/); assert.match(both, /LANC-ONLY complaint/);
   assert.match((await owner.get('/')).text, /Office at a glance/);
-  assert.match((await owner.get('/admin/users')).text, /Holly Harrisburg[\s\S]*<span class="pill">Harrisburg<\/span>|<span class="pill">Harrisburg<\/span>/);
+  assert.match((await owner.get('/admin/users')).text, /Holly Harrisburg\s*<\/td>\s*<td>Harrisburg<\/td>/);
   await owner.post('/branch/view', { branch: String(lanc) }, { page: '/' });
 
   // The community side is shared: both branches are in the directory, and the daily question is one for all.
