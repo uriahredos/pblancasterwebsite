@@ -276,8 +276,9 @@ function branchPage(req, res, b, extra = {}) {
     ...extra,
   });
 }
-// The office's organization chart as a PDF, for anyone who can see the office page.
+// The office's organization chart as a PDF, for people who manage users (everyone else sees the chart on screen).
 router.get('/branches/:id/chart.pdf', requireLogin, (req, res) => {
+  if (!access.can(req.user, 'users.manage')) return forbidden(res);
   const b = getBranch(req.params.id);
   if (!b) return notFound(res);
   const people = db.prepare(`SELECT u.id, u.display_name, u.photo_path, u.job_title, u.department FROM users u WHERE u.branch_id = ? AND ${LISTED} ORDER BY u.display_name COLLATE NOCASE`).all(b.id);
