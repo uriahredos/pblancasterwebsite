@@ -666,6 +666,13 @@
         t.classList.add('stack');
       });
     }
+    // Editing a message: the box grows to fit all of its words, when opened and as you type.
+    function fitBox(t) { t.style.height = 'auto'; t.style.height = (t.scrollHeight + 4) + 'px'; }
+    document.addEventListener('toggle', function (e) {
+      var d = e.target; if (!d || !d.matches || !d.matches('details.msg-edit') || !d.open) return;
+      var t = d.querySelector('textarea'); if (t) { fitBox(t); t.focus(); }
+    }, true);
+    document.addEventListener('input', function (e) { if (e.target && e.target.matches && e.target.matches('.msg-edit textarea')) fitBox(e.target); });
     initDraft(); stackTables();
     initMain = function () { initDraft(); stackTables(); };
   });

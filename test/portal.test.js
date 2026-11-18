@@ -4492,3 +4492,20 @@ test('messages: people edit their own in threads, comments and welcome notes; ad
   assert.equal(db.prepare('SELECT COUNT(*) n FROM welcome_notes WHERE welcome_id = ?').get(w).n, 0);
   assert.ok(db.prepare("SELECT 1 FROM activity_log WHERE action = 'Welcome message removed'").get());
 });
+
+test('messages: people can remove their own, including a thread they started while nobody has replied', async () => {
+  const t1 = await loggedIn('tech1'); const t2 = await loggedIn('tech2');
+  const sec = db.prepare('SELECT id FROM forum_sections ORDER BY id LIMIT 1').get().id;
+  const made = await t1.post('/discussions/new', [['section_id', String(sec)], ['title', 'Remove my own'], ['body', 'Posted by mistake']], { multipart: true, page: '/discussions/new' });
+  const tid = Number(/\/discussions\/t\/(\d+)/.exec(made.location)[1]); const page = `/discussions/t/${tid}`;
+  const mineOnly = (await t1.get(page)).text;
+  assert.match(mineOnly, new RegExp(`action="/discussions/t/${tid}/delete" data-confirm="Remove this message\\? Nobody has replied`));
+  await t2.post(`${page}/reply`, [['body', 'A reply']], { multipart: true, page });
+  const reply = db.prepare('SELECT id FROM forum_posts WHERE thread_id = ? ORDER BY id DESC LIMIT 1').get(tid).id;
+  assert.doesNotMatch((await t1.get(page)).text, /Nobody has replied, so the thread goes with it/);                   // once someone has replied, the opening post stays
+  assert.match((await t2.get(page)).text, new RegExp(`action="/discussions/p/${reply}/delete" data-confirm="Remove this reply\\?"`));
+  await t2.post(`/discussions/p/${reply}/delete`, {}, { page });
+  assert.equal(db.prepare('SELECT 1 FROM forum_posts WHERE id = ?').get(reply), undefined);
+  await t1.post(`${page}/delete`, {}, { page });
+  assert.equal(db.prepare('SELECT 1 FROM forum_threads WHERE id = ?').get(tid), undefined);
+});
