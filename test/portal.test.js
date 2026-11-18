@@ -4397,3 +4397,18 @@ test('organization chart: people who manage users can download an office chart a
   assert.ok((await owner.get(`/branches/${empty}/chart.pdf`)).text.startsWith('%PDF-'));                                // an office with nobody still gives a page
   await owner.post('/branch/view', { branch: '1', back: '/' }, { page: '/' });
 });
+
+test('home: a manager can take a new-hire welcome down from the home page; the daily question sits above the office numbers', async () => {
+  const owner = await loggedIn('owner'); const t1 = await loggedIn('tech1');
+  const id = makeUser('oops.hire', 'Oops Hire'); db.prepare('UPDATE users SET branch_id = 1 WHERE id = ?').run(id);
+  await owner.post(`/admin/users/${id}/welcome`, { intro: 'Announced by accident' }, { page: `/admin/users/${id}/edit` });
+  const home = (await owner.get('/')).text;
+  assert.match(home, new RegExp(`<div class="hire-tools">[\\s\\S]*?action="/admin/users/${id}/welcome"[\\s\\S]*?Take down the welcome for Oops Hire`));
+  assert.doesNotMatch((await t1.get('/')).text, /hire-tools/);
+  if (home.includes('id="daily"')) assert.ok(home.indexOf('id="daily"') < home.indexOf('p-glance'));
+  const r = await owner.post(`/admin/users/${id}/welcome`, { remove: '1', back: 'home' }, { page: '/' });
+  assert.equal(r.location, '/');
+  const after = (await owner.get('/')).text;
+  assert.match(after, /The welcome for Oops Hire was taken down/); assert.doesNotMatch(after, /Oops Hire joined/);
+  assert.ok(db.prepare('SELECT 1 FROM users WHERE id = ? AND active = 1').get(id));                                   // the account itself is untouched
+});

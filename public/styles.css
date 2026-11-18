@@ -402,7 +402,7 @@ table.audit .check-cell form { display: block; margin: 0 0 .2rem; }
 /* One column on a phone, in the order people need things: tasks, the form buttons, announcements, then the rest. */
 .dash .p-oncall { order: 3; }   /* on a phone: straight after Shout-outs (same number, and it comes later in the page) */
 .dash .p-board { order: 1; } .dash .p-news { order: 2; } .dash .p-shouts { order: 3; } .dash .p-around { order: 4; } .dash .p-up { order: 5; } .dash .p-tasks { order: 6; }
-.dash .p-glance { order: 7; } .dash .p-actions { order: 8; } .dash .p-daily { order: 9; }
+.dash .p-daily { order: 7; } .dash .p-glance { order: 8; } .dash .p-actions { order: 9; }
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 1rem; min-width: 0; }
 .panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: .75rem; margin-bottom: .85rem; }
 .panel-head h2 { margin: 0; font-size: .82rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
@@ -1384,3 +1384,7 @@ td.reports-to .meta { display: block; }
 .row-menu-list .danger-text { color: var(--err); }
 .btn.danger { border-color: var(--err); color: var(--err); background: var(--surface); }
 .btn.danger:hover { background: var(--err-bg); }
+
+/* Home: a manager's link to take a new-hire welcome down */
+.hire-tools { margin: -.3rem 0 .8rem; display: flex; flex-wrap: wrap; gap: .2rem 1.2rem; font-size: .88rem; }
+.hire-tools form { margin: 0; }

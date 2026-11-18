@@ -49,6 +49,9 @@
   <% } %>
 </section>
 <% } %>
+<% var myHires = can('users.manage') ? around.filter(function (x) { return x.kind === 'hire' && !x.away; }) : []; if (myHires.length) { %>
+<div class="hire-tools"><% myHires.forEach(function (h) { %><form method="post" action="/admin/users/<%= h.who.user_id %>/welcome" data-no-live data-confirm="Take down the welcome for <%= h.who.display_name %>? Their account is not affected."><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="remove" value="1"><input type="hidden" name="back" value="home"><button class="link" type="submit">Take down the welcome for <%= h.who.display_name %></button></form><% }) %></div>
+<% } %>
 <section class="company-strip" aria-label="The company at a glance">
   <div class="strip-stats">
     <% company.stats.forEach(function (st) { %><a href="<%= st.url %>"><strong><%= st.value.toLocaleString('en-US') %></strong><span><%= st.label %></span></a><% }) %>
@@ -241,6 +244,12 @@
       <% if (badges.tasks > myTasks.length) { %><p class="panel-foot"><a href="/tasks">and <%= badges.tasks - myTasks.length %> more</a></p><% } %>
     </section>
     <% } %>
+    <% if (dailyCard) { %>
+    <section class="panel p-daily daily" aria-labelledby="daily-h" id="daily">
+      <div class="panel-head"><h2 id="daily-h">Today's question</h2><a href="/daily">Earlier ones</a></div>
+      <%- include('partials/daily_card', { d: dailyCard, back: 'home' }) %>
+    </section>
+    <% } %>
     <section class="panel branch-panel p-glance" aria-labelledby="branch-h">
       <div class="panel-head"><h2 id="branch-h"><%= branchTitle %></h2><% if (officeId) { %><a href="/branches/<%= officeId %>">Office page</a><% } %></div>
       <div class="branch-stats">
@@ -286,12 +295,6 @@
       </div>
     </section>
 
-    <% if (dailyCard) { %>
-    <section class="panel p-daily daily" aria-labelledby="daily-h" id="daily">
-      <div class="panel-head"><h2 id="daily-h">Today's question</h2><a href="/daily">Earlier ones</a></div>
-      <%- include('partials/daily_card', { d: dailyCard, back: 'home' }) %>
-    </section>
-    <% } %>
 
   </div>
 </div>

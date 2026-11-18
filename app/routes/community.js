@@ -502,8 +502,9 @@ router.post('/admin/users/:id/welcome', requirePerm('users.manage'), (req, res) 
   if (started && !isYmd(started)) { flash(req, 'err', 'The start date does not look right.'); return res.redirect(back); }
   if (req.body.remove === '1') {
     db.prepare('DELETE FROM welcomes WHERE user_id = ?').run(target.id);
-    flash(req, 'ok', 'Welcome announcement taken down.');
-    return res.redirect(back);
+    flash(req, 'ok', `The welcome for ${target.display_name} was taken down.`);
+    activity.log(req.user, 'New hire welcome taken down', target.display_name);
+    return res.redirect(req.body.back === 'home' ? '/' : back);
   }
   db.transaction(() => {
     db.prepare('UPDATE users SET job_title = COALESCE(?, job_title), started_on = COALESCE(?, started_on) WHERE id = ?').run(job || null, started || null, target.id);
