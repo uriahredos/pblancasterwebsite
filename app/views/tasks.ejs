@@ -4,7 +4,7 @@
 <ul class="records">
 <% open.forEach(function (t) { %>
   <li class="card task <%= t.overdue ? 'overdue' : t.days !== null && t.days <= 1 ? 'soon' : '' %>" id="t<%= t.id %>">
-    <details class="task-fold" data-task="<%= t.id %>" <%= t.isNew ? '' : 'open' %>>
+    <details class="task-fold" data-task="<%= t.id %>" >
     <summary>
     <div class="rec-head">
       <strong><%= t.title %></strong>

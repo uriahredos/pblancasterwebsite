@@ -326,7 +326,10 @@
         var fresh = regionId ? doc.getElementById(regionId) : null;
         var bad = doc.querySelector('main .flash.err, main .errors');
         if (fresh && !bad) {
+          // Something that was folded open (a task being updated) stays open after the save.
+          var wasOpen = Array.prototype.map.call(region.querySelectorAll('details[open][data-task]'), function (d) { return d.getAttribute('data-task'); });
           region.parentNode.replaceChild(document.importNode(fresh, true), region);
+          wasOpen.forEach(function (id) { var d = document.querySelector('details[data-task="' + id + '"]'); if (d) d.open = true; });
           rerun(document.getElementById(regionId));
           toast(note);
         } else {

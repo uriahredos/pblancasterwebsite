@@ -1,4 +1,4 @@
-// My tasks: a new task is folded shut. Opening it tells the site it has been seen, so it stops counting on the bell.
+// My tasks: every task starts folded shut, so a long list is easy to scan. Opening it tells the site it has been seen, so it stops counting on the bell.
 (function () {
   function token() { return (document.querySelector('meta[name="csrf"]') || {}).content || ''; }
   function seen(fold) {

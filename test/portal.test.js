@@ -2345,7 +2345,8 @@ test('tasks: assigned with a due date, shown in the bell with when they are due,
   assert.match(bellOf(after), /Annual fit test<\/strong> <span class="tag new">New<\/span>/);
   assert.match(after, /href="\/tasks"[^>]*>Tasks <span class="badge"[^>]*>3<\/span>/);
   const again = (await tess.get('/tasks')).text;
-  assert.match(again, new RegExp(`<details class="task-fold" data-task="${restock}" open>`));   // opened once, it stays open
+  assert.match(again, new RegExp(`<details class="task-fold" data-task="${restock}" >`));   // every task starts folded shut, so the list is easy to scan
+  assert.doesNotMatch(again, /<details class="task-fold"[^>]* open>/);
   for (const row of db.prepare('SELECT id FROM tasks WHERE assigned_to = ? AND done_at IS NULL').all(userId('task1'))) await tess.post(`/tasks/${row.id}/seen`, {}, { page: '/tasks' });
   assert.equal(total((await tess.get('/')).text), before);
   assert.doesNotMatch(bellOf(after), /timesheet/);
