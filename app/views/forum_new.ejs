@@ -13,12 +13,13 @@
   <label>Title <span class="hint">For a question, say what you are stuck on: the panel or device, and what it is doing.</span>
     <input name="title" value="<%= values.title || '' %>" maxlength="140" required autocomplete="off">
   </label>
-  <label>Message
-    <textarea name="body" rows="7" maxlength="6000" required><%= values.body || '' %></textarea>
-  </label>
+  <div><span class="label-line"><strong>Message</strong> <%- include('partials/format_bar') %></span>
+    <label><span class="sr">Message</span><textarea name="body" rows="8" maxlength="6000" required><%= values.body || '' %></textarea></label>
+  </div>
   <label>Photos <span class="hint">Optional, up to <%= maxPhotos %>. Do not post customer names, addresses or codes.</span>
     <input type="file" name="photos" accept="image/jpeg,image/png,image/webp,image/gif" multiple>
   </label>
   <button class="btn primary" type="submit">Post thread</button>
 </form>
+<script src="/format.js?v=<%= assetV %>"></script>
 <%- include('partials/footer') %>

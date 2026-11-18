@@ -141,7 +141,7 @@ router.post('/discussions/new', use, uploads.photos('photos', MAX_PHOTOS), verif
 
 function threadPage(req, res, t, extra = {}) {
   const posts = db.prepare(
-    `SELECT p.*, u.display_name AS author FROM forum_posts p JOIN users u ON u.id = p.user_id WHERE p.thread_id = ? ORDER BY p.id LIMIT 1000`).all(t.id);
+    `SELECT p.*, u.display_name AS author, u.photo_path AS author_photo, u.job_title AS author_title, u.removed_at AS author_gone FROM forum_posts p JOIN users u ON u.id = p.user_id WHERE p.thread_id = ? ORDER BY p.id LIMIT 1000`).all(t.id);
   const photos = db.prepare(
     `SELECT ph.id, ph.post_id FROM forum_photos ph JOIN forum_posts p ON p.id = ph.post_id WHERE p.thread_id = ? ORDER BY ph.id`).all(t.id);
   for (const p of posts) p.photos = photos.filter((ph) => ph.post_id === p.id);
@@ -203,7 +203,7 @@ router.post('/discussions/t/:id/reply', use, uploads.photos('photos', MAX_PHOTOS
   })();
   // Tell everyone following this thread, except the person who just wrote.
   const followers = db.prepare('SELECT user_id FROM forum_reads WHERE thread_id = ? AND following = 1 AND user_id <> ?').all(t.id, req.user.id).map((r) => r.user_id);
-  require('../push').notify(followers, 'forum_reply', { title: `New reply: ${t.title}`, body: `${req.user.display_name}: ${body.replace(/\s+/g, ' ')}`, url: `/discussions/t/${t.id}#p${postId}` });
+  require('../push').notify(followers, 'forum_reply', { title: `New reply: ${t.title}`, body: `${req.user.display_name}: ${require('../format').plain(body)}`, url: `/discussions/t/${t.id}#p${postId}` });
   res.redirect(`/discussions/t/${t.id}#p${postId}`);
 });
 
@@ -224,6 +224,21 @@ router.post('/discussions/t/:id/solved', use, (req, res) => {
   if (!t) return notFound(res);
   if (t.kind !== 'support' || (t.user_id !== req.user.id && !isMod(req.user))) return res.status(403).render('error', { title: 'Not allowed', message: 'Only the person who asked can mark this solved.' });
   db.prepare('UPDATE forum_threads SET solved_at = ? WHERE id = ?').run(t.solved_at ? null : new Date().toISOString(), t.id);
+  res.redirect(`/discussions/t/${t.id}`);
+});
+
+// Change a thread's title: whoever started it, or a moderator.
+router.post('/discussions/t/:id/rename', use, (req, res) => {
+  const t = loadThread(req.params.id);
+  if (!t) return notFound(res);
+  if (t.user_id !== req.user.id && !isMod(req.user)) return res.status(403).render('error', { title: 'Not allowed', message: 'Only the person who started this thread can rename it.' });
+  const title = clean(req.body.title, 140);
+  if (!title) flash(req, 'err', 'A thread needs a title.');
+  else if (title !== t.title) {
+    db.prepare('UPDATE forum_threads SET title = ? WHERE id = ?').run(title, t.id);
+    if (t.user_id !== req.user.id) activity.log(req.user, 'Discussion renamed', `${t.title} to ${title}`);
+    flash(req, 'ok', 'Title changed.');
+  }
   res.redirect(`/discussions/t/${t.id}`);
 });
 
@@ -282,8 +297,8 @@ router.post('/discussions/p/:id/edit', use, (req, res) => {
   const p = isId(req.params.id) ? db.prepare('SELECT * FROM forum_posts WHERE id = ?').get(req.params.id) : null;
   if (!p) return notFound(res);
   const t = loadThread(p.thread_id);
-  if (p.removed_at || p.user_id !== req.user.id || (t.locked && !isMod(req.user))) return res.status(403).render('error', { title: 'Not allowed', message: 'You can only edit your own messages.' });
-  const body = clean(req.body.body, 4000);
+  if (p.removed_at || p.user_id !== req.user.id || (t.is_locked && !isMod(req.user))) return res.status(403).render('error', { title: 'Not allowed', message: 'You can only edit your own messages.' });
+  const body = clean(req.body.body, 6000);
   if (!body) flash(req, 'err', 'A message cannot be empty. Remove it instead.');
   else if (body !== p.body) { db.prepare('UPDATE forum_posts SET body = ?, edited_at = ? WHERE id = ?').run(body, new Date().toISOString(), p.id); flash(req, 'ok', 'Message updated.'); }
   res.redirect(`/discussions/t/${t.id}#p${p.id}`);

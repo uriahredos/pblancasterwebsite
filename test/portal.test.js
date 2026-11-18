@@ -4516,3 +4516,47 @@ test('messages: people can remove their own, including a thread they started whi
   assert.equal(db.prepare('SELECT 1 FROM forum_posts WHERE id = ?').get(reply), undefined);
   assert.ok(db.prepare('SELECT 1 FROM forum_threads WHERE id = ?').get(tid));
 });
+
+test('discussions: formatting is shown safely, threads can be renamed, a locked thread cannot be edited, long messages keep their length', async () => {
+  const owner = await loggedIn('owner'); const t1 = await loggedIn('tech1'); const t2 = await loggedIn('tech2');
+  const sec = db.prepare('SELECT id FROM forum_sections ORDER BY id LIMIT 1').get().id;
+  const body = '**Bold** and *slanted*\n\n- first\n- second\n\n> a quote\n\nSee https://example.com/x and [the docs](https://example.com/docs) <script>alert(1)</script> [bad](javascript:alert(1))';
+  const made = await t1.post('/discussions/new', [['section_id', String(sec)], ['title', 'Formatting thread'], ['body', body]], { multipart: true, page: '/discussions/new' });
+  const tid = Number(/\/discussions\/t\/(\d+)/.exec(made.location)[1]); const page = `/discussions/t/${tid}`;
+  const html = (await t2.get(page)).text;
+  assert.match(html, /<strong>Bold<\/strong> and <em>slanted<\/em>/); assert.match(html, /<ul><li>first<\/li><li>second<\/li><\/ul>/); assert.match(html, /<blockquote><p>a quote<\/p><\/blockquote>/);
+  assert.match(html, /<a href="https:\/\/example\.com\/x" target="_blank" rel="noopener noreferrer nofollow">/); assert.match(html, /<a href="https:\/\/example\.com\/docs"[^>]*>the docs<\/a>/);
+  assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/); assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/); assert.doesNotMatch(html, /href="javascript:/);
+  assert.match(html, /data-fmt="bold"/); assert.match(html, /Quote in a reply/); assert.match(html, new RegExp(`href="/people/${userId('tech1')}"><strong>`));
+  // Rename: the starter and a moderator, nobody else.
+  assert.equal((await t2.post(`${page}/rename`, { title: 'Hijacked' }, { page })).status, 403);
+  await t1.post(`${page}/rename`, { title: 'Formatting thread, renamed' }, { page });
+  assert.equal(db.prepare('SELECT title FROM forum_threads WHERE id = ?').get(tid).title, 'Formatting thread, renamed');
+  await t1.post(`${page}/rename`, { title: '   ' }, { page });
+  assert.equal(db.prepare('SELECT title FROM forum_threads WHERE id = ?').get(tid).title, 'Formatting thread, renamed');
+  // A long message is not cut short by an edit.
+  const first = db.prepare('SELECT id FROM forum_posts WHERE thread_id = ? ORDER BY id LIMIT 1').get(tid).id;
+  const long = 'word '.repeat(1100).trim();
+  await t1.post(`/discussions/p/${first}/edit`, { body: long }, { page });
+  assert.equal(db.prepare('SELECT length(body) n FROM forum_posts WHERE id = ?').get(first).n, long.length);
+  // Locked: no replies, no edits by the writer, no quote button.
+  await owner.post(`${page}/lock`, {}, { page });
+  assert.equal((await t1.post(`/discussions/p/${first}/edit`, { body: 'Changed after lock' }, { page })).status, 403);
+  const locked = (await t1.get(page)).text;
+  assert.doesNotMatch(locked, new RegExp(`action="/discussions/p/${first}/edit"`)); assert.doesNotMatch(locked, /Quote in a reply/);
+  assert.equal((await t2.post(`${page}/reply`, [['body', 'Late reply']], { multipart: true, page })).status, 400);
+});
+
+test('discussions: a moderator can move a thread to another section, and pin it', async () => {
+  const owner = await loggedIn('owner'); const t1 = await loggedIn('tech1');
+  const [a, b] = db.prepare('SELECT id, name FROM forum_sections ORDER BY id LIMIT 2').all();
+  const made = await t1.post('/discussions/new', [['section_id', String(a.id)], ['title', 'Move me'], ['body', 'Wrong section']], { multipart: true, page: '/discussions/new' });
+  const tid = Number(/\/discussions\/t\/(\d+)/.exec(made.location)[1]); const page = `/discussions/t/${tid}`;
+  assert.equal((await t1.post(`${page}/move`, { section_id: String(b.id) }, { page })).status, 403);
+  await owner.post(`${page}/move`, { section_id: String(b.id) }, { page });
+  assert.equal(db.prepare('SELECT section_id FROM forum_threads WHERE id = ?').get(tid).section_id, b.id);
+  assert.match((await owner.get(page)).text, new RegExp(`Moved to ${b.name}`));
+  assert.match((await t1.get(`/discussions/s/${b.id}`)).text, /Move me/); assert.doesNotMatch((await t1.get(`/discussions/s/${a.id}`)).text, /Move me/);
+  await owner.post(`${page}/pin`, {}, { page });
+  assert.match((await t1.get(page)).text, /class="tag pin">Pinned/);
+});

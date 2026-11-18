@@ -1423,3 +1423,32 @@ td.reports-to .meta { display: block; }
 .msg-edit textarea { font-weight: 400; line-height: 1.5; min-height: 6rem; resize: vertical; overflow: hidden; }
 
 .removed-msg { font-style: italic; margin: .3rem 0; }
+
+/* ===== Discussions: formatted messages and the formatting buttons ===== */
+.msg-body { overflow-wrap: anywhere; }
+.msg-body p { margin: 0 0 .7rem; }
+.msg-body > :last-child { margin-bottom: 0; }
+.msg-body ul, .msg-body ol { margin: 0 0 .7rem; padding-left: 1.4rem; }
+.msg-body li { margin: .15rem 0; }
+.msg-body blockquote { margin: 0 0 .7rem; padding: .45rem .8rem; border-left: 4px solid var(--pb-blue); background: var(--accent-soft); border-radius: 0 8px 8px 0; color: var(--muted); }
+.msg-body blockquote p { margin-bottom: .35rem; }
+.msg-body code { padding: .05rem .3rem; border-radius: 4px; background: var(--accent-soft); font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .92em; }
+.msg-body a { overflow-wrap: anywhere; }
+.msg-body .msg-h { font-size: 1.05rem; }
+.label-line { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .4rem .8rem; margin-bottom: .35rem; }
+.fmt-bar { display: inline-flex; flex-wrap: wrap; gap: .25rem; }
+.fmt-bar button { min-height: 34px; padding: .2rem .6rem; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--ink); font: inherit; font-size: .85rem; cursor: pointer; }
+.fmt-bar button:hover { border-color: var(--accent); background: var(--accent-soft); }
+.msg-edit .fmt-bar { margin-bottom: .4rem; }
+.post-who { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+.post-who a { color: var(--ink); text-decoration: none; }
+.post-who a:hover { text-decoration: underline; }
+.post-who .meta { font-size: .8rem; }
+.post-link { margin-left: auto; color: var(--muted); text-decoration: none; font-size: .875rem; }
+.post-link:hover { text-decoration: underline; }
+.post:target { box-shadow: 0 0 0 3px color-mix(in srgb, var(--pb-blue) 45%, transparent); }
+.thread-tools .rename[open] { flex-basis: 100%; }
+.thread-tools .rename > summary { list-style: none; cursor: pointer; }
+.thread-tools .rename > summary::-webkit-details-marker { display: none; }
+.thread-tools .rename[open] > form { margin: .5rem 0 0; }
+.msg-more .msg-tools > form > button.link:not(.danger) { display: block; width: 100%; padding: .5rem .65rem; border: 0; background: none; text-align: left; color: var(--ink); font-weight: 600; text-decoration: none; min-height: 0; box-shadow: none; border-radius: 7px; }

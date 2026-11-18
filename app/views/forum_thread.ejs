@@ -7,6 +7,10 @@
   <% if (t.kind === 'support' && (owner || mod)) { %>
   <form method="post" action="/discussions/t/<%= t.id %>/solved"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn small" type="submit"><%= t.solved_at ? 'Not solved after all' : 'Mark as solved' %></button></form>
   <% } %>
+  <% if (owner || mod) { %>
+  <details class="rename"><summary class="btn small">Rename</summary>
+    <form method="post" action="/discussions/t/<%= t.id %>/rename" class="filters" data-no-live><input type="hidden" name="_csrf" value="<%= csrf %>"><label class="grow"><span class="sr">Title</span><input name="title" value="<%= t.title %>" maxlength="140" required autocomplete="off"></label><div class="filter-actions"><button class="btn primary small" type="submit">Save title</button></div></form></details>
+  <% } %>
   <% if (mod || (owner && t.reply_count === 0)) { %>
   <form method="post" action="/discussions/t/<%= t.id %>/delete" data-confirm="Remove this whole thread? This cannot be undone."><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Remove thread</button></form>
   <% } %>
@@ -28,23 +32,25 @@
   <% posts.forEach(function (p) { %>
   <article class="post <%= p.first ? 'first' : '' %> <%= p.isNew ? 'is-new' : '' %>" id="p<%= p.id %>">
     <header class="post-head">
-      <span class="avatar" aria-hidden="true"><%= p.author.split(/\s+/).map(function (w) { return w.charAt(0); }).slice(0, 2).join('').toUpperCase() %></span>
-      <strong><%= p.author %></strong>
+      <%- include('partials/avatar', { who: { id: p.user_id, display_name: p.author, photo_path: p.author_photo } }) %>
+      <span class="post-who"><% if (p.author_gone) { %><strong><%= p.author %></strong><% } else { %><a href="/people/<%= p.user_id %>"><strong><%= p.author %></strong></a><% } %><% if (p.author_title) { %><span class="meta"><%= p.author_title %></span><% } %></span>
       <% if (p.user_id === t.user_id && !p.first) { %><span class="pill">Started the thread</span><% } %>
       <% if (p.isNew) { %><span class="tag new">New</span><% } %>
-      <time><%= fmtDateTime(p.created_at) %></time>
+      <a class="post-link" href="#p<%= p.id %>" title="Link to this message"><time><%= fmtDateTime(p.created_at) %></time></a>
     </header>
-    <% if (p.removed_at) { %><p class="meta removed-msg">Removed by the author.</p><% } else { %><p class="pre"><%= p.body %></p><% } %>
+    <% if (p.removed_at) { %><p class="meta removed-msg">Removed by the author.</p><% } else { %><div class="msg-body"><%- fmt(p.body) %></div><% } %>
     <% if (p.edited_at) { %><p class="meta edited">Edited <%= fmtDateTime(p.edited_at) %></p><% } %>
     <% if (p.photos.length) { %>
     <div class="photo-grid"><% p.photos.forEach(function (ph) { %><a href="/discussions/photo/<%= ph.id %>"><img src="/discussions/photo/<%= ph.id %>" alt="Photo from <%= p.author %>" loading="lazy"></a><% }) %></div>
     <% } %>
     <%- include('partials/reactions', { kind: 'post', item: p }) %>
-    <% var mine = p.user_id === user.id, canEdit = mine && !p.removed_at && (!t.locked || mod), blank = p.first && mine && t.reply_count > 0 && !p.removed_at, canDrop = !p.first && (mod || mine), dropThread = p.first && mine && t.reply_count === 0; if (canEdit || canDrop || dropThread || blank) { %>
+    <% var mine = p.user_id === user.id, canEdit = mine && !p.removed_at && (!t.is_locked || mod), canQuote = !t.is_locked && !p.removed_at, blank = p.first && mine && t.reply_count > 0 && !p.removed_at, canDrop = !p.first && (mod || mine), dropThread = p.first && mine && t.reply_count === 0; if (canEdit || canDrop || dropThread || blank || canQuote) { %>
     <div class="post-foot"><details class="msg-more"><summary aria-label="Edit or remove this message" title="Edit or remove">⋯</summary><div class="msg-tools">
+      <% if (canQuote) { %><form onsubmit="return false"><textarea id="src<%= p.id %>" hidden readonly><%= p.body %></textarea><button class="link" type="button" data-quote="src<%= p.id %>" data-author="<%= p.author %>">Quote in a reply</button></form><% } %>
       <% if (canEdit) { %><details class="msg-edit"><summary class="link">Edit</summary>
         <form method="post" action="/discussions/p/<%= p.id %>/edit" class="stack" data-no-live><input type="hidden" name="_csrf" value="<%= csrf %>">
-          <label><span class="sr">Your message</span><textarea name="body" rows="4" maxlength="4000" required><%= p.body %></textarea></label>
+          <%- include('partials/format_bar') %>
+          <label><span class="sr">Your message</span><textarea name="body" rows="4" maxlength="6000" required><%= p.body %></textarea></label>
           <div class="filter-actions"><button class="btn primary small" type="submit">Save</button></div></form></details><% } %>
       <% if (canDrop) { %><form method="post" action="/discussions/p/<%= p.id %>/delete" data-confirm="<%= mine ? 'Remove this reply?' : 'Remove this reply from ' + p.author + '?' %>"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Remove<%= mine ? '' : ' (admin)' %></button></form><% } %>
       <% if (blank) { %><form method="post" action="/discussions/p/<%= p.id %>/delete" data-confirm="Remove your message? Its words and photos go; the thread and the replies stay."><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Remove</button></form><% } %>
@@ -60,11 +66,11 @@
 <% } else { %>
 <h2 id="reply">Reply</h2>
 <%- include('partials/errors') %>
-<form method="post" action="/discussions/t/<%= t.id %>/reply" enctype="multipart/form-data" class="card stack" data-once>
+<form method="post" action="/discussions/t/<%= t.id %>/reply" enctype="multipart/form-data" class="card stack" data-once data-reply>
   <input type="hidden" name="_csrf" value="<%= csrf %>">
-  <label>Your reply
-    <textarea name="body" rows="4" maxlength="6000" required><%= values.body || '' %></textarea>
-  </label>
+  <div><span class="label-line"><strong>Your reply</strong> <%- include('partials/format_bar') %></span>
+    <label><span class="sr">Your reply</span><textarea name="body" rows="5" maxlength="6000" required><%= values.body || '' %></textarea></label>
+  </div>
   <label>Photos <span class="hint">Optional, up to <%= maxPhotos %>. Do not post customer names, addresses or codes.</span>
     <input type="file" name="photos" accept="image/jpeg,image/png,image/webp,image/gif" multiple>
   </label>
@@ -72,4 +78,5 @@
   <p class="hint">Replying follows the thread, so you will see later replies on your home page.</p>
 </form>
 <% } %>
+<script src="/format.js?v=<%= assetV %>"></script>
 <%- include('partials/footer') %>
