@@ -273,6 +273,21 @@ router.post('/discussions/t/:id/delete', use, (req, res) => {
   res.redirect(`/discussions/s/${t.section_id}`);
 });
 
+// Columns for edits, added on start.
+for (const t of ['forum_posts', 'announcement_comments']) if (!db.prepare(`SELECT 1 FROM pragma_table_info('${t}') WHERE name = 'edited_at'`).get()) db.exec(`ALTER TABLE ${t} ADD COLUMN edited_at TEXT`);
+
+// Change the words of your own post (the opening post or a reply). Nobody edits someone else's; a locked thread cannot be edited.
+router.post('/discussions/p/:id/edit', use, (req, res) => {
+  const p = isId(req.params.id) ? db.prepare('SELECT * FROM forum_posts WHERE id = ?').get(req.params.id) : null;
+  if (!p) return notFound(res);
+  const t = loadThread(p.thread_id);
+  if (p.user_id !== req.user.id || (t.locked && !isMod(req.user))) return res.status(403).render('error', { title: 'Not allowed', message: 'You can only edit your own messages.' });
+  const body = clean(req.body.body, 4000);
+  if (!body) flash(req, 'err', 'A message cannot be empty. Remove it instead.');
+  else if (body !== p.body) { db.prepare('UPDATE forum_posts SET body = ?, edited_at = ? WHERE id = ?').run(body, new Date().toISOString(), p.id); flash(req, 'ok', 'Message updated.'); }
+  res.redirect(`/discussions/t/${t.id}#p${p.id}`);
+});
+
 // A reply can be removed by whoever wrote it, or by a moderator. The opening post goes with its thread.
 router.post('/discussions/p/:id/delete', use, (req, res) => {
   const p = isId(req.params.id) ? db.prepare(

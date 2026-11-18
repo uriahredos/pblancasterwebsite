@@ -1384,3 +1384,14 @@ td.reports-to .meta { display: block; }
 .row-menu-list .danger-text { color: var(--err); }
 .btn.danger { border-color: var(--err); color: var(--err); background: var(--surface); }
 .btn.danger:hover { background: var(--err-bg); }
+
+/* Edit and remove on a message */
+.msg-tools { display: flex; flex-wrap: wrap; align-items: flex-start; gap: .2rem 1rem; margin-top: .35rem; font-size: .88rem; }
+.msg-tools form { margin: 0; }
+.msg-edit > summary { list-style: none; cursor: pointer; color: var(--accent); font-weight: 700; }
+.msg-edit > summary::-webkit-details-marker { display: none; }
+.msg-edit[open] { flex-basis: 100%; }
+.msg-edit[open] > summary { margin-bottom: .4rem; }
+.msg-edit textarea, .msg-edit input { width: 100%; }
+.meta.edited { font-size: .8rem; margin: .2rem 0 0; }
+.notes li > span { flex: 1; min-width: 0; }

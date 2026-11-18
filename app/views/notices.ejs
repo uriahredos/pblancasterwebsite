@@ -12,8 +12,10 @@
     <ul class="comment-list">
       <% n.comments.forEach(function (c) { %>
       <li><%- include('partials/avatar', { who: { id: c.user_id, display_name: c.author, photo_path: c.photo_path }, size: 'sm' }) %>
-        <div class="comment-bubble"><span class="meta"><strong><%= c.author %></strong><%= c.office ? ' · ' + c.office : '' %> · <%= fmtDateTime(c.created_at) %></span><p><%= c.body %></p>
-          <% if (c.user_id === user.id || canModerate) { %><form method="post" action="/notices/comment/<%= c.id %>/delete" data-confirm="Remove this comment?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Remove</button></form><% } %>
+        <div class="comment-bubble"><span class="meta"><strong><%= c.author %></strong><%= c.office ? ' · ' + c.office : '' %> · <%= fmtDateTime(c.created_at) %></span><p><%= c.body %><% if (c.edited_at) { %> <span class="meta edited">(edited)</span><% } %></p>
+          <% if (c.user_id === user.id || canModerate) { %><div class="msg-tools">
+            <% if (c.user_id === user.id) { %><details class="msg-edit"><summary class="link">Edit</summary><form method="post" action="/notices/comment/<%= c.id %>/edit" class="stack" data-no-live><input type="hidden" name="_csrf" value="<%= csrf %>"><label><span class="sr">Your comment</span><textarea name="body" rows="2" maxlength="500" required><%= c.body %></textarea></label><div class="filter-actions"><button class="btn primary small" type="submit">Save</button></div></form></details><% } %>
+            <form method="post" action="/notices/comment/<%= c.id %>/delete" data-confirm="<%= c.user_id === user.id ? 'Remove this comment?' : 'Remove this comment from ' + c.author + '?' %>"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Remove<%= c.user_id === user.id ? '' : ' (admin)' %></button></form></div><% } %>
         </div>
       </li>
       <% }) %>

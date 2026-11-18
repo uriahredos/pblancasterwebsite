@@ -41,7 +41,10 @@
   <% if (welcome.intro) { %><p class="pre"><%= welcome.intro %></p><% } %>
   <% if (!notes.length) { %><p class="empty"><%= me ? 'Nobody has said hello yet.' : 'Be the first to say hello.' %></p><% } %>
   <ul class="notes">
-    <% notes.forEach(function (n) { %><li><%- include('partials/avatar', { who: n, size: 'sm' }) %><span><a href="/people/<%= n.id %>"><strong><%= n.display_name %></strong></a> <%= n.message || 'said welcome 👋' %></span></li><% }) %>
+    <% notes.forEach(function (n) { %><li><%- include('partials/avatar', { who: n, size: 'sm' }) %><span><a href="/people/<%= n.id %>"><strong><%= n.display_name %></strong></a> <%= n.message || 'said welcome 👋' %>
+      <% if (n.id === user.id || canModNotes) { %><span class="msg-tools">
+        <% if (n.id === user.id) { %><details class="msg-edit"><summary class="link">Edit</summary><form method="post" action="/welcome/<%= welcome.id %>/note/<%= n.id %>/edit" class="filters" data-no-live><input type="hidden" name="_csrf" value="<%= csrf %>"><label class="grow"><span class="sr">Your message</span><input name="message" value="<%= n.message || '' %>" maxlength="200" autocomplete="off"></label><div class="filter-actions"><button class="btn primary small" type="submit">Save</button></div></form></details><% } %>
+        <form method="post" action="/welcome/<%= welcome.id %>/note/<%= n.id %>/delete" data-no-live data-confirm="<%= n.id === user.id ? 'Remove your message?' : 'Remove this message from ' + n.display_name + '?' %>"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Remove<%= n.id === user.id ? '' : ' (admin)' %></button></form></span><% } %></span></li><% }) %>
   </ul>
   <% if (!me) { %>
   <form method="post" action="/welcome/<%= welcome.id %>/wave" class="filters">

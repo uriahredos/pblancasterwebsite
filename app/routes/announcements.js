@@ -67,6 +67,17 @@ router.post('/notices/:id/comment', requireLogin, (req, res) => {
   res.redirect(`/notices#n${a.id}`);
 });
 
+// Change the words of your own comment.
+router.post('/notices/comment/:id/edit', requireLogin, (req, res) => {
+  const c = /^\d+$/.test(req.params.id) ? db.prepare('SELECT * FROM announcement_comments WHERE id = ?').get(req.params.id) : null;
+  if (!c) return res.redirect('/notices');
+  if (c.user_id !== req.user.id) return forbidden(res);
+  const body = String(req.body.body || '').trim().slice(0, 500);
+  if (!body) flash(req, 'err', 'A comment cannot be empty. Remove it instead.');
+  else if (body !== c.body) { db.prepare('UPDATE announcement_comments SET body = ?, edited_at = ? WHERE id = ?').run(body, new Date().toISOString(), c.id); flash(req, 'ok', 'Comment updated.'); }
+  res.redirect(`/notices#n${c.announcement_id}`);
+});
+
 // Your own comment, or any comment if you post announcements.
 router.post('/notices/comment/:id/delete', requireLogin, (req, res) => {
   const c = /^\d+$/.test(req.params.id) ? db.prepare('SELECT * FROM announcement_comments WHERE id = ?').get(req.params.id) : null;

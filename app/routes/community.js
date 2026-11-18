@@ -73,8 +73,9 @@ router.get('/people/:id', requireLogin, (req, res) => {
   const team = require('../team');
   const reportsTo = team.managerOf(p.id);
   const theirTeam = db.prepare(`SELECT u.id, u.display_name, u.photo_path, u.job_title FROM user_managers um JOIN users u ON u.id = um.user_id WHERE um.manager_id = ? AND (u.active = 1 OR u.in_directory = 1) ORDER BY u.display_name COLLATE NOCASE`).all(p.id);
+  const canModNotes = access.can(req.user, 'users.manage') && req.user.scope === 'all' && access.canSee(req.user, p.id);
   const canWelcome = canPosition && req.user.scope === 'all' && Boolean(welcome) && welcome.created_at >= new Date(Date.now() - WELCOME_DAYS * 86400000).toISOString();   // only while it is on the home page
-  res.render('person', { canPosition, canWelcome, reportsTo, theirTeam, title: p.display_name, p: decorate(p), certs, welcome, notes, me: p.id === req.user.id, bday, shouts: social.shoutoutsFor(req.user.id, p.id) });
+  res.render('person', { canPosition, canWelcome, canModNotes, reportsTo, theirTeam, title: p.display_name, p: decorate(p), certs, welcome, notes, me: p.id === req.user.id, bday, shouts: social.shoutoutsFor(req.user.id, p.id) });
 });
 
 // ---- Positions: job titles and departments for a whole office, edited in one table -------------
@@ -532,6 +533,24 @@ router.post('/welcome/:id/wave', requireLogin, (req, res) => {
       .run(w.id, req.user.id, clean(req.body.message, 200) || null, new Date().toISOString());
   }
   res.redirect(req.body.back === 'home' ? '/#welcome' : `/people/${w.user_id}#welcome`);
+});
+
+// A welcome note: whoever wrote it can change or remove it; an admin or corporate admin can remove anyone's.
+router.post('/welcome/:id/note/:uid/:op', requireLogin, (req, res) => {
+  const w = isId(req.params.id) ? db.prepare('SELECT * FROM welcomes WHERE id = ?').get(req.params.id) : null;
+  const note = w && isId(req.params.uid) ? db.prepare('SELECT n.*, u.display_name AS author FROM welcome_notes n JOIN users u ON u.id = n.user_id WHERE n.welcome_id = ? AND n.user_id = ?').get(w.id, req.params.uid) : null;
+  if (!note) return notFound(res);
+  const mine = note.user_id === req.user.id;
+  const admin = access.can(req.user, 'users.manage') && req.user.scope === 'all' && access.canSee(req.user, w.user_id);
+  if (req.params.op === 'edit' && mine) {
+    db.prepare('UPDATE welcome_notes SET message = ? WHERE welcome_id = ? AND user_id = ?').run(clean(req.body.message, 200) || null, w.id, note.user_id);
+    flash(req, 'ok', 'Message updated.');
+  } else if (req.params.op === 'delete' && (mine || admin)) {
+    db.prepare('DELETE FROM welcome_notes WHERE welcome_id = ? AND user_id = ?').run(w.id, note.user_id);
+    if (!mine) activity.log(req.user, 'Welcome message removed', `${note.author}'s message on ${db.prepare('SELECT display_name FROM users WHERE id = ?').get(w.user_id).display_name}'s page`);
+    flash(req, 'ok', 'Message removed.');
+  } else return forbidden(res);
+  res.redirect(`/people/${w.user_id}#welcome`);
 });
 
 // ---- The daily question -----------------------------------------------------------

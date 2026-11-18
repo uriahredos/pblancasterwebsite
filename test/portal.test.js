@@ -4444,3 +4444,51 @@ test('welcome notes stay on the person\'s page for good: after 14 days, and afte
   assert.doesNotMatch((await owner.get('/')).text, /Dale Takendown joined/);
   assert.match((await t1.get(`/people/${b}`)).text, /Welcome messages[\s\S]*Glad you are here/);
 });
+
+test('messages: people edit their own in threads, comments and welcome notes; admins remove other people\'s; nobody edits someone else\'s', async () => {
+  const owner = await loggedIn('owner'); const t1 = await loggedIn('tech1'); const t2 = await loggedIn('tech2');
+  // A discussion: tech1 starts it, tech2 replies.
+  const sec = db.prepare('SELECT id FROM forum_sections ORDER BY id LIMIT 1').get().id;
+  const made = await t1.post('/discussions/new', [['section_id', String(sec)], ['title', 'Edit me thread'], ['body', 'Opening wrods']], { multipart: true, page: '/discussions/new' });
+  const tid = Number(/\/discussions\/t\/(\d+)/.exec(made.location)[1]); const page = `/discussions/t/${tid}`;
+  await t2.post(`${page}/reply`, [['body', 'A reply with a tpyo']], { multipart: true, page });
+  const [first, reply] = db.prepare('SELECT id FROM forum_posts WHERE thread_id = ? ORDER BY id').all(tid).map((r) => r.id);
+  assert.match((await t1.get(page)).text, new RegExp(`action="/discussions/p/${first}/edit"`));                        // your own opening post
+  assert.doesNotMatch((await t1.get(page)).text, new RegExp(`action="/discussions/p/${reply}/edit"`));                 // not someone else's
+  assert.equal((await t1.post(`/discussions/p/${first}/edit`, { body: 'Opening words' }, { page })).location, `${page}#p${first}`);
+  await t2.post(`/discussions/p/${reply}/edit`, { body: 'A reply with a typo fixed' }, { page });
+  const shown = (await t1.get(page)).text;
+  assert.match(shown, /Opening words/); assert.match(shown, /A reply with a typo fixed/); assert.match(shown, /class="meta edited">Edited /);
+  assert.equal((await t1.post(`/discussions/p/${reply}/edit`, { body: 'Hijacked' }, { page })).status, 403);
+  assert.equal((await owner.post(`/discussions/p/${reply}/edit`, { body: 'Admin rewrite' }, { page })).status, 403);   // an admin removes, never rewrites
+  await t2.post(`/discussions/p/${reply}/edit`, { body: '   ' }, { page });
+  assert.equal(db.prepare('SELECT body FROM forum_posts WHERE id = ?').get(reply).body, 'A reply with a typo fixed');
+  assert.match((await owner.get(page)).text, new RegExp(`action="/discussions/p/${reply}/delete"[^>]*data-confirm="Remove this reply from [^"]+\\?"[\\s\\S]*?Remove \\(admin\\)`));
+  await owner.post(`/discussions/p/${reply}/delete`, {}, { page });
+  assert.equal(db.prepare('SELECT 1 FROM forum_posts WHERE id = ?').get(reply), undefined);
+  // A comment on an announcement.
+  await owner.post('/admin/announcements', { title: 'Comment edit notice', body: 'Read me', audience: 'all' }, { page: '/admin/announcements' });
+  const nid = db.prepare("SELECT id FROM announcements WHERE title = 'Comment edit notice'").get().id;
+  await t1.post(`/notices/${nid}/comment`, { body: 'Frist comment' }, { page: '/notices' });
+  const cid = db.prepare('SELECT id FROM announcement_comments WHERE announcement_id = ?').get(nid).id;
+  await t1.post(`/notices/comment/${cid}/edit`, { body: 'First comment' }, { page: '/notices' });
+  assert.match((await t1.get('/notices')).text, /First comment <span class="meta edited">\(edited\)/);
+  assert.equal((await t2.post(`/notices/comment/${cid}/edit`, { body: 'Not mine' }, { page: '/notices' })).status, 403);
+  // Welcome notes on a profile.
+  const hire = makeUser('msg.hire', 'Hana Hire'); db.prepare('UPDATE users SET branch_id = 1 WHERE id = ?').run(hire);
+  await owner.post(`/admin/users/${hire}/welcome`, { intro: 'Hi' }, { page: `/admin/users/${hire}/edit` });
+  const w = db.prepare('SELECT id FROM welcomes WHERE user_id = ?').get(hire).id; const prof = `/people/${hire}`;
+  await t1.post(`/welcome/${w}/wave`, { message: 'Welcom aboard' }, { page: prof }); await t2.post(`/welcome/${w}/wave`, { message: 'Something rude' }, { page: prof });
+  const a = userId('tech1'), b = userId('tech2');
+  await t1.post(`/welcome/${w}/note/${a}/edit`, { message: 'Welcome aboard' }, { page: prof });
+  assert.match((await t1.get(prof)).text, /Welcome aboard/);
+  assert.equal((await t1.post(`/welcome/${w}/note/${b}/edit`, { message: 'x' }, { page: prof })).status, 403);
+  assert.equal((await t1.post(`/welcome/${w}/note/${b}/delete`, {}, { page: prof })).status, 403);                    // a technician cannot remove someone else's
+  assert.doesNotMatch((await t1.get(prof)).text, new RegExp(`note/${b}/delete`));
+  assert.match((await owner.get(prof)).text, new RegExp(`note/${b}/delete"[\\s\\S]*?Remove \\(admin\\)`));
+  await owner.post(`/welcome/${w}/note/${b}/delete`, {}, { page: prof });
+  assert.doesNotMatch((await t1.get(prof)).text, /Something rude/);
+  await t1.post(`/welcome/${w}/note/${a}/delete`, {}, { page: prof });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM welcome_notes WHERE welcome_id = ?').get(w).n, 0);
+  assert.ok(db.prepare("SELECT 1 FROM activity_log WHERE action = 'Welcome message removed'").get());
+});
