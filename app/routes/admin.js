@@ -419,13 +419,14 @@ function renderUsers(req, res, extra = {}) {
     `SELECT u.*, p.name AS profile_name, p.scope AS profile_scope, (SELECT name FROM branches b WHERE b.id = u.branch_id) AS branch_name,
             (SELECT group_concat(m.display_name, ', ') FROM user_managers um JOIN users m ON m.id = um.manager_id WHERE um.user_id = u.id) AS managers,
             (SELECT COUNT(*) FROM user_managers um WHERE um.manager_id = u.id) AS team_size
-     FROM users u LEFT JOIN profiles p ON p.id = u.profile_id
+     FROM users u LEFT JOIN profiles p ON p.id = u.profile_id WHERE u.removed_at IS NULL
      ORDER BY u.active DESC, u.display_name COLLATE NOCASE`).all()
     .filter((u) => !ids || ids.includes(u.id))
     .map((u) => ({ ...u, manageable: mayManage(req.user, u) }));
   res.status(extra.errors ? 400 : 200).render('admin_users', {
     title: 'Users', errors: [], values: {}, created: null, users,
-    profiles: grantableProfiles(req.user), roles: require('../team').titles(), duplicates: duplicatesFor(req.user), canAdd: req.user.scope === 'all', ...extra,
+    profiles: grantableProfiles(req.user), roles: require('../team').titles(), duplicates: duplicatesFor(req.user), disabledCount: users.filter((u) => !u.active && u.manageable && u.id !== req.user.id).length,
+    disabledListed: users.filter((u) => !u.active && u.manageable && u.in_directory).length, canAdd: req.user.scope === 'all', ...extra,
   });
 }
 
@@ -433,6 +434,18 @@ router.get('/admin/users', requirePerm('users.manage'), (req, res) => {
   const created = req.session.created || null; // temp password, shown once
   delete req.session.created;
   renderUsers(req, res, { created });
+});
+
+// Remove every disabled account this person manages, in one go.
+router.post('/admin/users/remove-disabled', requirePerm('users.manage'), (req, res) => {
+  if (req.user.scope !== 'all') return forbidden(res);
+  const ids = access.visibleUserIds(req.user); let gone = 0;
+  const off = db.prepare('SELECT * FROM users WHERE active = 0 AND removed_at IS NULL AND is_master = 0 AND id <> ?').all(req.user.id)
+    .filter((u) => (!ids || ids.includes(u.id)) && mayManage(req.user, u));
+  for (const u of off) if (require('../removal').remove(u.id)) gone += 1;
+  if (gone) activity.log(req.user, 'Disabled accounts removed', `${gone} ${gone === 1 ? 'account' : 'accounts'}: ${off.map((u) => u.display_name).join(', ')}`.slice(0, 400));
+  flash(req, gone ? 'ok' : 'err', gone ? `${gone} disabled ${gone === 1 ? 'account was' : 'accounts were'} removed.` : 'There were no disabled accounts to remove.');
+  res.redirect('/admin/users');
 });
 
 // Remove duplicate accounts: one pair (keep + extra), or every pair found when `all` is sent.
@@ -540,7 +553,7 @@ function editPage(req, res, target, extra = {}) {
     canSetProfile: fullAccess && !target.is_master && target.id !== req.user.id,
     canSetTeam: Boolean(fullAccess && profile && profile.scope === 'team' && !target.is_master),
     branches: req.user.allBranches ? db.prepare('SELECT id, name FROM branches ORDER BY name COLLATE NOCASE').all() : [],
-    people: db.prepare('SELECT id, display_name, active FROM users WHERE id <> ? AND branch_id = ? ORDER BY display_name COLLATE NOCASE').all(target.id, target.branch_id),
+    people: db.prepare('SELECT id, display_name, active FROM users WHERE id <> ? AND branch_id = ? AND removed_at IS NULL ORDER BY display_name COLLATE NOCASE').all(target.id, target.branch_id),
     team: db.prepare('SELECT user_id FROM user_managers WHERE manager_id = ?').all(target.id).map((r) => r.user_id),
     ...extra,
   });
@@ -624,6 +637,17 @@ router.post('/admin/users/:id/:op', requirePerm('users.manage'), (req, res) => {
         db.prepare('UPDATE users SET active = ? WHERE id = ?').run(target.active ? 0 : 1, target.id);
         if (target.active) { auth.endSessions(target.id); db.prepare('UPDATE users SET in_directory = 0 WHERE id = ?').run(target.id); }
         activity.log(req.user, target.active ? 'Account disabled' : 'Account enabled', target.display_name);
+      }
+      break;
+    case 'remove':
+      if (target.id === req.user.id) flash(req, 'err', 'You cannot remove your own account.');
+      else if (target.is_master) flash(req, 'err', 'The master account cannot be removed.');
+      else {
+        const how = require('../removal').remove(target.id);
+        if (how) {
+          activity.log(req.user, 'Person removed', `${target.display_name} (${target.username})${how === 'kept-records' ? ', records kept' : ''}`);
+          flash(req, 'ok', `${target.display_name} was removed.${how === 'kept-records' ? ' What they recorded for the office is kept, with their name on it.' : ''}`);
+        }
       }
       break;
     default:

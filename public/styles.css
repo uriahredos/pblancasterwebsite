@@ -1379,3 +1379,8 @@ td.reports-to .meta { display: block; }
 .dup-card .rec-head form { margin-left: auto; }
 .dup-list { list-style: none; margin: .5rem 0 0; padding: 0; display: grid; gap: .5rem; }
 .dup-list li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; padding-top: .5rem; border-top: 1px solid var(--line); }
+
+/* Removing people */
+.row-menu-list .danger-text { color: var(--err); }
+.btn.danger { border-color: var(--err); color: var(--err); background: var(--surface); }
+.btn.danger:hover { background: var(--err-bg); }

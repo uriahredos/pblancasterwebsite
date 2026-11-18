@@ -119,7 +119,7 @@ router.get('/admin/training/sessions/:id', requirePerm('training.view'), (req, r
   if (!session) return res.status(404).render('error', { title: 'Page not found', message: 'That session does not exist.' });
   const ids = access.visibleUserIds(req.user);
   const attending = new Set(db.prepare('SELECT user_id FROM training_attendance WHERE session_id = ?').all(session.id).map((r) => r.user_id));
-  const people = db.prepare('SELECT id, display_name, active FROM users ORDER BY display_name COLLATE NOCASE').all()
+  const people = db.prepare('SELECT id, display_name, active FROM users WHERE removed_at IS NULL ORDER BY display_name COLLATE NOCASE').all()
     .filter((u) => (u.active || attending.has(u.id)) && (!ids || ids.includes(u.id)));
   const others = ids ? [...attending].filter((id) => !ids.includes(id)).length : 0;
   res.render('admin_session', {

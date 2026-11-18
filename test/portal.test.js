@@ -4333,3 +4333,47 @@ test('duplicates: the same person twice in one office is found, and the disabled
   assert.equal(db.prepare("SELECT COUNT(*) n FROM activity_log WHERE action = 'Duplicate account removed'").get().n, 2);
   await owner.post('/branch/view', { branch: '1', back: '/' }, { page: '/' });
 });
+
+test('removing people: one at a time or every disabled account; sign-in and details go, office records keep the name', async () => {
+  const owner = await loggedIn('owner');
+  const office = db.prepare("INSERT INTO branches (name, created_at) VALUES ('Removia', ?)").run(new Date().toISOString()).lastInsertRowid;
+  const mk = (username, name) => { const id = makeUser(username, name); db.prepare('UPDATE users SET branch_id = ? WHERE id = ?').run(office, id); return id; };
+  const clean = mk('rem.clean', 'Cleo Clean'); const busy = mk('rem.busy', 'Bea Busy'); const off1 = mk('rem.off1', 'Otto Off'); const off2 = mk('rem.off2', 'Olga Off'); const stays = mk('rem.stay', 'Stan Stays');
+  db.prepare("UPDATE users SET email = 'bea@example.com', phone = '717-555-0199', job_title = 'Service Tech', in_directory = 1 WHERE id = ?").run(busy);
+  db.prepare('UPDATE users SET active = 0, in_directory = 1 WHERE id IN (?, ?)').run(off1, off2);
+  const sub = db.prepare("INSERT INTO parts_submissions (user_id, action, source, created_at, created_local_date) VALUES (?, 'take', 'van', ?, ?)").run(busy, new Date().toISOString(), new Date().toISOString().slice(0, 10)).lastInsertRowid;
+  db.prepare("INSERT INTO tasks (title, assigned_to, assigned_by, created_at) VALUES ('Unstarted', ?, ?, ?)").run(busy, userId('owner'), new Date().toISOString());
+  await owner.post('/branch/view', { branch: String(office), back: '/admin/users' }, { page: '/admin/users' });
+  const page = (await owner.get('/admin/users')).text;
+  assert.match(page, new RegExp(`action="/admin/users/${clean}/remove"[^>]*data-confirm="Remove Cleo Clean for good\\?`));
+  assert.match(page, /2 disabled accounts<\/strong>/); assert.match(page, /2 of these are people<\/strong>|<strong>2 of these are people from the office contact list/);
+  // Who may: not a technician, never yourself, never the master account.
+  assert.equal((await (await loggedIn('tech1')).post(`/admin/users/${clean}/remove`, {}, { page: '/' })).status, 403);
+  await owner.post(`/admin/users/${userId('owner')}/remove`, {}, { page: '/admin/users' });
+  assert.ok(db.prepare('SELECT 1 FROM users WHERE id = ? AND removed_at IS NULL AND active = 1').get(userId('owner')));
+  // Someone with nothing on record is gone entirely.
+  await owner.post(`/admin/users/${clean}/remove`, {}, { page: '/admin/users' });
+  assert.equal(db.prepare('SELECT 1 FROM users WHERE id = ?').get(clean), undefined);
+  // Someone with records: sign-in and details erased, hidden from every list, the parts entry still carries the name.
+  await owner.post(`/admin/users/${busy}/remove`, {}, { page: '/admin/users' });
+  const row = db.prepare('SELECT * FROM users WHERE id = ?').get(busy);
+  assert.deepEqual([row.active, row.in_directory, row.email, row.phone, row.job_title, row.profile_id, row.username, row.display_name], [0, 0, null, null, null, null, `removed-${busy}`, 'Bea Busy']);
+  assert.ok(row.removed_at);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM tasks WHERE title = 'Unstarted'").get().n, 0);
+  assert.equal(db.prepare('SELECT user_id FROM parts_submissions WHERE id = ?').get(sub).user_id, busy);
+  const after = (await owner.get('/admin/users')).text;
+  assert.doesNotMatch(after, /Bea Busy\s*<\/td>|Cleo Clean/); assert.match(after, /Bea Busy was removed\. What they recorded for the office is kept/);
+  assert.doesNotMatch((await owner.get('/people')).text, /Bea Busy/);
+  assert.match((await owner.get('/admin/parts')).text, /Bea Busy/);                                                  // the log still says who took the parts
+  const login = await new Client().post('/login', { username: 'rem.busy', password: 'whatever it was 123' }, { page: '/login' });
+  assert.notEqual(login.location, '/');
+  makeUser('rem.busy', 'New Bea');                                                                                   // the username is free again
+  // Every disabled account at once.
+  await owner.post('/admin/users/remove-disabled', {}, { page: '/admin/users' });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM users WHERE id IN (?, ?)').get(off1, off2).n, 0);
+  assert.ok(db.prepare('SELECT 1 FROM users WHERE id = ? AND active = 1').get(stays));
+  assert.match((await owner.get('/admin/users')).text, /2 disabled accounts were removed/);
+  assert.doesNotMatch((await owner.get('/admin/users')).text, /disabled accounts?<\/strong>/);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM activity_log WHERE action IN ('Person removed', 'Disabled accounts removed')").get().n, 3);
+  await owner.post('/branch/view', { branch: '1', back: '/' }, { page: '/' });
+});

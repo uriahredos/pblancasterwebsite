@@ -305,7 +305,7 @@ router.post('/admin/people/import', requirePerm('users.manage'), (req, res, next
   db.transaction(() => {
     // Matching looks only at the branch being imported into; usernames must still be unique across the site.
     const taken = new Set(db.prepare('SELECT username FROM users').all().map((x) => x.username.toLowerCase()));
-    const users = db.prepare('SELECT id, username, display_name, email FROM users WHERE branch_id = ?').all(req.user.workBranch);
+    const users = db.prepare('SELECT id, username, display_name, email FROM users WHERE branch_id = ? AND removed_at IS NULL').all(req.user.workBranch);
     for (const c of read.people) {
       let u = findAccount(c, users);
       if (!u) {
@@ -356,7 +356,7 @@ function branchPage(req, res, extra = {}) {
   const inList = (list) => list.map((p) => p.id).join(',') || '0';
   const rows = db.prepare(
     `SELECT b.*, (SELECT COUNT(*) FROM users u WHERE u.branch_id = b.id AND u.active = 1) AS people,
-            (SELECT COUNT(*) FROM users u WHERE u.branch_id = b.id AND u.active = 0) AS off
+            (SELECT COUNT(*) FROM users u WHERE u.branch_id = b.id AND u.active = 0 AND u.removed_at IS NULL) AS off
      FROM branches b ORDER BY b.name COLLATE NOCASE`).all();
   // With a couple of hundred offices, only the ones in use (or the one asked for) are shown in full.
   const wanted = isId(req.query.office) ? Number(req.query.office) : extra.values && extra.values.office ? extra.values.office : null;
@@ -367,7 +367,7 @@ function branchPage(req, res, extra = {}) {
     ...b,
     admins: db.prepare(`SELECT u.id, u.display_name, u.photo_path, u.active, u.must_change_password, p.name AS profile FROM users u JOIN profiles p ON p.id = u.profile_id
                         WHERE u.branch_id = ? AND u.is_master = 0 AND u.profile_id IN (${inList(office)}) ORDER BY u.display_name COLLATE NOCASE`).all(b.id),
-    others: db.prepare(`SELECT u.id, u.display_name FROM users u WHERE u.branch_id = ? AND u.is_master = 0 AND u.id <> ? AND (u.profile_id IS NULL OR u.profile_id NOT IN (${inList([...office, ...corp])}))
+    others: db.prepare(`SELECT u.id, u.display_name FROM users u WHERE u.branch_id = ? AND u.removed_at IS NULL AND u.is_master = 0 AND u.id <> ? AND (u.profile_id IS NULL OR u.profile_id NOT IN (${inList([...office, ...corp])}))
                         ORDER BY u.display_name COLLATE NOCASE`).all(b.id, req.user.id),
   }));
   const corporate = db.prepare(`SELECT u.id, u.display_name, u.photo_path, u.is_master, u.active, b.name AS branch, p.name AS profile FROM users u

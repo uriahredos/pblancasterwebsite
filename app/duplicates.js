@@ -12,7 +12,7 @@ const norm = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
  */
 function find(ids) {
   const users = db.prepare(`SELECT u.id, u.username, u.display_name, u.email, u.active, u.must_change_password, u.job_title, u.branch_id, u.is_master, u.profile_id,
-      (SELECT name FROM branches b WHERE b.id = u.branch_id) AS branch_name FROM users u ORDER BY u.id`).all().filter((u) => !ids || ids.includes(u.id));
+      (SELECT name FROM branches b WHERE b.id = u.branch_id) AS branch_name FROM users u WHERE u.removed_at IS NULL ORDER BY u.id`).all().filter((u) => !ids || ids.includes(u.id));
   const groupOf = new Map(); const groups = [];
   const join = (key, u) => {
     if (!key) return;
