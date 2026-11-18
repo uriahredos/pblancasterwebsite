@@ -10,7 +10,7 @@ const router = express.Router();
 
 // An announcement reaches everyone, or (when a manager posted it) that manager's people and the manager.
 // 'all' means everyone in the branch it was posted for, or every branch when it has no branch.
-const FOR_ME = `((a.audience = 'all' AND (a.branch_id IS NULL OR a.branch_id = (SELECT branch_id FROM users WHERE id = @me))) OR a.created_by = @me OR EXISTS (SELECT 1 FROM user_managers um WHERE um.manager_id = a.created_by AND um.user_id = @me))`;
+const FOR_ME = `((a.audience = 'all' AND (a.branch_id IS NULL OR a.branch_id = (SELECT branch_id FROM users WHERE id = @me))) OR a.created_by = @me OR (a.audience <> 'all' AND EXISTS (SELECT 1 FROM user_managers um WHERE um.manager_id = a.created_by AND um.user_id = @me)))`;
 const CURRENT = `(a.expires_on IS NULL OR a.expires_on >= @today)`;
 
 // What an announcement is about. 'general' shows no label.

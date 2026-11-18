@@ -1,0 +1,4 @@
+<li>
+  <a class="chart-person" href="/people/<%= node.id %>"><%- include('avatar', { who: node }) %><span class="person-text"><strong><%= node.display_name %></strong><span class="meta"><%= node.job_title || '' %></span></span></a>
+  <% if (node.reports.length) { %><ul class="chart-kids"><% node.reports.forEach(function (kid) { %><%- include('chart_node', { node: kid }) %><% }) %></ul><% } %>
+</li>

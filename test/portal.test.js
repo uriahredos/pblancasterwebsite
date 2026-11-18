@@ -3442,7 +3442,7 @@ test('photo wall and branch pages: photos posted and liked, a branch page with i
   const list = await t1.get('/branches');                                               // one branch goes straight to it; several are listed
   assert.ok(list.location === '/branches/1' || /href="\/branches\/1"/.test(list.text));
   let page = (await t1.get('/branches/1')).text.replace(/\s+/g, ' ');
-  assert.match(page, /Lancaster office<\/h1>/); assert.match(page, /Service<\/h3>[\s\S]*Terry Tech<\/strong><span class="meta">Lead Tech/);
+  assert.match(page, /Lancaster office<\/h1>/); assert.match(page, /Terry Tech<\/strong><span class="meta">Lead Tech/);
   assert.match(page, /Branch page shout-out/); assert.match(page, /\/wall\/photo\//); assert.doesNotMatch(page, /Edit this page/);
   assert.equal((await t1.post('/branches/1', [['about', 'hacked']], { multipart: true, page: '/branches/1' })).status, 403);
   assert.match((await owner.post('/branches/1', [['phone', 'nope']], { multipart: true, page: '/branches/1?edit=1' })).text, /phone number does not look right/);
@@ -4093,7 +4093,7 @@ test('community first: the company in numbers, one list of what people across th
   const strip = /<section class="company-strip"[\s\S]*?<\/section>/.exec(home)[0];
   const offices = db.prepare('SELECT COUNT(*) n FROM branches').get().n;
   assert.match(strip, new RegExp(`<a href="/branches"><strong>${offices.toLocaleString('en-US')}</strong><span>Offices</span></a>`));
-  assert.match(strip, /<a href="\/people"><strong>[\d,]+<\/strong><span>People Here<\/span>/); assert.match(strip, /Shout-Outs This Month/);
+  assert.match(strip, /<a href="\/people"><strong>[\d,]+<\/strong><span>People Here<\/span>/); assert.match(strip, /Shout-Outs? This Month/);
   // Around the company sits straight after shout-outs in the main column, and each item names the office it came from.
   const sec = db.prepare('SELECT id FROM forum_sections ORDER BY sort_order LIMIT 1').get().id;
   await t2.post('/discussions/new', { section_id: String(sec), title: 'FEED-TEST best ladder rack?', body: 'Asking for the van.' }, { page: '/discussions/new', multipart: true });
@@ -4156,4 +4156,44 @@ test('sign-in details: a manager picks a few people who have not signed in and g
   assert.doesNotMatch(db.prepare("SELECT group_concat(detail, ' ') d FROM activity_log WHERE action = 'Sign-in details made'").get().d, new RegExp(pw[1]));
   const t1 = await loggedIn('tech1');
   assert.equal((await t1.get(page)).status, 403); assert.equal((await t1.post(page, [['who', String(b)]], { page: '/' })).status, 403);
+});
+
+test('reports to: set on the Positions page, it draws the office team chart, fills Managed by, and lets a manager see everyone under them', async () => {
+  const owner = await loggedIn('owner');
+  const office = db.prepare("INSERT INTO branches (name, created_at) VALUES ('Chartville', ?)").run(new Date().toISOString()).lastInsertRowid;
+  const mk = (username, name, profile, job) => { const id = makeUser(username, name); db.prepare('UPDATE users SET profile_id = ?, branch_id = ?, job_title = ? WHERE id = ?').run(profileId(profile), office, job, id); return id; };
+  const gm = mk('chart.gm', 'Gina General', 'Admin', 'General Manager'); const sm = mk('chart.sm', 'Sam Service', 'Manager', 'Service Manager');
+  const t1 = mk('chart.t1', 'Tia Tech', 'Technician', 'Service Tech'); const t2 = mk('chart.t2', 'Tom Tech', 'Technician', 'Service Tech'); const loner = mk('chart.x', 'Lou Loner', 'Technician', 'Estimator');
+  const elsewhere = userId('tech1');
+  await owner.post('/branch/view', { branch: String(office), back: '/admin/positions' }, { page: '/admin/positions' });
+  const page = '/admin/positions';
+  const form = (await owner.get(page)).text;
+  assert.match(form, /<th>Reports to<\/th>/);
+  assert.match(form, new RegExp(`<select name="mgr_${t1}"[^>]*><option value="">Nobody</option>`));
+  assert.doesNotMatch(form.slice(form.indexOf(`name="mgr_${t1}"`), form.indexOf(`name="mgr_${t1}"`) + 2000).split('</select>')[0], new RegExp(`value="${t1}"`));   // nobody is offered themselves
+  assert.equal((await owner.post(page, { [`mgr_${sm}`]: String(gm), [`mgr_${t1}`]: String(sm), [`mgr_${t2}`]: String(sm) }, { page })).status, 302);
+  assert.match((await owner.get(page)).text, /3 people updated/);
+  // A loop, yourself, or someone from another office is refused and nothing changes.
+  await owner.post(page, { [`mgr_${gm}`]: String(t1) }, { page });
+  assert.match((await owner.get(page)).text, /Gina General could not be set to report to Tia Tech: that person already reports to them\./);
+  await owner.post(page, { [`mgr_${loner}`]: String(elsewhere) }, { page });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM user_managers WHERE user_id IN (?, ?)').get(gm, loner).n, 0);
+  // The office page shows the chart: the general manager, the service manager under them, the techs under the service manager.
+  const officePage = (await owner.get(`/branches/${office}`)).text;
+  assert.match(officePage, /<ul class="chart">[\s\S]*Gina General[\s\S]*<ul class="chart-kids">[\s\S]*Sam Service[\s\S]*<ul class="chart-kids">[\s\S]*Tia Tech[\s\S]*Tom Tech/);
+  assert.match(officePage, /Everyone else<\/h3>[\s\S]*Lou Loner/);
+  assert.match((await owner.get(`/people/${t1}`)).text, /Reports to<\/span> <a href="\/people\/\d+"><strong>Sam Service/);
+  assert.match((await owner.get(`/people/${sm}`)).text, /2 people report to Sam/);
+  assert.match((await owner.get('/admin/users')).text, /Tia Tech\s*<\/td>\s*<td>Chartville<\/td>[\s\S]*?<td>Sam Service<\/td>/);
+  // A manager-profile account sees its own people, and a manager of managers sees everyone underneath.
+  db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(profileId('Manager'), gm);
+  const asGm = (await (await loggedIn('chart.gm')).get('/admin/parts')).text;
+  for (const name of ['Sam Service', 'Tia Tech', 'Tom Tech']) assert.match(asGm, new RegExp(name));
+  assert.doesNotMatch(asGm, /Lou Loner/);
+  const asSm = (await (await loggedIn('chart.sm')).get('/admin/parts')).text;
+  assert.match(asSm, />Tia Tech<\/option>/); assert.doesNotMatch(asSm, />Gina General<\/option>|Lou Loner/);
+  // Clearing it takes the person off the chart.
+  await owner.post(page, { [`mgr_${t2}`]: '' }, { page });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM user_managers WHERE user_id = ?').get(t2).n, 0);
+  await owner.post('/branch/view', { branch: '1', back: '/' }, { page: '/' });
 });

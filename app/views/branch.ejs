@@ -57,7 +57,12 @@
     <section class="panel" aria-labelledby="who-h">
       <div class="panel-head"><h2 id="who-h">Who's who</h2><a href="/people?branch=<%= b.id %>">Search them</a></div>
       <% if (!people.length) { %><p class="empty">Nobody has been added to this office yet.</p><% } %>
-      <% groups.forEach(function (g) { %>
+      <% if (teamChart.tops.length) { %>
+      <ul class="chart"><% teamChart.tops.forEach(function (top) { %><%- include('partials/chart_node', { node: top }) %><% }) %></ul>
+      <% if (teamChart.rest.length) { %><h3 class="group-h">Everyone else</h3>
+      <ul class="roster"><% teamChart.rest.forEach(function (p) { %><li><a href="/people/<%= p.id %>"><%- include('partials/avatar', { who: p }) %><span class="person-text"><strong><%= p.display_name %></strong><span class="meta"><%= p.job_title || '' %></span></span></a></li><% }) %></ul><% } %>
+      <% } %>
+      <% (teamChart.tops.length ? [] : groups).forEach(function (g) { %>
       <% if (groups.length > 1) { %><h3 class="group-h"><%= g.name %></h3><% } %>
       <ul class="roster">
         <% g.people.forEach(function (p) { %><li><a href="/people/<%= p.id %>"><%- include('partials/avatar', { who: p }) %><span class="person-text"><strong><%= p.display_name %></strong><span class="meta"><%= p.job_title || '' %></span></span></a></li><% }) %>

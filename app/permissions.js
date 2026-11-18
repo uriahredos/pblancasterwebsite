@@ -217,7 +217,7 @@ const can = (user, perm) => Boolean(user && user.perms && user.perms.has(perm));
 function visibleUserIds(user) {
   if (user.scope === 'team') {
     if (!user.teamIds) {
-      user.teamIds = [user.id, ...db.prepare('SELECT user_id FROM user_managers WHERE manager_id = ?').all(user.id).map((r) => r.user_id)];
+      user.teamIds = [user.id, ...require('./team').everyoneUnder(user.id)];
     }
     return user.teamIds;
   }

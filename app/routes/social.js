@@ -261,12 +261,13 @@ const getBranch = (id) => (isId(id) ? db.prepare('SELECT * FROM branches WHERE i
 
 function branchPage(req, res, b, extra = {}) {
   const people = db.prepare(`SELECT u.id, u.display_name, u.photo_path, u.job_title, u.department FROM users u WHERE u.branch_id = ? AND ${LISTED} ORDER BY u.display_name COLLATE NOCASE`).all(b.id);
+  const teamChart = require('../team').chart(people);
   const groups = new Map();
   for (const p of people) { const k = p.department || 'Team'; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(p); }
   // Management first, then the rest by name; people with no department last.
   const order = [...groups.keys()].sort((x, y) => (x === 'Management' ? -1 : y === 'Management' ? 1 : x === 'Team' ? 1 : y === 'Team' ? -1 : x.localeCompare(y)));
   res.status(extra.errors ? 400 : 200).render('branch', {
-    title: `${b.name} office`, wide: true, b, people, groups: order.map((k) => ({ name: k, people: groups.get(k) })), canEdit: mayEditBranch(req.user, b), errors: [], editing: false,
+    title: `${b.name} office`, wide: true, b, people, teamChart, groups: order.map((k) => ({ name: k, people: groups.get(k) })), canEdit: mayEditBranch(req.user, b), errors: [], editing: false,
     services: require('./company').servicesOf(b.id), allServices: require('./company').allServices(), stateNames: require('./company').STATES,
     many: db.prepare('SELECT COUNT(*) AS n FROM branches').get().n > 1,
     shouts: db.prepare(`${SHOUT} WHERE t.branch_id = @b ORDER BY s.id DESC LIMIT 4`).all({ me: req.user.id, b: b.id }),

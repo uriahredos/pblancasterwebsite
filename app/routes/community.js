@@ -70,7 +70,10 @@ router.get('/people/:id', requireLogin, (req, res) => {
   const social = require('./social');
   const bday = /^\d\d-\d\d$/.test(p.birthday || '') ? `${social.MONTHS[Number(p.birthday.slice(0, 2)) - 1]} ${Number(p.birthday.slice(3))}` : '';
   const canPosition = access.can(req.user, 'users.manage') && access.canSee(req.user, p.id);
-  res.render('person', { canPosition, title: p.display_name, p: decorate(p), certs, welcome, notes, me: p.id === req.user.id, bday, shouts: social.shoutoutsFor(req.user.id, p.id) });
+  const team = require('../team');
+  const reportsTo = team.managerOf(p.id);
+  const theirTeam = db.prepare(`SELECT u.id, u.display_name, u.photo_path, u.job_title FROM user_managers um JOIN users u ON u.id = um.user_id WHERE um.manager_id = ? AND (u.active = 1 OR u.in_directory = 1) ORDER BY u.display_name COLLATE NOCASE`).all(p.id);
+  res.render('person', { canPosition, reportsTo, theirTeam, title: p.display_name, p: decorate(p), certs, welcome, notes, me: p.id === req.user.id, bday, shouts: social.shoutoutsFor(req.user.id, p.id) });
 });
 
 // ---- Positions: job titles and departments for a whole office, edited in one table -------------
@@ -78,26 +81,49 @@ router.get('/people/:id', requireLogin, (req, res) => {
 const deptList = () => db.prepare("SELECT DISTINCT department FROM users WHERE department IS NOT NULL AND department <> '' AND (active = 1 OR in_directory = 1) ORDER BY department COLLATE NOCASE").all().map((r) => r.department);
 function positionPeople(user) {
   const ids = access.visibleUserIds(user);
-  return db.prepare(`SELECT u.id, u.display_name, u.job_title, u.department, u.photo_path, b.name AS branch FROM users u LEFT JOIN branches b ON b.id = u.branch_id
+  return db.prepare(`SELECT u.id, u.display_name, u.job_title, u.department, u.photo_path, u.branch_id, b.name AS branch,
+      (SELECT um.manager_id FROM user_managers um JOIN users m ON m.id = um.manager_id WHERE um.user_id = u.id ORDER BY m.display_name COLLATE NOCASE LIMIT 1) AS manager_id
+    FROM users u LEFT JOIN branches b ON b.id = u.branch_id
     WHERE (u.active = 1 OR u.in_directory = 1) ${ids ? `AND u.id IN (${ids.map(Number).join(',') || 0})` : ''} ORDER BY u.display_name COLLATE NOCASE LIMIT 1000`).all();
 }
 router.get('/admin/positions', requirePerm('users.manage'), (req, res) => {
   const saved = req.session.positionsSaved; delete req.session.positionsSaved;
-  res.render('admin_positions', { title: 'Positions', wide: true, people: positionPeople(req.user), departments: deptList(), saved, focus: isId(req.query.who) ? Number(req.query.who) : 0, showOffice: req.user.viewBranch === null });
+  const problemsOnce = req.session.positionsProblems || []; delete req.session.positionsProblems;
+  const people = positionPeople(req.user);
+  // Who each person could report to: the people of their own office.
+  const byOffice = new Map();
+  for (const p of people) { if (!byOffice.has(p.branch_id)) byOffice.set(p.branch_id, []); byOffice.get(p.branch_id).push(p); }
+  res.render('admin_positions', { title: 'Positions', wide: true, people, byOffice, problems: problemsOnce, departments: deptList(), saved, focus: isId(req.query.who) ? Number(req.query.who) : 0, showOffice: req.user.viewBranch === null });
 });
 router.post('/admin/positions', requirePerm('users.manage'), (req, res) => {
   const set = db.prepare('UPDATE users SET job_title = ?, department = ? WHERE id = ?');
-  let changed = 0;
+  let changed = 0; const problems = [];
+  const team = require('../team');
   db.transaction(() => {
-    for (const p of positionPeople(req.user)) {
-      if (req.body[`job_${p.id}`] === undefined && req.body[`dept_${p.id}`] === undefined) continue;
-      const job = clean(req.body[`job_${p.id}`], 80) || null; const dept = clean(req.body[`dept_${p.id}`], 60) || null;
-      if (job === (p.job_title || null) && dept === (p.department || null)) continue;
-      set.run(job, dept, p.id); changed += 1;
-      activity.log(req.user, 'Position changed', `${p.display_name}: ${[job, dept].filter(Boolean).join(' · ') || 'cleared'}`);
+    const people = positionPeople(req.user); const names = new Map(people.map((p) => [p.id, p.display_name]));
+    for (const p of people) {
+      if (req.body[`job_${p.id}`] === undefined && req.body[`dept_${p.id}`] === undefined && req.body[`mgr_${p.id}`] === undefined) continue;
+      let touched = false;
+      if (req.body[`job_${p.id}`] !== undefined || req.body[`dept_${p.id}`] !== undefined) {
+        const job = clean(req.body[`job_${p.id}`], 80) || null; const dept = clean(req.body[`dept_${p.id}`], 60) || null;
+        if (job !== (p.job_title || null) || dept !== (p.department || null)) {
+          set.run(job, dept, p.id); touched = true;
+          activity.log(req.user, 'Position changed', `${p.display_name}: ${[job, dept].filter(Boolean).join(' · ') || 'cleared'}`);
+        }
+      }
+      // Reports to: someone from the list this page offered (the same office), or nobody.
+      if (req.body[`mgr_${p.id}`] !== undefined) {
+        const mgr = isId(req.body[`mgr_${p.id}`]) ? Number(req.body[`mgr_${p.id}`]) : null;
+        if (mgr !== (p.manager_id || null) && (!mgr || names.has(mgr))) {
+          const why = team.setManager(p.id, mgr);
+          if (why) problems.push(`${p.display_name} could not be set to report to ${names.get(mgr)}: ${why}.`);
+          else { touched = true; activity.log(req.user, 'Reports to changed', `${p.display_name}: ${mgr ? names.get(mgr) : 'nobody'}`); }
+        }
+      }
+      if (touched) changed += 1;
     }
   })();
-  req.session.positionsSaved = changed;
+  req.session.positionsSaved = changed; req.session.positionsProblems = problems;
   res.redirect('/admin/positions');
 });
 
@@ -326,7 +352,6 @@ router.post('/admin/branches/:id/admins', everyBranch, (req, res) => {
     const u = db.prepare('SELECT * FROM users WHERE id = ? AND branch_id = ? AND is_master = 0').get(req.body.user_id, b.id);
     if (!u || u.id === req.user.id) return branchPage(req, res, { errors: ['Choose someone from that office.'] });
     db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(profile.id, u.id);
-    db.prepare('DELETE FROM user_managers WHERE manager_id = ?').run(u.id);
     activity.log(req.user, 'Office admin appointed', `${u.display_name} for ${b.name} (${profile.name})`);
     flash(req, 'ok', `${u.display_name} is now an admin for the ${b.name} office.${u.active ? '' : ' Their sign-in is switched off: enable it and reset their password under Users.'}`);
     return res.redirect(`/admin/branches#o${b.id}`);
@@ -363,7 +388,6 @@ router.post('/admin/corporate/admins', everyBranch, (req, res) => {
   const u = isId(req.body.user_id) ? db.prepare('SELECT * FROM users WHERE id = ? AND active = 1 AND is_master = 0').get(req.body.user_id) : null;
   if (!profile || !u || u.id === req.user.id) return branchPage(req, res, { errors: ['Choose a person and a corporate profile.'] });
   db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(profile.id, u.id);
-  db.prepare('DELETE FROM user_managers WHERE manager_id = ?').run(u.id);
   activity.log(req.user, 'Corporate admin appointed', `${u.display_name} (${profile.name})`);
   flash(req, 'ok', `${u.display_name} is now a corporate admin and can see and manage every office.`);
   res.redirect('/admin/branches#corporate');
