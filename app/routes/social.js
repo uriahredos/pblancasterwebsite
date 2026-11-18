@@ -276,6 +276,17 @@ function branchPage(req, res, b, extra = {}) {
     ...extra,
   });
 }
+// The office's organization chart as a PDF, for anyone who can see the office page.
+router.get('/branches/:id/chart.pdf', requireLogin, (req, res) => {
+  const b = getBranch(req.params.id);
+  if (!b) return notFound(res);
+  const people = db.prepare(`SELECT u.id, u.display_name, u.photo_path, u.job_title, u.department FROM users u WHERE u.branch_id = ? AND ${LISTED} ORDER BY u.display_name COLLATE NOCASE`).all(b.id);
+  const { fmtDate, localDate } = require('../util');
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${b.name.replace(/[^A-Za-z0-9]+/g, '-')}-organization-chart-${localDate()}.pdf"`);
+  require('../chartpdf').write(res, { office: b, teamChart: require('../team').chart(people), when: fmtDate(localDate()) });
+});
+
 router.get('/branches/:id', requireLogin, (req, res) => {
   const b = getBranch(req.params.id);
   if (!b) return notFound(res);

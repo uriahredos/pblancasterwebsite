@@ -4377,3 +4377,20 @@ test('removing people: one at a time or every disabled account; sign-in and deta
   assert.equal(db.prepare("SELECT COUNT(*) n FROM activity_log WHERE action IN ('Person removed', 'Disabled accounts removed')").get().n, 3);
   await owner.post('/branch/view', { branch: '1', back: '/' }, { page: '/' });
 });
+
+test('organization chart: any signed-in person can download an office chart as a PDF', async () => {
+  const owner = await loggedIn('owner'); const t1 = await loggedIn('tech1');
+  const office = db.prepare("SELECT id FROM branches WHERE name = 'Chartville'").get().id;
+  const pdf = await t1.get(`/branches/${office}/chart.pdf`);
+  assert.equal(pdf.status, 200); assert.match(pdf.headers.get('content-type'), /application\/pdf/);
+  assert.match(pdf.headers.get('content-disposition'), /attachment; filename="Chartville-organization-chart-\d{4}-\d\d-\d\d\.pdf"/);
+  assert.ok(pdf.text.startsWith('%PDF-')); assert.ok(pdf.text.length > 2000);
+  assert.equal((await t1.get('/branches/999999/chart.pdf')).status, 404);
+  assert.equal((await new Client().get(`/branches/${office}/chart.pdf`)).status, 302);
+  await owner.post('/branch/view', { branch: String(office), back: '/admin/users/chart' }, { page: '/admin/users/chart' });
+  assert.match((await owner.get('/admin/users/chart')).text, new RegExp(`href="/branches/${office}/chart.pdf"[^>]*>Download as PDF`));
+  assert.match((await owner.get(`/branches/${office}`)).text, /Download the chart as PDF/);
+  const empty = db.prepare("INSERT INTO branches (name, created_at) VALUES ('Emptyton', ?)").run(new Date().toISOString()).lastInsertRowid;
+  assert.ok((await t1.get(`/branches/${empty}/chart.pdf`)).text.startsWith('%PDF-'));                                   // an office with nobody still gives a page
+  await owner.post('/branch/view', { branch: '1', back: '/' }, { page: '/' });
+});

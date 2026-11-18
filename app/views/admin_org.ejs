@@ -4,7 +4,7 @@
 <% if (!office) { %>
 <p class="card empty">Choose one office with the picker at the top right to see its chart.</p>
 <% } else { %>
-<h2><%= office.name %> office</h2>
+<div class="title-row"><h2><%= office.name %> office</h2><% if (teamChart.tops.length) { %><a class="btn small" href="/branches/<%= office.id %>/chart.pdf" data-no-soft download>Download as PDF</a><% } %></div>
 <% if (!teamChart.tops.length) { %>
 <p class="card empty">No chart yet. Open <a href="/admin/users/positions">Positions and reporting</a>, pick each person's job title, then save.</p>
 <% } else { %>

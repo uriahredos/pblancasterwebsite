@@ -59,6 +59,7 @@
       <% if (!people.length) { %><p class="empty">Nobody has been added to this office yet.</p><% } %>
       <% if (teamChart.tops.length) { %>
       <%- include('partials/org_chart') %>
+      <p class="filter-actions"><a class="btn small" href="/branches/<%= b.id %>/chart.pdf" data-no-soft download>Download the chart as PDF</a></p>
       <% if (teamChart.rest.length) { %><h3 class="group-h">Everyone else</h3>
       <ul class="roster"><% teamChart.rest.forEach(function (p) { %><li><a href="/people/<%= p.id %>"><%- include('partials/avatar', { who: p }) %><span class="person-text"><strong><%= p.display_name %></strong><span class="meta"><%= p.job_title || '' %></span></span></a></li><% }) %></ul><% } %>
       <% } %>
