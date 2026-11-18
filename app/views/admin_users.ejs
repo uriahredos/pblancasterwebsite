@@ -54,7 +54,7 @@
   </label>
   <div class="filter-actions"><button class="btn primary small" type="submit">Add person</button></div>
 </form>
-<p class="hint">A temporary password is generated for you and shown once after you add the person. The role places them on the chart; the profile decides what they can do, and is filled in for you when the role gives one.</p>
+<p class="hint">A temporary password is generated for you and shown once after you add the person. It works for <%= tempPasswordDays %> days; after that, send fresh sign-in details. The role places them on the chart; the profile decides what they can do, and is filled in for you when the role gives one.</p>
 <% } else { %>
 <p class="lede">These are the people assigned to you.</p>
 <% } %>
@@ -78,7 +78,7 @@
     <td><%= u.username %></td>
     <td><% if (u.is_master) { %><span class="tag master">Master</span><% } else { %><%= u.profile_name || 'None' %><% if (u.profile_scope === 'team') { %> <span class="hint">· <%= u.team_size %> <%= u.team_size === 1 ? 'person' : 'people' %></span><% } %><% } %></td>
     <td><%= u.managers || '' %></td>
-    <td data-state><%= !u.active ? 'Disabled' : u.must_change_password ? 'Temporary password' : 'Active' %></td>
+    <td data-state><%= !u.active ? 'Disabled' : u.must_change_password ? (u.tempExpired ? 'Temporary password expired' : 'Temporary password') : 'Active' %></td>
     <td class="row-more">
       <% if (u.manageable) { %>
       <details class="row-menu">

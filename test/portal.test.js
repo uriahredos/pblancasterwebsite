@@ -4700,3 +4700,118 @@ test('on call across a market: your own office first, each person tagged with th
   if (far) { const c = new Client(); const r = await c.post('/login', { username: far.username, password: 'correct horse battery' }, { page: '/login' }); if (r.status === 302) assert.doesNotMatch((await c.get('/oncall')).text, /Nell Nearby|Owen Ownoffice/); }
   db.prepare('DELETE FROM oncall_shifts').run(); db.prepare('UPDATE branches SET market = NULL WHERE id = 1').run();
 });
+
+test('moderation stays inside the office: an office admin removes only what their own people wrote; a corporate admin removes anything', async () => {
+  const owner = await loggedIn('owner');                                                   // corporate: sees every office
+  const office = db.prepare("INSERT INTO branches (name, created_at) VALUES ('Modville', ?)").run(new Date().toISOString()).lastInsertRowid;
+  access.ensureProfile('Office moderator', 'all', [...access.SUBMIT, 'forum.use', 'forum.moderate', 'announcements.post', 'users.manage']);
+  const mk = (username, name, profile, branch) => { const id = makeUser(username, name); db.prepare('UPDATE users SET profile_id = ?, branch_id = ? WHERE id = ?').run(profileId(profile), branch, id); return id; };
+  mk('mod.admin', 'Mona Modville', 'Office moderator', office); const local = mk('mod.local', 'Lars Local', 'Technician', office);
+  const mod = await loggedIn('mod.admin'); const lars = await loggedIn('mod.local'); const t1 = await loggedIn('tech1');   // tech1 is in another office
+  const sec = db.prepare('SELECT id FROM forum_sections ORDER BY id LIMIT 1').get().id;
+  const start = async (c, title) => Number(/\/discussions\/t\/(\d+)/.exec((await c.post('/discussions/new', [['section_id', String(sec)], ['title', title], ['body', 'Hello']], { multipart: true, page: '/discussions/new' })).location)[1]);
+  const far = await start(t1, 'Thread from another office'); const near = await start(lars, 'Thread from Modville');
+  await lars.post(`/discussions/t/${far}/reply`, [['body', 'Modville reply']], { multipart: true, page: `/discussions/t/${far}` });
+  await t1.post(`/discussions/t/${near}/reply`, [['body', 'Other office reply']], { multipart: true, page: `/discussions/t/${near}` });
+  const post = (thread, uid) => db.prepare('SELECT id FROM forum_posts WHERE thread_id = ? AND user_id = ? ORDER BY id DESC LIMIT 1').get(thread, uid).id;
+  const farReplyByLars = post(far, local), nearReplyByTech = post(near, userId('tech1'));
+  // Another office's thread: no moderator tools, and the actions are refused.
+  const farPage = (await mod.get(`/discussions/t/${far}`)).text;
+  assert.doesNotMatch(farPage, /Moderator tools|Remove thread/);
+  assert.match(farPage, new RegExp(`action="/discussions/p/${farReplyByLars}/delete"`));                              // but her own office's reply in it is hers to remove
+  for (const op of ['lock', 'pin', 'delete']) assert.equal((await mod.post(`/discussions/t/${far}/${op}`, {}, { page: `/discussions/t/${far}` })).status, 403, op);
+  assert.equal((await mod.post(`/discussions/t/${far}/move`, { section_id: String(sec) }, { page: `/discussions/t/${far}` })).status, 403);
+  assert.equal((await mod.post(`/discussions/t/${far}/rename`, { title: 'Hijacked' }, { page: `/discussions/t/${far}` })).status, 403);
+  // Her own office's thread: tools are there, but a reply written by another office is not hers to remove.
+  const nearPage = (await mod.get(`/discussions/t/${near}`)).text;
+  assert.match(nearPage, /Moderator tools/);
+  assert.doesNotMatch(nearPage, new RegExp(`action="/discussions/p/${nearReplyByTech}/delete"`));
+  assert.equal((await mod.post(`/discussions/p/${nearReplyByTech}/delete`, {}, { page: `/discussions/t/${near}` })).status, 403);
+  assert.equal((await mod.post(`/discussions/p/${farReplyByLars}/delete`, {}, { page: `/discussions/t/${far}` })).status, 302);
+  assert.equal(db.prepare('SELECT 1 FROM forum_posts WHERE id = ?').get(farReplyByLars), undefined);
+  assert.equal((await mod.post(`/discussions/t/${near}/pin`, {}, { page: `/discussions/t/${near}` })).status, 302);
+  // Shout-outs and photos follow the same rule.
+  await t1.post('/shoutouts', { to_user: String(userId('tech2')), message: 'From another office' }, { page: '/shoutouts' });
+  await lars.post('/shoutouts', { to_user: String(userId('tech2')), message: 'From Modville' }, { page: '/shoutouts' });
+  const farShout = db.prepare("SELECT id FROM shoutouts WHERE message = 'From another office'").get().id, nearShout = db.prepare("SELECT id FROM shoutouts WHERE message = 'From Modville'").get().id;
+  const shouts = (await mod.get('/shoutouts')).text;
+  assert.match(shouts, new RegExp(`action="/shoutouts/${nearShout}/delete"`)); assert.doesNotMatch(shouts, new RegExp(`action="/shoutouts/${farShout}/delete"`));
+  assert.equal((await mod.post(`/shoutouts/${farShout}/delete`, {}, { page: '/shoutouts' })).status, 403);
+  assert.equal((await mod.post(`/shoutouts/${nearShout}/delete`, {}, { page: '/shoutouts' })).status, 302);
+  await t1.post('/photos', [['caption', 'Far photo'], ['photos', new File([PNG], 'a.png', { type: 'image/png' })]], { multipart: true, page: '/photos' });
+  const farPhoto = db.prepare("SELECT id FROM wall_photos WHERE caption = 'Far photo'").get().id;
+  assert.doesNotMatch((await mod.get('/photos')).text, new RegExp(`action="/photos/${farPhoto}/delete"`));
+  assert.equal((await mod.post(`/photos/${farPhoto}/delete`, {}, { page: '/photos' })).status, 403);
+  // Comments under a company-wide announcement: only her own people's.
+  await owner.post('/branch/view', { branch: 'all', back: '/' }, { page: '/' });
+  await owner.post('/admin/announcements', { title: 'Company-wide moderation notice', body: 'For everyone', audience: 'all' }, { page: '/admin/announcements' });
+  const nid = db.prepare("SELECT id FROM announcements WHERE title = 'Company-wide moderation notice'").get().id;
+  db.prepare('UPDATE announcements SET branch_id = NULL WHERE id = ?').run(nid);
+  await t1.post(`/notices/${nid}/comment`, { body: 'Comment from another office' }, { page: '/notices' }); await lars.post(`/notices/${nid}/comment`, { body: 'Comment from Modville' }, { page: '/notices' });
+  const farC = db.prepare("SELECT id FROM announcement_comments WHERE body = 'Comment from another office'").get().id, nearC = db.prepare("SELECT id FROM announcement_comments WHERE body = 'Comment from Modville'").get().id;
+  assert.equal((await mod.post(`/notices/comment/${farC}/delete`, {}, { page: '/notices' })).status, 403);
+  assert.equal((await mod.post(`/notices/comment/${nearC}/delete`, {}, { page: '/notices' })).status, 302);
+  // The corporate admin can remove anything, anywhere; whoever posted the announcement can clear comments under it.
+  assert.equal((await owner.post(`/notices/comment/${farC}/delete`, {}, { page: '/notices' })).status, 302);
+  assert.equal((await owner.post(`/photos/${farPhoto}/delete`, {}, { page: '/photos' })).status, 302);
+  assert.equal((await owner.post(`/shoutouts/${farShout}/delete`, {}, { page: '/shoutouts' })).status, 302);
+  assert.equal((await owner.post(`/discussions/p/${nearReplyByTech}/delete`, {}, { page: `/discussions/t/${near}` })).status, 302);
+  assert.equal((await owner.post(`/discussions/t/${far}/delete`, {}, { page: `/discussions/t/${far}` })).status, 302);
+  await owner.post('/branch/view', { branch: '1', back: '/' }, { page: '/' });
+});
+
+test('temporary passwords expire after 14 days; fresh sign-in details restart the clock; a password the person chose never expires', async () => {
+  const owner = await loggedIn('owner'); const authRoutes = require('../app/routes/auth'); authRoutes.clearLoginFailures();
+  await owner.post('/admin/users', { username: 'temp.tina', display_name: 'Tina Temp', profile_id: String(profileId('Technician')) }, { page: '/admin/users' });
+  const tid = userId('temp.tina');
+  const shown = /<p class="code">([^<]+)<\/p>/.exec((await owner.get('/admin/users')).text); assert.ok(shown, 'the temporary password is shown once');
+  const temp = shown[1];
+  assert.ok(db.prepare('SELECT temp_set_at FROM users WHERE id = ?').get(tid).temp_set_at);
+  // Inside the window it works (and must be changed).
+  assert.equal((await new Client().post('/login', { username: 'temp.tina', password: temp }, { page: '/login' })).location, '/account/password');
+  // Fifteen days on, the same temporary password is refused, with the reason, and no session is made.
+  db.prepare('UPDATE users SET temp_set_at = ? WHERE id = ?').run(new Date(Date.now() - 15 * 86400000).toISOString(), tid);
+  const late = new Client(); const r = await late.post('/login', { username: 'temp.tina', password: temp }, { page: '/login' });
+  assert.equal(r.status, 401); assert.match(r.text, /temporary password has expired\. They last 14 days/);
+  assert.equal((await late.get('/')).location, '/login?next=%2F');
+  assert.match((await late.post('/login', { username: 'temp.tina', password: 'wrong guess' }, { page: '/login' })).text, /Wrong username or password/);   // a wrong guess learns nothing about expiry
+  const list = (await owner.get('/admin/users')).text;
+  assert.match(list, /Tina Temp[\s\S]*?<td data-state>Temporary password expired<\/td>/);
+  assert.match((await owner.get('/admin/users/invite')).text, /Tina Temp<\/strong>[\s\S]*?temporary password expired/);
+  // Fresh sign-in details work again.
+  await owner.post('/admin/users/invite', [['who', String(tid)]], { page: '/admin/users/invite' });
+  const fresh = /Temporary password: (\S+)/.exec((await owner.get('/admin/users/invite')).text)[1];
+  const tina = new Client();
+  assert.equal((await tina.post('/login', { username: 'temp.tina', password: fresh }, { page: '/login' })).location, '/account/password');
+  await tina.post('/account/password', { current: fresh, password: 'lantern river maple 8', confirm: 'lantern river maple 8' });
+  assert.deepEqual(db.prepare('SELECT must_change_password m, temp_set_at t FROM users WHERE id = ?').get(tid), { m: 0, t: null });
+  // A password the person chose does not expire, even when they are asked to replace it for being guessable.
+  const wid = makeUser('temp.weak', 'Wes Weakpass'); db.prepare('UPDATE users SET password_hash = ?, temp_set_at = ? WHERE id = ?').run(auth.hashPassword('Welcome123!!'), new Date(Date.now() - 400 * 86400000).toISOString(), wid);
+  const w = new Client();
+  assert.equal((await w.post('/login', { username: 'temp.weak', password: 'Welcome123!!' }, { page: '/login' })).location, '/account/password');
+  assert.equal(db.prepare('SELECT temp_set_at t FROM users WHERE id = ?').get(wid).t, null);
+  assert.equal((await new Client().post('/login', { username: 'temp.weak', password: 'Welcome123!!' }, { page: '/login' })).location, '/account/password');
+  // Someone asked to replace a guessable password before this rule arrived was given a clock by mistake: typing their own password clears it.
+  db.prepare('UPDATE users SET must_change_password = 1, temp_set_at = ? WHERE id = ?').run(new Date(Date.now() - 400 * 86400000).toISOString(), wid);
+  assert.equal((await new Client().post('/login', { username: 'temp.weak', password: 'Welcome123!!' }, { page: '/login' })).location, '/account/password');
+  assert.equal(db.prepare('SELECT temp_set_at t FROM users WHERE id = ?').get(wid).t, null);
+  // An admin's reset starts a new 14 days.
+  await owner.post(`/admin/users/${wid}/reset-password`, {}, { page: '/admin/users' });
+  assert.ok(Date.now() - new Date(db.prepare('SELECT temp_set_at t FROM users WHERE id = ?').get(wid).t).getTime() < 60000);
+  // A sign-in started with a temporary password and never finished ends when the password expires: it cannot be completed weeks later.
+  const wesTemp = /<p class="code">([^<]+)<\/p>/.exec((await owner.get('/admin/users')).text)[1];
+  const half = new Client();
+  assert.equal((await half.post('/login', { username: 'temp.weak', password: wesTemp }, { page: '/login' })).location, '/account/password');
+  const token = await half.csrf('/account/password');                                    // the form is open in front of them
+  db.prepare('UPDATE users SET temp_set_at = ? WHERE id = ?').run(new Date(Date.now() - 15 * 86400000).toISOString(), wid);
+  const tried = await half.post('/account/password', { _csrf: token, current: wesTemp, password: 'harbor walnut ticket 52', confirm: 'harbor walnut ticket 52' }, { csrf: false });
+  assert.notEqual(tried.status, 200); assert.notEqual(tried.location, '/');
+  assert.match((await half.get('/account/password')).location, /^\/login/);
+  assert.equal(db.prepare('SELECT must_change_password m FROM users WHERE id = ?').get(wid).m, 1);
+  assert.equal(auth.checkLogin('temp.weak', 'harbor walnut ticket 52'), null);
+  // The master account is never shut out this way: nobody else could hand it a new one.
+  assert.equal(auth.tempExpired({ is_master: 1, must_change_password: 1, temp_set_at: new Date(Date.now() - 90 * 86400000).toISOString() }), false);
+  assert.equal(auth.tempExpired({ must_change_password: 1, temp_set_at: new Date(Date.now() - 15 * 86400000).toISOString() }), true);
+  assert.equal(auth.tempExpired({ must_change_password: 1, temp_set_at: new Date(Date.now() - 13 * 86400000).toISOString() }), false);
+  assert.equal(auth.tempExpired({ must_change_password: 0, temp_set_at: new Date(Date.now() - 15 * 86400000).toISOString() }), false);
+});

@@ -38,7 +38,7 @@ function audience(a) {
 router.get('/notices', requireLogin, (req, res) => {
   const notices = require('../reactions').attach('notice', forUser(req.user.id), req.user.id);
   withComments(notices);
-  res.render('notices', { title: 'Announcements', notices, categories: CATEGORIES, canModerate: access.can(req.user, 'announcements.post') });
+  res.render('notices', { title: 'Announcements', notices, categories: CATEGORIES, mayRemove: (n, c) => c.user_id === req.user.id || n.created_by === req.user.id || access.moderates(req.user, 'announcements.post', c.user_id) });
 });
 
 /** Attaches each announcement's comments (oldest first) as .comments. */
@@ -82,8 +82,10 @@ router.post('/notices/comment/:id/edit', requireLogin, (req, res) => {
 router.post('/notices/comment/:id/delete', requireLogin, (req, res) => {
   const c = /^\d+$/.test(req.params.id) ? db.prepare('SELECT * FROM announcement_comments WHERE id = ?').get(req.params.id) : null;
   if (!c) return res.redirect('/notices');
-  if (c.user_id !== req.user.id && !access.can(req.user, 'announcements.post')) return forbidden(res);
-  if (!forUser(req.user.id).some((n) => n.id === c.announcement_id) && c.user_id !== req.user.id) return forbidden(res);
+  const a = db.prepare('SELECT created_by FROM announcements WHERE id = ?').get(c.announcement_id);
+  const mine = c.user_id === req.user.id || (a && a.created_by === req.user.id);
+  if (!mine && !access.moderates(req.user, 'announcements.post', c.user_id)) return forbidden(res);
+  if (!forUser(req.user.id).some((n) => n.id === c.announcement_id) && !mine) return forbidden(res);
   db.prepare('DELETE FROM announcement_comments WHERE id = ?').run(c.id);
   flash(req, 'ok', 'Comment removed.');
   res.redirect(`/notices#n${c.announcement_id}`);

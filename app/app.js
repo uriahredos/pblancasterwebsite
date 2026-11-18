@@ -25,7 +25,7 @@ Object.assign(app.locals, {
   dateOnly: (iso) => util.fmtDateTime(iso).split(', ')[0], timeOnly: (iso) => util.fmtDateTime(iso).split(', ')[1] || '',
   // Changes on every start, so browsers fetch fresh styles and scripts after an update.
   assetV: Date.now().toString(36),
-  lockAfterMs: config.lockAfterMs, minPasswordLength: config.minPasswordLength, editWindowHours: config.editWindowHours,
+  lockAfterMs: config.lockAfterMs, minPasswordLength: config.minPasswordLength, tempPasswordDays: config.tempPasswordDays, editWindowHours: config.editWindowHours,
 });
 
 app.use(helmet({

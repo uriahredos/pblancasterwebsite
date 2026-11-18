@@ -7,7 +7,7 @@
     var words = find.value.trim().toLowerCase().split(/\s+/).filter(Boolean), want = state.value, shown = 0;
     Array.prototype.forEach.call(table.tBodies[0].rows, function (tr) {
       var text = tr.textContent.toLowerCase(), st = (tr.querySelector('[data-state]') || {}).textContent || '';
-      var ok = words.every(function (w) { return text.indexOf(w) !== -1; }) && (!want || st.trim() === want);
+      var ok = words.every(function (w) { return text.indexOf(w) !== -1; }) && (!want || st.trim().indexOf(want) === 0);
       tr.hidden = !ok; if (ok) shown++;
     });
     var total = Number(count.getAttribute('data-total'));

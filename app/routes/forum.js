@@ -15,6 +15,9 @@ const PER_PAGE = 30;
 const DOUBLE_POST_MS = 5 * 60 * 1000;
 const isId = (v) => /^\d+$/.test(String(v));
 const isMod = (user) => access.can(user, 'forum.moderate');
+// Moderating a particular thread or message: corporate admins anywhere, office admins only what their own people wrote.
+const modOf = (user, authorId) => access.moderates(user, 'forum.moderate', authorId);
+const notYours = (res) => res.status(403).render('error', { title: 'Not allowed', message: 'This was posted by another office. A corporate admin can moderate it.' });
 const notFound = (res) => res.status(404).render('error', { title: 'Page not found', message: 'That discussion is not here. It may have been removed.' });
 
 const sections = () => db.prepare(
@@ -149,7 +152,7 @@ function threadPage(req, res, t, extra = {}) {
   const mine = db.prepare('SELECT last_read_at, following FROM forum_reads WHERE thread_id = ? AND user_id = ?').get(t.id, req.user.id);
   // Replies that arrived since this person last opened the thread get a "New" label.
   const since = mine && mine.last_read_at;
-  posts.forEach((p, i) => { p.first = i === 0; p.isNew = Boolean(since) && p.created_at > since && p.user_id !== req.user.id; });
+  posts.forEach((p, i) => { p.first = i === 0; p.isNew = Boolean(since) && p.created_at > since && p.user_id !== req.user.id; p.canRemove = i > 0 && (p.user_id === req.user.id || modOf(req.user, p.user_id)); });
   markRead(t.id, req.user.id, false);
   // Opening the thread clears it from the "new replies" count shown in the menu on this very page.
   if (mine && mine.following && t.last_post_user_id !== req.user.id && (!since || t.last_post_at > since)) {
@@ -157,8 +160,8 @@ function threadPage(req, res, t, extra = {}) {
     res.locals.newThreads = (res.locals.newThreads || []).filter((x) => x.id !== t.id);   // and off the bell on this very page
   }
   res.status(extra.errors ? 400 : 200).render('forum_thread', {
-    title: t.title, t, posts, following: Boolean(mine && mine.following), mod: isMod(req.user), owner: t.user_id === req.user.id,
-    sections: isMod(req.user) ? sections() : [], errors: [], values: {}, maxPhotos: MAX_PHOTOS, ...extra,
+    title: t.title, t, posts, following: Boolean(mine && mine.following), mod: modOf(req.user, t.user_id), anyMod: isMod(req.user), owner: t.user_id === req.user.id,
+    sections: modOf(req.user, t.user_id) ? sections() : [], errors: [], values: {}, maxPhotos: MAX_PHOTOS, ...extra,
   });
 }
 
@@ -222,7 +225,7 @@ router.post('/discussions/t/:id/follow', use, (req, res) => {
 router.post('/discussions/t/:id/solved', use, (req, res) => {
   const t = loadThread(req.params.id);
   if (!t) return notFound(res);
-  if (t.kind !== 'support' || (t.user_id !== req.user.id && !isMod(req.user))) return res.status(403).render('error', { title: 'Not allowed', message: 'Only the person who asked can mark this solved.' });
+  if (t.kind !== 'support' || (t.user_id !== req.user.id && !modOf(req.user, t.user_id))) return res.status(403).render('error', { title: 'Not allowed', message: 'Only the person who asked can mark this solved.' });
   db.prepare('UPDATE forum_threads SET solved_at = ? WHERE id = ?').run(t.solved_at ? null : new Date().toISOString(), t.id);
   res.redirect(`/discussions/t/${t.id}`);
 });
@@ -231,7 +234,7 @@ router.post('/discussions/t/:id/solved', use, (req, res) => {
 router.post('/discussions/t/:id/rename', use, (req, res) => {
   const t = loadThread(req.params.id);
   if (!t) return notFound(res);
-  if (t.user_id !== req.user.id && !isMod(req.user)) return res.status(403).render('error', { title: 'Not allowed', message: 'Only the person who started this thread can rename it.' });
+  if (t.user_id !== req.user.id && !modOf(req.user, t.user_id)) return res.status(403).render('error', { title: 'Not allowed', message: 'Only the person who started this thread can rename it.' });
   const title = clean(req.body.title, 140);
   if (!title) flash(req, 'err', 'A thread needs a title.');
   else if (title !== t.title) {
@@ -249,6 +252,7 @@ const moderate = requirePerm('forum.moderate');
 router.post('/discussions/t/:id/lock', moderate, (req, res) => {
   const t = loadThread(req.params.id);
   if (!t) return notFound(res);
+  if (!modOf(req.user, t.user_id)) return notYours(res);
   db.prepare('UPDATE forum_threads SET is_locked = ? WHERE id = ?').run(t.is_locked ? 0 : 1, t.id);
   activity.log(req.user, t.is_locked ? 'Discussion unlocked' : 'Discussion locked', t.title);
   res.redirect(`/discussions/t/${t.id}`);
@@ -257,6 +261,7 @@ router.post('/discussions/t/:id/lock', moderate, (req, res) => {
 router.post('/discussions/t/:id/pin', moderate, (req, res) => {
   const t = loadThread(req.params.id);
   if (!t) return notFound(res);
+  if (!modOf(req.user, t.user_id)) return notYours(res);
   db.prepare('UPDATE forum_threads SET is_pinned = ? WHERE id = ?').run(t.is_pinned ? 0 : 1, t.id);
   activity.log(req.user, t.is_pinned ? 'Discussion unpinned' : 'Discussion pinned', t.title);
   res.redirect(`/discussions/t/${t.id}`);
@@ -266,6 +271,7 @@ router.post('/discussions/t/:id/move', moderate, (req, res) => {
   const t = loadThread(req.params.id);
   const to = isId(req.body.section_id) ? db.prepare('SELECT * FROM forum_sections WHERE id = ?').get(req.body.section_id) : null;
   if (!t || !to) return notFound(res);
+  if (!modOf(req.user, t.user_id)) return notYours(res);
   if (to.id !== t.section_id) {
     db.prepare('UPDATE forum_threads SET section_id = ?, solved_at = CASE WHEN ? = \'support\' THEN solved_at ELSE NULL END WHERE id = ?').run(to.id, to.kind, t.id);
     activity.log(req.user, 'Discussion moved', `${t.title}: ${t.section} to ${to.name}`);
@@ -279,7 +285,7 @@ router.post('/discussions/t/:id/delete', use, (req, res) => {
   const t = loadThread(req.params.id);
   if (!t) return notFound(res);
   const own = t.user_id === req.user.id && t.reply_count === 0;
-  if (!own && !isMod(req.user)) return res.status(403).render('error', { title: 'Not allowed', message: 'You cannot remove this thread.' });
+  if (!own && !modOf(req.user, t.user_id)) return res.status(403).render('error', { title: 'Not allowed', message: isMod(req.user) ? 'This thread was started by another office. A corporate admin can remove it.' : 'You cannot remove this thread.' });
   removePhotosOf('p.thread_id = ?', t.id);
   db.prepare("DELETE FROM reactions WHERE kind = 'post' AND target_id IN (SELECT id FROM forum_posts WHERE thread_id = ?)").run(t.id);
   db.prepare('DELETE FROM forum_threads WHERE id = ?').run(t.id);
@@ -321,7 +327,7 @@ router.post('/discussions/p/:id/delete', use, (req, res) => {
     flash(req, 'ok', 'Your message was removed. The replies are still here.');
     return res.redirect(`/discussions/t/${p.thread_id}`);
   }
-  if (p.user_id !== req.user.id && !isMod(req.user)) return res.status(403).render('error', { title: 'Not allowed', message: 'You cannot remove this reply.' });
+  if (p.user_id !== req.user.id && !modOf(req.user, p.user_id)) return res.status(403).render('error', { title: 'Not allowed', message: isMod(req.user) ? 'This reply was written by another office. A corporate admin can remove it.' : 'You cannot remove this reply.' });
   const t = loadThread(p.thread_id);
   db.transaction(() => {
     removePhotosOf('p.id = ?', p.id);

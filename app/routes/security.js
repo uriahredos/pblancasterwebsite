@@ -18,7 +18,7 @@ const DAY = 86400000;
 function checks(req) {
   const list = [];
   const add = (ok, title, detail, fix) => list.push({ ok: Boolean(ok), title, detail, fix: ok ? '' : fix });
-  const people = db.prepare('SELECT u.id, u.display_name, u.username, u.is_master, u.profile_id, u.branch_id, u.must_change_password, u.created_at FROM users u WHERE u.active = 1 AND u.removed_at IS NULL').all();
+  const people = db.prepare('SELECT u.id, u.display_name, u.username, u.is_master, u.profile_id, u.branch_id, u.must_change_password, u.temp_set_at, u.created_at FROM users u WHERE u.active = 1 AND u.removed_at IS NULL').all();
 
   // How sign-in attempts are told apart.
   const seen = clientIp(req); const chain = String(req.headers['x-forwarded-for'] || '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -53,9 +53,9 @@ function checks(req) {
   add(!noKey.length, 'Admins sign in with Face ID or a fingerprint', noKey.length ? `${noKey.length} of the ${signedIn.length} admin accounts in use rely on a password alone: ${noKey.slice(0, 8).map((u) => u.display_name).join(', ')}${noKey.length > 8 ? ' and more' : ''}.` : `All ${signedIn.length} admin accounts in use have it set up.`,
     'Ask each of them to open Password and Face ID and press "Set up on this device". A device sign-in cannot be guessed or tricked out of someone the way a password can.');
 
-  const waiting = people.filter((u) => u.must_change_password); const stale = waiting.filter((u) => Date.now() - new Date(u.created_at).getTime() > 14 * DAY);
-  add(!stale.length, 'No old temporary passwords are lying around', waiting.length ? `${waiting.length} ${waiting.length === 1 ? 'account has' : 'accounts have'} not signed in yet${stale.length ? `; ${stale.length} of them were created more than two weeks ago` : ''}.` : 'Everyone has signed in and chosen their own password.',
-    'A temporary password sitting in an old message is a way in. For people who will not be using the site, remove the account under Users. For the rest, send fresh sign-in details.');
+  const auth = require('../auth');
+  const waiting = people.filter((u) => u.must_change_password); const dead = waiting.filter((u) => auth.tempExpired(u)).length;
+  add(true, 'Old temporary passwords stop working', waiting.length ? `${waiting.length} ${waiting.length === 1 ? 'account has' : 'accounts have'} not signed in yet. A temporary password lasts ${config.tempPasswordDays} days: ${dead} ${dead === 1 ? 'has' : 'have'} expired and can no longer be used, ${waiting.length - dead} ${waiting.length - dead === 1 ? 'is' : 'are'} still good.` : 'Everyone has signed in and chosen their own password.', '');
 
   const noOffice = people.filter((u) => !u.branch_id && !u.is_master);
   add(!noOffice.length, 'Every account belongs to an office', noOffice.length ? `${noOffice.length} without one: ${noOffice.slice(0, 6).map((u) => u.display_name).join(', ')}.` : 'Yes.', 'Open each of them under Users and choose their office. Until then they see no office records.');

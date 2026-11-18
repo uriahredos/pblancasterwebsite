@@ -20,7 +20,7 @@
 <ul class="shouts">
   <% rows.forEach(function (s) { %>
   <%- include('partials/shout', { s: s, back: '' }) %>
-  <% if (s.from_user === user.id || mod) { %><li class="shout-admin"><form method="post" action="/shoutouts/<%= s.id %>/delete" data-confirm="Remove this shout-out?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Remove the one above</button></form></li><% } %>
+  <% if (s.from_user === user.id || modOf(s.from_user)) { %><li class="shout-admin"><form method="post" action="/shoutouts/<%= s.id %>/delete" data-confirm="Remove this shout-out?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Remove the one above</button></form></li><% } %>
   <% }) %>
 </ul>
 <%- include('partials/footer') %>

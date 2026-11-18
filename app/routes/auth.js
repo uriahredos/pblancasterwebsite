@@ -98,8 +98,16 @@ router.post('/login', loginLimiter, (req, res, next) => {
   }
   FAILS.delete(nameKey(req.body.username));
   // A password that is too easy to guess (chosen before the rules were tightened) has to be replaced before carrying on.
-  const weak = !user.must_change_password && passwords.problem(req.body.password, user);
-  if (weak) db.prepare('UPDATE users SET must_change_password = 1 WHERE id = ?').run(user.id);
+  const problem = passwords.problem(req.body.password, user);
+  const weak = !user.must_change_password && problem;
+  // The passwords this site hands out always pass the rules. One that does not was chosen by the person, so the clock on temporary passwords is not for it.
+  if (problem && user.temp_set_at) { db.prepare('UPDATE users SET temp_set_at = NULL WHERE id = ?').run(user.id); user.temp_set_at = null; }
+  // A temporary password that has sat unused too long no longer opens the account, even typed correctly.
+  if (auth.tempExpired(user)) {
+    return res.status(401).render('login', { title: 'Sign in', next: target, username: String(req.body.username || '').slice(0, 60),
+      error: `That temporary password has expired. They last ${config.tempPasswordDays} days. Ask your admin for a new one.` });
+  }
+  if (weak) db.prepare('UPDATE users SET must_change_password = 1, temp_set_at = NULL WHERE id = ?').run(user.id);
   req.session.regenerate((err) => {
     if (err) return next(err);
     req.session.userId = user.id;
@@ -150,7 +158,7 @@ router.post('/unlock', (req, res) => {
   if (!auth.checkLogin(req.user.username, req.body.password)) { noteFailure(req.user.username); return page(401, 'That password is not right.'); }
   FAILS.delete(nameKey(req.user.username));
   if (passwords.problem(req.body.password, req.user)) {
-    db.prepare('UPDATE users SET must_change_password = 1 WHERE id = ?').run(req.user.id);
+    db.prepare('UPDATE users SET must_change_password = 1, temp_set_at = NULL WHERE id = ?').run(req.user.id);
     auth.flash(req, 'err', 'Your password is too easy to guess, so it needs replacing before you carry on.');
   }
   auth.unlock(req); proved(req);
@@ -200,7 +208,7 @@ router.post('/reset/:token', resetLimiter, (req, res) => {
   let error = passwords.problem(password, db.prepare('SELECT username, display_name FROM users WHERE id = ?').get(found.user_id));
   if (!error && password !== confirm) error = 'The two passwords do not match.';
   if (error) return res.status(400).render('reset', { title: 'Choose a new password', valid: true, token: req.params.token, error });
-  db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?').run(auth.hashPassword(password), found.user_id);
+  db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0, temp_set_at = NULL WHERE id = ?').run(auth.hashPassword(password), found.user_id);
   db.prepare('DELETE FROM password_resets WHERE user_id = ?').run(found.user_id);
   auth.endSessions(found.user_id);                       // anyone still signed in as this person is signed out
   FAILS.delete(nameKey(found.username));
@@ -257,7 +265,7 @@ router.post('/account/password', (req, res) => {
   if (!error && password === current) error = 'Choose a password different from the current one.';
   if (error) return res.status(400).render('password', { title: 'Password and Face ID', error, passkeys: require('./passkeys').listFor(req.user.id) });
 
-  db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?')
+  db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0, temp_set_at = NULL WHERE id = ?')
     .run(auth.hashPassword(password), req.user.id);
   auth.endSessions(req.user.id, req.sessionID);          // other devices are signed out; this one stays in
   proved(req);

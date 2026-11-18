@@ -199,6 +199,7 @@ On a phone it is one column in that order. On a wider screen announcements, the 
 - **Following**: starting or replying to a thread follows it; anyone can follow or stop from the thread page. When someone else replies to a thread you follow, the Discussions link in the menu shows a count and the reply is listed at the top of your home page until you open the thread. There is no phone notification or email yet.
 - In Tech support the person who asked (or a moderator) can mark a thread **Solved**.
 - People can remove their own replies, and their own thread while nobody has answered it. **Remove other people's posts and threads; lock, pin and move threads** is the moderator permission; what moderators remove is recorded in the activity log.
+- **Moderating stays inside the office.** Someone who sees every office (a corporate admin) can moderate anything. Everyone else with the permission can only act on what their own office's people wrote (or, for a "sees only their own people" profile, their own team): a thread is theirs to lock, pin, move, rename or remove when one of their people started it, and a reply when one of their people wrote it. The same rule covers shout-outs, photos and comments under announcements; whoever posted an announcement can also clear the comments under it.
 - After an update, posting is given once to every profile that can send parts forms, and moderating to profiles that manage people.
 - Photos live in `/data/uploads` with the others.
 
@@ -329,6 +330,7 @@ A profile is a set of permissions. Each person has exactly one profile, and what
 ### People (`/admin/users`)
 
 - **Add a person**: username, name and a profile. The site generates a temporary password and shows it once; the person chooses their own at first sign-in.
+- **Temporary passwords last 14 days** (`TEMP_PASSWORD_DAYS`). After that the password is refused even when typed correctly, any sign-in started with it ends, and the Users list shows **Temporary password expired**. **Send sign-in details** or **Reset password** gives the person a new one and a new 14 days. A password someone chose themselves never expires, and the master account is left out so it cannot be shut out.
 - **Edit**: name, username, email and profile.
 - **Managers**: when a person's profile is a "sees only their own people" profile, their Edit page lists everyone with tick-boxes. Tick the people they manage. The Users list shows who manages whom.
 - **Reset password**: a new temporary password, shown once. People can also use "Forgot your password?" if email is set up.

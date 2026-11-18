@@ -115,7 +115,7 @@ router.post('/passkey/auth/verify', limiter, async (req, res, next) => {
     const expectedChallenge = challengeFor(req, 'auth');
     const response = req.body.response;
     if (!expectedChallenge || !response || typeof response.id !== 'string') return fail(res, 400, 'That took too long. Try again.');
-    const row = db.prepare('SELECT p.*, u.active, u.must_change_password FROM passkeys p JOIN users u ON u.id = p.user_id WHERE p.credential_id = ?').get(response.id);
+    const row = db.prepare('SELECT p.*, u.active, u.must_change_password, u.temp_set_at, u.is_master FROM passkeys p JOIN users u ON u.id = p.user_id WHERE p.credential_id = ?').get(response.id);
     if (!row || !row.active || (req.user && row.user_id !== req.user.id)) return fail(res, 401, NO);
     const s = site(req);
     let result;
@@ -127,6 +127,9 @@ router.post('/passkey/auth/verify', limiter, async (req, res, next) => {
     } catch (e) { return fail(res, 401, NO); }
     if (!result.verified) return fail(res, 401, NO);
     db.prepare('UPDATE passkeys SET counter = ?, last_used_at = ? WHERE id = ?').run(result.authenticationInfo.newCounter, new Date().toISOString(), row.id);
+
+    // The device is right, but the account is waiting on a temporary password that has since expired.
+    if (auth.tempExpired(row)) return fail(res, 401, 'The temporary password on this account has expired, so it needs new sign-in details. Ask your admin for them.');
 
     const target = require('./auth').safeNext(req.body.next);
     if (req.user) {                                   // unlocking a session that already knows who this is

@@ -229,10 +229,22 @@ function visibleUserIds(user) {
 }
 const canSee = (user, ownerId) => { const ids = visibleUserIds(user); return !ids || ids.includes(ownerId); };
 
+/**
+ * May this person take down something `authorId` wrote? With the permission, a corporate admin may anywhere;
+ * everyone else only for the people they look after (their own office, or their own team).
+ */
+function moderates(user, perm, authorId) {
+  if (!can(user, perm)) return false;
+  if (user.allBranches) return true;
+  if (user.scope === 'team') return canSee(user, authorId);
+  const row = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(authorId);
+  return Boolean(row && row.branch_id && row.branch_id === user.branch_id);
+}
+
 /** May `actor` hand out (or edit) a profile holding these permissions? Only ones they hold themselves. */
 const canGrant = (actor, perms) => [...perms].every((p) => actor.perms.has(p));
 
 module.exports = {
   GROUPS, ALL, SUBMIT, DEFAULTS, profileByName, permsOf, setPermissions, createProfile, ensureProfile,
-  loadAccess, can, visibleUserIds, canSee, canGrant, migrate,
+  loadAccess, can, visibleUserIds, canSee, canGrant, moderates, migrate,
 };

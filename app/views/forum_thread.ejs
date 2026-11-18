@@ -44,7 +44,7 @@
     <div class="photo-grid"><% p.photos.forEach(function (ph) { %><a href="/discussions/photo/<%= ph.id %>"><img src="/discussions/photo/<%= ph.id %>" alt="Photo from <%= p.author %>" loading="lazy"></a><% }) %></div>
     <% } %>
     <%- include('partials/reactions', { kind: 'post', item: p }) %>
-    <% var mine = p.user_id === user.id, canEdit = mine && !p.removed_at && (!t.is_locked || mod), canQuote = !t.is_locked && !p.removed_at, blank = p.first && mine && t.reply_count > 0 && !p.removed_at, canDrop = !p.first && (mod || mine), dropThread = p.first && mine && t.reply_count === 0; if (canEdit || canDrop || dropThread || blank || canQuote) { %>
+    <% var mine = p.user_id === user.id, canEdit = mine && !p.removed_at && (!t.is_locked || anyMod), canQuote = !t.is_locked && !p.removed_at, blank = p.first && mine && t.reply_count > 0 && !p.removed_at, canDrop = p.canRemove, dropThread = p.first && mine && t.reply_count === 0; if (canEdit || canDrop || dropThread || blank || canQuote) { %>
     <div class="post-foot"><details class="msg-more"><summary aria-label="Edit or remove this message" title="Edit or remove">⋯</summary><div class="msg-tools">
       <% if (canQuote) { %><form onsubmit="return false"><textarea id="src<%= p.id %>" hidden readonly><%= p.body %></textarea><button class="link" type="button" data-quote="src<%= p.id %>" data-author="<%= p.author %>">Quote in a reply</button></form><% } %>
       <% if (canEdit) { %><details class="msg-edit"><summary class="link">Edit</summary>

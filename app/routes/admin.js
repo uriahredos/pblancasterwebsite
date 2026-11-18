@@ -422,7 +422,7 @@ function renderUsers(req, res, extra = {}) {
      FROM users u LEFT JOIN profiles p ON p.id = u.profile_id WHERE u.removed_at IS NULL
      ORDER BY u.active DESC, u.display_name COLLATE NOCASE`).all()
     .filter((u) => !ids || ids.includes(u.id))
-    .map((u) => ({ ...u, manageable: mayManage(req.user, u) }));
+    .map((u) => ({ ...u, manageable: mayManage(req.user, u), tempExpired: auth.tempExpired(u) }));
   res.status(extra.errors ? 400 : 200).render('admin_users', {
     title: 'Users', errors: [], values: {}, created: null, users,
     profiles: grantableProfiles(req.user), roles: require('../team').titles(), duplicates: duplicatesFor(req.user), disabledCount: users.filter((u) => !u.active && u.manageable && u.id !== req.user.id).length,
@@ -470,7 +470,7 @@ function waitingToSignIn(actor) {
   const ids = access.visibleUserIds(actor);
   return db.prepare(`SELECT u.*, (SELECT name FROM branches b WHERE b.id = u.branch_id) AS branch_name FROM users u
       WHERE u.active = 1 AND u.must_change_password = 1 AND u.id <> ? ORDER BY u.display_name COLLATE NOCASE`).all(actor.id)
-    .filter((u) => (!ids || ids.includes(u.id)) && mayManage(actor, u));
+    .filter((u) => (!ids || ids.includes(u.id)) && mayManage(actor, u)).map((u) => ({ ...u, tempExpired: auth.tempExpired(u) }));
 }
 
 function signInMessage(u, password, site) {
@@ -495,8 +495,7 @@ router.post('/admin/users/invite', requirePerm('users.manage'), (req, res) => {
   const site = process.env.BASE_URL ? config.baseUrl : `${req.protocol}://${req.get('host')}`;
   db.transaction(() => {
     for (const u of people) {
-      const password = auth.tempPassword();
-      db.prepare('UPDATE users SET password_hash = ?, must_change_password = 1 WHERE id = ?').run(auth.hashPassword(password), u.id);
+      const password = auth.issueTemp(u.id);
       auth.endSessions(u.id);
       const m = signInMessage(u, password, site);
       made.push({ id: u.id, name: u.display_name, email: u.email || '', text: m.text,
@@ -622,8 +621,7 @@ router.post('/admin/users/:id/:op', requirePerm('users.manage'), (req, res) => {
   if (!mayManage(req.user, target)) return forbidden(res);
   switch (req.params.op) {
     case 'reset-password': {
-      const password = auth.tempPassword();
-      db.prepare('UPDATE users SET password_hash = ?, must_change_password = 1 WHERE id = ?').run(auth.hashPassword(password), target.id);
+      const password = auth.issueTemp(target.id);
       auth.endSessions(target.id, req.sessionID);
       db.prepare('DELETE FROM passkeys WHERE user_id = ?').run(target.id);   // a lost phone's Face ID sign-in goes too
       req.session.created = { username: target.username, password, what: 'reset' };

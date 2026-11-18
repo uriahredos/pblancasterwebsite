@@ -41,4 +41,6 @@ module.exports = {
   lockAfterMs: (env.LOCK_AFTER_MINUTES === undefined ? 5 : Math.max(0, Number(env.LOCK_AFTER_MINUTES) || 0)) * 60 * 1000,
   maxPhotoBytes: 10 * 1024 * 1024,
   minPasswordLength: 10,
+  // A temporary password handed out by an admin stops working after this many days.
+  tempPasswordDays: Math.max(1, Number(env.TEMP_PASSWORD_DAYS) || 14),
 };

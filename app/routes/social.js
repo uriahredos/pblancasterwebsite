@@ -34,7 +34,7 @@ function shoutPage(req, res, extra = {}) {
   const to = isId(req.query.to) ? Number(req.query.to) : null;
   res.status(extra.errors ? 400 : 200).render('shoutouts', {
     title: 'Shout-outs', rows: db.prepare(`${SHOUT} ORDER BY s.id DESC LIMIT 60`).all({ me: req.user.id }), people: everyone().filter((p) => p.id !== req.user.id),
-    errors: [], values: { to_user: to }, mod: access.can(req.user, 'forum.moderate'), ...extra,
+    errors: [], values: { to_user: to }, modOf: (authorId) => access.moderates(req.user, 'forum.moderate', authorId), ...extra,
   });
 }
 router.get('/shoutouts', requireLogin, (req, res) => shoutPage(req, res));
@@ -67,7 +67,7 @@ router.post('/shoutouts/:id/cheer', requireLogin, (req, res) => {
 router.post('/shoutouts/:id/delete', requireLogin, (req, res) => {
   const s = isId(req.params.id) ? db.prepare('SELECT s.*, t.display_name AS to_name FROM shoutouts s JOIN users t ON t.id = s.to_user WHERE s.id = ?').get(req.params.id) : null;
   if (!s) return res.redirect('/shoutouts');
-  if (s.from_user !== req.user.id && !access.can(req.user, 'forum.moderate')) return forbidden(res);
+  if (s.from_user !== req.user.id && !access.moderates(req.user, 'forum.moderate', s.from_user)) return forbidden(res);
   db.prepare('DELETE FROM shoutouts WHERE id = ?').run(s.id);
   if (s.from_user !== req.user.id) activity.log(req.user, 'Shout-out removed', `one for ${s.to_name}`);
   flash(req, 'ok', 'Shout-out removed.');
@@ -189,7 +189,7 @@ function wallPage(req, res, extra = {}) {
   const rows = db.prepare(`${WALL} ORDER BY p.id DESC LIMIT @n OFFSET @o`).all({ me: req.user.id, n: PER_PAGE + 1, o: (page - 1) * PER_PAGE });
   res.status(extra.errors ? 400 : 200).render('wall', {
     title: 'Photos', wide: true, rows: rows.slice(0, PER_PAGE), page, more: rows.length > PER_PAGE, errors: [], values: {},
-    canPost: access.can(req.user, 'forum.use'), mod: access.can(req.user, 'forum.moderate'), ...extra,
+    canPost: access.can(req.user, 'forum.use'), modOf: (authorId) => access.moderates(req.user, 'forum.moderate', authorId), ...extra,
   });
 }
 router.get('/photos', requireLogin, (req, res) => wallPage(req, res));
@@ -226,7 +226,7 @@ router.post('/photos/:id/like', requireLogin, (req, res) => {
 router.post('/photos/:id/delete', requireLogin, (req, res) => {
   const p = isId(req.params.id) ? db.prepare('SELECT p.*, u.display_name FROM wall_photos p JOIN users u ON u.id = p.user_id WHERE p.id = ?').get(req.params.id) : null;
   if (!p) return res.redirect('/photos');
-  if (p.user_id !== req.user.id && !access.can(req.user, 'forum.moderate')) return forbidden(res);
+  if (p.user_id !== req.user.id && !access.moderates(req.user, 'forum.moderate', p.user_id)) return forbidden(res);
   db.prepare('DELETE FROM wall_photos WHERE id = ?').run(p.id);
   uploads.remove(p.path);
   if (p.user_id !== req.user.id) activity.log(req.user, 'Photo removed', `one posted by ${p.display_name}`);

@@ -19,6 +19,24 @@ function checkLogin(username, password) {
   return ok && user && user.active ? user : null;
 }
 
+// Temporary passwords do not last: an old sign-in message found in a chat months later must not be a way in.
+// temp_set_at is when the current temporary password was made; it is empty for a password the person chose.
+if (!db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'temp_set_at'").get()) db.exec('ALTER TABLE users ADD COLUMN temp_set_at TEXT');
+if (!db.prepare("SELECT 1 FROM meta WHERE key = 'temp_expiry_1'").get()) {
+  // The clock starts now for temporary passwords that were already out when this rule arrived.
+  // An account that already has a Face ID sign-in is not waiting on a temporary password, so it is left alone.
+  db.prepare('UPDATE users SET temp_set_at = ? WHERE must_change_password = 1 AND temp_set_at IS NULL AND id NOT IN (SELECT user_id FROM passkeys)').run(new Date().toISOString());
+  db.prepare("INSERT INTO meta (key, value) VALUES ('temp_expiry_1', '1')").run();
+}
+// The master account is left out: nobody else could hand it a new one.
+const tempExpired = (user) => Boolean(user && !user.is_master && user.must_change_password && user.temp_set_at && Date.now() - new Date(user.temp_set_at).getTime() > config.tempPasswordDays * 86400000);
+/** Give an account a fresh temporary password and return it. */
+function issueTemp(userId) {
+  const password = tempPassword();
+  db.prepare('UPDATE users SET password_hash = ?, must_change_password = 1, temp_set_at = ? WHERE id = ?').run(hashPassword(password), new Date().toISOString(), userId);
+  return password;
+}
+
 /** Readable temporary password, e.g. "kx7f-m2qp-9wtc". */
 function tempPassword() {
   const alphabet = 'abcdefghjkmnpqrstuvwxyz23456789';
@@ -34,9 +52,9 @@ function createUser({ username, displayName, email, password, profile = 'Technic
   const profileId = typeof profile === 'number' ? profile : (access.profileByName(profile) || {}).id;
   if (!profileId) throw new Error(`Unknown profile: ${profile}`);
   const info = db.prepare(
-    `INSERT INTO users (username, display_name, email, password_hash, profile_id, is_master, created_at, branch_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, (SELECT MIN(id) FROM branches)))`
-  ).run(username, displayName, email || null, hashPassword(password), profileId, master ? 1 : 0, new Date().toISOString(), branchId);
+    `INSERT INTO users (username, display_name, email, password_hash, profile_id, is_master, created_at, branch_id, temp_set_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, (SELECT MIN(id) FROM branches)), ?)`
+  ).run(username, displayName, email || null, hashPassword(password), profileId, master ? 1 : 0, new Date().toISOString(), branchId, new Date().toISOString());
   return info.lastInsertRowid;
 }
 
@@ -45,7 +63,8 @@ function loadUser(req, res, next) {
   req.user = null;
   if (req.session.userId) {
     const user = userById.get(req.session.userId);
-    if (user && user.active) req.user = access.loadAccess(user, req.session.viewBranch);
+    // A sign-in made with a temporary password ends when that password expires, so it cannot be finished off weeks later.
+    if (user && user.active && !tempExpired(user)) req.user = access.loadAccess(user, req.session.viewBranch);
     else delete req.session.userId;
   }
   res.locals.user = req.user;
@@ -188,6 +207,6 @@ function flash(req, type, text) {
 }
 
 module.exports = {
-  hashPassword, checkLogin, tempPassword, createUser, loadUser,
+  hashPassword, checkLogin, tempPassword, tempExpired, issueTemp, createUser, loadUser,
   requireLogin, requirePerm, requireEveryBranch, forbidden, newCsrfToken, verifyCsrf, flash, endSessions, unlock,
 };

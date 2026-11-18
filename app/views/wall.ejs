@@ -24,7 +24,7 @@
         <button class="react <%= p.liked ? 'on' : '' %>" type="submit" aria-pressed="<%= p.liked ? 'true' : 'false' %>">👍 <span><%= p.likes || '' %></span><span class="sr">Like</span></button></form>
     </div>
     <% if (p.caption) { %><p class="wall-cap"><%= p.caption %></p><% } %>
-    <% if (p.user_id === user.id || mod) { %><form method="post" action="/photos/<%= p.id %>/delete" data-confirm="Remove this photo?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Remove</button></form><% } %>
+    <% if (p.user_id === user.id || modOf(p.user_id)) { %><form method="post" action="/photos/<%= p.id %>/delete" data-confirm="Remove this photo?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Remove</button></form><% } %>
   </li>
   <% }) %>
 </ul>

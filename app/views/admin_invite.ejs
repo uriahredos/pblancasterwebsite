@@ -27,10 +27,10 @@
   <label>Find a person <input type="search" id="invite-find" placeholder="Start typing a name" autocomplete="off"></label>
   <ul class="invite-pick">
   <% people.forEach(function (u) { %>
-    <li><label class="choice"><input type="checkbox" name="who" value="<%= u.id %>"> <span><strong><%= u.display_name %></strong> <span class="meta"><%= u.username %><%= u.email ? ' · ' + u.email : ' · no email on file' %><%= user.viewBranch === null && u.branch_name ? ' · ' + u.branch_name : '' %></span></span></label></li>
+    <li><label class="choice"><input type="checkbox" name="who" value="<%= u.id %>"> <span><strong><%= u.display_name %></strong> <span class="meta"><%= u.username %><%= u.email ? ' · ' + u.email : ' · no email on file' %><%= user.viewBranch === null && u.branch_name ? ' · ' + u.branch_name : '' %></span><% if (u.tempExpired) { %> <span class="pill">temporary password expired</span><% } %></span></label></li>
   <% }) %>
   </ul>
-  <p class="hint">Up to 25 at a time. Any temporary password these people were given before stops working.</p>
+  <p class="hint">Up to 25 at a time. Any temporary password these people were given before stops working. A temporary password lasts <%= tempPasswordDays %> days.</p>
   <button class="btn primary" type="submit">Make sign-in messages</button>
 </form>
 <script src="/invite.js?v=<%= assetV %>"></script>
