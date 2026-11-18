@@ -41,13 +41,13 @@
     <% } %>
     <%- include('partials/reactions', { kind: 'post', item: p }) %>
     <% var mine = p.user_id === user.id, canEdit = mine && (!t.locked || mod), canDrop = !p.first && (mod || mine); if (canEdit || canDrop) { %>
-    <div class="post-foot msg-tools">
+    <div class="post-foot"><details class="msg-more"><summary aria-label="Edit or remove this message" title="Edit or remove">⋯</summary><div class="msg-tools">
       <% if (canEdit) { %><details class="msg-edit"><summary class="link">Edit</summary>
         <form method="post" action="/discussions/p/<%= p.id %>/edit" class="stack" data-no-live><input type="hidden" name="_csrf" value="<%= csrf %>">
           <label><span class="sr">Your message</span><textarea name="body" rows="4" maxlength="4000" required><%= p.body %></textarea></label>
           <div class="filter-actions"><button class="btn primary small" type="submit">Save</button></div></form></details><% } %>
       <% if (canDrop) { %><form method="post" action="/discussions/p/<%= p.id %>/delete" data-confirm="<%= mine ? 'Remove this reply?' : 'Remove this reply from ' + p.author + '?' %>"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Remove<%= mine ? '' : ' (admin)' %></button></form><% } %>
-    </div>
+    </div></details></div>
     <% } %>
   </article>
   <% }) %>

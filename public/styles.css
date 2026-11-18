@@ -1395,3 +1395,12 @@ td.reports-to .meta { display: block; }
 .msg-edit textarea, .msg-edit input { width: 100%; }
 .meta.edited { font-size: .8rem; margin: .2rem 0 0; }
 .notes li > span { flex: 1; min-width: 0; }
+
+/* Edit and remove sit behind a small "..." on each message */
+.msg-more { display: inline-block; vertical-align: middle; }
+.msg-more[open] { display: block; }
+.msg-more > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 24px; border-radius: 999px; color: var(--muted); font-weight: 800; letter-spacing: .05em; opacity: .65; }
+.msg-more > summary::-webkit-details-marker { display: none; }
+.msg-more > summary:hover, .msg-more[open] > summary { opacity: 1; background: var(--accent-soft); color: var(--accent); }
+.msg-more .msg-tools { margin-top: .3rem; }
+.msg-more .msg-tools button.link.danger { border: 0; background: none; padding: 0; min-height: 0; box-shadow: none; color: var(--err); font-weight: 700; }
