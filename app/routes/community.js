@@ -86,16 +86,24 @@ function positionPeople(user) {
     FROM users u LEFT JOIN branches b ON b.id = u.branch_id
     WHERE (u.active = 1 OR u.in_directory = 1) ${ids ? `AND u.id IN (${ids.map(Number).join(',') || 0})` : ''} ORDER BY u.display_name COLLATE NOCASE LIMIT 1000`).all();
 }
-router.get('/admin/positions', requirePerm('users.manage'), (req, res) => {
+router.get('/admin/positions', requirePerm('users.manage'), (req, res) => res.redirect('/admin/users/positions' + (isId(req.query.who) ? `?who=${req.query.who}` : '')));   // its old address
+router.get('/admin/users/chart', requirePerm('users.manage'), (req, res) => {
+  const officeId = req.user.viewBranch || (req.user.allBranches ? null : req.user.branch_id);
+  const office = officeId ? db.prepare('SELECT id, name FROM branches WHERE id = ?').get(officeId) : null;
+  const ids = access.visibleUserIds(req.user);
+  const people = office ? db.prepare(`SELECT u.id, u.display_name, u.photo_path, u.job_title, u.department FROM users u WHERE u.branch_id = ? AND (u.active = 1 OR u.in_directory = 1) ORDER BY u.display_name COLLATE NOCASE`).all(office.id).filter((u) => !ids || ids.includes(u.id)) : [];
+  res.render('admin_org', { title: 'Organization chart', wide: true, office, teamChart: require('../team').chart(people) });
+});
+router.get('/admin/users/positions', requirePerm('users.manage'), (req, res) => {
   const saved = req.session.positionsSaved; delete req.session.positionsSaved;
   const problemsOnce = req.session.positionsProblems || []; delete req.session.positionsProblems;
   const people = positionPeople(req.user);
   // Who each person could report to: the people of their own office.
   const byOffice = new Map();
   for (const p of people) { if (!byOffice.has(p.branch_id)) byOffice.set(p.branch_id, []); byOffice.get(p.branch_id).push(p); }
-  res.render('admin_positions', { title: 'Positions', wide: true, people, byOffice, problems: problemsOnce, departments: deptList(), saved, focus: isId(req.query.who) ? Number(req.query.who) : 0, showOffice: req.user.viewBranch === null });
+  res.render('admin_positions', { title: 'Positions and reporting', wide: true, people, byOffice, problems: problemsOnce, departments: deptList(), saved, focus: isId(req.query.who) ? Number(req.query.who) : 0, showOffice: req.user.viewBranch === null });
 });
-router.post('/admin/positions', requirePerm('users.manage'), (req, res) => {
+router.post('/admin/users/positions', requirePerm('users.manage'), (req, res) => {
   const set = db.prepare('UPDATE users SET job_title = ?, department = ? WHERE id = ?');
   let changed = 0; const problems = []; const offices = new Set();
   const team = require('../team');
@@ -140,7 +148,7 @@ router.post('/admin/positions', requirePerm('users.manage'), (req, res) => {
   })();
   for (const office of offices) team.applyAuto(office);
   req.session.positionsSaved = changed; req.session.positionsProblems = problems;
-  res.redirect('/admin/positions');
+  res.redirect('/admin/users/positions');
 });
 
 // ---- My own profile ------------------------------------------------------------

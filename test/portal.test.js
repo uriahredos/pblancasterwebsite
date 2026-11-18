@@ -829,7 +829,7 @@ test('starting profiles: Technician, Warehouse, Manager and Admin each see only 
   assert.deepEqual(navLinks((await wh.get('/')).text), ['/admin/parts', '/admin/requests', '/admin/parts/audit', '/admin/stock', '/admin/parts/summary', '/admin/catalog', '/admin/inspections', '/admin/inspections/checklist']);
   assert.deepEqual(navLinks((await owner.get('/')).text),
     ['/admin/parts', '/admin/requests', '/admin/parts/audit', '/admin/stock', '/admin/parts/summary', '/admin/catalog', '/admin/inspections', '/admin/inspections/checklist',
-      '/admin/training', '/admin/training/sessions', '/admin/certs', '/admin/users', '/admin/positions', '/admin/tasks', '/admin/announcements', '/admin/newsletters', '/admin/complaints', '/admin/activity', '/admin/import', '/admin/branches', '/admin/profiles', '/admin/backups']);
+      '/admin/training', '/admin/training/sessions', '/admin/certs', '/admin/users', '/admin/tasks', '/admin/announcements', '/admin/newsletters', '/admin/complaints', '/admin/activity', '/admin/import', '/admin/branches', '/admin/profiles', '/admin/backups']);
 
   for (const url of ['/admin/parts', '/admin/parts/audit', '/admin/parts/summary', '/admin/catalog']) assert.equal((await wh.get(url)).status, 200, url);
   for (const url of ['/admin/training', '/admin/users', '/admin/profiles', '/admin/complaints', '/admin/backups']) assert.equal((await wh.get(url)).status, 403, url);
@@ -1684,7 +1684,7 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
   const team = /<summary[^>]*>Team[\s\S]*?<\/details>/.exec(owner)[0];
   const setup = /<summary[^>]*>Setup[\s\S]*?<\/details>/.exec(owner)[0];
   const hrefs = (html) => [...html.matchAll(/<a href="([^"]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(hrefs(team), ['/complaint', '/admin/users', '/admin/positions', '/admin/tasks', '/admin/announcements', '/admin/newsletters', '/admin/complaints']);
+  assert.deepEqual(hrefs(team), ['/complaint', '/admin/users', '/admin/tasks', '/admin/announcements', '/admin/newsletters', '/admin/complaints']);
   assert.deepEqual(hrefs(setup), ['/poster', '/admin/activity', '/admin/import']);
   // The company level has its own group, only for people who can see every office.
   assert.deepEqual(hrefs(/<summary[^>]*>Corporate[\s\S]*?<\/details>/.exec(owner)[0]), ['/admin/branches', '/admin/profiles', '/admin/backups']);
@@ -3653,20 +3653,20 @@ test('your office name sits beside the logo on every page once you are signed in
 
 test('positions: job titles and departments for the office are edited in one table by people who manage users', async () => {
   const owner = await loggedIn('owner'); const t1 = await loggedIn('tech1');
-  assert.equal((await t1.get('/admin/positions')).status, 403);
-  assert.equal((await t1.post('/admin/positions', { [`job_${userId('tech2')}`]: 'Boss' }, { page: '/' })).status, 403);
-  const page = (await owner.get('/admin/positions')).text;
+  assert.equal((await t1.get('/admin/users/positions')).status, 403);
+  assert.equal((await t1.post('/admin/users/positions', { [`job_${userId('tech2')}`]: 'Boss' }, { page: '/' })).status, 403);
+  const page = (await owner.get('/admin/users/positions')).text;
   const a = userId('tech1'); const b = userId('tech2');
   assert.match(page, new RegExp(`name="job_${a}"`)); assert.match(page, new RegExp(`name="dept_${b}"[^>]*list="dept-list"`));
   const before = db.prepare('SELECT job_title, department FROM users WHERE id = ?').get(b);
-  const r = await owner.post('/admin/positions', { [`job_${a}`]: ' Lead Service Tech ', [`dept_${a}`]: 'Service', [`job_${b}`]: before.job_title || '', [`dept_${b}`]: before.department || '' }, { page: '/admin/positions' });
-  assert.equal(r.location, '/admin/positions');
+  const r = await owner.post('/admin/users/positions', { [`job_${a}`]: ' Lead Service Tech ', [`dept_${a}`]: 'Service', [`job_${b}`]: before.job_title || '', [`dept_${b}`]: before.department || '' }, { page: '/admin/users/positions' });
+  assert.equal(r.location, '/admin/users/positions');
   assert.deepEqual(db.prepare('SELECT job_title, department FROM users WHERE id = ?').get(a), { job_title: 'Lead Service Tech', department: 'Service' });
   assert.deepEqual(db.prepare('SELECT job_title, department FROM users WHERE id = ?').get(b), before);   // untouched rows stay as they were
-  assert.match((await owner.get('/admin/positions')).text, /1 person updated\./);
+  assert.match((await owner.get('/admin/users/positions')).text, /1 person updated\./);
   assert.equal(db.prepare("SELECT COUNT(*) n FROM activity_log WHERE action = 'Position changed' AND detail LIKE '%Lead Service Tech · Service'").get().n, 1);
   // The person's page shows it, with a shortcut for people who can edit and none for those who cannot.
-  assert.match((await owner.get(`/people/${a}`)).text, new RegExp(`Lead Service Tech · Service[\\s\\S]*href="/admin/positions\\?who=${a}">Edit job title and department`));
+  assert.match((await owner.get(`/people/${a}`)).text, new RegExp(`Lead Service Tech · Service[\\s\\S]*href="/admin/users/positions\\?who=${a}">Edit job title and department`));
   assert.doesNotMatch((await t1.get(`/people/${b}`)).text, /admin\/positions/);
   // Someone who manages users in another office cannot change people here.
   const other = db.prepare('SELECT id FROM branches WHERE id <> 1 ORDER BY id LIMIT 1').get();
@@ -3677,7 +3677,7 @@ test('positions: job titles and departments for the office are edited in one tab
       const pid = profileId('Admin'); const had = db.prepare("SELECT 1 FROM profile_permissions WHERE profile_id = ? AND permission = 'branches.all'").get(pid);
       if (!had) {
         const h = await loggedIn(hid.username);
-        await h.post('/admin/positions', { [`job_${a}`]: 'Hacked', [`dept_${a}`]: 'X' }, { page: '/admin/positions' });
+        await h.post('/admin/users/positions', { [`job_${a}`]: 'Hacked', [`dept_${a}`]: 'X' }, { page: '/admin/users/positions' });
         assert.equal(db.prepare('SELECT job_title FROM users WHERE id = ?').get(a).job_title, 'Lead Service Tech');
       }
     }
@@ -4165,8 +4165,8 @@ test('reports to: set on the Positions page, it draws the office team chart, fil
   const gm = mk('chart.gm', 'Gina General', 'Admin', 'General Manager'); const sm = mk('chart.sm', 'Sam Service', 'Manager', 'Service Manager');
   const t1 = mk('chart.t1', 'Tia Tech', 'Technician', 'Service Tech'); const t2 = mk('chart.t2', 'Tom Tech', 'Technician', 'Service Tech'); const loner = mk('chart.x', 'Lou Loner', 'Technician', 'Estimator');
   const elsewhere = userId('tech1');
-  await owner.post('/branch/view', { branch: String(office), back: '/admin/positions' }, { page: '/admin/positions' });
-  const page = '/admin/positions';
+  await owner.post('/branch/view', { branch: String(office), back: '/admin/users/positions' }, { page: '/admin/users/positions' });
+  const page = '/admin/users/positions';
   const form = (await owner.get(page)).text;
   assert.match(form, /<th>Reports to<\/th>/);
   assert.match(form, new RegExp(`<select name="mgr_${t1}"[^>]*><option value="auto" selected>Automatic: nobody</option>`));
@@ -4180,7 +4180,13 @@ test('reports to: set on the Positions page, it draws the office team chart, fil
   assert.equal(db.prepare('SELECT COUNT(*) n FROM user_managers WHERE user_id IN (?, ?)').get(gm, loner).n, 0);
   // The office page shows the chart: the general manager, the service manager under them, the techs under the service manager.
   const officePage = (await owner.get(`/branches/${office}`)).text;
-  assert.match(officePage, /<ul class="chart">[\s\S]*Gina General[\s\S]*<ul class="chart-kids">[\s\S]*Sam Service[\s\S]*<ul class="chart-kids">[\s\S]*Tia Tech[\s\S]*Tom Tech/);
+  assert.match(officePage, /<div class="org"><ul>[\s\S]*class="org-box lvl1"[^>]*><strong>General Manager<\/strong><span>Gina General[\s\S]*class="org-box lvl2"[^>]*><strong>Service Manager<\/strong><span>Sam Service[\s\S]*class="org-box crew">[\s\S]*Tia Tech[\s\S]*Tom Tech/);
+  assert.match(officePage, /<ul class="chart org-phone">[\s\S]*Gina General[\s\S]*<ul class="chart-kids">[\s\S]*Sam Service/);              // phones get the indented list
+  // Positions and the chart live under Users now; the old address still lands in the right place.
+  assert.equal((await owner.get('/admin/positions?who=5')).location, '/admin/users/positions?who=5');
+  const tabs = (await owner.get('/admin/users')).text;
+  assert.match(tabs, /href="\/admin\/users\/positions"[^>]*>Positions and reporting<\/a>\s*<a href="\/admin\/users\/chart"[^>]*>Organization chart/);
+  assert.match((await owner.get('/admin/users/chart')).text, /Chartville office<\/h2>[\s\S]*class="org-box lvl1"[^>]*><strong>General Manager/);
   assert.match(officePage, /Everyone else<\/h3>[\s\S]*Lou Loner/);
   assert.match((await owner.get(`/people/${t1}`)).text, /Reports to<\/span> <a href="\/people\/\d+"><strong>Sam Service/);
   assert.match((await owner.get(`/people/${sm}`)).text, /2 people report to Sam/);

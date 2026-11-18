@@ -1,5 +1,6 @@
 <%- include('partials/header', { wide: true }) %>
 <div class="title-row"><h1>Users</h1><span class="filter-actions"><a class="btn primary small" href="/admin/users/invite">Send sign-in details</a><% if (can('profiles.manage')) { %><a class="btn small" href="/admin/profiles">Profiles and permissions</a><% } %></span></div>
+<%- include('partials/users_tabs', { tab: 'accounts' }) %>
 <% if (created) { %>
 <div class="card code-card">
   <p>Account <strong><%= created.username %></strong> <%= created.what === 'reset' ? 'has a new temporary password' : 'was created' %>.</p>

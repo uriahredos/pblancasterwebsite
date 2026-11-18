@@ -1,12 +1,13 @@
 <%- include('partials/header', { wide: true }) %>
-<div class="title-row"><h1>Positions</h1><a class="btn small" href="/admin/users">Users</a></div>
+<div class="title-row"><h1>Users</h1></div>
+<%- include('partials/users_tabs', { tab: 'positions' }) %>
 <p class="lede">Everyone's job title, department and who they report to, in one place. Change as many as you like, then press Save once.</p>
 <div class="notice-box"><p><strong>Who reports to whom fills itself in.</strong> Under <strong>Leads</strong>, put a department next to the person who runs it (for example Service next to the service manager) and <strong>Whole office</strong> next to the general manager. Everyone in a department then reports to its lead, and the leads report to the general manager. Change someone's department and they move with it. To make an exception, pick a name under Reports to.</p></div>
 <% if (problems.length) { %><div class="errors"><ul><% problems.forEach(function (m) { %><li><%= m %></li><% }) %></ul></div><% } %>
 <% if (saved !== undefined) { %><p class="flash ok"><%= saved ? saved + (saved === 1 ? ' person' : ' people') + ' updated.' : 'Nothing was changed.' %></p><% } %>
 <% if (!people.length) { %><p class="empty">Nobody to show yet.</p><% } else { %>
 <label class="grow pos-find">Find a person <input type="search" id="pos-find" placeholder="Start typing a name, job or department" autocomplete="off"></label>
-<form method="post" action="/admin/positions" id="pos-form">
+<form method="post" action="/admin/users/positions" id="pos-form">
   <input type="hidden" name="_csrf" value="<%= csrf %>">
   <datalist id="leads-list"><option value="Whole office"></option><% departments.forEach(function (d) { %><option value="<%= d %>"></option><% }) %></datalist>
   <datalist id="dept-list"><% departments.forEach(function (d) { %><option value="<%= d %>"></option><% }) %></datalist>

@@ -1,0 +1,4 @@
+<% if (teamChart.tops.length) { %>
+<div class="org-scroll"><div class="org"><ul><% teamChart.tops.forEach(function (top) { %><%- include('org_node', { node: top, level: 1 }) %><% }) %></ul></div></div>
+<ul class="chart org-phone"><% teamChart.tops.forEach(function (top) { %><%- include('chart_node', { node: top }) %><% }) %></ul>
+<% } %>
