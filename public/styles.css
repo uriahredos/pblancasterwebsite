@@ -1384,7 +1384,3 @@ td.reports-to .meta { display: block; }
 .row-menu-list .danger-text { color: var(--err); }
 .btn.danger { border-color: var(--err); color: var(--err); background: var(--surface); }
 .btn.danger:hover { background: var(--err-bg); }
-
-/* Home: a manager's link to take a new-hire welcome down */
-.hire-tools { margin: -.3rem 0 .8rem; display: flex; flex-wrap: wrap; gap: .2rem 1.2rem; font-size: .88rem; }
-.hire-tools form { margin: 0; }

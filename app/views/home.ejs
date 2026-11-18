@@ -49,9 +49,6 @@
   <% } %>
 </section>
 <% } %>
-<% var myHires = can('users.manage') ? around.filter(function (x) { return x.kind === 'hire' && !x.away; }) : []; if (myHires.length) { %>
-<div class="hire-tools"><% myHires.forEach(function (h) { %><form method="post" action="/admin/users/<%= h.who.user_id %>/welcome" data-no-live data-confirm="Take down the welcome for <%= h.who.display_name %>? Their account is not affected."><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="remove" value="1"><input type="hidden" name="back" value="home"><button class="link" type="submit">Take down the welcome for <%= h.who.display_name %></button></form><% }) %></div>
-<% } %>
 <section class="company-strip" aria-label="The company at a glance">
   <div class="strip-stats">
     <% company.stats.forEach(function (st) { %><a href="<%= st.url %>"><strong><%= st.value.toLocaleString('en-US') %></strong><span><%= st.label %></span></a><% }) %>

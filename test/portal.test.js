@@ -4398,17 +4398,29 @@ test('organization chart: people who manage users can download an office chart a
   await owner.post('/branch/view', { branch: '1', back: '/' }, { page: '/' });
 });
 
-test('home: a manager can take a new-hire welcome down from the home page; the daily question sits above the office numbers', async () => {
+test('new-hire welcome: an admin takes it down from the person\'s page; the daily question sits above the office numbers', async () => {
   const owner = await loggedIn('owner'); const t1 = await loggedIn('tech1');
   const id = makeUser('oops.hire', 'Oops Hire'); db.prepare('UPDATE users SET branch_id = 1 WHERE id = ?').run(id);
   await owner.post(`/admin/users/${id}/welcome`, { intro: 'Announced by accident' }, { page: `/admin/users/${id}/edit` });
   const home = (await owner.get('/')).text;
-  assert.match(home, new RegExp(`<div class="hire-tools">[\\s\\S]*?action="/admin/users/${id}/welcome"[\\s\\S]*?Take down the welcome for Oops Hire`));
-  assert.doesNotMatch((await t1.get('/')).text, /hire-tools/);
+  assert.match(home, /Oops Hire joined/); assert.doesNotMatch(home, /hire-tools/);
   if (home.includes('id="daily"')) assert.ok(home.indexOf('id="daily"') < home.indexOf('p-glance'));
-  const r = await owner.post(`/admin/users/${id}/welcome`, { remove: '1', back: 'home' }, { page: '/' });
-  assert.equal(r.location, '/');
-  const after = (await owner.get('/')).text;
-  assert.match(after, /The welcome for Oops Hire was taken down/); assert.doesNotMatch(after, /Oops Hire joined/);
+  const page = `/people/${id}`;
+  assert.match((await owner.get(page)).text, new RegExp(`action="/admin/users/${id}/welcome"[\\s\\S]*?Take down the new-hire welcome`));
+  assert.doesNotMatch((await t1.get(page)).text, /Take down the new-hire welcome/);
+  assert.equal((await t1.post(`/admin/users/${id}/welcome`, { remove: '1', back: 'person' }, { page })).status, 403);
+  // A team manager can manage their own people but cannot take a welcome down.
+  const m = makeUser('oops.mgr', 'Mona Teamlead'); db.prepare('UPDATE users SET branch_id = 1, profile_id = ? WHERE id = ?').run(profileId('Manager'), m);
+  db.prepare('INSERT OR IGNORE INTO user_managers (manager_id, user_id) VALUES (?, ?)').run(m, id);
+  const mgr = await loggedIn('oops.mgr');
+  assert.doesNotMatch((await mgr.get(page)).text, /Take down the new-hire welcome/);
+  assert.equal((await mgr.post(`/admin/users/${id}/welcome`, { remove: '1', back: 'person' }, { page })).status, 403);
+  assert.ok(db.prepare('SELECT 1 FROM welcomes WHERE user_id = ?').get(id));
+  const r = await owner.post(`/admin/users/${id}/welcome`, { remove: '1', back: 'person' }, { page });
+  assert.equal(r.location, page);
+  const after = (await owner.get(page)).text;
+  assert.match(after, /The welcome for Oops Hire was taken down/); assert.doesNotMatch(after, /Take down the new-hire welcome/);
+  assert.doesNotMatch((await owner.get('/')).text, /Oops Hire joined/);
   assert.ok(db.prepare('SELECT 1 FROM users WHERE id = ? AND active = 1').get(id));                                   // the account itself is untouched
+  db.prepare('DELETE FROM user_managers WHERE manager_id = ?').run(m);
 });

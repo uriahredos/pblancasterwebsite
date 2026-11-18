@@ -73,7 +73,8 @@ router.get('/people/:id', requireLogin, (req, res) => {
   const team = require('../team');
   const reportsTo = team.managerOf(p.id);
   const theirTeam = db.prepare(`SELECT u.id, u.display_name, u.photo_path, u.job_title FROM user_managers um JOIN users u ON u.id = um.user_id WHERE um.manager_id = ? AND (u.active = 1 OR u.in_directory = 1) ORDER BY u.display_name COLLATE NOCASE`).all(p.id);
-  res.render('person', { canPosition, reportsTo, theirTeam, title: p.display_name, p: decorate(p), certs, welcome, notes, me: p.id === req.user.id, bday, shouts: social.shoutoutsFor(req.user.id, p.id) });
+  const canWelcome = canPosition && req.user.scope === 'all' && Boolean(welcome);
+  res.render('person', { canPosition, canWelcome, reportsTo, theirTeam, title: p.display_name, p: decorate(p), certs, welcome, notes, me: p.id === req.user.id, bday, shouts: social.shoutoutsFor(req.user.id, p.id) });
 });
 
 // ---- Positions: job titles and departments for a whole office, edited in one table -------------
@@ -501,10 +502,11 @@ router.post('/admin/users/:id/welcome', requirePerm('users.manage'), (req, res) 
   const job = clean(req.body.job_title, 80); const started = clean(req.body.started_on, 10);
   if (started && !isYmd(started)) { flash(req, 'err', 'The start date does not look right.'); return res.redirect(back); }
   if (req.body.remove === '1') {
+    if (req.user.scope !== 'all') return forbidden(res);   // admins and corporate admins only
     db.prepare('DELETE FROM welcomes WHERE user_id = ?').run(target.id);
     flash(req, 'ok', `The welcome for ${target.display_name} was taken down.`);
     activity.log(req.user, 'New hire welcome taken down', target.display_name);
-    return res.redirect(req.body.back === 'home' ? '/' : back);
+    return res.redirect(req.body.back === 'person' ? `/people/${target.id}` : back);
   }
   db.transaction(() => {
     db.prepare('UPDATE users SET job_title = COALESCE(?, job_title), started_on = COALESCE(?, started_on) WHERE id = ?').run(job || null, started || null, target.id);
