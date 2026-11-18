@@ -57,6 +57,13 @@ function checks(req) {
   const waiting = people.filter((u) => u.must_change_password); const dead = waiting.filter((u) => auth.tempExpired(u)).length;
   add(true, 'Old temporary passwords stop working', waiting.length ? `${waiting.length} ${waiting.length === 1 ? 'account has' : 'accounts have'} not signed in yet. A temporary password lasts ${config.tempPasswordDays} days: ${dead} ${dead === 1 ? 'has' : 'have'} expired and can no longer be used, ${waiting.length - dead} ${waiting.length - dead === 1 ? 'is' : 'are'} still good.` : 'Everyone has signed in and chosen their own password.', '');
 
+  // How long the site may sit unused before it locks, and which kind of device this one counts as.
+  const lockP = Math.round(config.lockAfterMs.phone / 60000), lockD = Math.round(config.lockAfterMs.desktop / 60000);
+  const here = require('../device').kind(req) === 'phone' ? 'a phone or tablet' : 'a computer';
+  const span = (n) => (n ? `after ${n} ${n === 1 ? 'minute' : 'minutes'}` : 'never by the clock');
+  add(lockP > 0 && lockD > 0, 'The site locks when it is left unused', `On a phone or tablet: ${span(lockP)}. On a computer: ${span(lockD)}. Closing the site always locks it. The device you are on now counts as ${here}.`,
+    'A timer set to 0 is switched off, so an unattended device stays open until the site is closed. In Render, open the service, then Environment, and set LOCK_AFTER_MINUTES_PHONE and LOCK_AFTER_MINUTES_DESKTOP (or delete them to get 10 and 20).');
+
   const noOffice = people.filter((u) => !u.branch_id && !u.is_master);
   add(!noOffice.length, 'Every account belongs to an office', noOffice.length ? `${noOffice.length} without one: ${noOffice.slice(0, 6).map((u) => u.display_name).join(', ')}.` : 'Yes.', 'Open each of them under Users and choose their office. Until then they see no office records.');
 

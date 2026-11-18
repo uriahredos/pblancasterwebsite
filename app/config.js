@@ -10,6 +10,9 @@ if (production && !env.SESSION_SECRET) {
 }
 
 const list = (v) => (v || '').split(',').map((s) => s.trim()).filter(Boolean);
+// A number of minutes from a setting. Anything that is not a plain number of zero or more falls back, so a typing mistake
+// in the hosting settings cannot switch a timer off by accident; only a deliberate 0 does that.
+const minutes = (v, fallback) => { const n = Number(v); return v === undefined || String(v).trim() === '' || !Number.isFinite(n) || n < 0 ? fallback : n; };
 
 module.exports = {
   production,
@@ -36,9 +39,13 @@ module.exports = {
   backupHour: env.BACKUP_HOUR === undefined ? 2 : Number(env.BACKUP_HOUR),
   backupKeep: Number(env.BACKUP_KEEP) || 14,
   backupEmailTo: list(env.BACKUP_EMAIL_TO),
-  // The site locks (Face ID, fingerprint or password to get back in) after this long without use.
-  // Closing the site locks it at once. 0 switches the timer off.
-  lockAfterMs: (env.LOCK_AFTER_MINUTES === undefined ? 5 : Math.max(0, Number(env.LOCK_AFTER_MINUTES) || 0)) * 60 * 1000,
+  // The site locks (Face ID, fingerprint or password to get back in) after this long without use: sooner on a phone
+  // or tablet than on a desk computer. Closing the site locks it at once. 0 switches that timer off.
+  // LOCK_AFTER_MINUTES is the older single setting: where it is set, it stands in for whichever of the two is not.
+  lockAfterMs: {
+    phone: minutes(env.LOCK_AFTER_MINUTES_PHONE, minutes(env.LOCK_AFTER_MINUTES, 10)) * 60 * 1000,
+    desktop: minutes(env.LOCK_AFTER_MINUTES_DESKTOP, minutes(env.LOCK_AFTER_MINUTES, 20)) * 60 * 1000,
+  },
   maxPhotoBytes: 10 * 1024 * 1024,
   minPasswordLength: 10,
   // A temporary password handed out by an admin stops working after this many days.

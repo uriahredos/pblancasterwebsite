@@ -31,9 +31,14 @@ let server, base;
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 
 class Client {
-  constructor() { this.cookie = ''; }
+  /** ua: the browser this client says it is. extra: a cookie the page itself would have set (see theme.js). */
+  constructor(ua, extra) { this.cookie = ''; this.ua = ua || ''; this.extra = extra || ''; this.headers = {}; }
   async req(method, url, body) {
-    const res = await fetch(base + url, { method, body, redirect: 'manual', headers: this.cookie ? { cookie: this.cookie } : {} });
+    const headers = { ...this.headers };
+    const cookie = [this.cookie, this.extra].filter(Boolean).join('; ');
+    if (cookie) headers.cookie = cookie;
+    if (this.ua) headers['user-agent'] = this.ua;
+    const res = await fetch(base + url, { method, body, redirect: 'manual', headers });
     const set = res.headers.getSetCookie();
     if (set.length) this.cookie = set.map((c) => c.split(';')[0]).join('; ');
     const text = res.headers.get('content-type')?.startsWith('image/') ? '' : await res.text();
@@ -2831,7 +2836,7 @@ test('the lock: closing the site or leaving it idle asks for Face ID, fingerprin
   const c = await loggedIn('lock1');
   const sid = () => db.prepare("SELECT sid FROM sessions WHERE json_extract(data, '$.userId') = ? ORDER BY expires DESC").get(userId('lock1')).sid;
   const home = (await c.get('/')).text;
-  assert.match(home, /<html lang="en" data-in data-lock-after="300000" data-fresh>/);    // just signed in: the page marks this tab as open
+  assert.match(home, /<html lang="en" data-in data-lock-after="600000" data-fresh>/);    // just signed in: the page marks this tab as open (10 minutes: not plainly a desk computer)
   assert.doesNotMatch((await c.get('/')).text, /data-fresh/);                             // once only
 
   // The page reports that the site was closed and reopened. Everything is shut until they unlock.
@@ -2859,10 +2864,11 @@ test('the lock: closing the site or leaving it idle asks for Face ID, fingerprin
   assert.equal((await c.get('/unlock?next=%2Ftasks')).location, '/tasks');               // not locked: straight through
 
   // Left unused for longer than the limit: locked by the server, whatever the page does.
-  db.prepare("UPDATE sessions SET data = json_set(data, '$.seenAt', ?) WHERE sid = ?").run(Date.now() - 6 * 60 * 1000, sid());
+  db.prepare("UPDATE sessions SET data = json_set(data, '$.seenAt', ?) WHERE sid = ?").run(Date.now() - 11 * 60 * 1000, sid());
   assert.equal((await c.get('/my')).location, '/unlock?next=%2Fmy');
+  assert.match((await c.get('/unlock')).text, /left unused for 10 minutes on this device/);
   await c.post('/unlock', { password: 'correct horse battery' }, { page: '/unlock' });
-  db.prepare("UPDATE sessions SET data = json_set(data, '$.seenAt', ?) WHERE sid = ?").run(Date.now() - 4 * 60 * 1000, sid());
+  db.prepare("UPDATE sessions SET data = json_set(data, '$.seenAt', ?) WHERE sid = ?").run(Date.now() - 9 * 60 * 1000, sid());
   assert.equal((await c.get('/my')).status, 200);                                         // within the limit: still open
 
   // Signing out works from the lock screen, and wrong unlock passwords count toward the username's limit.
@@ -3782,7 +3788,7 @@ test('idle lock: counts from the last thing the person did, so typing for a whil
   assert.ok(Date.now() - sess().d.seenAt > 2.9 * 60000);
   assert.equal((await new Client().get('/pulse')).status, 401);
   // Truly idle past the limit: locked, and the call says so without unlocking anything.
-  age(6 * 60000);
+  age(11 * 60000);
   assert.equal((await t1.get('/alive')).status, 302);
   assert.equal((await t1.get('/pulse')).status, 302);            // locked: the background check gets nothing either
   assert.equal((await t1.get('/profile')).location, '/unlock?next=%2Fprofile');
@@ -4814,4 +4820,79 @@ test('temporary passwords expire after 14 days; fresh sign-in details restart th
   assert.equal(auth.tempExpired({ must_change_password: 1, temp_set_at: new Date(Date.now() - 15 * 86400000).toISOString() }), true);
   assert.equal(auth.tempExpired({ must_change_password: 1, temp_set_at: new Date(Date.now() - 13 * 86400000).toISOString() }), false);
   assert.equal(auth.tempExpired({ must_change_password: 0, temp_set_at: new Date(Date.now() - 15 * 86400000).toISOString() }), false);
+});
+
+test('the idle lock depends on the device: 10 minutes on a phone or tablet, 20 on a computer', async () => {
+  const device = require('../app/device'); const config = require('../app/config');
+  const WIN = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+  const MAC = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15';
+  const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
+  const ANDROID_TABLET = 'Mozilla/5.0 (Linux; Android 14; SM-X710) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+  const ANDROID_DESKTOP_MODE = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+  assert.deepEqual(config.lockAfterMs, { phone: 10 * 60000, desktop: 20 * 60000 });
+  const kind = (ua, extra = {}) => device.kind({ headers: { 'user-agent': ua, ...extra } });
+  assert.equal(kind(WIN), 'desktop'); assert.equal(kind(MAC), 'desktop'); assert.equal(kind(ANDROID_DESKTOP_MODE), 'desktop');
+  assert.equal(kind(IPHONE), 'phone'); assert.equal(kind(ANDROID_TABLET), 'phone');
+  assert.equal(kind(MAC, { cookie: 'portal.sid=abc; portal.touch=1' }), 'phone');                // an iPad says it is a Mac; the page reports the touch screen
+  assert.equal(kind(ANDROID_DESKTOP_MODE, { cookie: 'portal.touch=1' }), 'phone');               // a phone asked for the desktop site
+  assert.equal(kind(MAC, { cookie: 'portal.touch=0; portal.sid=abc' }), 'desktop');
+  assert.equal(kind(MAC, { cookie: 'xportal.touch=1' }), 'desktop');                             // only the exact note counts
+  assert.equal(kind(WIN, { 'sec-ch-ua-mobile': '?1' }), 'phone');
+  assert.equal(kind(''), 'phone'); assert.equal(kind('curl/8.5.0'), 'phone'); assert.equal(device.kind({}), 'phone');   // not plainly a desk computer: lock sooner
+  // The page sets that note before anything is drawn, on every page including the sign-in page.
+  const theme = (await new Client().get('/theme.js')).text;
+  assert.match(theme, /pointer: coarse/); assert.match(theme, /portal\.touch=/);
+
+  makeUser('lock.desk', 'Dora Desk');
+  const sidOf = (c) => /portal\.sid=([^;]+)/.exec(c.cookie)[1];
+  const sess = (c) => { const sid = decodeURIComponent(sidOf(c)).slice(2).split('.')[0]; return { sid, d: JSON.parse(db.prepare('SELECT data FROM sessions WHERE sid = ?').get(sid).data) }; };
+  const age = (c, min) => { const r = sess(c); r.d.seenAt = Date.now() - min * 60000; db.prepare('UPDATE sessions SET data = ? WHERE sid = ?').run(JSON.stringify(r.d), r.sid); };
+  const signIn = async (c) => { await c.login('lock.desk', 'correct horse battery'); return c; };
+
+  // A computer: 20 minutes.
+  const desk = await signIn(new Client(WIN));
+  assert.match((await desk.get('/')).text, /data-lock-after="1200000"/);
+  age(desk, 19); assert.equal((await desk.get('/my')).status, 200);
+  age(desk, 11); assert.equal((await desk.get('/alive')).status, 204);                         // past a phone's limit, well inside a computer's
+  age(desk, 21); assert.equal((await desk.get('/my')).location, '/unlock?next=%2Fmy');
+  assert.match((await desk.get('/unlock')).text, /left unused for 20 minutes on this device/);
+  await desk.post('/unlock', { password: 'correct horse battery' }, { page: '/unlock' });
+
+  // A phone: 10 minutes.
+  const phone = await signIn(new Client(IPHONE));
+  assert.match((await phone.get('/')).text, /data-lock-after="600000"/);
+  age(phone, 9); assert.equal((await phone.get('/my')).status, 200);
+  age(phone, 11); assert.equal((await phone.get('/my')).location, '/unlock?next=%2Fmy');
+  assert.match((await phone.get('/unlock')).text, /left unused for 10 minutes on this device/);
+
+  // An iPad (says it is a Mac, has a touch screen and no mouse): a tablet, so 10 minutes.
+  const ipad = await signIn(new Client(MAC, 'portal.touch=1'));
+  assert.match((await ipad.get('/')).text, /data-lock-after="600000"/);
+  age(ipad, 11); assert.equal((await ipad.get('/my')).location, '/unlock?next=%2Fmy');
+  // The same session opened on a computer and on a phone is judged by the device each request comes from.
+  await ipad.post('/unlock', { password: 'correct horse battery' }, { page: '/unlock' });
+  age(ipad, 15); ipad.extra = ''; assert.equal((await ipad.get('/my')).status, 200);            // no touch note: a Mac at a desk
+  age(ipad, 15); ipad.extra = 'portal.touch=1'; assert.equal((await ipad.get('/my')).location, '/unlock?next=%2Fmy');
+
+  // The Security check tells a corporate admin both times and what the device in front of them counts as.
+  access.ensureProfile('Corporate admin', 'all', access.ALL);
+  const cid = makeUser('lock.corp', 'Cora Corporate'); db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(profileId('Corporate admin'), cid);
+  const corp = new Client(WIN); await corp.login('lock.corp', 'correct horse battery');
+  const page = (await corp.get('/admin/security')).text;
+  assert.match(page, /The site locks when it is left unused/);
+  assert.match(page, /On a phone or tablet: after 10 minutes\. On a computer: after 20 minutes\./);
+  assert.match(page, /The device you are on now counts as a computer\./);
+  corp.ua = IPHONE;
+  assert.match((await corp.get('/admin/security')).text, /The device you are on now counts as a phone or tablet\./);
+
+  // Settings: each kind has its own, the older single setting still stands in for both, and 0 switches a timer off.
+  const fresh = (env) => { const keep = { ...process.env }; Object.assign(process.env, env); delete require.cache[require.resolve('../app/config')]; const c = require('../app/config').lockAfterMs; delete require.cache[require.resolve('../app/config')]; for (const k of Object.keys(env)) { if (keep[k] === undefined) delete process.env[k]; else process.env[k] = keep[k]; } require.cache[require.resolve('../app/config')] = cached; return c; };
+  const cached = require.cache[require.resolve('../app/config')];
+  assert.deepEqual(fresh({ LOCK_AFTER_MINUTES_PHONE: '3', LOCK_AFTER_MINUTES_DESKTOP: '45' }), { phone: 3 * 60000, desktop: 45 * 60000 });
+  assert.deepEqual(fresh({ LOCK_AFTER_MINUTES: '5' }), { phone: 5 * 60000, desktop: 5 * 60000 });
+  assert.deepEqual(fresh({ LOCK_AFTER_MINUTES: '5', LOCK_AFTER_MINUTES_DESKTOP: '30' }), { phone: 5 * 60000, desktop: 30 * 60000 });
+  assert.deepEqual(fresh({ LOCK_AFTER_MINUTES_PHONE: '0' }), { phone: 0, desktop: 20 * 60000 });
+  assert.deepEqual(fresh({ LOCK_AFTER_MINUTES_PHONE: 'nonsense', LOCK_AFTER_MINUTES_DESKTOP: '-4' }), { phone: 10 * 60000, desktop: 20 * 60000 });   // a typing mistake does not switch a timer off
+  assert.deepEqual(fresh({ LOCK_AFTER_MINUTES: '0' }), { phone: 0, desktop: 0 });
+  assert.equal(require('../app/config'), cached.exports);
 });

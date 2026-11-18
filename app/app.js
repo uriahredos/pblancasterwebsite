@@ -8,6 +8,7 @@ const db = require('./db');
 const SqliteStore = require('./sessionStore');
 const auth = require('./auth');
 const util = require('./util');
+const device = require('./device');
 
 const MULTIPART_PATHS = /^\/(parts|parts\/\d+\/edit|admin\/catalog\/import|admin\/stock\/import|admin\/import|admin\/newsletters|inspection|profile|admin\/people\/import|admin\/company\/contacts|admin\/company\/details|photos|branches\/\d+|discussions\/new|discussions\/t\/\d+\/reply|sales\/library|admin\/oncall\/import)$/;
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000; // stay signed in on a phone for 30 days
@@ -25,7 +26,7 @@ Object.assign(app.locals, {
   dateOnly: (iso) => util.fmtDateTime(iso).split(', ')[0], timeOnly: (iso) => util.fmtDateTime(iso).split(', ')[1] || '',
   // Changes on every start, so browsers fetch fresh styles and scripts after an update.
   assetV: Date.now().toString(36),
-  lockAfterMs: config.lockAfterMs, minPasswordLength: config.minPasswordLength, tempPasswordDays: config.tempPasswordDays, editWindowHours: config.editWindowHours,
+  lockAfterMs: config.lockAfterMs.phone, minPasswordLength: config.minPasswordLength, tempPasswordDays: config.tempPasswordDays, editWindowHours: config.editWindowHours,
 });
 
 app.use(helmet({
@@ -80,6 +81,8 @@ app.use((req, res, next) => {
   res.locals.flash = req.session.flash || null;
   delete req.session.flash;
   res.locals.path = req.path;
+  // How long this device may sit unused: the page needs it too, to check when it comes back from the background.
+  res.locals.lockAfterMs = device.lockAfterMs(req);
   res.setHeader('Cache-Control', 'no-store');
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
   // These forms carry a file; their routes check the token after the upload is parsed.
@@ -88,7 +91,7 @@ app.use((req, res, next) => {
 });
 
 // The lock. Someone stays remembered on their device for 30 days, but the site locks when it is
-// closed (the page tells us, see site.js) or left unused for a few minutes, and then nothing
+// closed (the page tells us, see site.js) or left unused (10 minutes on a phone or tablet, 20 on a computer), and then nothing
 // opens until they prove who they are again with Face ID, a fingerprint or their password.
 const WHILE_LOCKED = /^\/(unlock|lock|logout|passkey\/auth\/(options|verify))$/;
 app.use((req, res, next) => {
@@ -97,7 +100,8 @@ app.use((req, res, next) => {
   if (!req.user) return next();
   const s = req.session;
   const now = Date.now();
-  if (!s.locked && config.lockAfterMs && s.seenAt && now - s.seenAt > config.lockAfterMs) s.locked = true;
+  const lockAfter = res.locals.lockAfterMs;
+  if (!s.locked && lockAfter && s.seenAt && now - s.seenAt > lockAfter) s.locked = true;
   if (!s.locked) {
     // The page's own background check for new alerts is not the person doing something: it must not hold off the lock.
     if (req.path !== '/pulse') s.seenAt = now;

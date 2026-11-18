@@ -3,6 +3,12 @@
   var saved = null;
   try { saved = localStorage.getItem('theme'); } catch (e) {}
   if (saved === 'light' || saved === 'dark') document.documentElement.setAttribute('data-theme', saved);
+  // A touch screen with no mouse is a phone or tablet, and the site locks sooner on those than on a desk computer.
+  // An iPad tells websites it is a Mac, so the site cannot work this out by itself: this note tells it.
+  try {
+    var touch = Boolean(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+    document.cookie = 'portal.touch=' + (touch ? '1' : '0') + '; path=/; max-age=' + (touch ? 31536000 : 0) + '; SameSite=Lax' + (location.protocol === 'https:' ? '; Secure' : '');
+  } catch (e) {}
   // Lets the styling collapse the menu on phones only when scripts are running to reopen it.
   document.documentElement.classList.add('js');
   // Signed in, but this tab was not open a moment ago: the site was closed and reopened.

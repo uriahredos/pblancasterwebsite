@@ -2,7 +2,7 @@
 <div class="narrow lock-screen">
 <%- include('partials/logo_hero') %>
 <h1>Welcome back, <%= user.display_name.split(' ')[0] %></h1>
-<p class="lede">The site locks when it is closed or left for a few minutes. Confirm it is you to carry on.</p>
+<p class="lede"><%= lockAfterMs ? 'The site locks when it is closed, or left unused for ' + Math.round(lockAfterMs / 60000) + ' minutes on this device.' : 'The site locks when it is closed.' %> Confirm it is you to carry on.</p>
 <% if (error) { %><p class="flash err" role="alert"><%= error %></p><% } %>
 <p class="flash err" id="passkey-error" role="alert" hidden></p>
 <% if (hasPasskey) { %>
