@@ -1366,3 +1366,10 @@ a.org-box:hover { box-shadow: 0 6px 14px rgba(0, 49, 79, .22); }
 .titles-edit > summary { cursor: pointer; }
 .titles-edit[open] > summary { margin-bottom: .7rem; }
 .titles-table td[data-label="People"] { text-align: center; }
+
+/* Positions: the roles chart and the list under it */
+.roles-scroll .org-box { min-width: 8.5rem; padding: .45rem .7rem; }
+.roles-scroll .org-box span { font-size: .8rem; opacity: .85; }
+.roles-form { margin-top: .9rem; }
+td.reports-to { color: var(--ink); }
+td.reports-to .meta { display: block; }

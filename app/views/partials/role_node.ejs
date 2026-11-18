@@ -1,0 +1,4 @@
+<li>
+  <div class="org-box lvl<%= Math.min(level, 3) %>"><strong><%= node.name %></strong><span><%= node.holders %> <%= node.holders === 1 ? 'person' : 'people' %></span></div>
+  <% if (node.kids.length) { %><ul><% node.kids.forEach(function (kid) { %><%- include('role_node', { node: kid, level: level + 1 }) %><% }) %></ul><% } %>
+</li>

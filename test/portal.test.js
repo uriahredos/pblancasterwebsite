@@ -4192,7 +4192,7 @@ test('reports to: set on the Positions page, it draws the office team chart, fil
   const page = '/admin/users/positions';
   const form = (await owner.get(page)).text;
   assert.match(form, /<th>Reports to<\/th>/);
-  assert.match(form, new RegExp(`<select name="mgr_${t1}"[^>]*><option value="auto" selected>Automatic: nobody</option>`));
+  assert.match(form, new RegExp(`<select name="job_${t1}"[\\s\\S]*?<td data-label="Reports to" class="reports-to">Nobody`));
   assert.doesNotMatch(form.slice(form.indexOf(`name="mgr_${t1}"`), form.indexOf(`name="mgr_${t1}"`) + 2000).split('</select>')[0], new RegExp(`value="${t1}"`));   // nobody is offered themselves
   assert.equal((await owner.post(page, { [`mgr_${sm}`]: String(gm), [`mgr_${t1}`]: String(sm), [`mgr_${t2}`]: String(sm) }, { page })).status, 302);
   assert.match((await owner.get(page)).text, /3 changes saved/);
@@ -4238,7 +4238,9 @@ test('reports to: set on the Positions page, it draws the office team chart, fil
   // With no operations manager in the office, the managers go straight to the general manager.
   assert.deepEqual([gm, sm, inst, t1, t2, loner, it, ops].map(mgrOf), [null, gm, gm, sm, sm, sm, inst, null]);
   assert.equal(db.prepare('SELECT department FROM users WHERE id = ?').get(it).department, 'Installation');           // the title brings its department
-  assert.match((await owner.get(page)).text, new RegExp(`name="mgr_${it}"[^>]*>\\s*<option value="auto" selected>Automatic: Ines Install`));
+  assert.match((await owner.get(page)).text, new RegExp(`name="job_${it}"[\\s\\S]*?class="reports-to">Ines Install <span class="meta">Installation Manager`));
+  assert.doesNotMatch((await owner.get(page)).text, /name="mgr_\d+"/);                             // nobody is assigned to a person by hand
+  assert.match((await owner.get(page)).text, /class="org-box lvl1"><strong>General Manager<\/strong><span>1 person/);   // the roles drawn as a chart
   // Give someone the operations manager title and the managers move under them.
   await owner.post(page, { [`job_${ops}`]: 'Operations Manager' }, { page });
   assert.deepEqual([ops, sm, inst, t1].map(mgrOf), [gm, ops, ops, sm]);

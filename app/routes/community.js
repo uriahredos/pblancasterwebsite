@@ -101,7 +101,7 @@ router.get('/admin/users/positions', requirePerm('users.manage'), (req, res) => 
   // Who each person could report to: the people of their own office.
   const byOffice = new Map();
   for (const p of people) { if (!byOffice.has(p.branch_id)) byOffice.set(p.branch_id, []); byOffice.get(p.branch_id).push(p); }
-  res.render('admin_positions', { title: 'Positions and reporting', wide: true, people, byOffice, problems: problemsOnce, titles: require('../team').titles(), canTitles: Boolean(req.user.allBranches), saved, focus: isId(req.query.who) ? Number(req.query.who) : 0, showOffice: req.user.viewBranch === null });
+  res.render('admin_positions', { title: 'Positions and reporting', wide: true, people, byOffice, problems: problemsOnce, titles: require('../team').titles(), roleTree: require('../team').roleTree(), canTitles: Boolean(req.user.allBranches), saved, focus: isId(req.query.who) ? Number(req.query.who) : 0, showOffice: req.user.viewBranch === null });
 });
 router.post('/admin/users/positions', requirePerm('users.manage'), (req, res) => {
   let changed = 0; const problems = []; const offices = new Set();
@@ -176,7 +176,7 @@ router.post('/admin/users/titles', requireLogin, (req, res) => {
   })();
   team.applyAutoEverywhere();
   req.session.positionsSaved = changed; req.session.positionsProblems = problems;
-  res.redirect('/admin/users/positions#titles');
+  res.redirect('/admin/users/positions');
 });
 
 // ---- My own profile ------------------------------------------------------------

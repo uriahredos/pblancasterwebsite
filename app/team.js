@@ -161,5 +161,19 @@ function applyAutoEverywhere() {
 
 // The first time the list exists, place everyone from the titles they already have.
 if (seededNow) applyAutoEverywhere();
+// Reporting is set role to role only: choices once made person by person are dropped, and everyone follows their title.
+if (!db.prepare("SELECT 1 FROM meta WHERE key = 'roles_only_1'").get()) {
+  db.prepare('UPDATE users SET manager_manual = 0 WHERE manager_manual = 1').run();
+  db.prepare("INSERT INTO meta (key, value) VALUES ('roles_only_1', '1')").run();
+  applyAutoEverywhere();
+}
 
-module.exports = { managerOf, everyoneUnder, setManager, chart, applyAuto, applyAutoEverywhere, titles, titleByName, ensureTitle, titleLoop, WHOLE };
+/** The roles as a tree: each with the roles that report to it. */
+function roleTree() {
+  const all = titles().map((t) => ({ ...t, kids: [] })); const byId = new Map(all.map((t) => [t.id, t]));
+  const tops = [];
+  for (const t of all) { const p = t.parent_id && byId.get(t.parent_id); if (p) p.kids.push(t); else tops.push(t); }
+  return tops;
+}
+
+module.exports = { managerOf, everyoneUnder, setManager, chart, applyAuto, applyAutoEverywhere, roleTree, titles, titleByName, ensureTitle, titleLoop, WHOLE };
