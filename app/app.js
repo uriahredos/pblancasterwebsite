@@ -128,6 +128,7 @@ app.use(require('./routes/forum'));
 app.use(require('./routes/reactions'));
 app.use(require('./routes/sales'));
 app.use(require('./routes/oncall'));
+require('./team');   // adds its columns on first start
 app.use(require('./routes/digest'));
 app.use(require('./routes/import'));
 app.use(require('./routes/backups'));

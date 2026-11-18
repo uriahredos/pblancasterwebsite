@@ -4169,7 +4169,7 @@ test('reports to: set on the Positions page, it draws the office team chart, fil
   const page = '/admin/positions';
   const form = (await owner.get(page)).text;
   assert.match(form, /<th>Reports to<\/th>/);
-  assert.match(form, new RegExp(`<select name="mgr_${t1}"[^>]*><option value="">Nobody</option>`));
+  assert.match(form, new RegExp(`<select name="mgr_${t1}"[^>]*><option value="auto" selected>Automatic: nobody</option>`));
   assert.doesNotMatch(form.slice(form.indexOf(`name="mgr_${t1}"`), form.indexOf(`name="mgr_${t1}"`) + 2000).split('</select>')[0], new RegExp(`value="${t1}"`));   // nobody is offered themselves
   assert.equal((await owner.post(page, { [`mgr_${sm}`]: String(gm), [`mgr_${t1}`]: String(sm), [`mgr_${t2}`]: String(sm) }, { page })).status, 302);
   assert.match((await owner.get(page)).text, /3 people updated/);
@@ -4195,5 +4195,23 @@ test('reports to: set on the Positions page, it draws the office team chart, fil
   // Clearing it takes the person off the chart.
   await owner.post(page, { [`mgr_${t2}`]: '' }, { page });
   assert.equal(db.prepare('SELECT COUNT(*) n FROM user_managers WHERE user_id = ?').get(t2).n, 0);
+  // Automatic: say who leads what, and everyone not set by hand follows their department.
+  db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(profileId('Admin'), gm);
+  const inst = mk('chart.im', 'Ines Install', 'Technician', 'Install Manager'); const it = mk('chart.it', 'Ivan Installer', 'Technician', 'Install Tech');
+  db.prepare("UPDATE users SET department = 'Service' WHERE id IN (?, ?, ?)").run(t1, t2, loner);
+  db.prepare("UPDATE users SET department = 'Installation' WHERE id = ?").run(it);
+  const mgrOf = (id) => (db.prepare('SELECT manager_id FROM user_managers WHERE user_id = ?').get(id) || {}).manager_id || null;
+  const all = [gm, sm, t1, t2, loner, inst, it];
+  const autoAll = Object.fromEntries(all.map((id) => [`mgr_${id}`, 'auto']));
+  await owner.post(page, { ...autoAll, [`leads_${gm}`]: 'Whole office', [`leads_${sm}`]: 'Service', [`leads_${inst}`]: 'Installation' }, { page });
+  assert.deepEqual([gm, sm, inst, t1, t2, loner, it].map(mgrOf), [null, gm, gm, sm, sm, sm, inst]);
+  assert.match((await owner.get(page)).text, new RegExp(`name="mgr_${it}"[^>]*>\\s*<option value="auto" selected>Automatic: Ines Install`));
+  // Move a tech to another department and they move with it; a choice made by hand is left alone.
+  await owner.post(page, { [`dept_${t2}`]: 'Installation', [`job_${t2}`]: 'Install Tech', [`mgr_${loner}`]: String(gm) }, { page });
+  assert.equal(mgrOf(t2), inst); assert.equal(mgrOf(loner), gm);
+  await owner.post(page, { [`dept_${loner}`]: 'Installation', [`job_${loner}`]: 'Estimator' }, { page });
+  assert.equal(mgrOf(loner), gm);
+  await owner.post(page, { [`mgr_${loner}`]: 'auto' }, { page });
+  assert.equal(mgrOf(loner), inst);
   await owner.post('/branch/view', { branch: '1', back: '/' }, { page: '/' });
 });

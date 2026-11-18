@@ -1324,3 +1324,4 @@ h1, h2, h3, .hero h1, .panel-head h2 { font-weight: 700; letter-spacing: 0; }
 .chart-person:hover { background: var(--accent-soft); }
 .chart > li > .chart-person strong { font-size: 1.05rem; }
 table.positions select { width: 100%; min-width: 10rem; min-height: 42px; }
+table.positions td[data-label="Leads"] input { min-width: 7.5rem; }

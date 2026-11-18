@@ -560,12 +560,14 @@ router.post('/admin/users/:id/edit', requirePerm('users.manage'), (req, res) => 
     const newProfile = profileId ? db.prepare('SELECT scope FROM profiles WHERE id = ?').get(profileId) : null;
     if (fullAccess && req.body.team_form === '1' && newProfile && newProfile.scope === 'team') {
       const picked = [].concat(req.body.team || []).filter((v) => /^\d+$/.test(v)).map(Number).filter((id) => id !== target.id && access.canSee(req.user, id));
+      db.prepare('UPDATE users SET manager_manual = 0 WHERE id IN (SELECT user_id FROM user_managers WHERE manager_id = ?)').run(target.id);
       db.prepare('DELETE FROM user_managers WHERE manager_id = ?').run(target.id);
       const add = db.prepare('INSERT OR IGNORE INTO user_managers (manager_id, user_id) SELECT ?, id FROM users WHERE id = ? AND branch_id = ?');
-      for (const id of picked) add.run(target.id, id, target.branch_id);
+      for (const id of picked) { add.run(target.id, id, target.branch_id); db.prepare('UPDATE users SET manager_manual = 1 WHERE id = ? AND branch_id = ?').run(id, target.branch_id); }
       activity.log(req.user, 'Team set', `${values.display_name} manages ${picked.length} ${picked.length === 1 ? 'person' : 'people'}`);
     }
   })();
+  require('../team').applyAuto(target.branch_id);
   flash(req, 'ok', `${values.display_name} updated.`);
   // After moving someone onto a manager profile, go straight to choosing their people.
   const becameManager = profileId !== target.profile_id && db.prepare("SELECT 1 FROM profiles WHERE id = ? AND scope = 'team'").get(profileId);

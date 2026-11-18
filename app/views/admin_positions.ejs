@@ -1,23 +1,26 @@
 <%- include('partials/header', { wide: true }) %>
 <div class="title-row"><h1>Positions</h1><a class="btn small" href="/admin/users">Users</a></div>
-<p class="lede">Everyone's job title, department and who they report to, in one place. Change as many as you like, then press Save once. "Reports to" builds the team chart on the office's page and fills in "Managed by" on the Users page.</p>
+<p class="lede">Everyone's job title, department and who they report to, in one place. Change as many as you like, then press Save once.</p>
+<div class="notice-box"><p><strong>Who reports to whom fills itself in.</strong> Under <strong>Leads</strong>, put a department next to the person who runs it (for example Service next to the service manager) and <strong>Whole office</strong> next to the general manager. Everyone in a department then reports to its lead, and the leads report to the general manager. Change someone's department and they move with it. To make an exception, pick a name under Reports to.</p></div>
 <% if (problems.length) { %><div class="errors"><ul><% problems.forEach(function (m) { %><li><%= m %></li><% }) %></ul></div><% } %>
 <% if (saved !== undefined) { %><p class="flash ok"><%= saved ? saved + (saved === 1 ? ' person' : ' people') + ' updated.' : 'Nothing was changed.' %></p><% } %>
 <% if (!people.length) { %><p class="empty">Nobody to show yet.</p><% } else { %>
 <label class="grow pos-find">Find a person <input type="search" id="pos-find" placeholder="Start typing a name, job or department" autocomplete="off"></label>
 <form method="post" action="/admin/positions" id="pos-form">
   <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <datalist id="leads-list"><option value="Whole office"></option><% departments.forEach(function (d) { %><option value="<%= d %>"></option><% }) %></datalist>
   <datalist id="dept-list"><% departments.forEach(function (d) { %><option value="<%= d %>"></option><% }) %></datalist>
   <div class="table-wrap">
   <table class="positions">
-    <thead><tr><th>Name</th><th>Job title</th><th>Department</th><th>Reports to</th></tr></thead>
+    <thead><tr><th>Name</th><th>Job title</th><th>Department</th><th>Leads</th><th>Reports to</th></tr></thead>
     <tbody>
     <% people.forEach(function (p) { %>
     <tr id="p<%= p.id %>" class="<%= focus === p.id ? 'focus' : '' %>">
       <td data-label="Name"><a href="/people/<%= p.id %>"><%= p.display_name %></a><% if (showOffice && p.branch) { %> <span class="pill"><%= p.branch %></span><% } %></td>
       <td data-label="Job title"><input name="job_<%= p.id %>" value="<%= p.job_title || '' %>" maxlength="80" autocomplete="off" aria-label="Job title for <%= p.display_name %>" <%= focus === p.id ? 'autofocus' : '' %>></td>
       <td data-label="Department"><input name="dept_<%= p.id %>" value="<%= p.department || '' %>" maxlength="60" autocomplete="off" list="dept-list" aria-label="Department for <%= p.display_name %>"></td>
-      <td data-label="Reports to"><select name="mgr_<%= p.id %>" aria-label="Who <%= p.display_name %> reports to"><option value="">Nobody</option><% (byOffice.get(p.branch_id) || []).forEach(function (m) { if (m.id !== p.id) { %><option value="<%= m.id %>" <%= p.manager_id === m.id ? 'selected' : '' %>><%= m.display_name %></option><% } }) %></select></td>
+      <td data-label="Leads"><input name="leads_<%= p.id %>" value="<%= p.leads === '*' ? 'Whole office' : p.leads || '' %>" maxlength="60" autocomplete="off" list="leads-list" placeholder="Nothing" aria-label="What <%= p.display_name %> leads"></td>
+      <td data-label="Reports to"><select name="mgr_<%= p.id %>" aria-label="Who <%= p.display_name %> reports to"><% var autoName = !p.manager_manual && p.manager_id ? ((byOffice.get(p.branch_id) || []).find(function (m) { return m.id === p.manager_id; }) || {}).display_name : ''; %><option value="auto" <%= p.manager_manual ? '' : 'selected' %>>Automatic<%= autoName ? ': ' + autoName : p.manager_manual ? '' : ': nobody' %></option><option value="" <%= p.manager_manual && !p.manager_id ? 'selected' : '' %>>Nobody</option><% (byOffice.get(p.branch_id) || []).forEach(function (m) { if (m.id !== p.id) { %><option value="<%= m.id %>" <%= p.manager_manual && p.manager_id === m.id ? 'selected' : '' %>><%= m.display_name %></option><% } }) %></select></td>
     </tr>
     <% }) %>
     </tbody>

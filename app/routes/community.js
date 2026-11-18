@@ -81,7 +81,7 @@ router.get('/people/:id', requireLogin, (req, res) => {
 const deptList = () => db.prepare("SELECT DISTINCT department FROM users WHERE department IS NOT NULL AND department <> '' AND (active = 1 OR in_directory = 1) ORDER BY department COLLATE NOCASE").all().map((r) => r.department);
 function positionPeople(user) {
   const ids = access.visibleUserIds(user);
-  return db.prepare(`SELECT u.id, u.display_name, u.job_title, u.department, u.photo_path, u.branch_id, b.name AS branch,
+  return db.prepare(`SELECT u.id, u.display_name, u.job_title, u.department, u.photo_path, u.branch_id, u.leads, u.manager_manual, b.name AS branch,
       (SELECT um.manager_id FROM user_managers um JOIN users m ON m.id = um.manager_id WHERE um.user_id = u.id ORDER BY m.display_name COLLATE NOCASE LIMIT 1) AS manager_id
     FROM users u LEFT JOIN branches b ON b.id = u.branch_id
     WHERE (u.active = 1 OR u.in_directory = 1) ${ids ? `AND u.id IN (${ids.map(Number).join(',') || 0})` : ''} ORDER BY u.display_name COLLATE NOCASE LIMIT 1000`).all();
@@ -97,13 +97,23 @@ router.get('/admin/positions', requirePerm('users.manage'), (req, res) => {
 });
 router.post('/admin/positions', requirePerm('users.manage'), (req, res) => {
   const set = db.prepare('UPDATE users SET job_title = ?, department = ? WHERE id = ?');
-  let changed = 0; const problems = [];
+  let changed = 0; const problems = []; const offices = new Set();
   const team = require('../team');
   db.transaction(() => {
     const people = positionPeople(req.user); const names = new Map(people.map((p) => [p.id, p.display_name]));
     for (const p of people) {
-      if (req.body[`job_${p.id}`] === undefined && req.body[`dept_${p.id}`] === undefined && req.body[`mgr_${p.id}`] === undefined) continue;
+      if (req.body[`job_${p.id}`] === undefined && req.body[`dept_${p.id}`] === undefined && req.body[`mgr_${p.id}`] === undefined && req.body[`leads_${p.id}`] === undefined) continue;
       let touched = false;
+      offices.add(p.branch_id);
+      // Leads: a department's name, or the whole office.
+      if (req.body[`leads_${p.id}`] !== undefined) {
+        const typed = clean(req.body[`leads_${p.id}`], 60);
+        const leads = /^(the )?(whole|entire) office$/i.test(typed) ? team.WHOLE : typed || null;
+        if (leads !== (p.leads || null)) {
+          db.prepare('UPDATE users SET leads = ? WHERE id = ?').run(leads, p.id); touched = true;
+          activity.log(req.user, 'Leads changed', `${p.display_name}: ${leads === team.WHOLE ? 'the whole office' : leads || 'nothing'}`);
+        }
+      }
       if (req.body[`job_${p.id}`] !== undefined || req.body[`dept_${p.id}`] !== undefined) {
         const job = clean(req.body[`job_${p.id}`], 80) || null; const dept = clean(req.body[`dept_${p.id}`], 60) || null;
         if (job !== (p.job_title || null) || dept !== (p.department || null)) {
@@ -113,16 +123,22 @@ router.post('/admin/positions', requirePerm('users.manage'), (req, res) => {
       }
       // Reports to: someone from the list this page offered (the same office), or nobody.
       if (req.body[`mgr_${p.id}`] !== undefined) {
-        const mgr = isId(req.body[`mgr_${p.id}`]) ? Number(req.body[`mgr_${p.id}`]) : null;
-        if (mgr !== (p.manager_id || null) && (!mgr || names.has(mgr))) {
-          const why = team.setManager(p.id, mgr);
-          if (why) problems.push(`${p.display_name} could not be set to report to ${names.get(mgr)}: ${why}.`);
-          else { touched = true; activity.log(req.user, 'Reports to changed', `${p.display_name}: ${mgr ? names.get(mgr) : 'nobody'}`); }
+        const choice = String(req.body[`mgr_${p.id}`]);
+        if (choice === 'auto') {
+          if (p.manager_manual) { db.prepare('UPDATE users SET manager_manual = 0 WHERE id = ?').run(p.id); touched = true; activity.log(req.user, 'Reports to changed', `${p.display_name}: automatic`); }
+        } else {
+          const mgr = isId(choice) ? Number(choice) : null;
+          if ((!p.manager_manual || mgr !== (p.manager_id || null)) && (!mgr || names.has(mgr))) {
+            const why = team.setManager(p.id, mgr);
+            if (why) problems.push(`${p.display_name} could not be set to report to ${names.get(mgr)}: ${why}.`);
+            else { db.prepare('UPDATE users SET manager_manual = 1 WHERE id = ?').run(p.id); touched = true; activity.log(req.user, 'Reports to changed', `${p.display_name}: ${mgr ? names.get(mgr) : 'nobody'}`); }
+          }
         }
       }
       if (touched) changed += 1;
     }
   })();
+  for (const office of offices) team.applyAuto(office);
   req.session.positionsSaved = changed; req.session.positionsProblems = problems;
   res.redirect('/admin/positions');
 });
