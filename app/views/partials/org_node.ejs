@@ -1,13 +1,14 @@
 <% var lead = node.reports.filter(function (k) { return k.reports.length; }), crew = node.reports.filter(function (k) { return !k.reports.length; });
-   var depts = crew.map(function (k) { return k.department || ''; }).filter(function (d, i, a) { return a.indexOf(d) === i; });
-   var crewName = depts.length === 1 && depts[0] ? depts[0] : (lead.length ? 'Also reporting' : 'Team'); %>
+   // People with nobody under them: one box per person when they are the only one with that title, one shared box per title otherwise.
+   var groups = []; crew.forEach(function (k) { var key = (k.job_title || '').toLowerCase(); var g = groups.filter(function (x) { return x.key === key; })[0]; if (!g) { g = { key: key, title: k.job_title || 'Team', people: [] }; groups.push(g); } g.people.push(k); });
+   groups.sort(function (a, b) { return a.people.length - b.people.length || a.title.localeCompare(b.title); }); %>
 <li>
   <a class="org-box lvl<%= Math.min(level, 3) %>" href="/people/<%= node.id %>"><strong><%= node.job_title || node.department || 'Team lead' %></strong><span><%= node.display_name %></span></a>
   <% if (node.reports.length) { %>
   <ul>
     <% lead.forEach(function (kid) { %><%- include('org_node', { node: kid, level: level + 1 }) %><% }) %>
-    <% if (crew.length === 1) { %><li><a class="org-box lvl<%= Math.min(level + 1, 3) %>" href="/people/<%= crew[0].id %>"><strong><%= crew[0].job_title || crew[0].department || 'Team' %></strong><span><%= crew[0].display_name %></span></a></li>
-    <% } else if (crew.length) { %><li><div class="org-box crew"><strong><%= crewName %></strong><ul class="org-crew"><% crew.forEach(function (k) { %><li><a href="/people/<%= k.id %>"><%= k.display_name %></a><% if (k.job_title) { %> <span><%= k.job_title %></span><% } %></li><% }) %></ul></div></li><% } %>
+    <% groups.forEach(function (g) { if (g.people.length === 1) { %><li><a class="org-box lvl<%= Math.min(level + 1, 3) %>" href="/people/<%= g.people[0].id %>"><strong><%= g.title %></strong><span><%= g.people[0].display_name %></span></a></li>
+    <% } else { %><li><div class="org-box crew"><strong><%= g.title %><%= /s$/i.test(g.title) || g.title === 'Team' ? '' : 's' %></strong><ul class="org-crew"><% g.people.forEach(function (k) { %><li><a href="/people/<%= k.id %>"><%= k.display_name %></a></li><% }) %></ul></div></li><% } }) %>
   </ul>
   <% } %>
 </li>

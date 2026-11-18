@@ -6,7 +6,7 @@
 <% } else { %>
 <h2><%= office.name %> office</h2>
 <% if (!teamChart.tops.length) { %>
-<p class="card empty">No chart yet. Open <a href="/admin/users/positions">Positions and reporting</a>, put <strong>Whole office</strong> under Leads next to the general manager and a department next to each manager, then save.</p>
+<p class="card empty">No chart yet. Open <a href="/admin/users/positions">Positions and reporting</a>, pick each person's job title, then save.</p>
 <% } else { %>
 <div class="card"><%- include('partials/org_chart') %></div>
 <% if (teamChart.rest.length) { %><h2>Not on the chart</h2>

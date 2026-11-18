@@ -2972,6 +2972,8 @@ test('profiles: people fill in their own, others find them by name, job or skill
 
   const ok = await save({ job_title: 'Sprinkler Fitter', started_on: '2020-02-03', about: 'From Lititz.\n<b>Likes</b> fishing.', skills: 'Viking, backflow , Viking\nfire pumps', phone: '(717) 555-0100' }, new File([PNG], 'me.png', { type: 'image/png' }));
   assert.equal(ok.location, `/people/${pid}`);
+  assert.equal(db.prepare('SELECT job_title FROM users WHERE id = ?').get(pid).job_title, null);   // a job title is given by a manager, not typed by the person
+  db.prepare("UPDATE users SET job_title = 'Sprinkler Fitter' WHERE id = ?").run(pid);
   const row = db.prepare('SELECT * FROM users WHERE id = ?').get(pid);
   assert.equal(row.skills, 'Viking, backflow, fire pumps');                              // tidied, repeats dropped
   assert.match(row.photo_path, /^[0-9a-f]{32}\.png$/);
@@ -3651,34 +3653,55 @@ test('your office name sits beside the logo on every page once you are signed in
   assert.match((await new Client().get('/login')).text, /<span class="branch">Employee Portal<\/span>/);
 });
 
-test('positions: job titles and departments for the office are edited in one table by people who manage users', async () => {
+test('positions: each person gets a job title from the company list, picked by people who manage users', async () => {
   const owner = await loggedIn('owner'); const t1 = await loggedIn('tech1');
   assert.equal((await t1.get('/admin/users/positions')).status, 403);
-  assert.equal((await t1.post('/admin/users/positions', { [`job_${userId('tech2')}`]: 'Boss' }, { page: '/' })).status, 403);
+  assert.equal((await t1.post('/admin/users/positions', { [`job_${userId('tech2')}`]: 'General Manager' }, { page: '/' })).status, 403);
+  assert.equal((await t1.post('/admin/users/titles', { new_name: 'Boss' }, { page: '/' })).status, 403);
+  // The list starts with the usual management titles; a corporate admin adds to it.
+  const titlesNow = () => db.prepare('SELECT name FROM job_titles').all().map((r) => r.name);
+  for (const name of ['General Manager', 'Operations Manager', 'Office Manager', 'Installation Manager', 'Service Manager']) assert.ok(titlesNow().includes(name), name);
+  const sm = db.prepare("SELECT id FROM job_titles WHERE name = 'Service Manager'").get().id;
+  await owner.post('/admin/users/titles', { new_name: 'Lead Service Tech', new_dept: 'Service', new_parent: String(sm) }, { page: '/admin/users/positions' });
+  assert.deepEqual(db.prepare("SELECT department, parent_id FROM job_titles WHERE name = 'Lead Service Tech'").get(), { department: 'Service', parent_id: sm });
   const page = (await owner.get('/admin/users/positions')).text;
   const a = userId('tech1'); const b = userId('tech2');
-  assert.match(page, new RegExp(`name="job_${a}"`)); assert.match(page, new RegExp(`name="dept_${b}"[^>]*list="dept-list"`));
+  assert.match(page, new RegExp(`<select name="job_${a}"[^>]*><option value="">None yet</option>[\\s\\S]*?<option value="Lead Service Tech"`));
+  assert.doesNotMatch(page, /name="dept_\d+"|name="leads_\d+"/);                              // nothing to type: the title carries the department
   const before = db.prepare('SELECT job_title, department FROM users WHERE id = ?').get(b);
-  const r = await owner.post('/admin/users/positions', { [`job_${a}`]: ' Lead Service Tech ', [`dept_${a}`]: 'Service', [`job_${b}`]: before.job_title || '', [`dept_${b}`]: before.department || '' }, { page: '/admin/users/positions' });
+  const r = await owner.post('/admin/users/positions', { [`job_${a}`]: 'Lead Service Tech', [`job_${b}`]: before.job_title || '' }, { page: '/admin/users/positions' });
   assert.equal(r.location, '/admin/users/positions');
   assert.deepEqual(db.prepare('SELECT job_title, department FROM users WHERE id = ?').get(a), { job_title: 'Lead Service Tech', department: 'Service' });
   assert.deepEqual(db.prepare('SELECT job_title, department FROM users WHERE id = ?').get(b), before);   // untouched rows stay as they were
-  assert.match((await owner.get('/admin/users/positions')).text, /1 person updated\./);
+  assert.match((await owner.get('/admin/users/positions')).text, /1 change saved\./);
   assert.equal(db.prepare("SELECT COUNT(*) n FROM activity_log WHERE action = 'Position changed' AND detail LIKE '%Lead Service Tech · Service'").get().n, 1);
-  // The person's page shows it, with a shortcut for people who can edit and none for those who cannot.
-  assert.match((await owner.get(`/people/${a}`)).text, new RegExp(`Lead Service Tech · Service[\\s\\S]*href="/admin/users/positions\\?who=${a}">Edit job title and department`));
-  assert.doesNotMatch((await t1.get(`/people/${b}`)).text, /admin\/positions/);
+  // A title that is not on the list is not accepted.
+  await owner.post('/admin/users/positions', { [`job_${a}`]: 'Supreme Leader' }, { page: '/admin/users/positions' });
+  assert.equal(db.prepare('SELECT job_title FROM users WHERE id = ?').get(a).job_title, 'Lead Service Tech');
+  // A title in use cannot be removed; renaming it carries to the people who hold it; a loop is refused.
+  const lst = db.prepare("SELECT id FROM job_titles WHERE name = 'Lead Service Tech'").get().id;
+  await owner.post('/admin/users/titles', { [`tname_${lst}`]: 'Lead Service Tech', [`tdept_${lst}`]: 'Service', [`tparent_${lst}`]: String(sm), [`tdel_${lst}`]: '1' }, { page: '/admin/users/positions' });
+  assert.match((await owner.get('/admin/users/positions')).text, /Lead Service Tech is still someone&#39;s job title, so it was kept/);
+  await owner.post('/admin/users/titles', { [`tname_${sm}`]: 'Service Manager', [`tdept_${sm}`]: 'Management', [`tparent_${sm}`]: String(lst) }, { page: '/admin/users/positions' });
+  assert.notEqual(db.prepare('SELECT parent_id FROM job_titles WHERE id = ?').get(sm).parent_id, lst);
+  await owner.post('/admin/users/titles', { [`tname_${lst}`]: 'Senior Service Tech', [`tdept_${lst}`]: 'Service', [`tparent_${lst}`]: String(sm) }, { page: '/admin/users/positions' });
+  assert.equal(db.prepare('SELECT job_title FROM users WHERE id = ?').get(a).job_title, 'Senior Service Tech');
+  // The person's page shows it, with a shortcut for people who can edit and none for those who cannot. Nobody types their own.
+  assert.match((await owner.get(`/people/${a}`)).text, new RegExp(`Senior Service Tech · Service[\\s\\S]*href="/admin/users/positions\\?who=${a}">Edit job title and department`));
+  assert.doesNotMatch((await t1.get(`/people/${b}`)).text, /admin\/users\/positions/);
+  const mine = (await t1.get('/profile')).text;
+  assert.match(mine, /Job title<\/span> <strong>Senior Service Tech<\/strong>/); assert.doesNotMatch(mine, /name="job_title"/);
   // Someone who manages users in another office cannot change people here.
   const other = db.prepare('SELECT id FROM branches WHERE id <> 1 ORDER BY id LIMIT 1').get();
   if (other) {
     const hid = db.prepare("SELECT u.id, u.username FROM users u JOIN profiles p ON p.id = u.profile_id WHERE u.branch_id = ? AND u.active = 1 AND p.name = 'Admin' LIMIT 1").get(other.id);
     if (hid) {
-      db.prepare('UPDATE users SET job_title = ? WHERE id = ?').run('Lead Service Tech', a);
       const pid = profileId('Admin'); const had = db.prepare("SELECT 1 FROM profile_permissions WHERE profile_id = ? AND permission = 'branches.all'").get(pid);
       if (!had) {
         const h = await loggedIn(hid.username);
-        await h.post('/admin/users/positions', { [`job_${a}`]: 'Hacked', [`dept_${a}`]: 'X' }, { page: '/admin/users/positions' });
-        assert.equal(db.prepare('SELECT job_title FROM users WHERE id = ?').get(a).job_title, 'Lead Service Tech');
+        await h.post('/admin/users/positions', { [`job_${a}`]: 'General Manager' }, { page: '/admin/users/positions' });
+        assert.equal(db.prepare('SELECT job_title FROM users WHERE id = ?').get(a).job_title, 'Senior Service Tech');
+        assert.equal((await h.post('/admin/users/titles', { new_name: 'Sneaky Title' }, { page: '/admin/users/positions' })).status, 403);   // the list is corporate's
       }
     }
   }
@@ -4172,7 +4195,7 @@ test('reports to: set on the Positions page, it draws the office team chart, fil
   assert.match(form, new RegExp(`<select name="mgr_${t1}"[^>]*><option value="auto" selected>Automatic: nobody</option>`));
   assert.doesNotMatch(form.slice(form.indexOf(`name="mgr_${t1}"`), form.indexOf(`name="mgr_${t1}"`) + 2000).split('</select>')[0], new RegExp(`value="${t1}"`));   // nobody is offered themselves
   assert.equal((await owner.post(page, { [`mgr_${sm}`]: String(gm), [`mgr_${t1}`]: String(sm), [`mgr_${t2}`]: String(sm) }, { page })).status, 302);
-  assert.match((await owner.get(page)).text, /3 people updated/);
+  assert.match((await owner.get(page)).text, /3 changes saved/);
   // A loop, yourself, or someone from another office is refused and nothing changes.
   await owner.post(page, { [`mgr_${gm}`]: String(t1) }, { page });
   assert.match((await owner.get(page)).text, /Gina General could not be set to report to Tia Tech: that person already reports to them\./);
@@ -4201,23 +4224,34 @@ test('reports to: set on the Positions page, it draws the office team chart, fil
   // Clearing it takes the person off the chart.
   await owner.post(page, { [`mgr_${t2}`]: '' }, { page });
   assert.equal(db.prepare('SELECT COUNT(*) n FROM user_managers WHERE user_id = ?').get(t2).n, 0);
-  // Automatic: say who leads what, and everyone not set by hand follows their department.
+  // Automatic: a person's job title decides who they report to. Nothing else is typed.
   db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(profileId('Admin'), gm);
-  const inst = mk('chart.im', 'Ines Install', 'Technician', 'Install Manager'); const it = mk('chart.it', 'Ivan Installer', 'Technician', 'Install Tech');
-  db.prepare("UPDATE users SET department = 'Service' WHERE id IN (?, ?, ?)").run(t1, t2, loner);
-  db.prepare("UPDATE users SET department = 'Installation' WHERE id = ?").run(it);
+  const inst = mk('chart.im', 'Ines Install', 'Technician', null); const it = mk('chart.it', 'Ivan Installer', 'Technician', null); const ops = mk('chart.om', 'Opal Ops', 'Technician', null);
+  const tid = (name) => db.prepare('SELECT id FROM job_titles WHERE name = ?').get(name).id;
+  await owner.post('/admin/users/titles', { new_name: 'Chart Install Tech', new_dept: 'Installation', new_parent: String(tid('Installation Manager')) }, { page });
+  await owner.post('/admin/users/titles', { new_name: 'Chart Service Tech', new_dept: 'Service', new_parent: String(tid('Service Manager')) }, { page });
   const mgrOf = (id) => (db.prepare('SELECT manager_id FROM user_managers WHERE user_id = ?').get(id) || {}).manager_id || null;
-  const all = [gm, sm, t1, t2, loner, inst, it];
+  const all = [gm, sm, t1, t2, loner, inst, it, ops];
   const autoAll = Object.fromEntries(all.map((id) => [`mgr_${id}`, 'auto']));
-  await owner.post(page, { ...autoAll, [`leads_${gm}`]: 'Whole office', [`leads_${sm}`]: 'Service', [`leads_${inst}`]: 'Installation' }, { page });
-  assert.deepEqual([gm, sm, inst, t1, t2, loner, it].map(mgrOf), [null, gm, gm, sm, sm, sm, inst]);
+  await owner.post(page, { ...autoAll, [`job_${gm}`]: 'General Manager', [`job_${sm}`]: 'Service Manager', [`job_${inst}`]: 'Installation Manager',
+    [`job_${t1}`]: 'Chart Service Tech', [`job_${t2}`]: 'Chart Service Tech', [`job_${loner}`]: 'Chart Service Tech', [`job_${it}`]: 'Chart Install Tech', [`job_${ops}`]: '' }, { page });
+  // With no operations manager in the office, the managers go straight to the general manager.
+  assert.deepEqual([gm, sm, inst, t1, t2, loner, it, ops].map(mgrOf), [null, gm, gm, sm, sm, sm, inst, null]);
+  assert.equal(db.prepare('SELECT department FROM users WHERE id = ?').get(it).department, 'Installation');           // the title brings its department
   assert.match((await owner.get(page)).text, new RegExp(`name="mgr_${it}"[^>]*>\\s*<option value="auto" selected>Automatic: Ines Install`));
-  // Move a tech to another department and they move with it; a choice made by hand is left alone.
-  await owner.post(page, { [`dept_${t2}`]: 'Installation', [`job_${t2}`]: 'Install Tech', [`mgr_${loner}`]: String(gm) }, { page });
+  // Give someone the operations manager title and the managers move under them.
+  await owner.post(page, { [`job_${ops}`]: 'Operations Manager' }, { page });
+  assert.deepEqual([ops, sm, inst, t1].map(mgrOf), [gm, ops, ops, sm]);
+  // Change a tech's title and they move with it; a choice made by hand is left alone until it is set back to automatic.
+  await owner.post(page, { [`job_${t2}`]: 'Chart Install Tech', [`mgr_${loner}`]: String(gm) }, { page });
   assert.equal(mgrOf(t2), inst); assert.equal(mgrOf(loner), gm);
-  await owner.post(page, { [`dept_${loner}`]: 'Installation', [`job_${loner}`]: 'Estimator' }, { page });
+  await owner.post(page, { [`job_${loner}`]: 'Chart Install Tech' }, { page });
   assert.equal(mgrOf(loner), gm);
   await owner.post(page, { [`mgr_${loner}`]: 'auto' }, { page });
   assert.equal(mgrOf(loner), inst);
+  // Changing what a title reports to on the company list moves everyone who holds it.
+  const cit = tid('Chart Install Tech');
+  await owner.post('/admin/users/titles', { [`tname_${cit}`]: 'Chart Install Tech', [`tdept_${cit}`]: 'Installation', [`tparent_${cit}`]: String(tid('Service Manager')) }, { page });
+  assert.equal(mgrOf(it), sm);
   await owner.post('/branch/view', { branch: '1', back: '/' }, { page: '/' });
 });

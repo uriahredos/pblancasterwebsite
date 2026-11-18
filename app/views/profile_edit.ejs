@@ -16,9 +16,7 @@
     </div>
   </div>
   <% if (values.photo_path) { %><label class="choice"><input type="checkbox" name="remove_photo" value="1"> Remove my photo</label><% } %>
-  <label>Job title <span class="hint">For example Fire Alarm Technician, Inspector, Warehouse.</span>
-    <input name="job_title" value="<%= values.job_title || '' %>" maxlength="80" autocomplete="organization-title">
-  </label>
+  <p class="plain"><span class="meta">Job title</span> <strong><%= me.job_title || 'Not set yet' %></strong> <span class="hint">Set by your manager.</span></p>
   <label>Start date with the company
     <input type="date" name="started_on" value="<%= values.started_on || '' %>">
   </label>

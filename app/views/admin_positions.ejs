@@ -1,26 +1,21 @@
 <%- include('partials/header', { wide: true }) %>
 <div class="title-row"><h1>Users</h1></div>
 <%- include('partials/users_tabs', { tab: 'positions' }) %>
-<p class="lede">Everyone's job title, department and who they report to, in one place. Change as many as you like, then press Save once.</p>
-<div class="notice-box"><p><strong>Who reports to whom fills itself in.</strong> Under <strong>Leads</strong>, put a department next to the person who runs it (for example Service next to the service manager) and <strong>Whole office</strong> next to the general manager. Everyone in a department then reports to its lead, and the leads report to the general manager. Change someone's department and they move with it. To make an exception, pick a name under Reports to.</p></div>
+<p class="lede">Pick each person's job title. The title decides where they sit on the organization chart and who they report to.</p>
+<% if (saved !== undefined) { %><p class="flash ok"><%= saved ? saved + (saved === 1 ? ' change' : ' changes') + ' saved.' : 'Nothing was changed.' %></p><% } %>
 <% if (problems.length) { %><div class="errors"><ul><% problems.forEach(function (m) { %><li><%= m %></li><% }) %></ul></div><% } %>
-<% if (saved !== undefined) { %><p class="flash ok"><%= saved ? saved + (saved === 1 ? ' person' : ' people') + ' updated.' : 'Nothing was changed.' %></p><% } %>
 <% if (!people.length) { %><p class="empty">Nobody to show yet.</p><% } else { %>
-<label class="grow pos-find">Find a person <input type="search" id="pos-find" placeholder="Start typing a name, job or department" autocomplete="off"></label>
+<label class="grow pos-find">Find a person <input type="search" id="pos-find" placeholder="Start typing a name or job title" autocomplete="off"></label>
 <form method="post" action="/admin/users/positions" id="pos-form">
   <input type="hidden" name="_csrf" value="<%= csrf %>">
-  <datalist id="leads-list"><option value="Whole office"></option><% departments.forEach(function (d) { %><option value="<%= d %>"></option><% }) %></datalist>
-  <datalist id="dept-list"><% departments.forEach(function (d) { %><option value="<%= d %>"></option><% }) %></datalist>
   <div class="table-wrap">
   <table class="positions">
-    <thead><tr><th>Name</th><th>Job title</th><th>Department</th><th>Leads</th><th>Reports to</th></tr></thead>
+    <thead><tr><th>Name</th><th>Job title</th><th>Reports to</th></tr></thead>
     <tbody>
-    <% people.forEach(function (p) { %>
+    <% people.forEach(function (p) { var known = titles.some(function (t) { return t.name.toLowerCase() === String(p.job_title || '').toLowerCase(); }); %>
     <tr id="p<%= p.id %>" class="<%= focus === p.id ? 'focus' : '' %>">
       <td data-label="Name"><a href="/people/<%= p.id %>"><%= p.display_name %></a><% if (showOffice && p.branch) { %> <span class="pill"><%= p.branch %></span><% } %></td>
-      <td data-label="Job title"><input name="job_<%= p.id %>" value="<%= p.job_title || '' %>" maxlength="80" autocomplete="off" aria-label="Job title for <%= p.display_name %>" <%= focus === p.id ? 'autofocus' : '' %>></td>
-      <td data-label="Department"><input name="dept_<%= p.id %>" value="<%= p.department || '' %>" maxlength="60" autocomplete="off" list="dept-list" aria-label="Department for <%= p.display_name %>"></td>
-      <td data-label="Leads"><input name="leads_<%= p.id %>" value="<%= p.leads === '*' ? 'Whole office' : p.leads || '' %>" maxlength="60" autocomplete="off" list="leads-list" placeholder="Nothing" aria-label="What <%= p.display_name %> leads"></td>
+      <td data-label="Job title"><select name="job_<%= p.id %>" aria-label="Job title for <%= p.display_name %>" <%= focus === p.id ? 'autofocus' : '' %>><option value="">None yet</option><% if (p.job_title && !known) { %><option value="<%= p.job_title %>" selected disabled><%= p.job_title %> (not on the list)</option><% } %><% titles.forEach(function (t) { %><option value="<%= t.name %>" <%= t.name.toLowerCase() === String(p.job_title || '').toLowerCase() ? 'selected' : '' %>><%= t.name %></option><% }) %></select></td>
       <td data-label="Reports to"><select name="mgr_<%= p.id %>" aria-label="Who <%= p.display_name %> reports to"><% var autoName = !p.manager_manual && p.manager_id ? ((byOffice.get(p.branch_id) || []).find(function (m) { return m.id === p.manager_id; }) || {}).display_name : ''; %><option value="auto" <%= p.manager_manual ? '' : 'selected' %>>Automatic<%= autoName ? ': ' + autoName : p.manager_manual ? '' : ': nobody' %></option><option value="" <%= p.manager_manual && !p.manager_id ? 'selected' : '' %>>Nobody</option><% (byOffice.get(p.branch_id) || []).forEach(function (m) { if (m.id !== p.id) { %><option value="<%= m.id %>" <%= p.manager_manual && p.manager_id === m.id ? 'selected' : '' %>><%= m.display_name %></option><% } }) %></select></td>
     </tr>
     <% }) %>
@@ -31,4 +26,40 @@
 </form>
 <script src="/positions.js?v=<%= assetV %>" defer></script>
 <% } %>
+
+<details class="card titles-edit" id="titles">
+  <summary><strong>The list of job titles</strong> <span class="meta"><%= titles.length %> titles<%= canTitles ? '' : ' · set by corporate' %></span></summary>
+  <% if (canTitles) { %>
+  <p class="hint">This list is the same for every office. "Reports to" is the title above it on the chart. If an office has nobody with that title, the next one up is used.</p>
+  <form method="post" action="/admin/users/titles" data-no-live>
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <div class="table-wrap">
+    <table class="positions titles-table">
+      <thead><tr><th>Job title</th><th>Department</th><th>Reports to</th><th>People</th><th>Remove</th></tr></thead>
+      <tbody>
+      <% titles.forEach(function (t) { %>
+      <tr>
+        <td data-label="Job title"><input name="tname_<%= t.id %>" value="<%= t.name %>" maxlength="80" autocomplete="off" aria-label="Job title"></td>
+        <td data-label="Department"><input name="tdept_<%= t.id %>" value="<%= t.department || '' %>" maxlength="60" autocomplete="off" aria-label="Department for <%= t.name %>"></td>
+        <td data-label="Reports to"><select name="tparent_<%= t.id %>" aria-label="Title <%= t.name %> reports to"><option value="">Nobody (top of the office)</option><% titles.forEach(function (o) { if (o.id !== t.id) { %><option value="<%= o.id %>" <%= t.parent_id === o.id ? 'selected' : '' %>><%= o.name %></option><% } }) %></select></td>
+        <td data-label="People"><%= t.holders %></td>
+        <td data-label="Remove"><% if (!t.holders) { %><label class="choice"><input type="checkbox" name="tdel_<%= t.id %>" value="1"> Remove</label><% } %></td>
+      </tr>
+      <% }) %>
+      <tr class="new-title">
+        <td data-label="New job title"><input name="new_name" maxlength="80" autocomplete="off" placeholder="Add a job title"></td>
+        <td data-label="Department"><input name="new_dept" maxlength="60" autocomplete="off" placeholder="Department"></td>
+        <td data-label="Reports to"><select name="new_parent" aria-label="The new title reports to"><option value="">Nobody (top of the office)</option><% titles.forEach(function (o) { %><option value="<%= o.id %>"><%= o.name %></option><% }) %></select></td>
+        <td></td><td></td>
+      </tr>
+      </tbody>
+    </table>
+    </div>
+    <p class="filter-actions"><button class="btn primary" type="submit">Save the list</button></p>
+  </form>
+  <% } else { %>
+  <ul class="ticks"><% titles.forEach(function (t) { %><li><strong><%= t.name %></strong><% if (t.parent_name) { %> <span class="meta">reports to <%= t.parent_name %></span><% } else { %> <span class="meta">top of the office</span><% } %></li><% }) %></ul>
+  <p class="hint">Need a title that is not here? Ask a corporate admin to add it.</p>
+  <% } %>
+</details>
 <%- include('partials/footer') %>

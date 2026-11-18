@@ -74,33 +74,92 @@ function chart(people) {
   return { tops, rest };
 }
 
+// ---- Job titles: one company-wide list. Each title says which title it reports to, and that is what places
+// a person on the chart: pick someone's job title and who they report to follows.
+db.exec(`CREATE TABLE IF NOT EXISTS job_titles (
+  id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE, department TEXT, parent_id INTEGER REFERENCES job_titles(id) ON DELETE SET NULL)`);
+
+const titleByName = (name) => (name ? db.prepare('SELECT * FROM job_titles WHERE name = ? COLLATE NOCASE').get(String(name).trim()) : null) || null;
+
+/** Every title, top of the office first, then by name, with the title it reports to and how many people hold it. */
+function titles() {
+  return db.prepare(`SELECT t.*, p.name AS parent_name,
+      (SELECT COUNT(*) FROM users u WHERE u.job_title = t.name COLLATE NOCASE AND (u.active = 1 OR u.in_directory = 1)) AS holders
+    FROM job_titles t LEFT JOIN job_titles p ON p.id = t.parent_id ORDER BY (t.parent_id IS NULL) DESC, t.name COLLATE NOCASE`).all();
+}
+
+/** Make sure a title is on the list (a contact list or an older record may bring a new one). New ones report to the top title. */
+function ensureTitle(name, department) {
+  const clean = String(name || '').trim().slice(0, 80);
+  if (!clean) return null;
+  const have = titleByName(clean);
+  if (have) return have;
+  const top = db.prepare('SELECT id FROM job_titles WHERE parent_id IS NULL ORDER BY id LIMIT 1').get();
+  db.prepare('INSERT INTO job_titles (name, department, parent_id) VALUES (?, ?, ?)').run(clean, String(department || '').trim().slice(0, 60) || null, top ? top.id : null);
+  return titleByName(clean);
+}
+
+/** Would making `parentId` the parent of `titleId` create a loop? */
+function titleLoop(titleId, parentId) {
+  const up = db.prepare('SELECT parent_id FROM job_titles WHERE id = ?');
+  for (let cur = parentId, n = 0; cur && n < 200; n++) { if (cur === titleId) return true; cur = (up.get(cur) || {}).parent_id; }
+  return false;
+}
+
+let seededNow = false;
+// The starting list, made once: the usual management titles, then every title people already have.
+if (!db.prepare("SELECT 1 FROM meta WHERE key = 'job_titles_1'").get()) {
+  db.transaction(() => {
+    const add = (name, dept, parent) => { if (!titleByName(name)) db.prepare('INSERT INTO job_titles (name, department, parent_id) VALUES (?, ?, ?)').run(name, dept, parent ? titleByName(parent).id : null); };
+    add('General Manager', 'Management', null); add('Operations Manager', 'Management', 'General Manager'); add('Office Manager', 'Management', 'General Manager');
+    add('Installation Manager', 'Management', 'Operations Manager'); add('Service Manager', 'Management', 'Operations Manager');
+    const used = db.prepare(`SELECT job_title AS name, MAX(department) AS department FROM users WHERE job_title IS NOT NULL AND TRIM(job_title) <> '' GROUP BY job_title COLLATE NOCASE`).all();
+    for (const u of used) {
+      const n = u.name.trim();
+      add(n, u.department || null, /^install(ation)?\s+tech/i.test(n) ? 'Installation Manager' : /^service\s+tech/i.test(n) ? 'Service Manager' : 'General Manager');
+    }
+    if (!used.some((u) => /^install(ation)?\s+tech/i.test(u.name.trim()))) add('Installation Tech', 'Installation', 'Installation Manager');
+    if (!used.some((u) => /^service\s+tech/i.test(u.name.trim()))) add('Service Tech', 'Service', 'Service Manager');
+    db.prepare("INSERT INTO meta (key, value) VALUES ('job_titles_1', '1')").run();
+  })();
+  seededNow = true;
+}
+
 /**
- * Work out who everyone in an office reports to from what people lead, for everybody not set by hand:
- * - someone leads your department: you report to them;
- * - otherwise you report to whoever leads the whole office;
- * - the person who leads the whole office reports to nobody.
- * A choice that would make a loop falls back to the office lead, then to nobody.
+ * Work out who everyone in an office reports to from their job title, for everybody not set by hand:
+ * the person in the office who holds the title theirs reports to. If nobody there holds it, the next title
+ * up is tried, and so on. Someone with no job title, or the top title, reports to nobody.
  */
 function applyAuto(branchId) {
   if (!branchId) return;
-  const people = db.prepare(`SELECT id, display_name, department, leads, manager_manual FROM users WHERE branch_id = ? AND (active = 1 OR in_directory = 1)
-    ORDER BY (leads = '${WHOLE}') DESC, (leads IS NOT NULL AND leads <> '') DESC, display_name COLLATE NOCASE`).all(branchId);
-  const key = (s) => String(s || '').trim().toLowerCase();
-  const head = people.find((p) => p.leads === WHOLE) || null;
-  const leadOf = new Map();
-  for (const p of people) if (p.leads && p.leads !== WHOLE && !leadOf.has(key(p.leads))) leadOf.set(key(p.leads), p);
+  const people = db.prepare('SELECT id, display_name, job_title, manager_manual FROM users WHERE branch_id = ? AND (active = 1 OR in_directory = 1) ORDER BY display_name COLLATE NOCASE').all(branchId);
+  const list = db.prepare('SELECT id, name, parent_id FROM job_titles').all();
+  const byId = new Map(list.map((t) => [t.id, t])); const byName = new Map(list.map((t) => [t.name.toLowerCase(), t]));
+  const holders = new Map();
+  for (const p of people) { const t = byName.get(String(p.job_title || '').trim().toLowerCase()); p.title = t || null; if (t) { if (!holders.has(t.id)) holders.set(t.id, []); holders.get(t.id).push(p); } }
   const current = db.prepare('SELECT manager_id FROM user_managers WHERE user_id = ?');
   db.transaction(() => {
     for (const p of people) {
       if (p.manager_manual) continue;
-      const lead = leadOf.get(key(p.department));
-      const wanted = [lead && lead.id !== p.id ? lead.id : null, head && head.id !== p.id ? head.id : null].filter(Boolean);
-      const target = p === head ? null : wanted[0] || null;
+      let target = null; const seen = new Set();
+      for (let cur = p.title && p.title.parent_id; cur && !seen.has(cur) && !target; cur = (byId.get(cur) || {}).parent_id) {
+        seen.add(cur);
+        const boss = (holders.get(cur) || []).find((h) => h.id !== p.id);
+        if (boss) target = boss.id;
+      }
       const now = current.all(p.id).map((r) => r.manager_id);
       if ((target === null && !now.length) || (now.length === 1 && now[0] === target)) continue;
-      if (setManager(p.id, target) && (!wanted[1] || setManager(p.id, wanted[1]))) setManager(p.id, null);
+      if (setManager(p.id, target)) setManager(p.id, null);
     }
   })();
 }
 
-module.exports = { managerOf, everyoneUnder, setManager, chart, applyAuto, WHOLE };
+/** Run applyAuto for every office that has people (after the list of titles changes). */
+function applyAutoEverywhere() {
+  for (const r of db.prepare('SELECT DISTINCT branch_id FROM users WHERE branch_id IS NOT NULL').all()) applyAuto(r.branch_id);
+}
+
+// The first time the list exists, place everyone from the titles they already have.
+if (seededNow) applyAutoEverywhere();
+
+module.exports = { managerOf, everyoneUnder, setManager, chart, applyAuto, applyAutoEverywhere, titles, titleByName, ensureTitle, titleLoop, WHOLE };

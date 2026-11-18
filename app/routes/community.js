@@ -101,35 +101,28 @@ router.get('/admin/users/positions', requirePerm('users.manage'), (req, res) => 
   // Who each person could report to: the people of their own office.
   const byOffice = new Map();
   for (const p of people) { if (!byOffice.has(p.branch_id)) byOffice.set(p.branch_id, []); byOffice.get(p.branch_id).push(p); }
-  res.render('admin_positions', { title: 'Positions and reporting', wide: true, people, byOffice, problems: problemsOnce, departments: deptList(), saved, focus: isId(req.query.who) ? Number(req.query.who) : 0, showOffice: req.user.viewBranch === null });
+  res.render('admin_positions', { title: 'Positions and reporting', wide: true, people, byOffice, problems: problemsOnce, titles: require('../team').titles(), canTitles: Boolean(req.user.allBranches), saved, focus: isId(req.query.who) ? Number(req.query.who) : 0, showOffice: req.user.viewBranch === null });
 });
 router.post('/admin/users/positions', requirePerm('users.manage'), (req, res) => {
-  const set = db.prepare('UPDATE users SET job_title = ?, department = ? WHERE id = ?');
   let changed = 0; const problems = []; const offices = new Set();
   const team = require('../team');
   db.transaction(() => {
     const people = positionPeople(req.user); const names = new Map(people.map((p) => [p.id, p.display_name]));
     for (const p of people) {
-      if (req.body[`job_${p.id}`] === undefined && req.body[`dept_${p.id}`] === undefined && req.body[`mgr_${p.id}`] === undefined && req.body[`leads_${p.id}`] === undefined) continue;
+      if (req.body[`job_${p.id}`] === undefined && req.body[`mgr_${p.id}`] === undefined) continue;
       let touched = false;
       offices.add(p.branch_id);
-      // Leads: a department's name, or the whole office.
-      if (req.body[`leads_${p.id}`] !== undefined) {
-        const typed = clean(req.body[`leads_${p.id}`], 60);
-        const leads = /^(the )?(whole|entire) office$/i.test(typed) ? team.WHOLE : typed || null;
-        if (leads !== (p.leads || null)) {
-          db.prepare('UPDATE users SET leads = ? WHERE id = ?').run(leads, p.id); touched = true;
-          activity.log(req.user, 'Leads changed', `${p.display_name}: ${leads === team.WHOLE ? 'the whole office' : leads || 'nothing'}`);
+      // Job title: one from the list, or none. The title carries its department.
+      if (req.body[`job_${p.id}`] !== undefined) {
+        const typed = clean(req.body[`job_${p.id}`], 80);
+        const title = typed ? team.titleByName(typed) : null;
+        if ((!typed || title) && (title ? title.name : null) !== (p.job_title || null)) {
+          const dept = title ? title.department || p.department || null : p.department || null;
+          db.prepare('UPDATE users SET job_title = ?, department = ? WHERE id = ?').run(title ? title.name : null, dept, p.id); touched = true;
+          activity.log(req.user, 'Position changed', `${p.display_name}: ${[title && title.name, dept].filter(Boolean).join(' · ') || 'cleared'}`);
         }
       }
-      if (req.body[`job_${p.id}`] !== undefined || req.body[`dept_${p.id}`] !== undefined) {
-        const job = clean(req.body[`job_${p.id}`], 80) || null; const dept = clean(req.body[`dept_${p.id}`], 60) || null;
-        if (job !== (p.job_title || null) || dept !== (p.department || null)) {
-          set.run(job, dept, p.id); touched = true;
-          activity.log(req.user, 'Position changed', `${p.display_name}: ${[job, dept].filter(Boolean).join(' · ') || 'cleared'}`);
-        }
-      }
-      // Reports to: someone from the list this page offered (the same office), or nobody.
+      // Reports to: automatic (from the job title), or someone from the same office chosen by hand, or nobody.
       if (req.body[`mgr_${p.id}`] !== undefined) {
         const choice = String(req.body[`mgr_${p.id}`]);
         if (choice === 'auto') {
@@ -151,6 +144,41 @@ router.post('/admin/users/positions', requirePerm('users.manage'), (req, res) =>
   res.redirect('/admin/users/positions');
 });
 
+// The company's list of job titles: what each is called, its department, and which title it reports to. Corporate only.
+router.post('/admin/users/titles', requireLogin, (req, res) => {
+  if (!req.user.allBranches || !access.can(req.user, 'users.manage')) return forbidden(res);
+  const team = require('../team'); const problems = []; let changed = 0;
+  db.transaction(() => {
+    for (const t of team.titles()) {
+      if (req.body[`tname_${t.id}`] === undefined) continue;
+      if (req.body[`tdel_${t.id}`] === '1') {
+        if (t.holders) { problems.push(`${t.name} is still someone's job title, so it was kept. Give those people another title first.`); continue; }
+        db.prepare('DELETE FROM job_titles WHERE id = ?').run(t.id); changed += 1; activity.log(req.user, 'Job title removed', t.name); continue;
+      }
+      const name = clean(req.body[`tname_${t.id}`], 80) || t.name; const dept = clean(req.body[`tdept_${t.id}`], 60) || null;
+      const parent = isId(req.body[`tparent_${t.id}`]) ? Number(req.body[`tparent_${t.id}`]) : null;
+      if (name.toLowerCase() !== t.name.toLowerCase() && team.titleByName(name)) { problems.push(`There is already a job title called ${name}.`); continue; }
+      if (parent && (parent === t.id || team.titleLoop(t.id, parent))) { problems.push(`${t.name} cannot report to a title that reports to it.`); continue; }
+      if (name === t.name && dept === (t.department || null) && parent === (t.parent_id || null)) continue;
+      db.prepare('UPDATE job_titles SET name = ?, department = ?, parent_id = ? WHERE id = ?').run(name, dept, parent, t.id);
+      if (name !== t.name) db.prepare('UPDATE users SET job_title = ? WHERE job_title = ? COLLATE NOCASE').run(name, t.name);
+      if (dept !== (t.department || null) && dept) db.prepare('UPDATE users SET department = ? WHERE job_title = ? COLLATE NOCASE').run(dept, name);
+      changed += 1; activity.log(req.user, 'Job title changed', name);
+    }
+    const fresh = clean(req.body.new_name, 80);
+    if (fresh) {
+      if (team.titleByName(fresh)) problems.push(`There is already a job title called ${fresh}.`);
+      else {
+        db.prepare('INSERT INTO job_titles (name, department, parent_id) VALUES (?, ?, ?)').run(fresh, clean(req.body.new_dept, 60) || null, isId(req.body.new_parent) ? Number(req.body.new_parent) : null);
+        changed += 1; activity.log(req.user, 'Job title added', fresh);
+      }
+    }
+  })();
+  team.applyAutoEverywhere();
+  req.session.positionsSaved = changed; req.session.positionsProblems = problems;
+  res.redirect('/admin/users/positions#titles');
+});
+
 // ---- My own profile ------------------------------------------------------------
 
 function profileForm(req, res, extra = {}) {
@@ -164,7 +192,7 @@ router.get('/profile', requireLogin, (req, res) => profileForm(req, res));
 router.post('/profile', requireLogin, uploads.photos('photo', 1), verifyCsrf, (req, res) => {
   const file = req.files[0] || null;
   const values = {
-    job_title: clean(req.body.job_title, 80), started_on: clean(req.body.started_on, 10), about: clean(req.body.about, 1000),
+    started_on: clean(req.body.started_on, 10), about: clean(req.body.about, 1000),
     skills: skillList(clean(req.body.skills, 800)).map((s) => s.slice(0, 40)).slice(0, 25).join(', '),
     birthday: null,
     phone: clean(req.body.phone, 30), show_phone: req.body.show_phone === '1' ? 1 : 0, show_email: req.body.show_email === '1' ? 1 : 0,
@@ -184,8 +212,8 @@ router.post('/profile', requireLogin, uploads.photos('photo', 1), verifyCsrf, (r
 
   const old = req.user.photo_path;
   const photo = file ? file.filename : req.body.remove_photo === '1' ? null : old;
-  db.prepare('UPDATE users SET job_title = ?, started_on = ?, about = ?, skills = ?, phone = ?, show_phone = ?, show_email = ?, photo_path = ?, birthday = ? WHERE id = ?')
-    .run(values.job_title || null, values.started_on || null, values.about || null, values.skills || null, values.phone || null, values.show_phone, values.show_email, photo, values.birthday, req.user.id);
+  db.prepare('UPDATE users SET started_on = ?, about = ?, skills = ?, phone = ?, show_phone = ?, show_email = ?, photo_path = ?, birthday = ? WHERE id = ?')
+    .run(values.started_on || null, values.about || null, values.skills || null, values.phone || null, values.show_phone, values.show_email, photo, values.birthday, req.user.id);
   if (old && old !== photo) uploads.remove(old);
   flash(req, 'ok', 'Profile saved.');
   res.redirect(`/people/${req.user.id}`);
@@ -275,6 +303,7 @@ router.post('/admin/people/import', requirePerm('users.manage'), (req, res, next
                     email = COALESCE(NULLIF(?, ''), email), phone = COALESCE(NULLIF(?, ''), phone),
                     show_phone = CASE WHEN ? <> '' THEN 1 ELSE show_phone END, show_email = CASE WHEN ? <> '' THEN 1 ELSE show_email END WHERE id = ?`)
         .run(c.title, c.department, c.email, c.phone, c.phone, c.email, u.id);
+      if (c.title) require('../team').ensureTitle(c.title, c.department);
     }
   })();
   activity.log(req.user, 'Contact list imported', `${result.updated.length} existing accounts updated, ${result.created.length} people added`);
@@ -458,6 +487,7 @@ router.post('/admin/users/:id/welcome', requirePerm('users.manage'), (req, res) 
   }
   db.transaction(() => {
     db.prepare('UPDATE users SET job_title = COALESCE(?, job_title), started_on = COALESCE(?, started_on) WHERE id = ?').run(job || null, started || null, target.id);
+    if (job) require('../team').ensureTitle(job, target.department);
     db.prepare(`INSERT INTO welcomes (user_id, intro, created_by, created_at) VALUES (?, ?, ?, ?)
                 ON CONFLICT(user_id) DO UPDATE SET intro = excluded.intro`).run(target.id, clean(req.body.intro, 600) || null, req.user.id, new Date().toISOString());
   })();
