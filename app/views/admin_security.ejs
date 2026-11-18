@@ -1,0 +1,22 @@
+<%- include('partials/header') %>
+<h1>Security check</h1>
+<p class="lede"><%= attention ? attention + (attention === 1 ? ' thing needs' : ' things need') + ' attention.' : 'Everything on this list is in order.' %> This page looks at settings and accounts. It cannot see whether a password has been shared or written down.</p>
+<ul class="records sec-list">
+<% list.forEach(function (c) { %>
+  <li class="card <%= c.ok ? '' : 'sec-warn' %>">
+    <div class="rec-head"><span class="tag <%= c.ok ? 'return' : 'overdue' %>"><%= c.ok ? 'OK' : 'Needs attention' %></span><strong><%= c.title %></strong></div>
+    <p class="plain"><%= c.detail %></p>
+    <% if (c.fix) { %><p class="hint sec-fix"><strong>What to do:</strong> <%= c.fix %></p><% } %>
+  </li>
+<% }) %>
+</ul>
+<h2>Right now</h2>
+<div class="card stack">
+  <p class="plain"><%= sessions.people %> <%= sessions.people === 1 ? 'person is' : 'people are' %> signed in, on <%= sessions.n %> <%= sessions.n === 1 ? 'device' : 'devices' %>.<% if (locked) { %> <%= locked %> <%= locked === 1 ? 'username is' : 'usernames are' %> paused after too many wrong passwords.<% } %></p>
+  <form method="post" action="/admin/security/sign-out-everyone" data-no-live data-confirm="Sign everyone else out? Each person will need their password or Face ID to get back in. Use this if you think someone has access who should not.">
+    <input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn small danger" type="submit">Sign everyone else out</button>
+    <span class="hint">For when a phone is lost or a password may have got out. Nothing is deleted.</span>
+  </form>
+</div>
+<p class="hint spaced">Also worth doing by hand: keep the site's code repository private on GitHub, and change any password that has been typed into a chat, an email or a message.</p>
+<%- include('partials/footer') %>

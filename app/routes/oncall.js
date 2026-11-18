@@ -35,9 +35,12 @@ function page(req, res, extra = {}) {
     `SELECT s.*, b.name AS office FROM oncall_shifts s JOIN branches b ON b.id = s.branch_id
      WHERE s.branch_id IN (${ids.map(Number).join(',')}) AND s.end_on > ? ORDER BY s.start_on, b.name COLLATE NOCASE, s.role = 'backup', s.id LIMIT 3000`).all(today) : [];
   const list = stretches(all);
-  const current = list.filter((g) => g.start_on <= today);
+  const mineFirst = (a, b) => (b.branch_id === req.user.workBranch) - (a.branch_id === req.user.workBranch);
+  const current = list.filter((g) => g.start_on <= today).sort(mineFirst);
+  // Offices in the market with nobody down for today: say so, so an empty space is not mistaken for "nobody is on call there".
+  const missing = offices.filter((o) => !current.some((g) => g.branch_id === o.id));
   res.status(extra.errors ? 400 : 200).render('oncall', {
-    title: 'On call', wide: true, current, upcoming: list.filter((g) => g.start_on > today), many: offices.length > 1, market: offices[0] && offices[0].market,
+    title: 'On call', wide: true, current, upcoming: list.filter((g) => g.start_on > today), many: offices.length > 1, market: offices[0] && offices[0].market, missing, officeCount: offices.length,
     canManage: access.can(req.user, 'oncall.manage'), roles: oncall.ROLES, mine: req.user.workBranch, errors: [], values: {}, problems: [], ...extra,
   });
 }

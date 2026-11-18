@@ -829,7 +829,7 @@ test('starting profiles: Technician, Warehouse, Manager and Admin each see only 
   assert.deepEqual(navLinks((await wh.get('/')).text), ['/admin/parts', '/admin/requests', '/admin/parts/audit', '/admin/stock', '/admin/parts/summary', '/admin/catalog', '/admin/inspections', '/admin/inspections/checklist']);
   assert.deepEqual(navLinks((await owner.get('/')).text),
     ['/admin/parts', '/admin/requests', '/admin/parts/audit', '/admin/stock', '/admin/parts/summary', '/admin/catalog', '/admin/inspections', '/admin/inspections/checklist',
-      '/admin/training', '/admin/training/sessions', '/admin/certs', '/admin/users', '/admin/tasks', '/admin/announcements', '/admin/newsletters', '/admin/complaints', '/admin/activity', '/admin/import', '/admin/branches', '/admin/profiles', '/admin/backups']);
+      '/admin/training', '/admin/training/sessions', '/admin/certs', '/admin/users', '/admin/tasks', '/admin/announcements', '/admin/newsletters', '/admin/complaints', '/admin/activity', '/admin/import', '/admin/branches', '/admin/profiles', '/admin/backups', '/admin/security']);
 
   for (const url of ['/admin/parts', '/admin/parts/audit', '/admin/parts/summary', '/admin/catalog']) assert.equal((await wh.get(url)).status, 200, url);
   for (const url of ['/admin/training', '/admin/users', '/admin/profiles', '/admin/complaints', '/admin/backups']) assert.equal((await wh.get(url)).status, 403, url);
@@ -1192,9 +1192,14 @@ test('forgot password: emailed link works once, expires, and gives nothing away'
 
   // People set their own email on the change-password page.
   const t = await loggedIn('tech2');
-  await t.post('/account/email', { email: 'not-an-email' });
+  await t.post('/account/email', { email: 'not-an-email', current: 'correct horse battery' });
   assert.equal(db.prepare("SELECT email FROM users WHERE username = 'tech2'").get().email, null);
-  await t.post('/account/email', { email: 'uma@example.com' });
+  // The reset address cannot be changed from an open session alone: it takes the password.
+  await t.post('/account/email', { email: 'thief@example.com' });
+  await t.post('/account/email', { email: 'thief@example.com', current: 'not the password' });
+  assert.equal(db.prepare("SELECT email FROM users WHERE username = 'tech2'").get().email, null);
+  require('../app/routes/auth').clearLoginFailures();
+  await t.post('/account/email', { email: 'uma@example.com', current: 'correct horse battery' });
   assert.equal(db.prepare("SELECT email FROM users WHERE username = 'tech2'").get().email, 'uma@example.com');
   assert.match((await new Client().get('/login')).text, /href="\/forgot"/);
 });
@@ -1687,7 +1692,7 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
   assert.deepEqual(hrefs(team), ['/complaint', '/admin/users', '/admin/tasks', '/admin/announcements', '/admin/newsletters', '/admin/complaints']);
   assert.deepEqual(hrefs(setup), ['/poster', '/admin/activity', '/admin/import']);
   // The company level has its own group, only for people who can see every office.
-  assert.deepEqual(hrefs(/<summary[^>]*>Corporate[\s\S]*?<\/details>/.exec(owner)[0]), ['/admin/branches', '/admin/profiles', '/admin/backups']);
+  assert.deepEqual(hrefs(/<summary[^>]*>Corporate[\s\S]*?<\/details>/.exec(owner)[0]), ['/admin/branches', '/admin/profiles', '/admin/backups', '/admin/security']);
   assert.match(team, /<summary aria-current="true">Team/);                 // the group you are in is marked
   assert.match(team, /href="\/admin\/users" aria-current="page"/);
   assert.doesNotMatch(setup, /<summary aria-current/);
@@ -3495,7 +3500,7 @@ test('corporate: corporate admins appoint an admin for each office; office admin
   // Ed signs in, chooses a password, and runs Ephrata: adds his own people, sees nothing of Lancaster, has no Corporate menu.
   const edc = new Client();
   await edc.login('ed.ephrata', temp);
-  await edc.post('/account/password', { current: temp, password: 'ephrata admin password', confirm: 'ephrata admin password' });
+  await edc.post('/account/password', { current: temp, password: 'orchard admin password', confirm: 'orchard admin password' });
   const home = (await edc.get('/')).text;
   assert.match(home, /<span class="branch">Ephrata Office<\/span>/); assert.doesNotMatch(home, /Corporate<|\/admin\/branches|\/admin\/profiles|name="branch" data-autosubmit/);
   await edc.post('/admin/users', { username: 'eph.tech', display_name: 'Tess Ephrata', profile_id: String(profileId('Technician')) }, { page: '/admin/users' });
@@ -4579,4 +4584,119 @@ test('tasks: whoever assigned a task, or manages the person, can delete it from 
   const self = db.prepare("SELECT id FROM tasks WHERE title = 'Self task'").get().id;
   assert.match((await owner.get('/tasks')).text, new RegExp(`action="/admin/tasks/${self}/delete" class="task-del"`));
   assert.equal((await owner.post(`/admin/tasks/${self}/delete`, { back: 'mine' }, { page: '/tasks' })).location, '/tasks');
+});
+
+test('security: guessable passwords are refused and replaced; sensitive actions ask for the password again', async () => {
+  const authRoutes = require('../app/routes/auth'); authRoutes.clearLoginFailures();
+  const age = (username) => db.prepare("UPDATE sessions SET data = json_set(data, '$.pwAt', 1) WHERE json_extract(data, '$.userId') = ?").run(userId(username));   // "the password was typed long ago"
+  makeUser('sec.one', 'Sandy Secure');
+  const c = await loggedIn('sec.one');
+  // Choosing a password: common words, patterns and your own name are turned away.
+  for (const weak of ['Testing123', 'Password2026!', 'Welcome123!!', '1234567890', '717-555-0100!', 'aaaaaaaaaaaa', 'qwertyuiop', 'sandy secure 99', 'PyeBarker2026!']) {
+    const r = await c.post('/account/password', { current: 'correct horse battery', password: weak, confirm: weak });
+    assert.equal(r.status, 400, weak); assert.match(r.text, /too easy to guess|at least 10 characters/, weak);
+  }
+  assert.equal((await c.post('/account/password', { current: 'correct horse battery', password: 'purple otter climbs 42', confirm: 'purple otter climbs 42' })).status, 302);
+  // Someone whose existing password is guessable has to replace it the next time they sign in.
+  const wid = makeUser('sec.weak', 'Wendy Weak'); db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(auth.hashPassword('Testing123'), wid);
+  const w = new Client(); const first = await w.post('/login', { username: 'sec.weak', password: 'Testing123' }, { page: '/login' });
+  assert.equal(first.location, '/account/password');
+  assert.equal(db.prepare('SELECT must_change_password m FROM users WHERE id = ?').get(wid).m, 1);
+  assert.match((await w.get('/account/password')).text, /too easy to guess, so it needs replacing/);
+  assert.equal((await w.get('/')).location, '/account/password');
+  await w.post('/account/password', { current: 'Testing123', password: 'four unrelated words here', confirm: 'four unrelated words here' });
+  assert.equal((await w.get('/')).status, 200);
+  // Guessing the current password on the change form is counted, and stops after ten.
+  const g = await loggedIn('tech1');
+  for (let i = 0; i < 10; i++) assert.match((await g.post('/account/password', { current: `guess ${i}`, password: 'another fine password 7', confirm: 'another fine password 7' })).text, /Current password is not right/);
+  assert.match((await g.post('/account/password', { current: 'correct horse battery', password: 'another fine password 7', confirm: 'another fine password 7' })).text, /Too many wrong passwords/);
+  authRoutes.clearLoginFailures();
+
+  // Adding a Face ID device: fine straight after signing in, but an old session must type the password first.
+  const t = await loggedIn('tech2');
+  assert.equal((await sendJson(t, '/passkey/register/options')).status, 200);
+  age('tech2');
+  const refused = await sendJson(t, '/passkey/register/options');
+  assert.equal(refused.status, 401); assert.equal(refused.body.needPassword, true);
+  assert.equal((await sendJson(t, '/account/confirm', { password: 'wrong' })).status, 401);
+  assert.equal((await sendJson(t, '/account/confirm', { password: 'correct horse battery' })).status, 200);
+  assert.equal((await sendJson(t, '/passkey/register/options')).status, 200);
+
+  // Downloading a backup: the same.
+  const owner = await loggedIn('owner');
+  await owner.post('/admin/backups/run', {}, { page: '/admin/backups' });
+  const name = require('../app/backup').listBackups()[0].name;
+  assert.equal((await owner.get(`/admin/backups/${name}`)).status, 200);
+  age('owner');
+  assert.equal((await owner.get(`/admin/backups/${name}`)).location, '/admin/backups#confirm');
+  assert.equal((await owner.get('/admin/backups/photos.tar.gz')).location, '/admin/backups#confirm');
+  assert.match((await owner.get('/admin/backups')).text, /action="\/account\/confirm"[\s\S]*Type your password to download/);
+  assert.equal((await owner.post('/account/confirm', { password: 'correct horse battery', next: '/admin/backups' }, { page: '/admin/backups' })).location, '/admin/backups');
+  assert.equal((await owner.get(`/admin/backups/${name}`)).status, 200);
+  assert.doesNotMatch((await owner.get('/admin/backups')).text, /Type your password to download/);
+  // The confirm step cannot be used to bounce someone to another site.
+  assert.equal((await owner.post('/account/confirm', { password: 'correct horse battery', next: '//evil.example' }, { page: '/admin/backups' })).location, '/');
+});
+
+test('security: hostile input cannot crash a page, and the security check page is for corporate admins', async () => {
+  const owner = await loggedIn('owner'); const t1 = await loggedIn('tech1');
+  // A wall of quote marks (or anything else) in a message is shown, not choked on.
+  const fmt = require('../app/format');
+  for (const nasty of ['>'.repeat(6000) + ' deep', '> '.repeat(3000) + 'deep', '*a '.repeat(2000), '['.repeat(6000), '`'.repeat(6000), ('- x\n').repeat(3000), '**'.repeat(3000)]) assert.equal(typeof fmt.render(nasty), 'string');
+  assert.match(fmt.render('> one\n> > two\n> > > three\n> > > > four\n> > > > > five'), /<blockquote>[\s\S]*<blockquote>[\s\S]*<blockquote>[\s\S]*<blockquote>[\s\S]*&gt; five/);
+  const sec = db.prepare('SELECT id FROM forum_sections ORDER BY id LIMIT 1').get().id;
+  const made = await t1.post('/discussions/new', [['section_id', String(sec)], ['title', 'Deep quote'], ['body', '>'.repeat(5500) + ' hello']], { multipart: true, page: '/discussions/new' });
+  assert.equal((await t1.get(made.location)).status, 200);
+  // Far too much in one go, or something unreadable, gets a plain refusal, not an error page that itself fails.
+  const big = await fetch(base + '/login', { method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'username=' + 'a'.repeat(400000) });
+  assert.equal(big.status, 413);
+  const broken = await fetch(base + '/passkey/auth/options', { method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/json' }, body: '{not json' });
+  assert.equal(broken.status, 400);
+  assert.equal((await t1.get('/photos?page=99999999999999999999')).status, 200);
+  // Every response says which device features the site may use.
+  assert.match((await t1.get('/')).headers.get('permissions-policy'), /camera=\(self\), microphone=\(\)/);
+  // An account with no office sees no office's records (never everyone's).
+  const lost = makeUser('sec.lost', 'Lee Lostoffice'); db.prepare('UPDATE users SET branch_id = NULL, profile_id = ? WHERE id = ?').run(profileId('Admin (no complaints)') || profileId('Admin'), lost);
+  db.prepare("DELETE FROM profile_permissions WHERE permission = 'branches.all' AND profile_id = (SELECT profile_id FROM users WHERE id = ?)").run(lost);
+  const l = await loggedIn('sec.lost');
+  const seen = (await l.get('/admin/users')).text;
+  assert.doesNotMatch(seen, /Terry Tech|Olive Owner/);
+  db.prepare("INSERT OR IGNORE INTO profile_permissions (profile_id, permission) SELECT id, 'branches.all' FROM profiles WHERE name = 'Admin'").run();
+  db.prepare('UPDATE users SET active = 0 WHERE id = ?').run(lost);
+  // The security check page.
+  assert.equal((await t1.get('/admin/security')).status, 403);
+  const page = (await owner.get('/admin/security')).text;
+  assert.match(page, /Security check<\/h1>/); assert.match(page, /The site knows its own address/); assert.match(page, /Admins sign in with Face ID or a fingerprint/);
+  // Sign everyone else out: other sessions end, this one stays.
+  assert.equal((await t1.post('/admin/security/sign-out-everyone', {}, { page: '/' })).status, 403);
+  await owner.post('/admin/security/sign-out-everyone', {}, { page: '/admin/security' });
+  assert.equal((await t1.get('/')).location, '/login?next=%2F');
+  assert.equal((await owner.get('/admin/security')).status, 200);
+  // Sign-in throttling counts by the visitor's own address: Cloudflare's header on Render, the proxy chain elsewhere.
+  const { clientIp } = require('../app/clientip');
+  assert.equal(clientIp({ ip: '10.0.0.5', headers: { 'cf-connecting-ip': '203.0.113.7' } }), '10.0.0.5');
+  process.env.RENDER = 'true';
+  assert.equal(clientIp({ ip: '10.0.0.5', headers: { 'cf-connecting-ip': '203.0.113.7' } }), '203.0.113.7');
+  assert.equal(clientIp({ ip: '10.0.0.5', headers: { 'cf-connecting-ip': 'not an address' } }), '10.0.0.5');
+  delete process.env.RENDER;
+});
+
+test('on call across a market: your own office first, each person tagged with their office, and offices with nobody listed are named', async () => {
+  const t1 = await loggedIn('tech1');
+  const mk = (name) => db.prepare("INSERT INTO branches (name, market, created_at) VALUES (?, 'Test Market', ?)").run(name, new Date().toISOString()).lastInsertRowid;
+  db.prepare("UPDATE branches SET market = 'Test Market' WHERE id = 1").run();
+  const near = mk('Nearby Office'), quiet = mk('Quiet Office');
+  const shift = (office, name, role) => db.prepare("INSERT INTO oncall_shifts (branch_id, start_on, end_on, role, name, phone, created_at) VALUES (?, date('now', '-1 day'), date('now', '+6 day'), ?, ?, '717-555-0142', ?)").run(office, role, name, new Date().toISOString());
+  db.prepare('DELETE FROM oncall_shifts').run();
+  shift(near, 'Nell Nearby', 'tech'); shift(1, 'Owen Ownoffice', 'tech'); shift(1, 'Bea Backup', 'backup');
+  const page = (await t1.get('/oncall')).text;
+  assert.match(page, /in the Test Market market/);
+  assert.ok(page.indexOf('Owen Ownoffice') < page.indexOf('Nell Nearby'), 'own office comes first');
+  assert.match(page, /Nobody is listed today for 1 of the 3 offices in this market:<\/strong>\s*<a href="\/branches\/\d+">Quiet Office<\/a>/);
+  const home = /<section class="panel p-oncall"[\s\S]*?<\/section>/.exec((await t1.get('/')).text)[0];
+  assert.match(home, /Owen Ownoffice<\/strong><span class="meta oncall-office">Lancaster<\/span>[\s\S]*Nell Nearby<\/strong><span class="meta oncall-office">Nearby Office<\/span>/);
+  // Someone in an office outside the market sees none of it.
+  const far = db.prepare("SELECT u.username FROM users u JOIN branches b ON b.id = u.branch_id WHERE u.active = 1 AND u.must_change_password = 0 AND (b.market IS NULL OR b.market <> 'Test Market') LIMIT 1").get();
+  if (far) { const c = new Client(); const r = await c.post('/login', { username: far.username, password: 'correct horse battery' }, { page: '/login' }); if (r.status === 302) assert.doesNotMatch((await c.get('/oncall')).text, /Nell Nearby|Owen Ownoffice/); }
+  db.prepare('DELETE FROM oncall_shifts').run(); db.prepare('UPDATE branches SET market = NULL WHERE id = 1').run();
 });

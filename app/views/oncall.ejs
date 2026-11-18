@@ -17,6 +17,11 @@
     <% }) %>
   </ul>
   <% }) %>
+  <% if (many && missing.length && current.length) { %>
+  <p class="hint oncall-missing"><strong>Nobody is listed today for <%= missing.length %> of the <%= officeCount %> offices in this market:</strong>
+    <% missing.forEach(function (o, i) { %><%= i ? ', ' : '' %><a href="/branches/<%= o.id %>"><%= o.name %></a><% }) %>.
+    Each office loads its own schedule; until they do, call that office directly.</p>
+  <% } %>
 </section>
 
 <h2 id="schedule">Coming up</h2>

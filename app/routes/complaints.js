@@ -41,7 +41,7 @@ function overDailyLimit(userId) {
 }
 
 const lookupLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: false, legacyHeaders: false,
+  windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: false, legacyHeaders: false, keyGenerator: require('../clientip').rateKey,
   handler: (req, res) => res.status(429).render('complaint_status', {
     title: 'Check a complaint', code: '', complaint: null, error: 'Too many tries. Wait 15 minutes and try again.',
   }),

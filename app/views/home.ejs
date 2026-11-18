@@ -193,7 +193,7 @@
       <div class="panel-head"><h2 id="oncall-h">On call now</h2><a href="/oncall">Schedule</a></div>
       <ul class="oncall-people compact">
         <% onCall.forEach(function (p) { %>
-        <li class="role-<%= p.role %>"><span class="oncall-who"><span class="tag <%= p.role === 'tech' ? 'new' : '' %>"><%= p.role === 'tech' ? 'On call' : 'Backup' %></span><strong><%= p.name %></strong></span><% if (p.phone) { %><a class="btn small <%= p.role === 'tech' ? 'primary' : '' %>" href="tel:<%= p.tel %>" data-full>Call</a><% } %></li>
+        <li class="role-<%= p.role %>"><span class="oncall-who"><span class="tag <%= p.role === 'tech' ? 'new' : '' %>"><%= p.role === 'tech' ? 'On call' : 'Backup' %></span><strong><%= p.name %></strong><% if (onCallOffices > 1) { %><span class="meta oncall-office"><%= p.office %></span><% } %></span><% if (p.phone) { %><a class="btn small <%= p.role === 'tech' ? 'primary' : '' %>" href="tel:<%= p.tel %>" data-full>Call</a><% } %></li>
         <% }) %>
       </ul>
     </section>

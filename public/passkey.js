@@ -89,9 +89,19 @@
       if (!setup.querySelector('.plain-list li')) remember(userId, false);
       add.hidden = false;
       if (remembered(userId)) { add.textContent = 'Set up again on this device'; add.className = 'btn'; }
+      // Adding a device asks for the password if it was not typed in the last few minutes.
+      var confirmBox = document.getElementById('passkey-confirm'), pw = document.getElementById('passkey-pw');
+      if (confirmBox) confirmBox.addEventListener('submit', function (e) {
+        e.preventDefault(); show('');
+        post('/account/confirm', { password: pw.value }).then(function (r) {
+          if (!r.ok) { show(r.error || 'That password is not right.'); pw.select(); return; }
+          pw.value = ''; confirmBox.hidden = true; add.click();
+        });
+      });
       add.addEventListener('click', function () {
         show(''); busy(add, true, 'Waiting for your device…');
         post('/passkey/register/options').then(function (r) {
+          if (r.needPassword && confirmBox) { confirmBox.hidden = false; pw.focus(); var need = new Error(''); need.name = 'NeedPassword'; throw need; }
           if (!r.ok) throw new Error(r.error || 'Could not start. Try again.');
           var o = r.options;
           o.challenge = toBuf(o.challenge); o.user.id = toBuf(o.user.id);
@@ -110,6 +120,7 @@
           location.reload();
         }).catch(function (e) {
           busy(add, false, remembered(userId) ? 'Set up again on this device' : 'Set up on this device');
+          if (e && e.name === 'NeedPassword') return;
           if (e && e.name === 'InvalidStateError') { remember(userId, true); show('This device is already set up.'); }
           else if (!cancelled(e)) show(e && e.name === 'Error' ? e.message : 'This device could not be set up. Try again.');
         });

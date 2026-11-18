@@ -18,7 +18,7 @@ const router = express.Router();
 const MAX_PER_PERSON = 10;
 
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, limit: Math.max(config.loginRateLimit * 3, 30), standardHeaders: true, legacyHeaders: false,
+  windowMs: 15 * 60 * 1000, limit: Math.max(config.loginRateLimit * 3, 30), standardHeaders: true, legacyHeaders: false, keyGenerator: require('../clientip').rateKey,
   handler: (req, res) => res.status(429).json({ ok: false, error: 'Too many attempts. Wait 15 minutes and try again.' }),
 });
 
@@ -34,8 +34,12 @@ const fail = (res, status, error) => res.status(status).json({ ok: false, error 
 
 // ---- Setting it up on a device (signed in and unlocked) ----------------------
 
+// A new device is a new way into the account, so it takes the password typed in the last few minutes:
+// an unlocked phone left on a desk is not enough to add somebody else's fingerprint.
+const NEED_PASSWORD = 'To add a device, type your password first.';
 router.post('/passkey/register/options', auth.requireLogin, async (req, res, next) => {
   try {
+    if (!require('./auth').provedRecently(req)) return res.status(401).json({ ok: false, needPassword: true, error: NEED_PASSWORD });
     const mine = db.prepare('SELECT credential_id, transports FROM passkeys WHERE user_id = ?').all(req.user.id);
     if (mine.length >= MAX_PER_PERSON) return fail(res, 400, `You already have ${MAX_PER_PERSON} devices set up. Remove one first.`);
     const options = await generateRegistrationOptions({
@@ -60,6 +64,7 @@ const challengeFor = (req, kind) => {
 router.post('/passkey/register/verify', auth.requireLogin, async (req, res, next) => {
   try {
     const expectedChallenge = challengeFor(req, 'register');
+    if (!require('./auth').provedRecently(req)) return res.status(401).json({ ok: false, needPassword: true, error: NEED_PASSWORD });
     if (!expectedChallenge || !req.body.response) return fail(res, 400, 'That took too long. Try again.');
     const s = site(req);
     let result;

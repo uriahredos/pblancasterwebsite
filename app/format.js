@@ -23,12 +23,13 @@ function inline(text) {
 }
 
 /** A whole message as safe HTML: paragraphs, line breaks, bullet and numbered lists, quotes, small headings. */
-function render(text) {
+function render(text, depth = 0) {
   const lines = String(text || '').replace(/\r\n?/g, '\n').replace(/\u0000/g, '').split('\n');
   const out = []; let para = [], list = null, quote = [];
   const endPara = () => { if (para.length) { out.push(`<p>${para.map(inline).join('<br>')}</p>`); para = []; } };
   const endList = () => { if (list) { out.push(`<${list.tag}>${list.items.map((i) => `<li>${inline(i)}</li>`).join('')}</${list.tag}>`); list = null; } };
-  const endQuote = () => { if (quote.length) { out.push(`<blockquote>${render(quote.join('\n'))}</blockquote>`); quote = []; } };
+  // Quotes inside quotes stop at four levels: deeper than that the marks are shown as typed.
+  const endQuote = () => { if (quote.length) { out.push(depth >= 4 ? `<p>${quote.map((q) => inline(`> ${q}`)).join('<br>')}</p>` : `<blockquote>${render(quote.join('\n'), depth + 1)}</blockquote>`); quote = []; } };
   const endAll = () => { endPara(); endList(); endQuote(); };
   for (const raw of lines) {
     const line = raw.replace(/\s+$/, '');

@@ -7,6 +7,8 @@ const auth = require('../auth');
 const crypto = require('crypto');
 const mail = require('../mail');
 const { clean } = require('../util');
+const passwords = require('../passwords');
+const { rateKey } = require('../clientip');
 
 const router = express.Router();
 
@@ -16,6 +18,7 @@ const loginLimiter = rateLimit({
   skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: rateKey,
   handler: (req, res) => res.status(429).render('login', {
     title: 'Sign in', next: '', username: '', error: 'Too many attempts. Wait 15 minutes and try again.',
   }),
@@ -42,6 +45,32 @@ function noteFailure(username) {
   FAILS.set(key, f);
 }
 
+// Checking a password is slow on purpose, and it holds up everything else while it runs. So the whole site only
+// checks so many a second: a flood of sign-in attempts from many places at once gets "busy" answers instead of
+// freezing every page for everyone. Ordinary use never comes near it.
+const budget = { tokens: config.loginRateLimit * 3, at: Date.now() };
+function spendCheck() {
+  const cap = config.loginRateLimit * 3; const now = Date.now();
+  budget.tokens = Math.min(cap, budget.tokens + ((now - budget.at) / 1000) * config.loginRateLimit * 0.15); budget.at = now;
+  if (budget.tokens < 1) return false;
+  budget.tokens -= 1; return true;
+}
+const BUSY = 'The site is checking a lot of sign-ins right now. Wait a few seconds and try again.';
+
+// Some things need the password typed again shortly beforehand, even on a signed-in, unlocked session:
+// adding a Face ID device, changing the reset email, downloading a backup. Ten minutes covers doing it right after signing in.
+const PROVED_MS = 10 * 60 * 1000;
+const proved = (req) => { req.session.pwAt = Date.now(); };
+const provedRecently = (req) => Boolean(req.session && req.session.pwAt && Date.now() - req.session.pwAt < PROVED_MS);
+/** Check the signed-in person's password, counting wrong tries. Returns null when right, otherwise what to tell them. */
+function wrongPassword(req, password) {
+  if (lockedOut(req.user.username)) return 'Too many wrong passwords. Wait 15 minutes and try again.';
+  if (!spendCheck()) return BUSY;
+  if (!auth.checkLogin(req.user.username, password)) { noteFailure(req.user.username); return 'That password is not right.'; }
+  FAILS.delete(nameKey(req.user.username));
+  return null;
+}
+
 // Only allow redirects back into this site.
 const safeNext = (n) => (typeof n === 'string' && /^\/(?![/\\])/.test(n) ? n : '/');
 
@@ -58,6 +87,7 @@ router.post('/login', loginLimiter, (req, res, next) => {
       error: 'Too many wrong passwords for this username. Wait 15 minutes and try again, or ask an admin to reset it.',
     });
   }
+  if (!spendCheck()) return res.status(429).render('login', { title: 'Sign in', next: target, username: String(req.body.username || '').slice(0, 60), error: BUSY });
   const user = auth.checkLogin(req.body.username, req.body.password);
   if (!user) {
     noteFailure(req.body.username);
@@ -67,6 +97,9 @@ router.post('/login', loginLimiter, (req, res, next) => {
     });
   }
   FAILS.delete(nameKey(req.body.username));
+  // A password that is too easy to guess (chosen before the rules were tightened) has to be replaced before carrying on.
+  const weak = !user.must_change_password && passwords.problem(req.body.password, user);
+  if (weak) db.prepare('UPDATE users SET must_change_password = 1 WHERE id = ?').run(user.id);
   req.session.regenerate((err) => {
     if (err) return next(err);
     req.session.userId = user.id;
@@ -74,7 +107,9 @@ router.post('/login', loginLimiter, (req, res, next) => {
     req.session.fresh = true;
     req.session.csrf = auth.newCsrfToken();
     req.session.afterPassword = target;
-    res.redirect(user.must_change_password ? '/account/password' : target);
+    proved(req);
+    if (weak) auth.flash(req, 'err', 'Your password is too easy to guess, so it needs replacing before you carry on.');
+    res.redirect(user.must_change_password || weak ? '/account/password' : target);
   });
 });
 
@@ -111,16 +146,21 @@ router.post('/unlock', (req, res) => {
   if (!req.session.locked) return res.redirect(target);
   const page = (status, error) => res.status(status).render('unlock', { title: 'Welcome back', next: target, error, hasPasskey: passkeyCount(req.user.id) > 0 });
   if (lockedOut(req.user.username)) return page(429, 'Too many wrong passwords. Wait 15 minutes and try again, or ask an admin to reset it.');
+  if (!spendCheck()) return page(429, BUSY);
   if (!auth.checkLogin(req.user.username, req.body.password)) { noteFailure(req.user.username); return page(401, 'That password is not right.'); }
   FAILS.delete(nameKey(req.user.username));
-  auth.unlock(req);
+  if (passwords.problem(req.body.password, req.user)) {
+    db.prepare('UPDATE users SET must_change_password = 1 WHERE id = ?').run(req.user.id);
+    auth.flash(req, 'err', 'Your password is too easy to guess, so it needs replacing before you carry on.');
+  }
+  auth.unlock(req); proved(req);
   res.redirect(target);
 });
 
 // ---- Forgot password --------------------------------------------------------
 
 const resetLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, limit: config.loginRateLimit, standardHeaders: true, legacyHeaders: false,
+  windowMs: 15 * 60 * 1000, limit: config.loginRateLimit, standardHeaders: true, legacyHeaders: false, keyGenerator: rateKey,
   handler: (req, res) => res.status(429).render('forgot', { title: 'Forgot password', sent: false, available: true, error: 'Too many attempts. Wait 15 minutes and try again.' }),
 });
 const hashToken = (t) => crypto.createHash('sha256').update(String(t)).digest('hex');
@@ -156,11 +196,9 @@ router.get('/reset/:token', (req, res) => {
 router.post('/reset/:token', resetLimiter, (req, res) => {
   const found = findReset(req.params.token);
   if (!found) return res.status(404).render('reset', { title: 'Choose a new password', valid: false, token: '', error: null });
-  const { password = '', confirm = '' } = req.body;
-  let error = null;
-  if (password.length < config.minPasswordLength) error = `The password must be at least ${config.minPasswordLength} characters.`;
-  else if (password.length > 200) error = 'The password is too long.';
-  else if (password !== confirm) error = 'The two passwords do not match.';
+  const password = typeof req.body.password === 'string' ? req.body.password : ''; const confirm = typeof req.body.confirm === 'string' ? req.body.confirm : '';
+  let error = passwords.problem(password, db.prepare('SELECT username, display_name FROM users WHERE id = ?').get(found.user_id));
+  if (!error && password !== confirm) error = 'The two passwords do not match.';
   if (error) return res.status(400).render('reset', { title: 'Choose a new password', valid: true, token: req.params.token, error });
   db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?').run(auth.hashPassword(password), found.user_id);
   db.prepare('DELETE FROM password_resets WHERE user_id = ?').run(found.user_id);
@@ -170,11 +208,25 @@ router.post('/reset/:token', resetLimiter, (req, res) => {
   res.redirect('/login');
 });
 
-// The address password-reset links and status updates are sent to.
+// Typing the password again, for the things that ask for it (see provedRecently). Works as a plain form or from the page's own code.
+router.post('/account/confirm', (req, res) => {
+  const wantsJson = req.is('application/json');
+  if (!req.user) return wantsJson ? res.status(401).json({ ok: false }) : res.redirect('/login');
+  const error = wrongPassword(req, req.body.password);
+  if (!error) proved(req);
+  if (wantsJson) return res.status(error ? 401 : 200).json({ ok: !error, error: error || undefined });
+  if (error) auth.flash(req, 'err', error);
+  res.redirect(safeNext(req.body.next));
+});
+
+// The address password-reset links and status updates are sent to. Whoever controls it can reset the password,
+// so changing it takes the password, not just an open session.
 router.post('/account/email', (req, res) => {
   if (!req.user) return res.redirect('/login');
   const email = clean(req.body.email, 120);
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) auth.flash(req, 'err', 'That email address does not look right.');
+  const wrong = (email || null) === (req.user.email || null) ? null : wrongPassword(req, req.body.current);
+  if (wrong) auth.flash(req, 'err', wrong === 'That password is not right.' ? 'Type your current password to change your email address.' : wrong);
+  else if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) auth.flash(req, 'err', 'That email address does not look right.');
   else {
     db.prepare('UPDATE users SET email = ? WHERE id = ?').run(email || null, req.user.id);
     auth.flash(req, 'ok', email ? 'Email saved.' : 'Email removed.');
@@ -196,18 +248,19 @@ router.get('/account/password', (req, res) => {
 
 router.post('/account/password', (req, res) => {
   if (!req.user) return res.redirect('/login');
-  const { current = '', password = '', confirm = '' } = req.body;
-  let error = null;
-  if (!auth.checkLogin(req.user.username, current)) error = 'Current password is not right.';
-  else if (password.length < config.minPasswordLength) error = `New password must be at least ${config.minPasswordLength} characters.`;
-  else if (password.length > 200) error = 'New password is too long.';
-  else if (password !== confirm) error = 'The two new passwords do not match.';
-  else if (password === current) error = 'Choose a password different from the current one.';
+  const str = (v) => (typeof v === 'string' ? v : '');
+  const current = str(req.body.current), password = str(req.body.password), confirm = str(req.body.confirm);
+  let error = wrongPassword(req, current);
+  if (error === 'That password is not right.') error = 'Current password is not right.';
+  if (!error) error = passwords.problem(password, req.user);
+  if (!error && password !== confirm) error = 'The two new passwords do not match.';
+  if (!error && password === current) error = 'Choose a password different from the current one.';
   if (error) return res.status(400).render('password', { title: 'Password and Face ID', error, passkeys: require('./passkeys').listFor(req.user.id) });
 
   db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?')
     .run(auth.hashPassword(password), req.user.id);
   auth.endSessions(req.user.id, req.sessionID);          // other devices are signed out; this one stays in
+  proved(req);
   const target = safeNext(req.session.afterPassword);
   delete req.session.afterPassword;
   auth.flash(req, 'ok', 'Password changed.');
@@ -217,3 +270,6 @@ router.post('/account/password', (req, res) => {
 module.exports = router;
 module.exports.safeNext = safeNext;
 module.exports.clearLoginFailures = () => FAILS.clear();
+module.exports.provedRecently = provedRecently;
+module.exports.proved = proved;
+module.exports.lockedNames = () => [...FAILS.entries()].filter(([, f]) => f.n >= NAME_LIMIT && f.until > Date.now()).length;

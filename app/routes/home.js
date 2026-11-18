@@ -171,11 +171,12 @@ router.get('/', requireLogin, (req, res) => {
   const now = new Date();
   const dateLine = new Intl.DateTimeFormat('en-US', { timeZone: config.timezone, weekday: 'long', month: 'long', day: 'numeric' }).format(now);
   const onCall = require('../oncall').now(req.user, today).map((p) => ({ ...p, tel: String(p.phone || '').replace(/[^0-9+]/g, '') }));
+  onCall.sort((x, y) => (y.branch_id === req.user.branch_id) - (x.branch_id === req.user.branch_id) || (x.role === 'backup') - (y.role === 'backup'));   // your own office first, then the rest of the market
   const feed = require('../feed');
   const around = feed.recent(req.user, 8); const company = feed.company(req.user, today);
   const homeShouts = social.recentShoutouts(me, 3); const homeWeek = social.thisWeek(req.user, today);
   res.render('home', {
-    onCall, around, company, slides: feed.slides(req.user, { around, shouts: homeShouts, week: homeWeek, spot: company.spot }),
+    onCall, onCallOffices: new Set(onCall.map((p) => p.branch_id)).size, around, company, slides: feed.slides(req.user, { around, shouts: homeShouts, week: homeWeek, spot: company.spot }),
     shouts: homeShouts, thisWeek: homeWeek, wallPhotos: social.recentPhotos(me, 4),
     dailyCard: require('../daily').card(me), welcomes: require('./community').recentWelcomes(me),
     profileEmpty: !req.user.photo_path && !req.user.about && !req.user.skills,

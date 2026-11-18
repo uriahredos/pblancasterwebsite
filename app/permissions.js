@@ -204,6 +204,8 @@ function loadAccess(user, viewBranch) {
   const chosen = user.allBranches && viewBranch !== undefined && viewBranch !== null ? viewBranch : user.branch_id;
   // null = every branch at once. workBranch is the one branch that stock, the truck checklist and new training sessions belong to.
   user.viewBranch = chosen === 'all' ? null : (db.prepare('SELECT id FROM branches WHERE id = ?').get(chosen) || { id: user.branch_id }).id;
+  // Fail closed: an account with no office (which should not happen) sees no office's records rather than every office's.
+  if (!user.allBranches && !user.viewBranch) user.viewBranch = -1;
   user.workBranch = user.viewBranch || user.branch_id;
   return user;
 }

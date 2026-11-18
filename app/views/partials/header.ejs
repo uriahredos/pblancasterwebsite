@@ -144,7 +144,8 @@
       { name: 'Corporate', items: user.allBranches ? [
         ['', '/admin/branches', 'Offices and admins', is('/admin/branches')],
         ['profiles.manage', '/admin/profiles', 'Profiles', is('/admin/profiles')],
-        ['backups', '/admin/backups', 'Backups', is('/admin/backups')]
+        ['backups', '/admin/backups', 'Backups', is('/admin/backups')],
+        ['users.manage', '/admin/security', 'Security check', is('/admin/security')]
       ] : [] }
     ].map(function (g) {
       // Keep what this person may use; drop dividers left at an edge or doubled up.

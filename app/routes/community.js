@@ -115,7 +115,7 @@ router.post('/admin/users/positions', requirePerm('users.manage'), (req, res) =>
       let touched = false;
       offices.add(p.branch_id);
       // Job title: one from the list, or none. The title carries its department.
-      if (req.body[`job_${p.id}`] !== undefined) {
+      if (req.body[`job_${p.id}`] !== undefined && !(p.id === req.user.id && req.user.scope === 'team')) {
         const typed = clean(req.body[`job_${p.id}`], 80);
         const title = typed ? team.titleByName(typed) : null;
         if ((!typed || title) && (title ? title.name : null) !== (p.job_title || null)) {

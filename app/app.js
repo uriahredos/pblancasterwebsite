@@ -38,6 +38,9 @@ app.use(helmet({
   },
 }));
 
+// Device features the site may use: the camera, for scanning part barcodes. Nothing else, and nothing for embedded pages.
+app.use((req, res, next) => { res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(), payment=(), usb=(), bluetooth=(), serial=(), midi=()'); next(); });
+
 // Barcode scanning library, served from the installed package so nothing is loaded from other sites.
 app.get('/vendor/html5-qrcode.min.js', (req, res) => {
   res.sendFile(require.resolve('html5-qrcode/html5-qrcode.min.js'), { maxAge: config.production ? '7d' : 0 });
@@ -133,6 +136,7 @@ require('./removal');
 app.use(require('./routes/digest'));
 app.use(require('./routes/import'));
 app.use(require('./routes/backups'));
+app.use(require('./routes/security'));
 app.use(require('./routes/admin'));
 
 app.use((req, res) => {
@@ -141,8 +145,15 @@ app.use((req, res) => {
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(500).render('error', { title: 'Something went wrong', message: 'Please try again. If it keeps happening, tell your admin.' });
+  // Too much sent at once, or something that could not be read at all: say so plainly. Anything else is ours to look at.
+  const status = err && (err.status === 413 || err.type === 'entity.too.large') ? 413 : err && err.status >= 400 && err.status < 500 ? 400 : 500;
+  if (status === 500) console.error(err);
+  if (res.headersSent) return next(err);
+  const title = status === 413 ? 'Too much to send at once' : status === 400 ? 'That could not be read' : 'Something went wrong';
+  const message = status === 413 ? 'That was more than the site accepts in one go. Shorten it, or send fewer or smaller files.' : status === 400 ? 'The site could not read what was sent. Go back and try again.' : 'Please try again. If it keeps happening, tell your admin.';
+  // These can arrive before the page has what its header needs, so the plain version is always available.
+  if (!('can' in res.locals)) return res.status(status).type('text/plain').send(`${title}. ${message}`);
+  res.status(status).render('error', { title, message }, (e, html) => (e ? res.status(status).type('text/plain').send(`${title}. ${message}`) : res.send(html)));
 });
 
 module.exports = app;

@@ -1454,3 +1454,11 @@ td.reports-to .meta { display: block; }
 .msg-more .msg-tools > form > button.link:not(.danger) { display: block; width: 100%; padding: .5rem .65rem; border: 0; background: none; text-align: left; color: var(--ink); font-weight: 600; text-decoration: none; min-height: 0; box-shadow: none; border-radius: 7px; }
 
 .task-del { margin-top: .6rem; font-size: .9rem; }
+
+/* Security check */
+.sec-list .sec-warn { border-left: 5px solid var(--err); }
+.sec-fix { margin-top: .4rem; }
+
+/* On call: which office each person covers, and offices with nobody listed */
+.oncall-office { margin-left: .45rem; font-size: .8rem; }
+.oncall-missing { margin: .8rem 0 0; }

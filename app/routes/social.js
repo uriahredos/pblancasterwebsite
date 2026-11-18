@@ -185,7 +185,7 @@ const post = requirePerm('forum.use');
 const PER_PAGE = 30;
 
 function wallPage(req, res, extra = {}) {
-  const page = Math.max(1, Number(req.query.page) || 1);
+  const page = Math.min(100000, Math.max(1, Math.floor(Number(req.query.page)) || 1));
   const rows = db.prepare(`${WALL} ORDER BY p.id DESC LIMIT @n OFFSET @o`).all({ me: req.user.id, n: PER_PAGE + 1, o: (page - 1) * PER_PAGE });
   res.status(extra.errors ? 400 : 200).render('wall', {
     title: 'Photos', wide: true, rows: rows.slice(0, PER_PAGE), page, more: rows.length > PER_PAGE, errors: [], values: {},
