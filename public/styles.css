@@ -1452,3 +1452,5 @@ td.reports-to .meta { display: block; }
 .thread-tools .rename > summary::-webkit-details-marker { display: none; }
 .thread-tools .rename[open] > form { margin: .5rem 0 0; }
 .msg-more .msg-tools > form > button.link:not(.danger) { display: block; width: 100%; padding: .5rem .65rem; border: 0; background: none; text-align: left; color: var(--ink); font-weight: 600; text-decoration: none; min-height: 0; box-shadow: none; border-radius: 7px; }
+
+.task-del { margin-top: .6rem; font-size: .9rem; }

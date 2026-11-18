@@ -32,6 +32,7 @@
     <td class="row-actions">
       <a href="/admin/tasks/<%= t.id %>">Edit</a>
       <form method="post" action="/admin/tasks/<%= t.id %>/done"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="show" value="<%= show %>"><button class="link" type="submit"><%= t.done_at ? 'Reopen' : 'Mark finished' %></button></form>
+      <form method="post" action="/admin/tasks/<%= t.id %>/delete" data-no-live data-confirm="Delete the task &quot;<%= t.title %>&quot; for <%= t.to_name %>? Its notes go with it. This cannot be undone."><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="show" value="<%= show %>"><button class="link danger" type="submit">Delete</button></form>
     </td>
   </tr>
   <% }) %>

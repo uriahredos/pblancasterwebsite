@@ -229,8 +229,8 @@ router.post('/admin/tasks/:id/delete', assign, (req, res) => {
   db.prepare('DELETE FROM task_notes WHERE task_id = ?').run(t.id);
   db.prepare('DELETE FROM tasks WHERE id = ?').run(t.id);
   activity.log(req.user, 'Task removed', `"${t.title}" for ${t.to_name}`);
-  flash(req, 'ok', 'Task removed.');
-  res.redirect('/admin/tasks');
+  flash(req, 'ok', `Task "${t.title}" deleted.`);
+  res.redirect(req.body.back === 'mine' ? '/tasks' : `/admin/tasks${/^(open|done|all)$/.test(String(req.body.show || '')) ? '?show=' + req.body.show : ''}`);
 });
 
 module.exports = router;

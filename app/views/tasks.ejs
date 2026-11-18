@@ -30,6 +30,7 @@
       <label class="grow">Note<input name="note" maxlength="500" autocomplete="off" placeholder="Optional. Where it stands, for <%= t.by_name %>"></label>
       <div class="filter-actions"><button class="btn primary small" type="submit">Save update</button></div>
     </form>
+    <% if (can('tasks.assign') && t.assigned_by === user.id) { %><form method="post" action="/admin/tasks/<%= t.id %>/delete" class="task-del" data-no-live data-confirm="Delete this task? This cannot be undone."><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="back" value="mine"><button class="link danger" type="submit">Delete this task</button></form><% } %>
     </details>
   </li>
 <% }) %>

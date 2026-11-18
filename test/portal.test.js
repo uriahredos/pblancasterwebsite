@@ -4560,3 +4560,23 @@ test('discussions: a moderator can move a thread to another section, and pin it'
   await owner.post(`${page}/pin`, {}, { page });
   assert.match((await t1.get(page)).text, /class="tag pin">Pinned/);
 });
+
+test('tasks: whoever assigned a task, or manages the person, can delete it from the list; the person it was given to cannot', async () => {
+  const owner = await loggedIn('owner'); const t1 = await loggedIn('tech1');
+  await owner.post('/admin/tasks', { title: 'Delete me task', assign_to: String(userId('tech1')) }, { page: '/admin/tasks' });
+  let row = db.prepare("SELECT id FROM tasks WHERE title = 'Delete me task'").get();
+  if (!row) { db.prepare("INSERT INTO tasks (title, assigned_to, assigned_by, created_at) VALUES ('Delete me task', ?, ?, ?)").run(userId('tech1'), userId('owner'), new Date().toISOString()); row = db.prepare("SELECT id FROM tasks WHERE title = 'Delete me task'").get(); }
+  db.prepare('INSERT INTO task_notes (task_id, user_id, body, created_at) VALUES (?, ?, ?, ?)').run(row.id, userId('tech1'), 'Working on it', new Date().toISOString());
+  assert.match((await owner.get('/admin/tasks')).text, new RegExp(`action="/admin/tasks/${row.id}/delete"[^>]*data-confirm="Delete the task`));
+  assert.doesNotMatch((await t1.get('/tasks')).text, /Delete this task/);
+  assert.equal((await t1.post(`/admin/tasks/${row.id}/delete`, {}, { page: '/tasks' })).status, 403);
+  const r = await owner.post(`/admin/tasks/${row.id}/delete`, { show: 'open' }, { page: '/admin/tasks' });
+  assert.equal(r.location, '/admin/tasks?show=open');
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM tasks WHERE id = ?').get(row.id).n + db.prepare('SELECT COUNT(*) n FROM task_notes WHERE task_id = ?').get(row.id).n, 0);
+  assert.match((await owner.get('/admin/tasks')).text, /Task &#34;Delete me task&#34; deleted/);
+  // A task you gave yourself can be deleted from My tasks.
+  db.prepare("INSERT INTO tasks (title, assigned_to, assigned_by, created_at) VALUES ('Self task', ?, ?, ?)").run(userId('owner'), userId('owner'), new Date().toISOString());
+  const self = db.prepare("SELECT id FROM tasks WHERE title = 'Self task'").get().id;
+  assert.match((await owner.get('/tasks')).text, new RegExp(`action="/admin/tasks/${self}/delete" class="task-del"`));
+  assert.equal((await owner.post(`/admin/tasks/${self}/delete`, { back: 'mine' }, { page: '/tasks' })).location, '/tasks');
+});
