@@ -1,8 +1,11 @@
 'use strict';
 // A page for the people who run the whole site: the settings and accounts that decide how safe it is,
 // each marked as fine or needing attention, with what to do about it.
+const path = require('path');
+const crypto = require('crypto');
 const express = require('express');
 const db = require('../db');
+const util = require('../util');
 const config = require('../config');
 const access = require('../permissions');
 const activity = require('../activity');
@@ -45,6 +48,32 @@ function checks(req) {
   add(config.backupEmailTo.length > 0 && mail.isConfigured(), 'Backups are kept somewhere else too',
     config.backupEmailTo.length && mail.isConfigured() ? `Each night's copy is emailed to ${config.backupEmailTo.join(', ')}.` : 'Backups only sit on the same disk as the site.',
     'Until email is set up with BACKUP_EMAIL_TO, download a backup from the Backups page every week and keep it somewhere safe.');
+
+  // Is the database encrypted, and are all the copies of it?
+  {
+    const dbfile = require('../dbfile'); const e = db.encryption || { encrypted: false };
+    const files = backups.map((b) => path.join(backup.backupDir, b.name));
+    const plain = files.filter((f) => { try { return dbfile.isPlain(f); } catch (err) { return false; } }).length;
+    const since = (db.prepare("SELECT value FROM meta WHERE key = 'db_encrypted_at'").get() || {}).value;
+    const SAFE = 'Keep a second copy of the key somewhere safe that is not Render: a password manager, or printed and locked away. Without the key nobody can open the database or its backups again, and nobody can recover it for you.';
+    if (!e.encrypted) {
+      list.push({ ok: false, title: 'The database is encrypted',
+        detail: e.note || 'No. Anyone who got hold of the database file or a backup could read everything in it.',
+        fix: `Copy the key below. In Render, open the service, then Environment, add a variable named DB_KEY, paste the key as its value and save. The site restarts, and within a minute the database and every backup are encrypted. ${SAFE}`,
+        code: crypto.randomBytes(32).toString('base64url'),
+        after: 'This key was made just now for you to use, and is not stored anywhere by the site. If Render offers to generate a value for you, that works just as well.' });
+    } else {
+      const trouble = e.note || (e.usingOldKey ? 'The database is still opened with the old key.' : '');
+      const ok = !trouble && !plain && !e.oldKeySet;
+      const detail = [`Yes${since ? `, since ${util.fmtDateTime(since).split(', ')[0]}` : ''}. The database file and its backups can only be opened with the key kept in the hosting settings (DB_KEY).`,
+        files.length ? `${files.length - plain} of ${files.length} backups are encrypted.` : '',
+        'Photos and uploaded documents are separate files and are not encrypted by the site.', trouble].filter(Boolean).join(' ');
+      const fix = trouble ? 'In Render, open the service, then Environment, and check DB_KEY and DB_KEY_OLD. To change the key: put the new one in DB_KEY and the current one in DB_KEY_OLD, then save.'
+        : plain ? 'Restart the service once so the older backups are encrypted. Any that stay unencrypted after that can be deleted on the Backups page.'
+          : 'The key change is finished. In Render, open the service, then Environment, and delete DB_KEY_OLD.';
+      list.push({ ok, title: 'The database is encrypted', detail, fix: ok ? '' : fix, after: SAFE });
+    }
+  }
 
   // Accounts.
   const withKey = new Set(db.prepare('SELECT DISTINCT user_id FROM passkeys').all().map((r) => r.user_id));

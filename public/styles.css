@@ -1462,3 +1462,6 @@ td.reports-to .meta { display: block; }
 /* On call: which office each person covers, and offices with nobody listed */
 .oncall-office { margin-left: .45rem; font-size: .8rem; }
 .oncall-missing { margin: .8rem 0 0; }
+
+/* Security check: a key to copy. Smaller than a temporary password, and it selects in one tap. */
+.sec-key { font-size: 1rem; letter-spacing: 0; margin: .6rem 0 .4rem; padding: .6rem .75rem; background: var(--bg); border: 1px dashed var(--line); border-radius: 8px; }

@@ -20,7 +20,7 @@ const needPassword = (req, res, next) => (provedRecently(req) ? next() : (flash(
 
 router.get('/admin/backups', requireBackupAccess, (req, res) => {
   res.render('admin_backups', {
-    proved: provedRecently(req),
+    proved: provedRecently(req), encrypted: Boolean(require('../db').encryption && require('../db').encryption.encrypted),
     title: 'Backups', backups: backup.listBackups(), keep: config.backupKeep,
     emailTo: config.backupEmailTo, hour: config.backupHour,
   });

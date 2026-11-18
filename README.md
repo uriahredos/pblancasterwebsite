@@ -291,8 +291,19 @@ The import file contains people's names and emails, so it is not kept in the cod
 - A copy of the database is made every night (after `BACKUP_HOUR`, default 2 am) and the newest 14 are kept in `/data/backups`.
 - **These copies are on the same disk as the site.** They protect against mistakes, not against losing the disk. To get copies off the server, either set `BACKUP_EMAIL_TO` (needs the email settings below) so each night's copy is emailed, or download one from the Backups page now and then.
 - The Backups page also has **Back up now** and **Download all photos**.
-- A backup contains everything, including anonymous complaints, so it has its own permission, and `BACKUP_EMAIL_TO` should only name someone trusted with that.
-- To restore: stop the site, replace `/data/portal.db` with the backup file, start the site.
+- A backup contains everything, including anonymous complaints, so it has its own permission, and `BACKUP_EMAIL_TO` should only name someone trusted with that. With `DB_KEY` set, backups are encrypted like the database itself.
+- To restore: stop the site, replace `/data/portal.db` with the backup file, start the site. An encrypted backup needs `DB_KEY` set to the key it was made with (see below).
+
+## Database encryption (`DB_KEY`)
+
+- **With `DB_KEY` set in the hosting settings, the database is kept encrypted** in SQLCipher 4 format (AES-256, with a check on every page). A copy of it, whether the file itself, a downloaded backup or an emailed one, cannot be read without the key. Without `DB_KEY` the database is an ordinary SQLite file.
+- **Turning it on.** Corporate > Security check shows whether the database is encrypted and, when it is not, offers a freshly made key to copy. Add it in Render (the service, then Environment) as `DB_KEY`, at least 20 characters. On the next start the site sets a complete copy aside, encrypts the database where it stands, checks that it opens with the key, passes SQLite's own check and holds exactly the rows it held before, and only then removes the copy. If anything fails, or the server stops half-way, the copy is put back and the site runs as before. Existing backups are encrypted on the same start.
+- **Keep a second copy of the key somewhere that is not Render**: a password manager, or printed and locked away. The key is never written to the disk, the log or the database. **If it is lost, nobody can open the database or its backups again.**
+- **A missing or wrong key does not harm anything.** The site refuses to open the database and shows a plain "closed for the moment" page that says to put `DB_KEY` right. Putting the right value back brings everything back.
+- **Changing the key.** Put the new key in `DB_KEY` and the current one in `DB_KEY_OLD`, and save. The next start moves the database and every backup to the new key in the same careful way. Then delete `DB_KEY_OLD`; the Security check reminds you.
+- **Turning it off again.** Leave `DB_KEY` in place, add `DB_DECRYPT` with the value `yes`, and save. The next start decrypts the database and its backups, again with a copy set aside until the result is checked. Then delete both settings. **Do this before going back to a release from before encryption was added**: that older code cannot open an encrypted database and will not start.
+- **Opening a backup elsewhere.** `DB_KEY=<the key> npm run decrypt-backup -- <backup file>` writes an unencrypted copy. Any SQLCipher 4 tool (DB Browser for SQLite, the `sqlcipher` command) also opens a backup directly with the same key.
+- **What is not covered.** Photos and uploaded documents are separate files in `/data/uploads` and are not encrypted by the site, and neither is the **Download all photos** archive. Someone who can reach the hosting account can read the key, so that account needs its own strong sign-in. Encryption does not change what a signed-in person can see through the site.
 
 ## Email notifications
 

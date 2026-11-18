@@ -4,7 +4,8 @@
 <p class="lede">A copy of the database is made every night after <%= hour %>:00 and the newest <%= keep %> are kept. <% if (emailTo.length) { %>Each night's copy is also emailed to <%= emailTo.join(', ') %>.<% } else { %>Nightly copies are not being emailed anywhere.<% } %></p>
 <div class="notice">
   <p><strong>These copies sit on the same disk as the site.</strong> They protect against mistakes, not against losing the disk. Download one now and then and keep it somewhere else, or turn on the nightly email.</p>
-  <p>A backup contains everything, including anonymous complaints and sign-in details. Keep it private.</p>
+  <% if (encrypted) { %><p><strong>Backups are encrypted.</strong> A backup can only be opened with the database key kept in the hosting settings (DB_KEY). Keep a copy of that key somewhere safe: a backup is no use without it.</p>
+  <% } else { %><p>A backup contains everything, including anonymous complaints and sign-in details, and it is <strong>not encrypted</strong>. Keep it private. Corporate &gt; Security check shows how to turn encryption on.</p><% } %>
 </div>
 <% if (!proved) { %>
 <form method="post" action="/account/confirm" class="card filters" id="confirm" data-no-live>

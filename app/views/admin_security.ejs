@@ -7,6 +7,8 @@
     <div class="rec-head"><span class="tag <%= c.ok ? 'return' : 'overdue' %>"><%= c.ok ? 'OK' : 'Needs attention' %></span><strong><%= c.title %></strong></div>
     <p class="plain"><%= c.detail %></p>
     <% if (c.fix) { %><p class="hint sec-fix"><strong>What to do:</strong> <%= c.fix %></p><% } %>
+    <% if (c.code) { %><p class="code sec-key"><%= c.code %></p><% } %>
+    <% if (c.after) { %><p class="hint"><%= c.after %></p><% } %>
   </li>
 <% }) %>
 </ul>

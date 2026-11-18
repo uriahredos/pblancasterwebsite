@@ -601,7 +601,7 @@ test('backups: limited to admins who may read complaints; nightly copy is made o
   assert.equal(restored.subarray(0, 15).toString(), 'SQLite format 3');
 
   // The copy is a complete, readable database.
-  const Database = require('better-sqlite3');
+  const Database = require('better-sqlite3-multiple-ciphers');
   const copy = new Database(path.join(dataDir, 'backups', made), { readonly: true });
   assert.equal(copy.prepare('SELECT COUNT(*) n FROM users').get().n, db.prepare('SELECT COUNT(*) n FROM users').get().n);
   copy.close();
@@ -651,7 +651,7 @@ test('home-screen app files are served, and signed-out pages still work', async 
 
 test('a database from the first release is upgraded in place without losing data', async () => {
   const { execFileSync } = require('child_process');
-  const Database = require('better-sqlite3');
+  const Database = require('better-sqlite3-multiple-ciphers');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'portal-old-'));
   const old = new Database(path.join(dir, 'portal.db'));
   old.exec(`
@@ -4895,4 +4895,193 @@ test('the idle lock depends on the device: 10 minutes on a phone or tablet, 20 o
   assert.deepEqual(fresh({ LOCK_AFTER_MINUTES_PHONE: 'nonsense', LOCK_AFTER_MINUTES_DESKTOP: '-4' }), { phone: 10 * 60000, desktop: 20 * 60000 });   // a typing mistake does not switch a timer off
   assert.deepEqual(fresh({ LOCK_AFTER_MINUTES: '0' }), { phone: 0, desktop: 0 });
   assert.equal(require('../app/config'), cached.exports);
+});
+
+// ---- Database encryption. Each step runs a fresh copy of the app, the way a restart of the service does. ----
+function encryptionLab() {
+  const { execFileSync } = require('child_process');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'portal-enc-'));
+  const root = path.join(__dirname, '..');
+  const env = (extra) => ({ PATH: process.env.PATH, DATA_DIR: dir, BCRYPT_ROUNDS: '4', APP_TIMEZONE: 'America/New_York', ...extra });
+  /** Start the app's database with these settings, run a little code against it, and hand back what it printed (or how it failed). */
+  const run = (code, extra = {}) => {
+    try { return { ok: true, out: execFileSync(process.execPath, ['-e', code], { cwd: root, env: env(extra), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) }; }
+    catch (e) { return { ok: false, out: String(e.stdout || ''), err: String(e.stderr || '') }; }
+  };
+  const STATE = `const db = require('./app/db'); const b = require('./app/backup'); const aligned = b.alignWithKey();
+    console.log(JSON.stringify({ e: db.encryption, aligned, users: db.prepare('SELECT COUNT(*) n FROM users').get().n,
+      marker: (db.prepare("SELECT value v FROM meta WHERE key = 'marker'").get() || {}).v, since: (db.prepare("SELECT value v FROM meta WHERE key = 'db_encrypted_at'").get() || {}).v || null,
+      integrity: db.pragma('integrity_check', { simple: true }), sign: Boolean(require('./app/auth').checkLogin('enc.one', 'correct horse battery')) }));`;
+  const state = (extra) => { const r = run(STATE, extra); return r.ok ? JSON.parse(r.out.trim().split('\n').pop()) : r; };
+  const SEED = `const db = require('./app/db'); const auth = require('./app/auth');
+    auth.createUser({ username: 'enc.one', displayName: 'Enid Onesworth', password: 'correct horse battery', profile: 'Technician' });
+    db.prepare("INSERT INTO meta (key, value) VALUES ('marker', 'kept')").run();
+    require('./app/backup').runBackup({ manual: true }).then((n) => console.log(n));`;
+  const file = path.join(dir, 'portal.db');
+  const raw = () => ['', '-wal'].map((x) => (fs.existsSync(file + x) ? fs.readFileSync(file + x).toString('latin1') : '')).join('');
+  const backups = () => (fs.existsSync(path.join(dir, 'backups')) ? fs.readdirSync(path.join(dir, 'backups')).filter((f) => f.endsWith('.db')).sort().map((f) => path.join(dir, 'backups', f)) : []);
+  const sha = (f) => require('crypto').createHash('sha256').update(fs.readFileSync(f)).digest('hex');
+  return { dir, root, env, run, state, SEED, file, raw, backups, sha };
+}
+
+test('database encryption: DB_KEY encrypts the database and its backups where they stand; a wrong or missing key harms nothing; the key can be changed', async () => {
+  const dbfile = require('../app/dbfile');
+  const L = encryptionLab();
+  const KEY = 'first-key-0123456789-abcdefghij', KEY2 = "second key, with a ' quote and spaces 0123456789";
+  const COPY = L.file + '.before-key-change';
+
+  // An ordinary site with no key: an ordinary SQLite file anyone could read.
+  assert.ok(L.run(L.SEED).ok);
+  let s = L.state();
+  assert.deepEqual([s.e.encrypted, s.e.changed, s.users, s.marker, s.since], [false, null, 1, 'kept', null]);
+  assert.ok(dbfile.isPlain(L.file)); assert.match(L.raw(), /Enid Onesworth/);
+  assert.equal(L.backups().length, 1); assert.ok(dbfile.isPlain(L.backups()[0]));
+  assert.deepEqual(s.aligned, { encrypted: 0, rekeyed: 0, decrypted: 0, plain: 1, foreign: 0 });
+
+  // A key that is too short is not used: nothing changes, and the reason is given.
+  s = L.state({ DB_KEY: 'too-short' });
+  assert.equal(s.e.encrypted, false); assert.match(s.e.note, /shorter than 20 characters/); assert.ok(dbfile.isPlain(L.file));
+
+  // The first start with a key: the database is encrypted where it stands, everything still there, the backup too.
+  s = L.state({ DB_KEY: KEY });
+  assert.deepEqual([s.e.encrypted, s.e.changed, s.e.note, s.users, s.marker, s.integrity, s.sign], [true, 'encrypted', null, 1, 'kept', 'ok', true]);
+  assert.ok(s.since);
+  assert.deepEqual(s.aligned, { encrypted: 1, rekeyed: 0, decrypted: 0, plain: 0, foreign: 0 });
+  assert.equal(dbfile.isPlain(L.file), false); assert.doesNotMatch(L.raw(), /Enid Onesworth|enc\.one|SQLite format 3/);
+  assert.equal(dbfile.isPlain(L.backups()[0]), false); assert.doesNotMatch(fs.readFileSync(L.backups()[0]).toString('latin1'), /Enid Onesworth|SQLite format 3/);
+  assert.ok(dbfile.readable(L.backups()[0], KEY)); assert.equal(dbfile.readable(L.backups()[0], 'not-the-key-not-the-key-0000'), false);
+  assert.equal(fs.existsSync(COPY), false);                                                   // the copy set aside for the change is gone
+  assert.doesNotMatch(fs.readdirSync(L.dir).join(' '), /before-key-change/);
+
+  // Later starts with the same key just open it. A backup made now is encrypted from the start.
+  s = L.state({ DB_KEY: KEY });
+  assert.deepEqual([s.e.encrypted, s.e.changed, s.users], [true, null, 1]);
+  assert.ok(L.run(`require('./app/backup').runBackup({ manual: true, now: new Date(Date.now() + 5000) }).then((n) => console.log(n));`, { DB_KEY: KEY }).ok);
+  assert.equal(L.backups().length, 2);
+  for (const b of L.backups()) { assert.equal(dbfile.isPlain(b), false); assert.ok(dbfile.readable(b, KEY)); }
+
+  // A wrong key, no key, or a mistyped one: the site refuses to open the database and leaves every byte alone.
+  const before = L.sha(L.file);
+  for (const [settings, says] of [[{ DB_KEY: 'a-wrong-key-a-wrong-key-12345' }, /different key from the one in the hosting settings/], [{}, /its key \(DB_KEY\) is missing/], [{ DB_KEY: KEY + 'x' }, /different key/], [{ DB_KEY: 'short' }, /different key/]]) {
+    const r = L.run(L.SEED, settings);
+    assert.equal(r.ok, false); assert.match(r.err, says); assert.match(r.err, /KeyProblem/);
+    assert.doesNotMatch(r.err + r.out, new RegExp(KEY));                                      // the key itself is never printed
+  }
+  assert.equal(L.sha(L.file), before);
+  assert.equal((s = L.state({ DB_KEY: `  ${KEY}\n` })).e.encrypted, true);                    // stray spaces round a pasted key are ignored
+
+  // Changing the key: the new one in DB_KEY, the current one in DB_KEY_OLD.
+  s = L.state({ DB_KEY: KEY2, DB_KEY_OLD: KEY });
+  assert.deepEqual([s.e.encrypted, s.e.changed, s.e.usingOldKey, s.users, s.marker, s.integrity], [true, 'rekeyed', false, 1, 'kept', 'ok']);
+  assert.deepEqual(s.aligned, { encrypted: 0, rekeyed: 2, decrypted: 0, plain: 0, foreign: 0 });
+  assert.ok(dbfile.readable(L.file, KEY2)); assert.equal(dbfile.readable(L.file, KEY), false);
+  for (const b of L.backups()) { assert.ok(dbfile.readable(b, KEY2)); assert.equal(dbfile.readable(b, KEY), false); }
+  s = L.state({ DB_KEY: KEY2, DB_KEY_OLD: KEY });                                             // DB_KEY_OLD left behind: harmless, and reported so it can be removed
+  assert.deepEqual([s.e.changed, s.e.oldKeySet, s.e.usingOldKey], [null, true, false]);
+  assert.deepEqual(s.aligned, { encrypted: 0, rekeyed: 0, decrypted: 0, plain: 0, foreign: 0 });
+  s = L.state({ DB_KEY_OLD: KEY2 });                                                          // only the old name set: still opens, and says what to do
+  assert.equal(s.e.usingOldKey, true); assert.match(s.e.note, /Put the new key in DB_KEY/);
+  assert.ok(dbfile.readable(L.file, KEY2));
+
+  // The server stopped half-way through a key change last time: the copy set aside beforehand is put back and the change starts again.
+  fs.copyFileSync(L.file, COPY);
+  fs.writeFileSync(L.file, Buffer.concat([require('crypto').randomBytes(4096), fs.readFileSync(L.file).subarray(4096, 9000)]));   // a half-rewritten file
+  fs.writeFileSync(COPY + '.tmp', 'a copy that was never finished');
+  s = L.state({ DB_KEY: KEY2 });
+  assert.deepEqual([s.e.encrypted, s.users, s.marker, s.integrity, s.sign], [true, 1, 'kept', 'ok', true]);
+  assert.doesNotMatch(fs.readdirSync(L.dir).join(' '), /before-key-change/);
+
+  // Turning encryption off again: the key stays in place and DB_DECRYPT asks for it. The database and its backups become ordinary files.
+  s = L.state({ DB_KEY: KEY2, DB_DECRYPT: 'yes' });
+  assert.deepEqual([s.e.encrypted, s.e.changed, s.users, s.marker, s.integrity, s.sign, s.since], [false, 'decrypted', 1, 'kept', 'ok', true, null]);
+  assert.equal(s.aligned.decrypted, 2); assert.ok(dbfile.isPlain(L.file)); for (const b of L.backups()) assert.ok(dbfile.isPlain(b));
+  s = L.state({ DB_KEY: KEY2, DB_DECRYPT: 'yes' });                                           // still asked to stay off: stays off, and says why
+  assert.deepEqual([s.e.encrypted, s.e.changed], [false, null]); assert.match(s.e.note, /DB_DECRYPT is set/); assert.ok(dbfile.isPlain(L.file));
+  assert.equal(L.state({ DB_KEY: 'a-wrong-key-a-wrong-key-12345', DB_DECRYPT: 'yes' }).users, 1);          // unencrypted now, so which key is set is beside the point
+  s = L.state({ DB_KEY: KEY2 });                                                              // DB_DECRYPT removed, key still there: encrypted again
+  assert.deepEqual([s.e.encrypted, s.e.changed, s.marker], [true, 'encrypted', 'kept']); assert.equal(dbfile.isPlain(L.file), false);
+  for (const b of L.backups()) assert.ok(dbfile.readable(b, KEY2));
+  assert.match(L.run(L.SEED, { DB_KEY: 'a-wrong-key-a-wrong-key-12345', DB_DECRYPT: 'yes' }).err, /KeyProblem/);   // the off switch does nothing without the real key
+  assert.equal(dbfile.isPlain(L.file), false);
+
+  // A brand-new site with a key is encrypted from its first page.
+  const N = encryptionLab();
+  assert.ok(N.run(N.SEED, { DB_KEY: KEY }).ok);
+  assert.equal(dbfile.isPlain(N.file), false); assert.doesNotMatch(N.raw(), /Enid Onesworth|SQLite format 3/);
+  s = N.state({ DB_KEY: KEY });
+  assert.deepEqual([s.e.encrypted, s.e.changed, s.users, s.sign], [true, null, 1, true]);
+  assert.deepEqual(s.aligned, { encrypted: 0, rekeyed: 0, decrypted: 0, plain: 0, foreign: 0 });
+
+  // Opening a backup somewhere else: the helper writes an unencrypted copy, only with the right key, and leaves the backup alone.
+  const { execFileSync } = require('child_process');
+  const b = L.backups()[0]; const out = path.join(L.dir, 'opened.db'); const kept = L.sha(b);
+  const tool = (key, ...args) => { try { return { ok: true, out: execFileSync(process.execPath, ['scripts/decrypt-backup.js', ...args], { cwd: L.root, env: { PATH: process.env.PATH, DB_KEY: key }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) }; } catch (e) { return { ok: false, err: String(e.stderr) }; } };
+  assert.match(tool(KEY, b, out).err, /That key does not open this backup/); assert.equal(fs.existsSync(out), false);
+  assert.match(tool('', b, out).err, /Set DB_KEY/);
+  assert.ok(tool(KEY2, b, out).ok); assert.ok(dbfile.isPlain(out)); assert.equal(L.sha(b), kept);
+  const opened = dbfile.connect(out, '', { readonly: true });
+  assert.equal(opened.prepare("SELECT display_name d FROM users WHERE username = 'enc.one'").get().d, 'Enid Onesworth'); opened.close();
+  assert.match(tool(KEY2, out).err, /is not encrypted/);
+});
+
+test('database encryption: a wrong key shows a plain "closed" page instead of a broken site, and the Security check says where things stand', async () => {
+  const { spawn } = require('child_process'); const net = require('net');
+  const dbfile = require('../app/dbfile');
+  const L = encryptionLab(); const KEY = 'page-test-key-0123456789-abcdef';
+  assert.ok(L.run(L.SEED, { DB_KEY: KEY }).ok);
+  const freePort = () => new Promise((resolve) => { const s = net.createServer(); s.listen(0, () => { const p = s.address().port; s.close(() => resolve(p)); }); });
+  const serve = async (settings) => {
+    const port = await freePort(); let log = '';
+    const child = spawn(process.execPath, ['app/server.js'], { cwd: L.root, env: L.env({ PORT: String(port), SESSION_SECRET: 'x'.repeat(40), ...settings }), stdio: ['ignore', 'pipe', 'pipe'] });
+    child.stdout.on('data', (d) => { log += d; }); child.stderr.on('data', (d) => { log += d; });
+    const get = (url) => fetch(`http://localhost:${port}${url}`, { redirect: 'manual' }).then(async (r) => ({ status: r.status, text: await r.text(), headers: r.headers }));
+    for (let i = 0; i < 100; i++) { try { await get('/healthz'); break; } catch (e) { await new Promise((r) => setTimeout(r, 100)); } }
+    return { get, log: () => log, stop: () => new Promise((r) => { child.once('exit', r); child.kill(); }) };
+  };
+
+  // The key is wrong: every page explains, in the browser, what to put right. Nothing about the data is given away, and nothing is harmed.
+  const before = L.sha(L.file);
+  let site = await serve({ DB_KEY: 'not-the-right-key-not-at-all-99' });
+  let page = await site.get('/');
+  assert.equal(page.status, 503); assert.match(page.text, /PB Portal is closed for the moment/); assert.match(page.text, /Nothing has been lost/);
+  assert.match(page.text, /different key from the one in the hosting settings/); assert.match(page.text, /DB_KEY/);
+  assert.equal(page.headers.get('cache-control'), 'no-store'); assert.match(page.headers.get('content-security-policy'), /default-src 'none'/);
+  for (const url of ['/login', '/admin/backups', '/admin/backups/portal-2026-01-01.db', '/styles.css']) assert.equal((await site.get(url)).status, 503, url);
+  assert.equal((await site.get('/healthz')).status, 200);                                     // the host keeps the page reachable
+  assert.match(site.log(), /showing a "closed" page/); assert.doesNotMatch(site.log() + page.text, /not-the-right-key|page-test-key/);
+  await site.stop();
+  site = await serve({});                                                                     // the key is missing altogether
+  assert.match((await site.get('/')).text, /its key \(DB_KEY\) is missing from the hosting settings/);
+  await site.stop();
+  assert.equal(L.sha(L.file), before);
+
+  // The right key: the site runs as usual, says in its log that it is encrypted, and never prints the key.
+  site = await serve({ DB_KEY: KEY });
+  assert.equal((await site.get('/login')).status, 200); assert.equal((await site.get('/')).status, 302);
+  assert.doesNotMatch(site.log(), /page-test-key|not encrypted/);
+  await site.stop();
+
+  // The Security check. Encrypted: in order, with the reminder about keeping the key. DB_KEY_OLD left behind: asks for it to be removed.
+  const CHECK = `const item = require('./app/routes/security').checks({ headers: {}, ip: '203.0.113.9', socket: {} }).find((c) => c.title === 'The database is encrypted'); console.log(JSON.stringify(item));`;
+  let item = JSON.parse(L.run(CHECK, { DB_KEY: KEY }).out.trim().split('\n').pop());
+  assert.equal(item.ok, true); assert.match(item.detail, /^Yes, since \d+\/\d+\/\d{4}\. The database file and its backups can only be opened with the key kept in the hosting settings \(DB_KEY\)\. 1 of 1 backups are encrypted\./);
+  assert.match(item.detail, /Photos and uploaded documents are separate files and are not encrypted/); assert.match(item.after, /Without the key nobody can open the database/);
+  assert.equal(item.code, undefined);
+  item = JSON.parse(L.run(CHECK, { DB_KEY: KEY, DB_KEY_OLD: 'an-older-key-an-older-key-000' }).out.trim().split('\n').pop());
+  assert.equal(item.ok, false); assert.match(item.fix, /delete DB_KEY_OLD/);
+
+  // Not encrypted (this test site has no key): flagged, with a fresh key to copy each time and the steps to switch it on.
+  const owner = await loggedIn('owner');
+  await owner.post('/branch/view', { branch: 'all', back: '/' }, { page: '/' });
+  access.ensureProfile('Corporate admin', 'all', access.ALL);
+  const cid = makeUser('enc.corp', 'Cora Keyholder'); db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(profileId('Corporate admin'), cid);
+  const corp = await loggedIn('enc.corp');
+  const key = (html) => /<p class="code sec-key">([A-Za-z0-9_-]{43})<\/p>/.exec(html);
+  const one = (await corp.get('/admin/security')).text, two = (await corp.get('/admin/security')).text;
+  assert.match(one, /The database is encrypted<\/strong>/); assert.match(one, /Anyone who got hold of the database file or a backup could read everything in it/);
+  assert.match(one, /add a variable named DB_KEY/); assert.match(one, /Without the key nobody can open the database or its backups again/);
+  assert.ok(key(one) && key(two) && key(one)[1] !== key(two)[1]);                             // made fresh each time, stored nowhere
+  assert.ok(key(one)[1].length >= dbfile.MIN_KEY);
+  assert.match((await corp.get('/admin/backups')).text, /it is <strong>not encrypted<\/strong>/);
+  assert.equal(db.encryption.encrypted, false);
 });

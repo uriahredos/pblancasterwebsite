@@ -1,12 +1,12 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const Database = require('better-sqlite3');
 const config = require('./config');
 
 fs.mkdirSync(path.join(config.dataDir, 'uploads'), { recursive: true });
 
-const db = new Database(path.join(config.dataDir, 'portal.db'));
+// Encrypted when DB_KEY is set in the hosting settings (see dbfile.js); an ordinary file otherwise.
+const { db, status: encryption } = require('./dbfile').open(config.dataDir);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
@@ -109,6 +109,11 @@ CREATE TABLE IF NOT EXISTS meta (
   value TEXT
 );
 `);
+
+// When the database became encrypted, for the Security check page. Forgotten again if it ever stops being so.
+if (!encryption.encrypted) db.prepare("DELETE FROM meta WHERE key = 'db_encrypted_at'").run();
+else if (!db.prepare("SELECT 1 FROM meta WHERE key = 'db_encrypted_at'").get()) db.prepare("INSERT INTO meta (key, value) VALUES ('db_encrypted_at', ?)").run(new Date().toISOString());
+db.encryption = encryption;
 
 // Columns added after the first release. Safe to run on every start.
 function addColumn(table, column, type) {

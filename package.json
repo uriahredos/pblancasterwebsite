@@ -11,12 +11,13 @@
     "start": "node app/server.js",
     "dev": "node --watch app/server.js",
     "test": "node --test",
-    "create-admin": "node scripts/create-admin.js"
+    "create-admin": "node scripts/create-admin.js",
+    "decrypt-backup": "node scripts/decrypt-backup.js"
   },
   "dependencies": {
     "@simplewebauthn/server": "^14.1.0",
     "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^13.1.1",
+    "better-sqlite3-multiple-ciphers": "^13.2.0",
     "ejs": "^7.0.2",
     "express": "^4.22.3",
     "express-rate-limit": "^8.7.4",
