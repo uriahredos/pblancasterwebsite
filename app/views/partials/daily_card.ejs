@@ -11,7 +11,7 @@
   <% d.options.forEach(function (o) { %>
   <li class="<%= o.i === d.mine ? 'mine' : '' %>">
     <div class="daily-line"><strong><%= o.text %></strong><span><%= o.percent %>%</span></div>
-    <div class="daily-bar" aria-hidden="true"><span style="width: <%= o.percent %>%"></span></div>
+    <div class="daily-bar" aria-hidden="true"><progress max="100" value="<%= o.percent %>"></progress></div>
     <p class="daily-who"><% if (!o.people.length) { %>Nobody yet<% } %><% o.people.slice(0, 12).forEach(function (p, i) { %><%= i ? ', ' : '' %><a href="/people/<%= p.id %>"><%= p.id === user.id ? 'You' : p.display_name %></a><% }) %><% if (o.people.length > 12) { %> and <%= o.people.length - 12 %> more<% } %></p>
   </li>
   <% }) %>

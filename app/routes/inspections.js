@@ -94,7 +94,7 @@ router.get('/inspection/photo/:id', requireLogin, (req, res) => {
   const row = db.prepare('SELECT p.path, i.user_id FROM inspection_photos p JOIN inspections i ON i.id = p.inspection_id WHERE p.id = ?').get(req.params.id);
   if (!row) return res.status(404).render('error', { title: 'Page not found', message: 'No photo here.' });
   if (row.user_id !== req.user.id && !(access.can(req.user, 'inspections.view') && access.canSee(req.user, row.user_id))) return forbidden(res);
-  res.sendFile(require('path').basename(row.path), { root: uploads.uploadDir, headers: { 'Cache-Control': 'private, no-store' } });
+  uploads.send(res, row.path, { 'Cache-Control': 'private, no-store' });
 });
 
 // ---- Looking at them ----------------------------------------------------------

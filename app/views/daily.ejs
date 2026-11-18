@@ -65,7 +65,7 @@
 <% past.forEach(function (p) { %>
 <div class="card daily past"><p class="eyebrow"><%= fmtDate(p.q.used_on) %></p><p class="daily-q"><%= p.q.prompt %></p>
   <ul class="daily-results">
-    <% p.options.forEach(function (o) { %><li class="<%= o.i === p.mine ? 'mine' : '' %>"><div class="daily-line"><strong><%= o.text %></strong><span><%= o.percent %>%</span></div><div class="daily-bar" aria-hidden="true"><span style="width: <%= o.percent %>%"></span></div>
+    <% p.options.forEach(function (o) { %><li class="<%= o.i === p.mine ? 'mine' : '' %>"><div class="daily-line"><strong><%= o.text %></strong><span><%= o.percent %>%</span></div><div class="daily-bar" aria-hidden="true"><progress max="100" value="<%= o.percent %>"></progress></div>
       <p class="daily-who"><% if (!o.people.length) { %>Nobody picked this<% } %><% o.people.slice(0, 12).forEach(function (x, i) { %><%= i ? ', ' : '' %><a href="/people/<%= x.id %>"><%= x.id === user.id ? 'You' : x.display_name %></a><% }) %><% if (o.people.length > 12) { %> and <%= o.people.length - 12 %> more<% } %></p></li><% }) %>
   </ul></div>
 <% }) %>

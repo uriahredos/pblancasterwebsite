@@ -54,8 +54,7 @@ router.get('/people', requireLogin, (req, res) => {
 router.get('/people/photo/:id', requireLogin, (req, res) => {
   const row = isId(req.params.id) ? db.prepare('SELECT photo_path FROM users WHERE id = ? AND (active = 1 OR in_directory = 1)').get(req.params.id) : null;
   if (!row || !row.photo_path) return notFound(res);
-  res.sendFile(require('path').basename(row.photo_path), { root: uploads.uploadDir, headers: { 'Cache-Control': 'private, max-age=86400' } },
-    (err) => { if (err && !res.headersSent) notFound(res); });
+  uploads.send(res, row.photo_path, { 'Cache-Control': 'private, max-age=86400' }, () => notFound(res));
 });
 
 router.get('/people/:id', requireLogin, (req, res) => {

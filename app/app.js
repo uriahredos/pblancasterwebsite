@@ -34,9 +34,16 @@ app.use(helmet({
     directives: {
       'img-src': ["'self'", 'data:', 'blob:'],
       'form-action': ["'self'"],
+      // Styles and fonts come from this site only, and never from inside a page: nothing injected into a page can restyle it or call out.
+      'style-src': ["'self'"],
+      'font-src': ["'self'"],
+      'connect-src': ["'self'"],
+      // No other site may show these pages inside its own (and this one never needs to).
+      'frame-ancestors': ["'none'"],
       'upgrade-insecure-requests': config.production ? [] : null,
     },
   },
+  frameguard: { action: 'deny' },
 }));
 
 // Device features the site may use: the camera, for scanning part barcodes. Nothing else, and nothing for embedded pages.

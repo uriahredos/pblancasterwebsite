@@ -134,10 +134,16 @@ router.post('/sales', use, (req, res) => {
   res.redirect(`/sales/${id}`);
 });
 
+// Every customer's contact details in one file. Like a backup, it takes the password typed in the last few minutes,
+// not just an open session.
+router.get('/sales/export', requirePerm('sales.manage'), (req, res) => {
+  res.render('sales_export', { title: 'Export leads', proved: require('./auth').provedRecently(req) });
+});
+
 router.get('/sales.csv', requirePerm('sales.manage'), (req, res) => {
+  if (!require('./auth').provedRecently(req)) return res.redirect('/sales/export');
   const office = officeOf(req.user);
   const rows = db.prepare(`${LEAD} ${office === null ? '' : 'WHERE l.branch_id = ?'} ORDER BY l.id`).all(...(office === null ? [] : [office]));
-  activity.log(req.user, 'Sales leads exported', `${rows.length} leads`);
   sendCsv(res, `sales-leads-${localDate()}.csv`, ['Lead', 'Office', 'Customer', 'Contact', 'Phone', 'Email', 'Address', 'Interested in', 'Source', 'Estimated value', 'Stage', 'Owner', 'Follow up on', 'Added', 'Closed', 'Why lost'],
     rows.map((l) => [l.id, l.office, l.company, l.contact_name, l.phone, l.email, l.address, l.interest, l.source, l.value, sales.stageName(l.stage), l.owner, l.next_on, (l.created_at || '').slice(0, 10), (l.closed_at || '').slice(0, 10), l.lost_reason]));
 });
@@ -214,8 +220,7 @@ router.get('/sales/library/:id', use, (req, res) => {
   const f = isId(req.params.id) ? db.prepare('SELECT * FROM sales_files WHERE id = ?').get(req.params.id) : null;
   if (!f || !f.path) return notFound(res);
   const name = `${f.title.replace(/[^\w .-]+/g, '').trim() || 'file'}${path.extname(f.path)}`;
-  res.sendFile(path.basename(f.path), { root: uploads.uploadDir, headers: { 'Content-Type': f.mime, 'Content-Disposition': `attachment; filename="${name}"`, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, no-store' } },
-    (err) => { if (err && !res.headersSent) notFound(res); });
+  uploads.send(res, f.path, { 'Content-Type': f.mime, 'Content-Disposition': `attachment; filename="${name}"`, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, no-store' }, () => notFound(res));
 });
 router.post('/sales/library/:id/delete', manage, (req, res) => {
   const f = isId(req.params.id) ? db.prepare('SELECT * FROM sales_files WHERE id = ?').get(req.params.id) : null;

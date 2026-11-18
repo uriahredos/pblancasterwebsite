@@ -703,8 +703,13 @@ a.skill:hover { outline: 1px solid var(--accent); }
 .daily-results { list-style: none; margin: 0; padding: 0; display: grid; gap: .7rem; }
 .daily-line { display: flex; justify-content: space-between; gap: .75rem; }
 .daily-bar { height: 10px; margin: .25rem 0; border-radius: 999px; background: var(--accent-soft); overflow: hidden; }
-.daily-bar span { display: block; height: 100%; min-width: 2px; border-radius: 999px; background: var(--field-line); }
-.daily-results li.mine .daily-bar span { background: var(--green); }
+.daily-bar progress { display: block; width: 100%; height: 100%; border: 0; background: transparent; color: var(--field-line); -webkit-appearance: none; appearance: none; }
+.daily-bar progress::-webkit-progress-bar { background: transparent; }
+.daily-bar progress::-webkit-progress-value { border-radius: 999px; background: var(--field-line); }
+.daily-bar progress::-moz-progress-bar { border-radius: 999px; background: var(--field-line); }
+.daily-results li.mine .daily-bar progress { color: var(--green); }
+.daily-results li.mine .daily-bar progress::-webkit-progress-value { background: var(--green); }
+.daily-results li.mine .daily-bar progress::-moz-progress-bar { background: var(--green); }
 .daily-results li.mine strong::after { content: " ✓"; color: var(--green-text); }
 .daily-who { margin: 0; font-size: .85rem; color: var(--muted); }
 .daily-who a { color: inherit; }

@@ -12,7 +12,8 @@
     "dev": "node --watch app/server.js",
     "test": "node --test",
     "create-admin": "node scripts/create-admin.js",
-    "decrypt-backup": "node scripts/decrypt-backup.js"
+    "decrypt-backup": "node scripts/decrypt-backup.js",
+    "decrypt-photos": "node scripts/decrypt-photos.js"
   },
   "dependencies": {
     "@simplewebauthn/server": "^14.1.0",

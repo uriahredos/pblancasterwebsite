@@ -1225,7 +1225,8 @@ test('activity log records admin-side changes and never anything about complaint
   const cid = db.prepare("SELECT id FROM complaints WHERE description = 'activity log secrecy check'").get().id;
   await owner.post(`/admin/complaints/${cid}`, { status: 'resolved', reviewer_reply: 'noted' }, { page: `/admin/complaints/${cid}` });
 
-  const log = db.prepare('SELECT a.action, a.detail, u.username FROM activity_log a JOIN users u ON u.id = a.user_id ORDER BY a.id').all();
+  // (Sign-ins have their own entries, read only by people who look after every office: see the sign-in history test.)
+  const log = db.prepare("SELECT a.action, a.detail, u.username FROM activity_log a JOIN users u ON u.id = a.user_id WHERE a.action <> 'Signed in' ORDER BY a.id").all();
   assert.deepEqual(log.map((r) => r.action), ['Person added', 'Person edited', 'Password reset', 'Account disabled', 'Profile changed', 'Stock count']);
   assert.ok(log.every((r) => r.username === 'owner'));
   assert.match(log[1].detail, /name Log Me → Logan Me, profile → Warehouse/);
@@ -2866,7 +2867,7 @@ test('the lock: closing the site or leaving it idle asks for Face ID, fingerprin
   // Left unused for longer than the limit: locked by the server, whatever the page does.
   db.prepare("UPDATE sessions SET data = json_set(data, '$.seenAt', ?) WHERE sid = ?").run(Date.now() - 11 * 60 * 1000, sid());
   assert.equal((await c.get('/my')).location, '/unlock?next=%2Fmy');
-  assert.match((await c.get('/unlock')).text, /left unused for 10 minutes on this device/);
+  assert.doesNotMatch((await c.get('/unlock')).text, /\d+ minutes/);                                // the lock screen does not announce the time
   await c.post('/unlock', { password: 'correct horse battery' }, { page: '/unlock' });
   db.prepare("UPDATE sessions SET data = json_set(data, '$.seenAt', ?) WHERE sid = ?").run(Date.now() - 9 * 60 * 1000, sid());
   assert.equal((await c.get('/my')).status, 200);                                         // within the limit: still open
@@ -4855,7 +4856,6 @@ test('the idle lock depends on the device: 10 minutes on a phone or tablet, 20 o
   age(desk, 19); assert.equal((await desk.get('/my')).status, 200);
   age(desk, 11); assert.equal((await desk.get('/alive')).status, 204);                         // past a phone's limit, well inside a computer's
   age(desk, 21); assert.equal((await desk.get('/my')).location, '/unlock?next=%2Fmy');
-  assert.match((await desk.get('/unlock')).text, /left unused for 20 minutes on this device/);
   await desk.post('/unlock', { password: 'correct horse battery' }, { page: '/unlock' });
 
   // A phone: 10 minutes.
@@ -4863,7 +4863,6 @@ test('the idle lock depends on the device: 10 minutes on a phone or tablet, 20 o
   assert.match((await phone.get('/')).text, /data-lock-after="600000"/);
   age(phone, 9); assert.equal((await phone.get('/my')).status, 200);
   age(phone, 11); assert.equal((await phone.get('/my')).location, '/unlock?next=%2Fmy');
-  assert.match((await phone.get('/unlock')).text, /left unused for 10 minutes on this device/);
 
   // An iPad (says it is a Mac, has a touch screen and no mouse): a tablet, so 10 minutes.
   const ipad = await signIn(new Client(MAC, 'portal.touch=1'));
@@ -4873,17 +4872,6 @@ test('the idle lock depends on the device: 10 minutes on a phone or tablet, 20 o
   await ipad.post('/unlock', { password: 'correct horse battery' }, { page: '/unlock' });
   age(ipad, 15); ipad.extra = ''; assert.equal((await ipad.get('/my')).status, 200);            // no touch note: a Mac at a desk
   age(ipad, 15); ipad.extra = 'portal.touch=1'; assert.equal((await ipad.get('/my')).location, '/unlock?next=%2Fmy');
-
-  // The Security check tells a corporate admin both times and what the device in front of them counts as.
-  access.ensureProfile('Corporate admin', 'all', access.ALL);
-  const cid = makeUser('lock.corp', 'Cora Corporate'); db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(profileId('Corporate admin'), cid);
-  const corp = new Client(WIN); await corp.login('lock.corp', 'correct horse battery');
-  const page = (await corp.get('/admin/security')).text;
-  assert.match(page, /The site locks when it is left unused/);
-  assert.match(page, /On a phone or tablet: after 10 minutes\. On a computer: after 20 minutes\./);
-  assert.match(page, /The device you are on now counts as a computer\./);
-  corp.ua = IPHONE;
-  assert.match((await corp.get('/admin/security')).text, /The device you are on now counts as a phone or tablet\./);
 
   // Settings: each kind has its own, the older single setting still stands in for both, and 0 switches a timer off.
   const fresh = (env) => { const keep = { ...process.env }; Object.assign(process.env, env); delete require.cache[require.resolve('../app/config')]; const c = require('../app/config').lockAfterMs; delete require.cache[require.resolve('../app/config')]; for (const k of Object.keys(env)) { if (keep[k] === undefined) delete process.env[k]; else process.env[k] = keep[k]; } require.cache[require.resolve('../app/config')] = cached; return c; };
@@ -5064,8 +5052,8 @@ test('database encryption: a wrong key shows a plain "closed" page instead of a 
   // The Security check. Encrypted: in order, with the reminder about keeping the key. DB_KEY_OLD left behind: asks for it to be removed.
   const CHECK = `const item = require('./app/routes/security').checks({ headers: {}, ip: '203.0.113.9', socket: {} }).find((c) => c.title === 'The database is encrypted'); console.log(JSON.stringify(item));`;
   let item = JSON.parse(L.run(CHECK, { DB_KEY: KEY }).out.trim().split('\n').pop());
-  assert.equal(item.ok, true); assert.match(item.detail, /^Yes, since \d+\/\d+\/\d{4}\. The database file and its backups can only be opened with the key kept in the hosting settings \(DB_KEY\)\. 1 of 1 backups are encrypted\./);
-  assert.match(item.detail, /Photos and uploaded documents are separate files and are not encrypted/); assert.match(item.after, /Without the key nobody can open the database/);
+  assert.equal(item.ok, true); assert.match(item.detail, /^Yes, since \d+\/\d+\/\d{4}\. The database, its backups, and the photos and documents people upload can only be opened with the key kept in the hosting settings \(DB_KEY\)\. 1 of 1 backups are encrypted\./);
+  assert.match(item.after, /Without the key nobody can open the database/);
   assert.equal(item.code, undefined);
   item = JSON.parse(L.run(CHECK, { DB_KEY: KEY, DB_KEY_OLD: 'an-older-key-an-older-key-000' }).out.trim().split('\n').pop());
   assert.equal(item.ok, false); assert.match(item.fix, /delete DB_KEY_OLD/);
@@ -5084,4 +5072,223 @@ test('database encryption: a wrong key shows a plain "closed" page instead of a 
   assert.ok(key(one)[1].length >= dbfile.MIN_KEY);
   assert.match((await corp.get('/admin/backups')).text, /it is <strong>not encrypted<\/strong>/);
   assert.equal(db.encryption.encrypted, false);
+});
+
+test('sign-in history: sign-ins, wrong passwords and pauses are recorded for corporate admins only; exports are recorded; sign-out clears the device', async () => {
+  const authRoutes = require('../app/routes/auth'); authRoutes.clearLoginFailures();
+  const office = db.prepare("INSERT INTO branches (name, created_at) VALUES ('Auditville', ?)").run(new Date().toISOString()).lastInsertRowid;
+  access.ensureProfile('Corporate admin', 'all', access.ALL);
+  access.ensureProfile('Office admin (one office)', 'all', access.ALL.filter((p) => p !== 'branches.all'));   // everything an office admin has, and one office only
+  const mk = (username, name, profile) => { const id = makeUser(username, name); db.prepare('UPDATE users SET profile_id = ?, branch_id = ? WHERE id = ?').run(profileId(profile), office, id); return id; };
+  const tid = mk('aud.tech', 'Tessa Trail', 'Technician'); mk('aud.admin', 'Adam Auditville', 'Office admin (one office)'); mk('aud.corp', 'Cora Auditville', 'Corporate admin');
+  db.prepare('DELETE FROM activity_log').run();
+  const mine = () => db.prepare('SELECT action, detail FROM activity_log WHERE user_id = ? ORDER BY id').all(tid);
+  const PHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
+
+  // A wrong password against a real account: recorded with where it came from, never with what was typed.
+  const guess = new Client(PHONE);
+  assert.equal((await guess.post('/login', { username: 'aud.tech', password: 'not-her-password-123' }, { page: '/login' })).status, 401);
+  assert.deepEqual(mine().map((r) => r.action), ['Sign-in failed']);
+  assert.match(mine()[0].detail, /^Wrong password, from [0-9a-f.:]+$/); assert.doesNotMatch(JSON.stringify(mine()), /not-her-password/);
+  // A username that does not exist leaves no entry: what was typed there may well be a password.
+  const before = db.prepare('SELECT COUNT(*) n FROM activity_log').get().n;
+  await guess.post('/login', { username: 'correct horse battery', password: 'x' }, { page: '/login' });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM activity_log').get().n, before);
+  // Signing in: who, how and on what kind of device.
+  const tessa = new Client(PHONE); await tessa.login('aud.tech', 'correct horse battery');
+  assert.deepEqual(mine().pop(), { action: 'Signed in', detail: 'With a password, on a phone or tablet' });
+  // Wrong passwords at the lock screen, and the pause after ten.
+  await tessa.post('/lock', {}, { page: '/' });
+  for (let i = 0; i < 10; i++) await tessa.post('/unlock', { password: 'wrong ' + i }, { page: '/unlock' });   // signing in wiped the earlier miss: ten more reach the limit
+  assert.equal(mine().filter((r) => r.action === 'Wrong password at the lock screen').length, 10);
+  assert.deepEqual(mine().pop(), { action: 'Sign-in paused', detail: '10 wrong passwords in 15 minutes, so the password is refused for the next 15' });
+  await tessa.post('/unlock', { password: 'wrong again' }, { page: '/unlock' });                   // refused outright while paused: nothing more is written
+  assert.equal(mine().filter((r) => r.action === 'Sign-in paused').length, 1); assert.equal(mine().filter((r) => /Wrong password|failed/.test(r.action)).length, 11);
+  authRoutes.clearLoginFailures();
+  await tessa.post('/unlock', { password: 'correct horse battery' }, { page: '/unlock' });
+  assert.equal(mine().filter((r) => r.action === 'Signed in').length, 1);                           // unlocking is not a sign-in
+  // Changing the password and the reset address are recorded, without either value.
+  await tessa.post('/account/email', { email: 'tessa@example.com', current: 'correct horse battery' });
+  await tessa.post('/account/password', { current: 'correct horse battery', password: 'meadow lantern copper 9', confirm: 'meadow lantern copper 9' });
+  assert.deepEqual(mine().slice(-2).map((r) => r.action), ['Email address changed', 'Password changed']);
+  assert.doesNotMatch(JSON.stringify(mine()), /meadow lantern|correct horse|tessa@example/);
+
+  // Who can read it. The office admin sees the office's log without any sign-in entries; a corporate admin can ask for them.
+  const admin = await loggedIn('aud.admin'); const corp = await loggedIn('aud.corp');
+  await corp.post('/branch/view', { branch: String(office), back: '/' }, { page: '/' });
+  const officeView = (await admin.get('/admin/activity')).text;
+  assert.match(officeView, /Password changed/); assert.match(officeView, /Email address changed/);
+  assert.doesNotMatch(officeView, /Signed in|Sign-in failed|Sign-in paused|Wrong password at the lock screen|show=signins/);
+  assert.doesNotMatch((await admin.get('/admin/activity?show=signins')).text, /Signed in|Sign-in failed|Sign-in paused/);
+  assert.doesNotMatch((await admin.get('/admin/activity?q=Tessa')).text, /Signed in|Sign-in failed|Sign-in paused|Wrong password at the lock screen/);
+  const corpView = (await corp.get('/admin/activity')).text;
+  assert.match(corpView, /show=signins/); assert.match(corpView, /Sign-in paused/); assert.doesNotMatch(corpView, /<td class="nowrap">Signed in<\/td>/);
+  const signIns = (await corp.get('/admin/activity?show=signins')).text;
+  assert.match(signIns, /Tessa Trail<\/td><td class="nowrap">Signed in<\/td><td>With a password, on a phone or tablet/); assert.match(signIns, /Sign-in failed/);
+  assert.doesNotMatch(signIns, /Password changed/);
+
+  // Spreadsheets: every export is written down with who took it and how much.
+  await admin.get('/admin/certs.csv');
+  const exported = db.prepare("SELECT a.detail, u.username FROM activity_log a JOIN users u ON u.id = a.user_id WHERE a.action = 'Spreadsheet exported' ORDER BY a.id DESC").get();
+  assert.equal(exported.username, 'aud.admin'); assert.match(exported.detail, /^certifications-\d{4}-\d{2}-\d{2}\.csv, \d+ rows?$/);
+  // The customer list takes the password typed in the last few minutes, like a backup.
+  const sid = (c) => decodeURIComponent(/portal\.sid=([^;]+)/.exec(c.cookie)[1]).slice(2).split('.')[0];
+  const longAgo = (c) => db.prepare("UPDATE sessions SET data = json_set(data, '$.pwAt', 1) WHERE sid = ?").run(sid(c));
+  assert.equal((await admin.get('/sales.csv')).status, 200);                                        // signed in a moment ago
+  longAgo(admin);
+  assert.equal((await admin.get('/sales.csv')).location, '/sales/export');
+  const ask = (await admin.get('/sales/export')).text;
+  assert.match(ask, /Type your password to export/); assert.doesNotMatch(ask, /href="\/sales\.csv"/);
+  await admin.post('/account/confirm', { password: 'wrong password here', next: '/sales/export' }, { page: '/sales/export' });
+  assert.equal((await admin.get('/sales.csv')).location, '/sales/export');
+  assert.equal(db.prepare('SELECT action FROM activity_log WHERE user_id = ? ORDER BY id DESC').get(userId('aud.admin')).action, 'Wrong password when asked to confirm');
+  assert.doesNotMatch((await admin.get('/admin/activity')).text, /Wrong password when asked to confirm/);     // and that, too, is for corporate eyes only
+  assert.equal((await admin.post('/account/confirm', { password: 'correct horse battery', next: '/sales/export' }, { page: '/sales/export' })).location, '/sales/export');
+  assert.match((await admin.get('/sales/export')).text, /href="\/sales\.csv"/);
+  const csv = await admin.get('/sales.csv');
+  assert.equal(csv.status, 200); assert.match(csv.headers.get('content-disposition'), /sales-leads-/);
+  assert.match(db.prepare("SELECT detail FROM activity_log WHERE action = 'Spreadsheet exported' ORDER BY id DESC").get().detail, /^sales-leads-/);
+  assert.equal((await tessa.get('/sales/export')).status, 403);
+
+  // Signing out: the browser is told to drop the photos and files it kept from the site, and the page clears saved drafts.
+  const out = await tessa.post('/logout', {}, { page: '/' });
+  assert.equal(out.location, '/login'); assert.equal(out.headers.get('clear-site-data'), '"cache"');
+  const js = (await new Client().get('/site.js')).text;
+  assert.match(js, /getAttribute\('action'\) !== '\/logout'/); assert.match(js, /clearPrefix\('draft:'\)/);
+  // A page left open goes to the lock screen once the site has locked (checked in a browser too): the pieces are in place.
+  assert.match(js, /if \(path === '\/unlock'\) \{ leave\('\/unlock'\); return null; \}/); assert.match(js, /setTimeout\(pulse, after \+ 1500\)/);
+  await corp.post('/branch/view', { branch: 'all', back: '/' }, { page: '/' });
+});
+
+test('uploaded photos and documents are encrypted where they are stored, and opened only as they are sent', async () => {
+  const sealed = require('../app/sealed'); const uploads = require('../app/uploads'); const crypto = require('crypto');
+  const k1 = sealed.keyFrom('first-key-0123456789-abcdefghij'), k2 = sealed.keyFrom('second-key-0123456789-abcdefghij');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'portal-seal-'));
+  const head = (f) => fs.readFileSync(f).subarray(0, 7).toString('latin1');
+
+  // One file: sealed, opened again, and every kind of meddling noticed.
+  const f = path.join(dir, 'a1b2c3.jpg'); const original = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from(' a photo of a customer site: 12 Main Street '), crypto.randomBytes(5000)]);
+  fs.writeFileSync(f, original);
+  assert.equal(sealed.isSealed(f), false); assert.equal(sealed.keyIdOf(f), null); assert.ok(sealed.read(f, []).equals(original));
+  assert.equal(sealed.seal(f, k1), true); assert.equal(sealed.seal(f, k1), false);                  // sealing twice does nothing
+  assert.equal(head(f), 'PBSEAL1'); assert.ok(sealed.isSealed(f)); assert.ok(sealed.keyIdOf(f).equals(k1.id));
+  assert.equal(fs.statSync(f).size, original.length + 40); assert.doesNotMatch(fs.readFileSync(f).toString('latin1'), /customer site|Main Street/);
+  assert.ok(sealed.read(f, [k1]).equals(original)); assert.ok(sealed.read(f, [k2, k1]).equals(original));
+  assert.throws(() => sealed.read(f, [k2]), /key that is not in the settings/); assert.throws(() => sealed.read(f, []), /not in the settings/);
+  const twin = path.join(dir, 'twin.jpg'); fs.writeFileSync(twin, original); sealed.seal(twin, k1);
+  assert.notDeepEqual(fs.readFileSync(twin), fs.readFileSync(f));                                 // the same photo never seals to the same bytes
+  const swapped = path.join(dir, 'other-name.jpg'); fs.copyFileSync(f, swapped);
+  assert.throws(() => sealed.read(swapped, [k1]));                                                // one sealed file cannot stand in for another
+  const bent = Buffer.from(fs.readFileSync(f)); bent[bent.length - 300] ^= 1; const bentFile = path.join(dir, 'bent', 'a1b2c3.jpg'); fs.mkdirSync(path.dirname(bentFile)); fs.writeFileSync(bentFile, bent);
+  assert.throws(() => sealed.read(bentFile, [k1]));                                               // one changed bit and it will not open
+  sealed.reseal(f, [k1], k2); assert.ok(sealed.keyIdOf(f).equals(k2.id)); assert.ok(sealed.read(f, [k2]).equals(original)); assert.throws(() => sealed.read(f, [k1]));
+  sealed.unseal(f, [k2]); assert.ok(fs.readFileSync(f).equals(original));
+  assert.ok(sealed.keyFrom('first-key-0123456789-abcdefghij').key.equals(k1.key)); assert.equal(k1.key.length, 32); assert.ok(!k1.key.equals(k2.key));
+  assert.doesNotMatch(fs.readdirSync(dir).join(' '), /\.sealing/);
+
+  // On the site: a photo is stored as it arrives, sealed a little later, and looks no different to the people allowed to see it.
+  makeUser('seal.one', 'Sela Sealed'); const c = await loggedIn('seal.one'); const uid = userId('seal.one');
+  const raw = async (cl, url) => { const r = await fetch(base + url, { headers: { cookie: cl.cookie }, redirect: 'manual' }); return { status: r.status, type: r.headers.get('content-type'), cache: r.headers.get('cache-control'), body: Buffer.from(await r.arrayBuffer()) }; };
+  await c.post('/profile', [['about', 'Sealed'], ['photo', new File([PNG], 'me.png', { type: 'image/png' })]], { multipart: true, page: '/profile' });
+  const stored = path.join(uploads.uploadDir, db.prepare('SELECT photo_path p FROM users WHERE id = ?').get(uid).p);
+  assert.ok(fs.readFileSync(stored).equals(PNG));
+  let seen = await raw(c, `/people/photo/${uid}`);
+  assert.deepEqual([seen.status, seen.type, seen.cache], [200, 'image/png', 'private, max-age=86400']); assert.ok(seen.body.equals(PNG));
+  try {
+    uploads.useKeys({ current: k1, all: [k1], off: false });
+    assert.equal(uploads.tend().sealed, 0); assert.ok(fs.readFileSync(stored).equals(PNG));       // just uploaded: left alone for its first two minutes
+    const pass = uploads.tend({ minAgeMs: 0, limit: 10000 });
+    assert.ok(pass.sealed >= 1); assert.equal(pass.stuck, 0); assert.equal(head(stored), 'PBSEAL1');
+    assert.equal(uploads.census().plain, 0); assert.equal(uploads.census().sealed, uploads.census().files);
+    assert.deepEqual(uploads.tend({ minAgeMs: 0 }), { sealed: 0, moved: 0, opened: 0, left: 0, stuck: 0 });   // nothing left to do
+    seen = await raw(c, `/people/photo/${uid}`);
+    assert.deepEqual([seen.status, seen.type, seen.cache], [200, 'image/png', 'private, max-age=86400']); assert.ok(seen.body.equals(PNG));
+    assert.equal((await raw(new Client(), `/people/photo/${uid}`)).status, 302);                    // still only for people who are signed in
+    // The key was changed: files open with either while they are moved across, a few at a time.
+    uploads.useKeys({ current: k2, all: [k2, k1], off: false });
+    assert.ok((await raw(c, `/people/photo/${uid}`)).body.equals(PNG));
+    assert.equal(uploads.census().earlier, uploads.census().files);
+    const some = uploads.tend({ limit: 1 }); assert.equal(some.moved, 1); assert.ok(some.left >= 0);
+    const rest = uploads.tend({ limit: 10000 }); assert.equal(rest.left, 0); assert.equal(uploads.census().earlier, 0);
+    assert.ok(sealed.keyIdOf(stored).equals(k2.id)); assert.ok((await raw(c, `/people/photo/${uid}`)).body.equals(PNG));
+    // The old key taken away too soon, or a file from somewhere else: not opened, reported, and nothing is overwritten.
+    uploads.useKeys({ current: k1, all: [k1], off: false });
+    assert.equal((await raw(c, `/people/photo/${uid}`)).status, 404);
+    assert.equal(uploads.census().unknown, uploads.census().files); assert.equal(uploads.tend({ minAgeMs: 0 }).stuck, uploads.census().files);
+    assert.ok(sealed.keyIdOf(stored).equals(k2.id));
+    // Meddled with on the disk: refused rather than shown.
+    uploads.useKeys({ current: k2, all: [k2], off: false });
+    const good = fs.readFileSync(stored); const bad = Buffer.from(good); bad[bad.length - 20] ^= 4; fs.writeFileSync(stored, bad);
+    assert.equal((await raw(c, `/people/photo/${uid}`)).status, 404);
+    fs.writeFileSync(stored, good); assert.ok((await raw(c, `/people/photo/${uid}`)).body.equals(PNG));
+  } finally {
+    // Encryption switched off again: everything goes back to ordinary files (and the other tests get the folder as they expect it).
+    uploads.useKeys({ current: null, all: [k2, k1], off: true });
+    const back = uploads.tend({ limit: 100000 });
+    assert.ok(back.opened >= 1); assert.equal(back.stuck, 0); assert.ok(fs.readFileSync(stored).equals(PNG)); assert.equal(uploads.census().sealed + uploads.census().earlier, 0);
+    uploads.useKeys(null);
+  }
+  assert.equal(uploads.keys().current, null);                                                      // this test site has no key: nothing is sealed
+  assert.ok((await raw(c, `/people/photo/${uid}`)).body.equals(PNG));
+
+  // With the real settings: the files follow the database key, through a change of key and back out again, and the photo archive can be opened elsewhere.
+  const L = encryptionLab(); const KEY = 'files-key-0123456789-abcdefghij', KEY2 = 'files-key-two-0123456789-abcdef';
+  const up = path.join(L.dir, 'uploads'); fs.mkdirSync(up, { recursive: true });
+  const docs = { 'p1.jpg': original, 'nl-1.pdf': Buffer.from('%PDF-1.7 a newsletter with a customer name in it'), 'lib.docx': crypto.randomBytes(3000) };
+  for (const [n, b] of Object.entries(docs)) fs.writeFileSync(path.join(up, n), b);
+  const TEND = `const u = require('./app/uploads'); const first = u.tend({ minAgeMs: 0, limit: 1000 }); console.log(JSON.stringify({ first, census: u.census(), on: Boolean(u.keys().current) }));`;
+  const tend = (settings) => JSON.parse(L.run(TEND, settings).out.trim().split('\n').pop());
+  assert.ok(L.run(L.SEED).ok);
+  let r = tend({});                                                                                // no key: nothing is touched
+  assert.deepEqual([r.on, r.first.sealed, r.census.plain], [false, 0, 3]);
+  r = tend({ DB_KEY: KEY });
+  assert.deepEqual([r.on, r.first.sealed, r.census.sealed, r.census.plain], [true, 3, 3, 0]);
+  for (const n of Object.keys(docs)) { assert.equal(head(path.join(up, n)), 'PBSEAL1'); assert.doesNotMatch(fs.readFileSync(path.join(up, n)).toString('latin1'), /customer|%PDF/); assert.ok(sealed.read(path.join(up, n), [sealed.keyFrom(KEY)]).equals(docs[n])); }
+  r = tend({ DB_KEY: KEY2, DB_KEY_OLD: KEY });
+  assert.deepEqual([r.first.moved, r.census.sealed, r.census.earlier], [3, 3, 0]);
+  for (const n of Object.keys(docs)) assert.ok(sealed.read(path.join(up, n), [sealed.keyFrom(KEY2)]).equals(docs[n]));
+  L.state({ DB_KEY: KEY2, DB_KEY_OLD: KEY });                                                      // a full start also brings the backups into line
+  // The Security check counts them, and holds off saying DB_KEY_OLD can go until every file has moved.
+  const CHECK = `require('./app/app'); const item = require('./app/routes/security').checks({ headers: {}, ip: '203.0.113.9', socket: {} }).find((c) => c.title === 'The database is encrypted'); console.log(JSON.stringify(item)); process.exit(0);`;
+  let item = JSON.parse(L.run(CHECK, { DB_KEY: KEY2 }).out.trim().split('\n').pop());
+  assert.equal(item.ok, true); assert.match(item.detail, /3 of 3 photos and documents are encrypted\./);
+  sealed.reseal(path.join(up, 'p1.jpg'), [sealed.keyFrom(KEY2)], sealed.keyFrom(KEY));             // one file still under the earlier key
+  item = JSON.parse(L.run(CHECK, { DB_KEY: KEY2, DB_KEY_OLD: KEY }).out.trim().split('\n').pop());
+  assert.equal(item.ok, false); assert.match(item.detail, /1 file is still being moved to the new key/); assert.match(item.fix, /Leave DB_KEY_OLD where it is/);
+  item = JSON.parse(L.run(CHECK, { DB_KEY: KEY2 }).out.trim().split('\n').pop());                  // ...and DB_KEY_OLD was removed too soon
+  assert.equal(item.ok, false); assert.match(item.detail, /1 photo or document is locked with a key that is not in the settings/); assert.match(item.fix, /previous one has to be in DB_KEY_OLD/);
+  assert.equal(tend({ DB_KEY: KEY2, DB_KEY_OLD: KEY }).first.moved, 1);                             // put back: it moves across, nothing lost
+  // Opening the archive somewhere else.
+  const { execFileSync } = require('child_process'); const out = path.join(L.dir, 'opened');
+  const tool = (key, ...args) => { try { return { ok: true, out: execFileSync(process.execPath, ['scripts/decrypt-photos.js', ...args], { cwd: L.root, env: { PATH: process.env.PATH, DB_KEY: key }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) }; } catch (e) { return { ok: false, err: String(e.stderr) + String(e.stdout) }; } };
+  assert.match(tool('', up, out).err, /Set DB_KEY/);
+  assert.match(tool(KEY, up, out + '-wrong').err, /3 could not be opened/);
+  assert.match(tool(KEY2, up, out).out, /^3 opened, 0 were not encrypted/);
+  for (const n of Object.keys(docs)) { assert.ok(fs.readFileSync(path.join(out, n)).equals(docs[n])); assert.equal(head(path.join(up, n)), 'PBSEAL1'); }
+  // Encryption switched off: the files become ordinary again.
+  r = tend({ DB_KEY: KEY2, DB_DECRYPT: 'yes' });
+  assert.deepEqual([r.on, r.first.opened, r.census.plain, r.census.sealed], [false, 3, 3, 0]);
+  for (const n of Object.keys(docs)) assert.ok(fs.readFileSync(path.join(up, n)).equals(docs[n]));
+});
+
+test('browser rules: styles, fonts and connections from this site only, no framing; outgoing mail insists on an encrypted connection', async () => {
+  const r = await new Client().get('/login');
+  const csp = r.headers.get('content-security-policy');
+  for (const part of ["default-src 'self'", "script-src 'self'", "script-src-attr 'none'", "style-src 'self'", "font-src 'self'", "connect-src 'self'", "img-src 'self' data: blob:", "object-src 'none'", "base-uri 'self'", "form-action 'self'", "frame-ancestors 'none'"]) {
+    assert.ok(csp.split(';').map((s) => s.trim()).includes(part), `${part} missing from: ${csp}`);
+  }
+  assert.doesNotMatch(csp, /unsafe-inline|unsafe-eval|https:/);
+  assert.equal(r.headers.get('x-frame-options'), 'DENY');
+  // Nothing in the pages styles itself in place, which that policy would block.
+  const views = path.join(__dirname, '..', 'app', 'views');
+  const walk = (d) => fs.readdirSync(d).flatMap((f) => (fs.statSync(path.join(d, f)).isDirectory() ? walk(path.join(d, f)) : [path.join(d, f)]));
+  for (const f of walk(views)) assert.doesNotMatch(fs.readFileSync(f, 'utf8'), /\sstyle="|<style[\s>]/, `${path.basename(f)} has an inline style`);
+  for (const f of fs.readdirSync(path.join(__dirname, '..', 'public')).filter((n) => n.endsWith('.js'))) assert.doesNotMatch(fs.readFileSync(path.join(__dirname, '..', 'public', f), 'utf8'), /setAttribute\('style'|cssText|style="/, `${f} sets an inline style`);
+
+  // Mail: on the usual port the connection must be upgraded to an encrypted one before anything is sent.
+  const { execFileSync } = require('child_process');
+  const SPY = `const nm = require('nodemailer'); const real = nm.createTransport; nm.createTransport = (o) => { console.log(JSON.stringify({ secure: o.secure, requireTLS: o.requireTLS, port: o.port })); return real(o); }; require('./app/mail');`;
+  const made = (port) => JSON.parse(execFileSync(process.execPath, ['-e', SPY], { cwd: path.join(__dirname, '..'), env: { PATH: process.env.PATH, DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'portal-mail-')), SMTP_HOST: 'mail.example.com', SMTP_PORT: String(port) }, encoding: 'utf8' }).trim().split('\n').pop());
+  assert.deepEqual(made(587), { secure: false, requireTLS: true, port: 587 });
+  assert.deepEqual(made(465), { secure: true, requireTLS: false, port: 465 });
 });

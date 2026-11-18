@@ -8,7 +8,9 @@ const crypto = require('crypto');
 const mail = require('../mail');
 const { clean } = require('../util');
 const passwords = require('../passwords');
-const { rateKey } = require('../clientip');
+const activity = require('../activity');
+const device = require('../device');
+const { rateKey, clientIp } = require('../clientip');
 
 const router = express.Router();
 
@@ -57,6 +59,19 @@ function spendCheck() {
 }
 const BUSY = 'The site is checking a lot of sign-ins right now. Wait a few seconds and try again.';
 
+// The sign-in history, kept in the activity log: who signed in and how, wrong passwords against a real account and
+// where they came from, and when an account was paused. Unlocks are not recorded (there are hundreds a day), and a
+// wrong try against a username that does not exist is not either: what was typed there may well be a password.
+const onWhat = (req) => (device.kind(req) === 'phone' ? 'a phone or tablet' : 'a computer');
+const WRONG = { signin: 'Sign-in failed', lock: 'Wrong password at the lock screen', confirm: 'Wrong password when asked to confirm' };
+function failed(req, username, where) {
+  noteFailure(username);
+  const u = db.prepare('SELECT id FROM users WHERE username = ? AND removed_at IS NULL').get(String(username || '').trim());
+  if (!u) return;
+  activity.log(u, WRONG[where], `Wrong password, from ${clientIp(req)}`);
+  if (lockedOut(username)) activity.log(u, 'Sign-in paused', `${NAME_LIMIT} wrong passwords in 15 minutes, so the password is refused for the next 15`);
+}
+
 // Some things need the password typed again shortly beforehand, even on a signed-in, unlocked session:
 // adding a Face ID device, changing the reset email, downloading a backup. Ten minutes covers doing it right after signing in.
 const PROVED_MS = 10 * 60 * 1000;
@@ -66,7 +81,7 @@ const provedRecently = (req) => Boolean(req.session && req.session.pwAt && Date.
 function wrongPassword(req, password) {
   if (lockedOut(req.user.username)) return 'Too many wrong passwords. Wait 15 minutes and try again.';
   if (!spendCheck()) return BUSY;
-  if (!auth.checkLogin(req.user.username, password)) { noteFailure(req.user.username); return 'That password is not right.'; }
+  if (!auth.checkLogin(req.user.username, password)) { failed(req, req.user.username, 'confirm'); return 'That password is not right.'; }
   FAILS.delete(nameKey(req.user.username));
   return null;
 }
@@ -90,7 +105,7 @@ router.post('/login', loginLimiter, (req, res, next) => {
   if (!spendCheck()) return res.status(429).render('login', { title: 'Sign in', next: target, username: String(req.body.username || '').slice(0, 60), error: BUSY });
   const user = auth.checkLogin(req.body.username, req.body.password);
   if (!user) {
-    noteFailure(req.body.username);
+    failed(req, req.body.username, 'signin');
     return res.status(401).render('login', {
       title: 'Sign in', next: target, username: String(req.body.username || '').slice(0, 60),
       error: 'Wrong username or password.',
@@ -104,6 +119,7 @@ router.post('/login', loginLimiter, (req, res, next) => {
   if (problem && user.temp_set_at) { db.prepare('UPDATE users SET temp_set_at = NULL WHERE id = ?').run(user.id); user.temp_set_at = null; }
   // A temporary password that has sat unused too long no longer opens the account, even typed correctly.
   if (auth.tempExpired(user)) {
+    activity.log(user, 'Sign-in refused', 'The temporary password had expired');
     return res.status(401).render('login', { title: 'Sign in', next: target, username: String(req.body.username || '').slice(0, 60),
       error: `That temporary password has expired. They last ${config.tempPasswordDays} days. Ask your admin for a new one.` });
   }
@@ -116,6 +132,7 @@ router.post('/login', loginLimiter, (req, res, next) => {
     req.session.csrf = auth.newCsrfToken();
     req.session.afterPassword = target;
     proved(req);
+    activity.log(user, 'Signed in', `With a password, on ${onWhat(req)}${weak ? '. The password is too easy to guess and has to be replaced' : ''}`);
     if (weak) auth.flash(req, 'err', 'Your password is too easy to guess, so it needs replacing before you carry on.');
     res.redirect(user.must_change_password || weak ? '/account/password' : target);
   });
@@ -155,7 +172,7 @@ router.post('/unlock', (req, res) => {
   const page = (status, error) => res.status(status).render('unlock', { title: 'Welcome back', next: target, error, hasPasskey: passkeyCount(req.user.id) > 0 });
   if (lockedOut(req.user.username)) return page(429, 'Too many wrong passwords. Wait 15 minutes and try again, or ask an admin to reset it.');
   if (!spendCheck()) return page(429, BUSY);
-  if (!auth.checkLogin(req.user.username, req.body.password)) { noteFailure(req.user.username); return page(401, 'That password is not right.'); }
+  if (!auth.checkLogin(req.user.username, req.body.password)) { failed(req, req.user.username, 'lock'); return page(401, 'That password is not right.'); }
   FAILS.delete(nameKey(req.user.username));
   if (passwords.problem(req.body.password, req.user)) {
     db.prepare('UPDATE users SET must_change_password = 1, temp_set_at = NULL WHERE id = ?').run(req.user.id);
@@ -211,6 +228,7 @@ router.post('/reset/:token', resetLimiter, (req, res) => {
   db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0, temp_set_at = NULL WHERE id = ?').run(auth.hashPassword(password), found.user_id);
   db.prepare('DELETE FROM password_resets WHERE user_id = ?').run(found.user_id);
   auth.endSessions(found.user_id);                       // anyone still signed in as this person is signed out
+  activity.log({ id: found.user_id }, 'Password reset by email', 'With the link sent to the address on the account');
   FAILS.delete(nameKey(found.username));
   auth.flash(req, 'ok', 'Password changed. Sign in with your new password.');
   res.redirect('/login');
@@ -237,6 +255,7 @@ router.post('/account/email', (req, res) => {
   else if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) auth.flash(req, 'err', 'That email address does not look right.');
   else {
     db.prepare('UPDATE users SET email = ? WHERE id = ?').run(email || null, req.user.id);
+    activity.log(req.user, 'Email address changed', email ? 'Password-reset links now go to the new address' : 'Removed');
     auth.flash(req, 'ok', email ? 'Email saved.' : 'Email removed.');
   }
   res.redirect('/account/password');
@@ -245,6 +264,8 @@ router.post('/account/email', (req, res) => {
 router.post('/logout', (req, res) => {
   req.session.destroy(() => {
     res.clearCookie('portal.sid');
+    // Signing out is also for shared computers: ask the browser to drop the photos and files it kept from this site.
+    res.setHeader('Clear-Site-Data', '"cache"');
     res.redirect('/login');
   });
 });
@@ -268,6 +289,7 @@ router.post('/account/password', (req, res) => {
   db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0, temp_set_at = NULL WHERE id = ?')
     .run(auth.hashPassword(password), req.user.id);
   auth.endSessions(req.user.id, req.sessionID);          // other devices are signed out; this one stays in
+  activity.log(req.user, 'Password changed', 'By the person, with their current password');
   proved(req);
   const target = safeNext(req.session.afterPassword);
   delete req.session.afterPassword;

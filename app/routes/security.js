@@ -63,14 +63,20 @@ function checks(req) {
         code: crypto.randomBytes(32).toString('base64url'),
         after: 'This key was made just now for you to use, and is not stored anywhere by the site. If Render offers to generate a value for you, that works just as well.' });
     } else {
-      const trouble = e.note || (e.usingOldKey ? 'The database is still opened with the old key.' : '');
+      // Photos and documents are sealed with the same key, a few at a time in the background.
+      const up = require('../uploads').census();
+      const trouble = e.note || (e.usingOldKey ? 'The database is still opened with the old key.' : '')
+        || (up.unknown ? `${up.unknown} ${up.unknown === 1 ? 'photo or document is' : 'photos or documents are'} locked with a key that is not in the settings.` : '');
+      const moving = up.earlier > 0;                                    // a key change is still working through the files
       const ok = !trouble && !plain && !e.oldKeySet;
-      const detail = [`Yes${since ? `, since ${util.fmtDateTime(since).split(', ')[0]}` : ''}. The database file and its backups can only be opened with the key kept in the hosting settings (DB_KEY).`,
+      const detail = [`Yes${since ? `, since ${util.fmtDateTime(since).split(', ')[0]}` : ''}. The database, its backups, and the photos and documents people upload can only be opened with the key kept in the hosting settings (DB_KEY).`,
         files.length ? `${files.length - plain} of ${files.length} backups are encrypted.` : '',
-        'Photos and uploaded documents are separate files and are not encrypted by the site.', trouble].filter(Boolean).join(' ');
-      const fix = trouble ? 'In Render, open the service, then Environment, and check DB_KEY and DB_KEY_OLD. To change the key: put the new one in DB_KEY and the current one in DB_KEY_OLD, then save.'
+        up.files ? `${up.sealed} of ${up.files} photos and documents are encrypted${up.plain ? '; the rest follow within a few minutes of being added' : ''}.` : '',
+        moving ? `${up.earlier} ${up.earlier === 1 ? 'file is' : 'files are'} still being moved to the new key.` : '', trouble].filter(Boolean).join(' ');
+      const fix = trouble ? 'In Render, open the service, then Environment, and check DB_KEY and DB_KEY_OLD. If the key was changed, the previous one has to be in DB_KEY_OLD until everything has moved across. To change the key: put the new one in DB_KEY and the current one in DB_KEY_OLD, then save.'
         : plain ? 'Restart the service once so the older backups are encrypted. Any that stay unencrypted after that can be deleted on the Backups page.'
-          : 'The key change is finished. In Render, open the service, then Environment, and delete DB_KEY_OLD.';
+          : moving ? 'Leave DB_KEY_OLD where it is for now. Photos and documents are still being moved to the new key; this page will say when it can be deleted.'
+            : 'The key change is finished. In Render, open the service, then Environment, and delete DB_KEY_OLD.';
       list.push({ ok, title: 'The database is encrypted', detail, fix: ok ? '' : fix, after: SAFE });
     }
   }
@@ -85,13 +91,6 @@ function checks(req) {
   const auth = require('../auth');
   const waiting = people.filter((u) => u.must_change_password); const dead = waiting.filter((u) => auth.tempExpired(u)).length;
   add(true, 'Old temporary passwords stop working', waiting.length ? `${waiting.length} ${waiting.length === 1 ? 'account has' : 'accounts have'} not signed in yet. A temporary password lasts ${config.tempPasswordDays} days: ${dead} ${dead === 1 ? 'has' : 'have'} expired and can no longer be used, ${waiting.length - dead} ${waiting.length - dead === 1 ? 'is' : 'are'} still good.` : 'Everyone has signed in and chosen their own password.', '');
-
-  // How long the site may sit unused before it locks, and which kind of device this one counts as.
-  const lockP = Math.round(config.lockAfterMs.phone / 60000), lockD = Math.round(config.lockAfterMs.desktop / 60000);
-  const here = require('../device').kind(req) === 'phone' ? 'a phone or tablet' : 'a computer';
-  const span = (n) => (n ? `after ${n} ${n === 1 ? 'minute' : 'minutes'}` : 'never by the clock');
-  add(lockP > 0 && lockD > 0, 'The site locks when it is left unused', `On a phone or tablet: ${span(lockP)}. On a computer: ${span(lockD)}. Closing the site always locks it. The device you are on now counts as ${here}.`,
-    'A timer set to 0 is switched off, so an unattended device stays open until the site is closed. In Render, open the service, then Environment, and set LOCK_AFTER_MINUTES_PHONE and LOCK_AFTER_MINUTES_DESKTOP (or delete them to get 10 and 20).');
 
   const noOffice = people.filter((u) => !u.branch_id && !u.is_master);
   add(!noOffice.length, 'Every account belongs to an office', noOffice.length ? `${noOffice.length} without one: ${noOffice.slice(0, 6).map((u) => u.display_name).join(', ')}.` : 'Yes.', 'Open each of them under Users and choose their office. Until then they see no office records.');

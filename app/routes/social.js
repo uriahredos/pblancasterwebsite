@@ -211,7 +211,7 @@ router.post('/photos', post, uploads.photos('photos', 6), verifyCsrf, (req, res)
 router.get('/wall/photo/:id', requireLogin, (req, res) => {
   const row = isId(req.params.id) ? db.prepare('SELECT path FROM wall_photos WHERE id = ?').get(req.params.id) : null;
   if (!row) return notFound(res);
-  res.sendFile(path.basename(row.path), { root: uploads.uploadDir, headers: { 'Cache-Control': 'private, max-age=86400' } }, (err) => { if (err && !res.headersSent) notFound(res); });
+  uploads.send(res, row.path, { 'Cache-Control': 'private, max-age=86400' }, () => notFound(res));
 });
 
 router.post('/photos/:id/like', requireLogin, (req, res) => {
@@ -252,7 +252,7 @@ router.get('/branches', requireLogin, (req, res) => {
 router.get('/branches/photo/:id', requireLogin, (req, res) => {
   const row = isId(req.params.id) ? db.prepare('SELECT photo_path FROM branches WHERE id = ?').get(req.params.id) : null;
   if (!row || !row.photo_path) return notFound(res);
-  res.sendFile(path.basename(row.photo_path), { root: uploads.uploadDir, headers: { 'Cache-Control': 'private, max-age=86400' } }, (err) => { if (err && !res.headersSent) notFound(res); });
+  uploads.send(res, row.photo_path, { 'Cache-Control': 'private, max-age=86400' }, () => notFound(res));
 });
 
 // The people who keep a branch's page: anyone who can see every branch, or whoever manages people in that branch.

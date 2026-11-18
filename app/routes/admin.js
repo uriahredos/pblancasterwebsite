@@ -745,13 +745,19 @@ router.post('/admin/profiles/:id/delete', auth.requireEveryBranch('profiles.mana
 
 router.get('/admin/activity', requirePerm('activity.view'), (req, res) => {
   const q = clean(req.query.q, 60);
+  // Sign-ins are recorded too, for the people who look after every office only. An office admin does not get a list of
+  // who signed in when: next to an anonymous complaint's date, that would be a hint about who sent it.
+  const SIGN_INS = "('Signed in', 'Sign-in failed', 'Sign-in paused', 'Sign-in refused', 'Wrong password at the lock screen', 'Wrong password when asked to confirm')";
+  const maySeeSignIns = Boolean(req.user.allBranches);
+  const signIns = maySeeSignIns && req.query.show === 'signins';
   const like = '%' + q.replace(/[\\%_]/g, '\\$&') + '%';
   const rows = db.prepare(
     `SELECT a.at, a.action, a.detail, u.display_name FROM activity_log a LEFT JOIN users u ON u.id = a.user_id
      WHERE ${req.user.viewBranch ? 'u.branch_id = ' + Number(req.user.viewBranch) : '1 = 1'}
+     ${!maySeeSignIns ? `AND a.action NOT IN ${SIGN_INS}` : signIns ? `AND a.action IN ${SIGN_INS}` : q ? '' : "AND a.action <> 'Signed in'"}
      ${q ? "AND (a.action LIKE ? ESCAPE '\\' OR a.detail LIKE ? ESCAPE '\\' OR u.display_name LIKE ? ESCAPE '\\')" : ''}
      ORDER BY a.id DESC LIMIT 500`).all(...(q ? [like, like, like] : []));
-  res.render('admin_activity', { title: 'Activity log', rows, q });
+  res.render('admin_activity', { title: 'Activity log', rows, q, signIns, maySeeSignIns });
 });
 
 module.exports = router;

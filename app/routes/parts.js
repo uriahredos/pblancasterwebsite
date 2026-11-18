@@ -254,7 +254,7 @@ router.get('/parts/photo/:id', requireLogin, (req, res) => {
   const row = db.prepare('SELECT user_id, photo_path FROM parts_submissions WHERE id = ?').get(req.params.id);
   if (!row || !row.photo_path) return res.status(404).render('error', { title: 'Page not found', message: 'No photo here.' });
   if (row.user_id !== req.user.id && !(access.can(req.user, 'parts.view') && access.canSee(req.user, row.user_id))) return forbidden(res);
-  res.sendFile(path.basename(row.photo_path), { root: uploadDir, headers: { 'Cache-Control': 'private, no-store' } });
+  require('../uploads').send(res, row.photo_path, { 'Cache-Control': 'private, no-store' });
 });
 
 module.exports = router;

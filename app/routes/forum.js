@@ -174,8 +174,7 @@ router.get('/discussions/t/:id', use, (req, res) => {
 router.get('/discussions/photo/:id', use, (req, res) => {
   const row = isId(req.params.id) ? db.prepare('SELECT path FROM forum_photos WHERE id = ?').get(req.params.id) : null;
   if (!row) return notFound(res);
-  res.sendFile(path.basename(row.path), { root: uploads.uploadDir, headers: { 'Cache-Control': 'private, max-age=86400' } },
-    (err) => { if (err && !res.headersSent) notFound(res); });
+  uploads.send(res, row.path, { 'Cache-Control': 'private, max-age=86400' }, () => notFound(res));
 });
 
 // ---- Replying and following ---------------------------------------------------

@@ -142,6 +142,7 @@ router.post('/passkey/auth/verify', limiter, async (req, res, next) => {
       req.session.csrf = auth.newCsrfToken();
       req.session.afterPassword = target;
       auth.unlock(req);
+      activity.log({ id: row.user_id }, 'Signed in', `With Face ID or a fingerprint (${row.device || 'a device'}), on ${require('../device').kind(req) === 'phone' ? 'a phone or tablet' : 'a computer'}`);
       res.json({ ok: true, next: row.must_change_password ? '/account/password' : target });
     });
   } catch (e) { next(e); }

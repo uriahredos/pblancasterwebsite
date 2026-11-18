@@ -1,10 +1,10 @@
 <%- include('partials/header', { wide: true }) %>
 <p class="back"><a class="back-link" href="/admin/users">Users</a></p>
 <h1>Activity log</h1>
-<p class="lede">Changes to people, profiles, the catalog, stock, training sessions and backups. Nothing about what a complaint says or who sent it is recorded here; only that one was deleted.</p>
+<p class="lede">Changes to people, profiles, the catalog, stock, training sessions and backups, and spreadsheet exports<%= maySeeSignIns ? ', and sign-ins' : '' %>. Nothing about what a complaint says or who sent it is recorded here; only that one was deleted.</p>
 <form method="get" class="filters card">
   <label class="grow">Search <input type="search" name="q" value="<%= q %>" placeholder="Name, action or detail"></label>
-  <div class="filter-actions"><button class="btn primary small" type="submit">Search</button><a class="btn small" href="/admin/activity">Clear</a></div>
+  <div class="filter-actions"><button class="btn primary small" type="submit">Search</button><a class="btn small" href="/admin/activity">Clear</a><% if (signIns) { %><a class="btn small" href="/admin/activity">Everything else</a><% } else if (maySeeSignIns) { %><a class="btn small" href="/admin/activity?show=signins">Sign-ins</a><% } %></div>
 </form>
 <div class="table-wrap">
 <table>

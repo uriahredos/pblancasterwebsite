@@ -204,23 +204,47 @@
 
   // ---- The bell keeps itself up to date. Every half minute, while the page is on screen, the counts are fetched
   // and copied in. This does not count as "using the site", so it never keeps a forgotten phone unlocked.
+  //
+  // The same check is how a page left open finds out that the site has locked. Once it has, the page must stop
+  // showing what was on it: it goes to the lock screen there and then, rather than sitting readable until someone
+  // next taps it.
   (function () {
-    if (!document.documentElement.hasAttribute('data-in') || !window.fetch || !window.DOMParser) return;
+    var root = document.documentElement;
+    if (!root.hasAttribute('data-in') || !window.fetch || !window.DOMParser) return;
     var busy = false, stopped = false;
+    var after = Number(root.getAttribute('data-lock-after') || 0), lastActive = Date.now(), idleTimer = null;
+    function leave(to) {
+      if (stopped) return;
+      stopped = true;
+      location.replace(to + (to === '/unlock' ? '?next=' + encodeURIComponent(location.pathname + location.search) : ''));
+    }
     function pulse() {
-      if (busy || stopped || document.hidden || document.documentElement.classList.contains('page-loading')) return;
+      if (busy || stopped || document.hidden || root.classList.contains('page-loading')) return;
       busy = true;
       fetch('/pulse', { credentials: 'same-origin', cache: 'no-store', headers: { 'X-Requested-With': 'fetch' } }).then(function (res) {
-        if (!res.ok || new URL(res.url).pathname !== '/pulse') { stopped = true; return null; }   // locked or signed out: nothing more to fetch
+        var path = new URL(res.url).pathname;
+        if (path === '/unlock') { leave('/unlock'); return null; }                // the site has locked
+        if (res.status === 401 || path === '/login') { leave('/login'); return null; }   // signed out, here or on another device
+        if (!res.ok || path !== '/pulse') return null;                             // a passing hiccup: try again next time
         return res.text();
       }).then(function (html) {
         if (!html) return;
         var doc = new DOMParser().parseFromString(html, 'text/html');
         if (doc.documentElement.hasAttribute('data-in')) syncCounts(doc);
-      }).catch(function () {}).then(function () { busy = false; });
+      }).catch(function () {
+        // The site cannot be reached to ask. If nothing has been done here for the whole time allowed, cover the page anyway.
+        if (after && Date.now() - lastActive > after) leave('/unlock');
+      }).then(function () { busy = false; });
     }
     setInterval(pulse, 30000);
     document.addEventListener('visibilitychange', function () { if (!document.hidden) setTimeout(pulse, 1500); });
+    // Nothing typed, tapped or scrolled for the whole time allowed: ask straight away instead of waiting for the next half minute.
+    function armIdle() { if (!after) return; clearTimeout(idleTimer); idleTimer = setTimeout(pulse, after + 1500); }
+    var noted = 0;
+    ['keydown', 'input', 'pointerdown', 'scroll', 'touchstart'].forEach(function (n) {
+      document.addEventListener(n, function () { lastActive = Date.now(); if (lastActive - noted > 5000) { noted = lastActive; armIdle(); } }, { passive: true, capture: true });
+    });
+    armIdle();
   })();
   var initMain = function () {};   // set once the page is ready: what to run again on a page that was swapped in
 
@@ -415,6 +439,15 @@
       } catch (e) {}
     }
   };
+
+  // Signing out leaves nothing behind on the device: half-written forms saved here are removed, and the site
+  // tells the browser to drop the photos and files it kept (see the sign-out route).
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (!form || !form.getAttribute || form.getAttribute('action') !== '/logout') return;
+    store.clearPrefix('draft:');
+    try { sessionStorage.clear(); } catch (err) {}
+  }, true);
 
   // After a form is sent the server adds ?sent=parts or ?sent=training: drop that draft.
   var sent = new URLSearchParams(location.search).get('sent');

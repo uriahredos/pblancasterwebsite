@@ -47,6 +47,7 @@ if (!process.env.SESSION_SECRET) {
 
 mail.startComplaintDigest();
 require('./backup').startNightlyBackups();
+require('./uploads').startTending();          // photos and documents follow the database: sealed while it is encrypted
 require('./digest').start();
 require('./certs').start();
 app.listen(config.port, () => console.log(`Pye-Barker portal listening on port ${config.port}`));

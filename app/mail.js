@@ -10,6 +10,9 @@ if (config.smtp.host) {
     host: config.smtp.host,
     port: config.smtp.port,
     secure: config.smtp.port === 465,
+    // On the other ports the connection starts in the clear and is then encrypted. Insist on that: mail is never sent, and the
+    // password never given, over a connection the relay would not encrypt.
+    requireTLS: config.smtp.port !== 465,
     auth: config.smtp.user ? { user: config.smtp.user, pass: config.smtp.pass } : undefined,
   });
 }

@@ -97,16 +97,14 @@ router.get('/newsletters/:id/pdf', requireLogin, (req, res, next) => {
   const n = getIssue(req.params.id);
   if (!n) return next();
   const name = `${n.title.replace(/[^A-Za-z0-9 _-]+/g, '').trim() || 'newsletter'}.pdf`;
-  res.sendFile(path.basename(n.pdf_path), {
-    root: uploads.uploadDir, headers: { ...FILE_HEADERS, 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="${name}"` },
-  }, (err) => { if (err && !res.headersSent) next(); });
+  uploads.send(res, n.pdf_path, { ...FILE_HEADERS, 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="${name}"` }, next);
 });
 
 router.get('/newsletters/:id/page/:n', requireLogin, (req, res, next) => {
   const n = getIssue(req.params.id);
   const file = n && /^\d+$/.test(req.params.n) ? n.pages[Number(req.params.n) - 1] : null;
   if (!file) return next();
-  res.sendFile(path.basename(file), { root: uploads.uploadDir, headers: FILE_HEADERS }, (err) => { if (err && !res.headersSent) next(); });
+  uploads.send(res, file, FILE_HEADERS, next);
 });
 
 // ---- Uploading and removing --------------------------------------------------

@@ -1,0 +1,16 @@
+<%- include('partials/header') %>
+<p class="back"><a class="back-link" href="/sales">Sales</a></p>
+<h1>Export leads</h1>
+<p class="lede">The export is a spreadsheet of every lead in your office, with each customer's contact details. Each export is recorded in the activity log.</p>
+<% if (proved) { %>
+<p><a class="btn primary" href="/sales.csv" data-full>Download the spreadsheet</a></p>
+<p class="hint">Keep the file somewhere safe, and delete it when you are done with it.</p>
+<% } else { %>
+<form method="post" action="/account/confirm" class="card stack" data-no-live>
+  <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="next" value="/sales/export">
+  <label>Type your password to export <span class="hint">It holds customer details, so the site asks again. It stays unlocked for ten minutes.</span>
+    <input name="password" type="password" autocomplete="current-password" required></label>
+  <div class="filter-actions"><button class="btn primary" type="submit">Continue</button></div>
+</form>
+<% } %>
+<%- include('partials/footer') %>
