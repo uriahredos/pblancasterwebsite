@@ -12,32 +12,34 @@
   <input type="hidden" name="_csrf" value="<%= csrf %>">
   <div class="table-wrap">
   <table class="positions titles-table">
-    <thead><tr><th>Role</th><th>Reports to</th><th>Department</th><th>People</th><th>Remove</th></tr></thead>
+    <thead><tr><th>Role</th><th>Reports to</th><th>Department</th><th>Profile it gives</th><th>People</th><th>Keep or tidy</th></tr></thead>
     <tbody>
     <% titles.forEach(function (t) { %>
     <tr>
       <td data-label="Role"><input name="tname_<%= t.id %>" value="<%= t.name %>" maxlength="80" autocomplete="off" aria-label="Role"></td>
-      <td data-label="Reports to"><select name="tparent_<%= t.id %>" aria-label="Role <%= t.name %> reports to"><option value="">Nobody (top of the office)</option><% titles.forEach(function (o) { if (o.id !== t.id) { %><option value="<%= o.id %>" <%= t.parent_id === o.id ? 'selected' : '' %>><%= o.name %></option><% } }) %></select></td>
+      <td data-label="Reports to"><select name="tparent_<%= t.id %>" aria-label="Role <%= t.name %> reports to"><option value="">Nobody (top)</option><% titles.forEach(function (o) { if (o.id !== t.id) { %><option value="<%= o.id %>" <%= t.parent_id === o.id ? 'selected' : '' %>><%= o.name %></option><% } }) %></select></td>
       <td data-label="Department"><input name="tdept_<%= t.id %>" value="<%= t.department || '' %>" maxlength="60" autocomplete="off" aria-label="Department for <%= t.name %>"></td>
+      <td data-label="Profile it gives"><select name="tprofile_<%= t.id %>" aria-label="Profile the role <%= t.name %> gives"><option value="">None</option><% if (t.profile_id && !profiles.some(function (pr) { return pr.id === t.profile_id; })) { %><option value="<%= t.profile_id %>" selected><%= t.profile_name %></option><% } %><% profiles.forEach(function (pr) { %><option value="<%= pr.id %>" <%= t.profile_id === pr.id ? 'selected' : '' %>><%= pr.name %></option><% }) %></select></td>
       <td data-label="People"><%= t.holders %></td>
-      <td data-label="Remove"><% if (!t.holders) { %><label class="choice"><input type="checkbox" name="tdel_<%= t.id %>" value="1"> Remove</label><% } %></td>
+      <td data-label="Keep or tidy"><select name="tact_<%= t.id %>" aria-label="Keep, remove or merge the role <%= t.name %>"><option value="">Keep</option><% if (!t.holders) { %><option value="del">Remove</option><% } %><optgroup label="Merge into"><% titles.forEach(function (o) { if (o.id !== t.id) { %><option value="merge:<%= o.id %>"><%= o.name %></option><% } }) %></optgroup></select></td>
     </tr>
     <% }) %>
     <tr class="new-title">
       <td data-label="New role"><input name="new_name" maxlength="80" autocomplete="off" placeholder="Add a role"></td>
-      <td data-label="Reports to"><select name="new_parent" aria-label="The new role reports to"><option value="">Nobody (top of the office)</option><% titles.forEach(function (o) { %><option value="<%= o.id %>"><%= o.name %></option><% }) %></select></td>
+      <td data-label="Reports to"><select name="new_parent" aria-label="The new role reports to"><option value="">Nobody (top)</option><% titles.forEach(function (o) { %><option value="<%= o.id %>"><%= o.name %></option><% }) %></select></td>
       <td data-label="Department"><input name="new_dept" maxlength="60" autocomplete="off" placeholder="Department"></td>
+      <td data-label="Profile it gives"><select name="new_profile" aria-label="Profile the new role gives"><option value="">None</option><% profiles.forEach(function (pr) { %><option value="<%= pr.id %>"><%= pr.name %></option><% }) %></select></td>
       <td></td><td></td>
     </tr>
     </tbody>
   </table>
   </div>
-  <p class="filter-actions"><button class="btn primary" type="submit">Save roles</button><span class="hint">The same roles are used by every office. If an office has nobody in a role, the next one up is used.</span></p>
+  <p class="filter-actions"><button class="btn primary" type="submit">Save roles</button><span class="hint">The same roles are used by every office. If an office has nobody in a role, the next one up is used. A role's profile is given to people when they are put in the role from now on; people already in it keep the profile they have. Merging moves everyone to the role you pick.</span></p>
 </form>
 <% } else { %><p class="hint">Roles are the same for every office and are set by corporate. Need one that is not here? Ask a corporate admin.</p><% } %>
 
 <h2>2. People</h2>
-<p class="lede">Pick each person's role. Who they report to follows from it.</p>
+<p class="lede">Pick each person's role. Who they report to follows from it, and so does their profile when the role gives one.</p>
 <% if (!people.length) { %><p class="empty">Nobody to show yet.</p><% } else { %>
 <label class="grow pos-find">Find a person <input type="search" id="pos-find" placeholder="Start typing a name or role" autocomplete="off"></label>
 <form method="post" action="/admin/users/positions" id="pos-form">

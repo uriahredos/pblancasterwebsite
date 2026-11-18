@@ -81,7 +81,7 @@ router.get('/people/:id', requireLogin, (req, res) => {
 const deptList = () => db.prepare("SELECT DISTINCT department FROM users WHERE department IS NOT NULL AND department <> '' AND (active = 1 OR in_directory = 1) ORDER BY department COLLATE NOCASE").all().map((r) => r.department);
 function positionPeople(user) {
   const ids = access.visibleUserIds(user);
-  return db.prepare(`SELECT u.id, u.display_name, u.job_title, u.department, u.photo_path, u.branch_id, u.leads, u.manager_manual, b.name AS branch,
+  return db.prepare(`SELECT u.id, u.display_name, u.job_title, u.department, u.photo_path, u.branch_id, u.leads, u.manager_manual, u.profile_id, u.is_master, b.name AS branch,
       (SELECT um.manager_id FROM user_managers um JOIN users m ON m.id = um.manager_id WHERE um.user_id = u.id ORDER BY m.display_name COLLATE NOCASE LIMIT 1) AS manager_id
     FROM users u LEFT JOIN branches b ON b.id = u.branch_id
     WHERE (u.active = 1 OR u.in_directory = 1) ${ids ? `AND u.id IN (${ids.map(Number).join(',') || 0})` : ''} ORDER BY u.display_name COLLATE NOCASE LIMIT 1000`).all();
@@ -101,7 +101,7 @@ router.get('/admin/users/positions', requirePerm('users.manage'), (req, res) => 
   // Who each person could report to: the people of their own office.
   const byOffice = new Map();
   for (const p of people) { if (!byOffice.has(p.branch_id)) byOffice.set(p.branch_id, []); byOffice.get(p.branch_id).push(p); }
-  res.render('admin_positions', { title: 'Positions and reporting', wide: true, people, byOffice, problems: problemsOnce, titles: require('../team').titles(), roleTree: require('../team').roleTree(), canTitles: Boolean(req.user.allBranches), saved, focus: isId(req.query.who) ? Number(req.query.who) : 0, showOffice: req.user.viewBranch === null });
+  res.render('admin_positions', { title: 'Positions and reporting', wide: true, people, byOffice, problems: problemsOnce, profiles: db.prepare('SELECT id, name FROM profiles ORDER BY name COLLATE NOCASE').all().filter((pr) => access.canGrant(req.user, access.permsOf(pr.id))), titles: require('../team').titles(), roleTree: require('../team').roleTree(), canTitles: Boolean(req.user.allBranches), saved, focus: isId(req.query.who) ? Number(req.query.who) : 0, showOffice: req.user.viewBranch === null });
 });
 router.post('/admin/users/positions', requirePerm('users.manage'), (req, res) => {
   let changed = 0; const problems = []; const offices = new Set();
@@ -120,6 +120,12 @@ router.post('/admin/users/positions', requirePerm('users.manage'), (req, res) =>
           const dept = title ? title.department || p.department || null : p.department || null;
           db.prepare('UPDATE users SET job_title = ?, department = ? WHERE id = ?').run(title ? title.name : null, dept, p.id); touched = true;
           activity.log(req.user, 'Position changed', `${p.display_name}: ${[title && title.name, dept].filter(Boolean).join(' · ') || 'cleared'}`);
+          // A role that carries a profile gives it to the person: never to yourself or the master account, and only a profile you could hand out anyway.
+          if (title && title.profile_id && title.profile_id !== p.profile_id && p.id !== req.user.id && !p.is_master
+              && access.canGrant(req.user, access.permsOf(title.profile_id)) && (!p.profile_id || access.canGrant(req.user, access.permsOf(p.profile_id)))) {
+            db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(title.profile_id, p.id);
+            activity.log(req.user, 'Profile set by role', `${p.display_name}: ${db.prepare('SELECT name FROM profiles WHERE id = ?').get(title.profile_id).name}`);
+          }
         }
       }
       // Reports to: automatic (from the job title), or someone from the same office chosen by hand, or nobody.
@@ -151,7 +157,15 @@ router.post('/admin/users/titles', requireLogin, (req, res) => {
   db.transaction(() => {
     for (const t of team.titles()) {
       if (req.body[`tname_${t.id}`] === undefined) continue;
-      if (req.body[`tdel_${t.id}`] === '1') {
+      const act = String(req.body[`tact_${t.id}`] || '');
+      if (/^merge:\d+$/.test(act)) {
+        const into = Number(act.slice(6));
+        if (into === t.id || !db.prepare('SELECT 1 FROM job_titles WHERE id = ?').get(into)) continue;
+        const intoName = db.prepare('SELECT name FROM job_titles WHERE id = ?').get(into).name;
+        const moved = team.mergeTitle(t.id, into); changed += 1;
+        activity.log(req.user, 'Roles merged', `${t.name} into ${intoName} (${moved} ${moved === 1 ? 'person' : 'people'})`); continue;
+      }
+      if (req.body[`tdel_${t.id}`] === '1' || act === 'del') {
         if (t.holders) { problems.push(`${t.name} is still someone's job title, so it was kept. Give those people another title first.`); continue; }
         db.prepare('DELETE FROM job_titles WHERE id = ?').run(t.id); changed += 1; activity.log(req.user, 'Job title removed', t.name); continue;
       }
@@ -159,8 +173,13 @@ router.post('/admin/users/titles', requireLogin, (req, res) => {
       const parent = isId(req.body[`tparent_${t.id}`]) ? Number(req.body[`tparent_${t.id}`]) : null;
       if (name.toLowerCase() !== t.name.toLowerCase() && team.titleByName(name)) { problems.push(`There is already a job title called ${name}.`); continue; }
       if (parent && (parent === t.id || team.titleLoop(t.id, parent))) { problems.push(`${t.name} cannot report to a title that reports to it.`); continue; }
-      if (name === t.name && dept === (t.department || null) && parent === (t.parent_id || null)) continue;
-      db.prepare('UPDATE job_titles SET name = ?, department = ?, parent_id = ? WHERE id = ?').run(name, dept, parent, t.id);
+      // The profile a role carries: only one you could hand out yourself. Left out of the form, it stays as it is.
+      const sent = req.body[`tprofile_${t.id}`];
+      let prof = t.profile_id || null;
+      if (sent !== undefined) { const want = isId(sent) ? Number(sent) : null; if (!want || (db.prepare('SELECT 1 FROM profiles WHERE id = ?').get(want) && access.canGrant(req.user, access.permsOf(want)))) prof = want; }
+      if (!db.prepare('SELECT 1 FROM job_titles WHERE id = ?').get(t.id)) continue;   // merged away earlier in this save
+      if (name === t.name && dept === (t.department || null) && parent === (t.parent_id || null) && prof === (t.profile_id || null)) continue;
+      db.prepare('UPDATE job_titles SET name = ?, department = ?, parent_id = ?, profile_id = ? WHERE id = ?').run(name, dept, parent, prof, t.id);
       if (name !== t.name) db.prepare('UPDATE users SET job_title = ? WHERE job_title = ? COLLATE NOCASE').run(name, t.name);
       if (dept !== (t.department || null) && dept) db.prepare('UPDATE users SET department = ? WHERE job_title = ? COLLATE NOCASE').run(dept, name);
       changed += 1; activity.log(req.user, 'Job title changed', name);
@@ -169,7 +188,8 @@ router.post('/admin/users/titles', requireLogin, (req, res) => {
     if (fresh) {
       if (team.titleByName(fresh)) problems.push(`There is already a job title called ${fresh}.`);
       else {
-        db.prepare('INSERT INTO job_titles (name, department, parent_id) VALUES (?, ?, ?)').run(fresh, clean(req.body.new_dept, 60) || null, isId(req.body.new_parent) ? Number(req.body.new_parent) : null);
+        const np = isId(req.body.new_profile) && access.canGrant(req.user, access.permsOf(Number(req.body.new_profile))) ? Number(req.body.new_profile) : null;
+        db.prepare('INSERT INTO job_titles (name, department, parent_id, profile_id) VALUES (?, ?, ?, ?)').run(fresh, clean(req.body.new_dept, 60) || null, isId(req.body.new_parent) ? Number(req.body.new_parent) : null, np);
         changed += 1; activity.log(req.user, 'Job title added', fresh);
       }
     }

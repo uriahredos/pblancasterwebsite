@@ -79,11 +79,14 @@ function chart(people) {
 db.exec(`CREATE TABLE IF NOT EXISTS job_titles (
   id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE, department TEXT, parent_id INTEGER REFERENCES job_titles(id) ON DELETE SET NULL)`);
 
+// A role can carry a profile: giving someone the role then gives them that profile too.
+if (!db.prepare("SELECT 1 FROM pragma_table_info('job_titles') WHERE name = 'profile_id'").get()) db.exec('ALTER TABLE job_titles ADD COLUMN profile_id INTEGER');
+
 const titleByName = (name) => (name ? db.prepare('SELECT * FROM job_titles WHERE name = ? COLLATE NOCASE').get(String(name).trim()) : null) || null;
 
 /** Every title, top of the office first, then by name, with the title it reports to and how many people hold it. */
 function titles() {
-  return db.prepare(`SELECT t.*, p.name AS parent_name,
+  return db.prepare(`SELECT t.*, p.name AS parent_name, (SELECT name FROM profiles pr WHERE pr.id = t.profile_id) AS profile_name,
       (SELECT COUNT(*) FROM users u WHERE u.job_title = t.name COLLATE NOCASE AND (u.active = 1 OR u.in_directory = 1)) AS holders
     FROM job_titles t LEFT JOIN job_titles p ON p.id = t.parent_id ORDER BY (t.parent_id IS NULL) DESC, t.name COLLATE NOCASE`).all();
 }
@@ -97,6 +100,17 @@ function ensureTitle(name, department) {
   const top = db.prepare('SELECT id FROM job_titles WHERE parent_id IS NULL ORDER BY id LIMIT 1').get();
   db.prepare('INSERT INTO job_titles (name, department, parent_id) VALUES (?, ?, ?)').run(clean, String(department || '').trim().slice(0, 60) || null, top ? top.id : null);
   return titleByName(clean);
+}
+
+/** Fold one role into another: its people take the other role (and its department), and roles under it move across. */
+function mergeTitle(fromId, intoId) {
+  const from = db.prepare('SELECT * FROM job_titles WHERE id = ?').get(fromId), into = db.prepare('SELECT * FROM job_titles WHERE id = ?').get(intoId);
+  if (!from || !into || from.id === into.id) return 0;
+  const moved = db.prepare('UPDATE users SET job_title = ?, department = COALESCE(?, department) WHERE job_title = ? COLLATE NOCASE').run(into.name, into.department || null, from.name).changes;
+  db.prepare('UPDATE job_titles SET parent_id = ? WHERE parent_id = ? AND id <> ?').run(into.id, from.id, into.id);
+  if (into.parent_id === from.id) db.prepare('UPDATE job_titles SET parent_id = ? WHERE id = ?').run(from.parent_id === into.id ? null : from.parent_id, into.id);
+  db.prepare('DELETE FROM job_titles WHERE id = ?').run(from.id);
+  return moved;
 }
 
 /** Would making `parentId` the parent of `titleId` create a loop? */
@@ -176,4 +190,4 @@ function roleTree() {
   return tops;
 }
 
-module.exports = { managerOf, everyoneUnder, setManager, chart, applyAuto, applyAutoEverywhere, roleTree, titles, titleByName, ensureTitle, titleLoop, WHOLE };
+module.exports = { managerOf, everyoneUnder, setManager, chart, applyAuto, applyAutoEverywhere, roleTree, mergeTitle, titles, titleByName, ensureTitle, titleLoop, WHOLE };

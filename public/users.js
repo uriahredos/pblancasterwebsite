@@ -15,3 +15,14 @@
   }
   find.addEventListener('input', apply); state.addEventListener('change', apply);
 })();
+
+// Add a person: picking a role fills in the profile that role gives.
+(function () {
+  var role = document.getElementById('add-role'), profile = document.getElementById('add-profile');
+  if (!role || !profile || role.dataset.ready) return;
+  role.dataset.ready = '1';
+  role.addEventListener('change', function () {
+    var give = role.options[role.selectedIndex].getAttribute('data-profile');
+    if (give && profile.querySelector('option[value="' + give + '"]')) profile.value = give;
+  });
+})();

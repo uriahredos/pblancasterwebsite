@@ -4257,3 +4257,79 @@ test('reports to: set on the Positions page, it draws the office team chart, fil
   assert.equal(mgrOf(it), sm);
   await owner.post('/branch/view', { branch: '1', back: '/' }, { page: '/' });
 });
+
+test('roles: a role can give a profile, be chosen when adding a person, and be merged into another', async () => {
+  const owner = await loggedIn('owner'); const page = '/admin/users/positions';
+  const tid = (name) => (db.prepare('SELECT id FROM job_titles WHERE name = ?').get(name) || {}).id;
+  const tech = profileId('Technician'), mgr = profileId('Manager');
+  await owner.post('/admin/users/titles', { new_name: 'Kitchen Tech', new_dept: 'Kitchen', new_parent: String(tid('Service Manager')), new_profile: String(tech) }, { page });
+  await owner.post('/admin/users/titles', { new_name: 'Kitchen Technician', new_dept: 'Kitchen', new_parent: String(tid('Service Manager')) }, { page });
+  assert.equal(db.prepare('SELECT profile_id FROM job_titles WHERE name = ?').get('Kitchen Tech').profile_id, tech);
+  // Adding a person with a role and no profile chosen uses the role's profile, and files them under the role.
+  const users = (await owner.get('/admin/users')).text;
+  assert.match(users, new RegExp(`<select name="job_title" id="add-role">[\\s\\S]*?<option value="Kitchen Tech" data-profile="${tech}"`));
+  const add = await owner.post('/admin/users', { username: 'kit.one', display_name: 'Kit One', job_title: 'Kitchen Tech', profile_id: '' }, { page: '/admin/users' });
+  assert.equal(add.location, '/admin/users');
+  const k1 = db.prepare('SELECT id, job_title, department, profile_id FROM users WHERE username = ?').get('kit.one');
+  assert.deepEqual([k1.job_title, k1.department, k1.profile_id], ['Kitchen Tech', 'Kitchen', tech]);
+  assert.equal((await owner.post('/admin/users', { username: 'kit.none', display_name: 'Kit None', job_title: 'Kitchen Technician', profile_id: '' }, { page: '/admin/users' })).status, 400);   // that role gives no profile, so one must be chosen
+  // Putting someone into a role that gives a profile changes their profile; a role without one leaves it alone. Never your own.
+  const k2 = makeUser('kit.two', 'Kit Two'); db.prepare('UPDATE users SET profile_id = ?, branch_id = (SELECT branch_id FROM users WHERE id = ?) WHERE id = ?').run(mgr, k1.id, k2);
+  await owner.post('/branch/view', { branch: 'all', back: page }, { page });
+  await owner.post(page, { [`job_${k2}`]: 'Kitchen Technician' }, { page });
+  assert.equal(db.prepare('SELECT profile_id FROM users WHERE id = ?').get(k2).profile_id, mgr);
+  await owner.post(page, { [`job_${k2}`]: 'Kitchen Tech' }, { page });
+  assert.equal(db.prepare('SELECT profile_id FROM users WHERE id = ?').get(k2).profile_id, tech);
+  const me = userId('owner'); const mine = db.prepare('SELECT profile_id FROM users WHERE id = ?').get(me).profile_id;
+  await owner.post(page, { [`job_${me}`]: 'Kitchen Tech' }, { page });
+  assert.equal(db.prepare('SELECT profile_id FROM users WHERE id = ?').get(me).profile_id, mine);
+  await owner.post(page, { [`job_${me}`]: '' }, { page });
+  // Merging: everyone in the duplicate moves to the role that is kept, and the duplicate is gone.
+  await owner.post(page, { [`job_${k2}`]: 'Kitchen Technician' }, { page });
+  const dup = tid('Kitchen Technician'), keep = tid('Kitchen Tech');
+  assert.match((await owner.get(page)).text, new RegExp(`<select name="tact_${dup}"[^>]*><option value="">Keep</option><optgroup label="Merge into">[\\s\\S]*?<option value="merge:${keep}">Kitchen Tech</option>`));
+  await owner.post('/admin/users/titles', { [`tname_${dup}`]: 'Kitchen Technician', [`tact_${dup}`]: `merge:${keep}` }, { page });
+  assert.equal(tid('Kitchen Technician'), undefined);
+  assert.equal(db.prepare('SELECT job_title FROM users WHERE id = ?').get(k2).job_title, 'Kitchen Tech');
+  assert.match(db.prepare("SELECT detail FROM activity_log WHERE action = 'Roles merged' ORDER BY id DESC LIMIT 1").get().detail, /Kitchen Technician into Kitchen Tech \(1 person\)/);
+  await owner.post('/branch/view', { branch: '1', back: '/' }, { page: '/' });
+});
+
+test('duplicates: the same person twice in one office is found, and the disabled or roleless extra is folded into the account kept', async () => {
+  const owner = await loggedIn('owner');
+  const office = db.prepare("INSERT INTO branches (name, created_at) VALUES ('Dupeton', ?)").run(new Date().toISOString()).lastInsertRowid;
+  const mk = (username, name, o) => { const id = makeUser(username, name); db.prepare('UPDATE users SET branch_id = ? WHERE id = ?').run(o, id); return id; };
+  const real = mk('dana.dupe', 'Dana Dupe', office); const ghost = mk('ddupe', 'dana  dupe', office);              // same name, spaced and cased differently
+  db.prepare("UPDATE users SET active = 0, in_directory = 1, job_title = 'Service Tech', department = 'Service', email = 'dana@example.com', phone = '717-555-0111' WHERE id = ?").run(ghost);
+  const a = mk('pat.one', 'Pat Working', office), b = mk('pat.two', 'Pat Working', office);                            // both working accounts with roles: not offered
+  db.prepare("UPDATE users SET job_title = 'Service Tech' WHERE id IN (?, ?)").run(a, b);
+  const far = mk('dana.far', 'Dana Dupe', 1);                                                                          // same name in another office is a different person
+  const byMail = mk('rob.mail', 'Robert Mailer', office), byMail2 = mk('bob.mail', 'Bob Mailer', office);              // different names, same address
+  db.prepare("UPDATE users SET email = 'rob@example.com' WHERE id IN (?, ?)").run(byMail, byMail2);
+  db.prepare("UPDATE users SET job_title = 'Service Tech' WHERE id = ?").run(byMail);
+  // Things recorded under the extra account, including one the kept account has its own of.
+  db.prepare("INSERT INTO tasks (title, assigned_to, assigned_by, created_at) VALUES ('Ghost task', ?, ?, ?)").run(ghost, userId('owner'), new Date().toISOString());
+  await owner.post('/branch/view', { branch: String(office), back: '/admin/users' }, { page: '/admin/users' });
+  const page = (await owner.get('/admin/users')).text;
+  assert.match(page, /2 duplicate accounts found/);
+  assert.match(page, /Keep <strong>dana\.dupe<\/strong> \(active, no role\) · remove <strong>ddupe<\/strong> \(disabled, Service Tech\)/);
+  assert.match(page, /Keep <strong>rob\.mail<\/strong>[^<]*<\/span>|Keep <strong>rob\.mail<\/strong>/); assert.match(page, /remove <strong>bob\.mail<\/strong> \(active, no role\)/);
+  assert.doesNotMatch(page, /remove <strong>pat\.(one|two)<\/strong>/);
+  // A technician cannot do this, and a made-up pair is ignored.
+  assert.equal((await (await loggedIn('tech1')).post('/admin/users/duplicates', { all: '1' }, { page: '/' })).status, 403);
+  await owner.post('/admin/users/duplicates', { keep: String(a), extra: String(b) }, { page: '/admin/users' });
+  assert.ok(db.prepare('SELECT 1 FROM users WHERE id = ?').get(b));
+  // Remove one pair: the task moves across and the details the kept account lacked are filled in.
+  await owner.post('/admin/users/duplicates', { keep: String(real), extra: String(ghost) }, { page: '/admin/users' });
+  assert.equal(db.prepare('SELECT 1 FROM users WHERE id = ?').get(ghost), undefined);
+  assert.equal(db.prepare("SELECT assigned_to FROM tasks WHERE title = 'Ghost task'").get().assigned_to, real);
+  assert.deepEqual(db.prepare('SELECT job_title, department, email, phone, active FROM users WHERE id = ?').get(real), { job_title: 'Service Tech', department: 'Service', email: 'dana@example.com', phone: '717-555-0111', active: 1 });
+  assert.match((await owner.get('/admin/users')).text, /1 duplicate account removed/);
+  // Remove all that are left.
+  await owner.post('/admin/users/duplicates', { all: '1' }, { page: '/admin/users' });
+  assert.equal(db.prepare('SELECT 1 FROM users WHERE id = ?').get(byMail2), undefined);
+  assert.ok(db.prepare('SELECT 1 FROM users WHERE id = ?').get(far)); assert.ok(db.prepare('SELECT 1 FROM users WHERE id IN (?, ?)').get(a, b));
+  assert.doesNotMatch((await owner.get('/admin/users')).text, /duplicate accounts? found/);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM activity_log WHERE action = 'Duplicate account removed'").get().n, 2);
+  await owner.post('/branch/view', { branch: '1', back: '/' }, { page: '/' });
+});

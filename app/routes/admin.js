@@ -405,6 +405,14 @@ function mayManage(actor, target) {
   return !target.profile_id || access.canGrant(actor, access.permsOf(target.profile_id));
 }
 
+/** Duplicate accounts this person may tidy: both the one kept and the one removed must be theirs to manage. */
+function duplicatesFor(actor) {
+  if (actor.scope !== 'all') return [];
+  return require('../duplicates').find(access.visibleUserIds(actor))
+    .map((g) => ({ keep: g.keep, extras: g.extras.filter((e) => e.removable && e.id !== actor.id && mayManage(actor, getUser(e.id))) }))
+    .filter((g) => g.extras.length && mayManage(actor, getUser(g.keep.id)));
+}
+
 function renderUsers(req, res, extra = {}) {
   const ids = access.visibleUserIds(req.user);
   const users = db.prepare(
@@ -417,7 +425,7 @@ function renderUsers(req, res, extra = {}) {
     .map((u) => ({ ...u, manageable: mayManage(req.user, u) }));
   res.status(extra.errors ? 400 : 200).render('admin_users', {
     title: 'Users', errors: [], values: {}, created: null, users,
-    profiles: grantableProfiles(req.user), canAdd: req.user.scope === 'all', ...extra,
+    profiles: grantableProfiles(req.user), roles: require('../team').titles(), duplicates: duplicatesFor(req.user), canAdd: req.user.scope === 'all', ...extra,
   });
 }
 
@@ -425,6 +433,19 @@ router.get('/admin/users', requirePerm('users.manage'), (req, res) => {
   const created = req.session.created || null; // temp password, shown once
   delete req.session.created;
   renderUsers(req, res, { created });
+});
+
+// Remove duplicate accounts: one pair (keep + extra), or every pair found when `all` is sent.
+router.post('/admin/users/duplicates', requirePerm('users.manage'), (req, res) => {
+  const dups = require('../duplicates'); let removed = 0;
+  for (const g of duplicatesFor(req.user)) {
+    for (const e of g.extras) {
+      if (req.body.all !== '1' && !(String(req.body.keep) === String(g.keep.id) && String(req.body.extra) === String(e.id))) continue;
+      if (dups.merge(g.keep.id, e.id)) { removed += 1; activity.log(req.user, 'Duplicate account removed', `${e.display_name} (${e.username}) folded into ${g.keep.username}`); }
+    }
+  }
+  flash(req, removed ? 'ok' : 'err', removed ? `${removed} duplicate ${removed === 1 ? 'account' : 'accounts'} removed. Anything recorded under ${removed === 1 ? 'it' : 'them'} was moved to the account that was kept.` : 'Nothing was removed.');
+  res.redirect('/admin/users');
 });
 
 // ---- Sign-in details for a chosen few ---------------------------------------------------
@@ -487,15 +508,23 @@ function readPerson(body, exceptId) {
 router.post('/admin/users', requirePerm('users.manage'), (req, res) => {
   if (req.user.scope !== 'all') return forbidden(res); // team managers do not create accounts
   const { values, errors } = readPerson(req.body);
-  const profile = grantableProfiles(req.user).find((p) => String(p.id) === String(req.body.profile_id));
-  values.profile_id = req.body.profile_id;
+  // A role can be picked here too; when it gives a profile and none was chosen, that profile is used.
+  const role = require('../team').titleByName(clean(req.body.job_title, 80));
+  values.job_title = role ? role.name : '';
+  const wanted = req.body.profile_id || (role && role.profile_id) || '';
+  const profile = grantableProfiles(req.user).find((p) => String(p.id) === String(wanted));
+  values.profile_id = wanted;
   if (!profile) errors.push('Choose a profile.');
   if (errors.length) return renderUsers(req, res, { errors, values });
 
   const password = auth.tempPassword();
   // A new person joins the branch being looked at: your own, unless you can see every branch and have chosen another.
-  auth.createUser({ username: values.username, displayName: values.display_name, email: values.email, password, profile: profile.id, branchId: req.user.workBranch });
-  activity.log(req.user, 'Person added', `${values.display_name} (${values.username}) as ${profile.name}`);
+  const newId = auth.createUser({ username: values.username, displayName: values.display_name, email: values.email, password, profile: profile.id, branchId: req.user.workBranch });
+  if (role) {
+    db.prepare('UPDATE users SET job_title = ?, department = ? WHERE username = ?').run(role.name, role.department || null, values.username);
+    require('../team').applyAuto(req.user.workBranch);
+  }
+  activity.log(req.user, 'Person added', `${values.display_name} (${values.username}) as ${profile.name}${role ? ', ' + role.name : ''}`);
   req.session.created = { username: values.username, password, what: 'created' };
   res.redirect('/admin/users');
 });

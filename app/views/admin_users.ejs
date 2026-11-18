@@ -10,6 +10,22 @@
 </div>
 <% } %>
 <%- include('partials/errors') %>
+<% if (duplicates.length) { var dupCount = duplicates.reduce(function (n, g) { return n + g.extras.length; }, 0); %>
+<div class="card dup-card" id="duplicates">
+  <div class="rec-head"><strong><%= dupCount %> duplicate <%= dupCount === 1 ? 'account' : 'accounts' %> found</strong>
+    <% if (dupCount > 1) { %><form method="post" action="/admin/users/duplicates" data-no-live data-confirm="Remove all <%= dupCount %> duplicate accounts? Anything recorded under them moves to the account that is kept. This cannot be undone."><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="all" value="1"><button class="btn small" type="submit">Remove all <%= dupCount %></button></form><% } %></div>
+  <p class="hint">The same person is on the list twice in one office, and the extra account is disabled or has no role. Removing it moves anything recorded under it (and its job title, email or phone if the other account lacks them) to the account that is kept.</p>
+  <ul class="dup-list">
+  <% duplicates.forEach(function (g) { g.extras.forEach(function (e) { %>
+    <li>
+      <span><strong><%= g.keep.display_name %></strong><% if (g.keep.branch_name) { %> <span class="pill"><%= g.keep.branch_name %></span><% } %><br>
+        <span class="meta">Keep <strong><%= g.keep.username %></strong> (<%= g.keep.active ? (g.keep.must_change_password ? 'not signed in yet' : 'active') : 'disabled' %><%= g.keep.job_title ? ', ' + g.keep.job_title : ', no role' %>) · remove <strong><%= e.username %></strong> (<%= e.active ? 'active' : 'disabled' %><%= e.job_title ? ', ' + e.job_title : ', no role' %>)</span></span>
+      <form method="post" action="/admin/users/duplicates" data-no-live data-confirm="Remove the account <%= e.username %> and keep <%= g.keep.username %>? This cannot be undone."><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="keep" value="<%= g.keep.id %>"><input type="hidden" name="extra" value="<%= e.id %>"><button class="btn small" type="submit">Remove duplicate</button></form>
+    </li>
+  <% }) }) %>
+  </ul>
+</div>
+<% } %>
 <% if (canAdd) { %>
 <h2>Add a person</h2>
 <form method="post" action="/admin/users" class="filters card">
@@ -17,15 +33,21 @@
   <label>Username <input name="username" value="<%= values.username || '' %>" required maxlength="40" autocapitalize="none" autocomplete="off" placeholder="jsmith"></label>
   <label>Full name <input name="display_name" value="<%= values.display_name || '' %>" required maxlength="80" autocomplete="off" placeholder="John Smith"></label>
   <label>Email <span class="hint">Optional</span> <input name="email" type="email" value="<%= values.email || '' %>" maxlength="120" autocomplete="off"></label>
+  <label>Role
+    <select name="job_title" id="add-role">
+      <option value="">None yet</option>
+      <% roles.forEach(function (r) { %><option value="<%= r.name %>" data-profile="<%= r.profile_id || '' %>" <%= values.job_title === r.name ? 'selected' : '' %>><%= r.name %></option><% }) %>
+    </select>
+  </label>
   <label>Profile
-    <select name="profile_id" required>
+    <select name="profile_id" id="add-profile" required>
       <option value="">Choose one</option>
       <% profiles.forEach(function (p) { %><option value="<%= p.id %>" <%= String(values.profile_id) === String(p.id) ? 'selected' : '' %>><%= p.name %></option><% }) %>
     </select>
   </label>
   <div class="filter-actions"><button class="btn primary small" type="submit">Add person</button></div>
 </form>
-<p class="hint">A temporary password is generated for you and shown once after you add the person. The profile decides what they can do.</p>
+<p class="hint">A temporary password is generated for you and shown once after you add the person. The role places them on the chart; the profile decides what they can do, and is filled in for you when the role gives one.</p>
 <% } else { %>
 <p class="lede">These are the people assigned to you.</p>
 <% } %>
