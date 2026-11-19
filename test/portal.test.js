@@ -5649,6 +5649,11 @@ test('uploaded files: the background pass opens each file once, does nothing whe
       assert.ok(tries - was <= 5, `a pass limited to 5 files tried ${tries - was}`); assert.ok(p.stuck <= 5);
       assert.ok(passes <= 8, 'the files that fail are holding up the ones that do not');
     }
+    // Only the twelve that fail are left now, whichever order the folder listed them in: each pass tries five of them and stops.
+    for (let i = 0; i < 3; i++) {
+      const was = tries; const p = uplStore.tend({ minAgeMs: 0, limit: 5 }); passes += 1;
+      assert.equal(tries - was, 5, `a pass limited to 5 files tried ${tries - was} that fail`); assert.equal(p.stuck, 5); assert.equal(p.left, 12);
+    }
     assert.ok(logLines.slice(noise).filter((l) => /could not convert bulk-bad/.test(l)).length <= passes * 5);
     for (let i = 0; i < 10; i++) assert.equal(uplHead(`bulk-ok-${i}.png`), 'PBSEAL1');
     for (let i = 0; i < 12; i++) assert.notEqual(uplHead(`bulk-bad-${i}.png`), 'PBSEAL1');             // untouched, and tried again later
@@ -5763,6 +5768,48 @@ test('uploaded files: when the data disk is nearly full new photos and files are
   } finally { uplStore.useDisk(null); }
   assert.equal(uplStore.hasRoom(), true, 'the machine running these checks is itself nearly out of disk space');
   assert.equal((await c.post('/photos', [['caption', 'room again'], ['photos', new File([PNG], 'p.png', { type: 'image/png' })]], { multipart: true, page: '/photos' })).status, 302);
+  uplTidy(start);
+});
+
+test('uploaded files: a file kept through an error after saving is sealed there and then, however slowly it arrived', async () => {
+  const c = await uplSignedIn(); const start = uplList(); const token = await c.csrf('/profile');
+  const k = uplSeal.keyFrom('kept-through-an-error-key-0123456789');
+  const activity = require('../app/activity'); const realLog = activity.log; const doc = uplDoc(30000);
+  try {
+    uplStore.useKeys({ current: k, all: [k], off: false });
+    uplStore.tend({ minAgeMs: 0, limit: 100000 });
+    const before = uplList();
+    activity.log = () => { throw new Error('made to fail after saving'); };
+    const r = await uplSlowPost(c, '/sales/library', token, [['title', 'Slow and kept through an error']], [uplFile('file', doc, 'application/pdf', 'p.pdf')], async () => {
+      // Half the file is here and the folder has been quiet for a minute when the background pass comes round and looks at it.
+      await uplUntil(() => uplList().length > before.length, 'the first half to arrive');
+      const then = new Date(Date.now() - 60000); fs.utimesSync(uplDir, then, then);
+      uplStore.tend({ minAgeMs: 0, limit: 100000 });
+    });
+    assert.equal(r.status, 500);
+    const kept = db.prepare("SELECT path FROM sales_files WHERE title = 'Slow and kept through an error'").get();
+    assert.ok(kept, 'the form was saved before the error');
+    assert.equal(uplHead(kept.path), 'PBSEAL1', 'the file was kept but left unsealed');
+    assert.ok(uplSeal.read(path.join(uplDir, kept.path), [k]).equals(doc));
+    // Nothing is left over for the background pass to find, or to miss.
+    assert.deepEqual(uplStore.tend({ minAgeMs: 0 }), { sealed: 0, moved: 0, opened: 0, left: 0, stuck: 0 });
+    assert.equal(uplStore.census().plain, 0);
+  } finally {
+    activity.log = realLog; uplTidy(start);
+    uplStore.useKeys({ current: null, all: [k], off: true }); uplStore.tend({ limit: 100000 }); uplStore.useKeys(null);
+  }
+});
+
+test('uploaded files: a parts photo that is refused after it arrived says why, and nothing is kept', async () => {
+  const c = await uplSignedIn(); const start = uplList(); const forms = await uplForms(c);
+  for (const f of forms.filter((x) => x.url.startsWith('/parts'))) {
+    const before = uplList();
+    // Two photos where the form takes one: the first is already stored when the second is refused.
+    const two = ['a.png', 'b.png'].map((name) => ['photo', new File([uplPng(3000)], name, { type: 'image/png' })]);
+    const r = await c.post(f.url, [...f.fields(), ...two], { multipart: true, page: '/profile' });
+    assert.equal(r.status, 400, f.what); assert.match(r.text, /The photo could not be uploaded\./);
+    await uplBackTo(before, `${f.what}: nothing is kept`);
+  }
   uplTidy(start);
 });
 

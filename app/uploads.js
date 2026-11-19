@@ -82,8 +82,8 @@ function settle(rec, status) {
   for (const name of rec.names) {
     inFlight.delete(name);
     if (leaving.has(name)) continue;                            // the route has already dropped it
-    // An error after the form was saved must not take away a photo the database now points at.
-    if (status >= 400) { if (status < 500 || !inDatabase(name)) remove(name); continue; }
+    // An error after the form was saved must not take away a photo the database now points at: that one is kept, and sealed like any other.
+    if (status >= 400 && (status < 500 || !inDatabase(name))) { remove(name); continue; }
     if (!current) continue;
     try { sealed.seal(path.join(uploadDir, name), current); seen.set(name, 'sealed'); } catch (e) {
       if (e.code === 'ENOENT') continue;                        // not kept by the route after all

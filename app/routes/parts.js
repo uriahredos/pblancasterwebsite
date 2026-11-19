@@ -33,6 +33,7 @@ function parseUpload(req, res, next) {
   upload(req, res, (err) => {
     if (err) {
       req.photoError = err.code === 'LIMIT_FILE_SIZE' ? 'The photo is larger than 10 MB.' : 'The photo could not be uploaded.';
+      req.file = undefined;                                     // when the upload is refused part-way, what had arrived is already gone
     }
     req.body = req.body || {};
     next();
