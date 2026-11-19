@@ -5324,6 +5324,10 @@ test('the Feed page: the activity feed in full, with shout-outs and past events,
   assert.match(home, /<h2 id="around-h">Activity feed<\/h2><a href="\/feed">Feed<\/a>/);
   assert.doesNotMatch(/<section class="panel p-around"[\s\S]*?<\/section>/.exec(home)[0], /href="\/people">People</);
   assert.equal((await new Client().get('/feed')).location, '/login?next=%2Ffeed');
+  // It is in the Community menu too, marked as the current page when you are on it.
+  const menu = (html) => /<summary[^>]*>Community[\s\S]*?<\/details>/.exec(html)[0];
+  assert.match(menu(home), /<a href="\/feed"[^>]*>Activity feed<\/a>[\s\S]*<a href="\/people"/);
+  assert.match(menu((await t1.get('/feed')).text), /<a href="\/feed" aria-current="page"[^>]*>Activity feed/);
   // More than the home page's eight, and things the home list leaves out.
   const sec = db.prepare('SELECT id FROM forum_sections ORDER BY id LIMIT 1').get().id;
   for (let i = 0; i < 11; i++) db.prepare('INSERT INTO forum_threads (section_id, user_id, title, created_at, last_post_at, last_post_user_id) VALUES (?, ?, ?, ?, ?, ?)').run(sec, userId('tech2'), `FEEDPAGE thread ${i}`, new Date(Date.now() - i * 60000).toISOString(), new Date().toISOString(), userId('tech2'));
