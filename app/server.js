@@ -56,6 +56,9 @@ if (!process.env.SESSION_SECRET) {
   if (e.changed === 'rekeyed') db.prepare("INSERT INTO meta (key, value) VALUES ('db_key_changed_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(new Date().toISOString());
   if (e.changed === 'rekeyed') console.log(`[database key] The database now uses the new key. Photos and documents are still moving to it: leave DB_KEY_OLD in the hosting settings until the Security check says it can be deleted. ${RECORD}`);
   if (e.changed === 'decrypted') console.log(`[database key] The database has been decrypted, as DB_DECRYPT asked. Photos and documents are still being opened: leave DB_KEY in the hosting settings until the Security check says none are still encrypted. ${RECORD}`);
+  // A saved copy of the key was checked against the key in use on that day. After a key change it is a copy of the old
+  // key, and after a restore the database only knows what was true when the backup was made: either way, ask again.
+  if (e.changed || (e.restored && !e.restored.again)) db.prepare("DELETE FROM meta WHERE key = 'key_copy_checked'").run();
   if (e.note) console.warn(`[database key] ${e.note}`);
   if (!e.encrypted && !e.note) console.warn('[database key] DB_KEY is not set: the database and its backups are not encrypted.');
   const done = backup.alignWithKey();

@@ -5638,13 +5638,15 @@ test('restore: RESTORE_BACKUP brings a backup back at start-up, sets the databas
   await site.stop();
   site = await labSite(L); await site.stop();                                   // the setting is taken out, as the Security check asks
   // A backup from before sessions were left out of them still signs nobody in when it is brought back.
-  const olden = dbfile.connect(L.backups()[0], ''); olden.prepare("INSERT INTO sessions (sid, expires, data) VALUES ('from-the-backup', ?, '{}')").run(Date.now() + 600000); olden.close();
+  const olden = dbfile.connect(L.backups()[0], ''); olden.prepare("INSERT INTO sessions (sid, expires, data) VALUES ('from-the-backup', ?, '{}')").run(Date.now() + 600000);
+  olden.prepare("INSERT INTO meta (key, value) VALUES ('key_copy_checked', '2031-01-01')").run(); olden.close();   // ...and its word that the saved key was checked is about the key of its day
   site = await labSite(L, { RESTORE_BACKUP: B });
   assert.equal((await site.get('/login')).status, 200);
   assert.match(site.log(), new RegExp(`\\[restore\\] The database was restored from ${B.replace(/\./g, '\\.')}\\. The database from before is set aside on the disk as portal-before-restore-[0-9-]+\\.db\\. RESTORE_BACKUP can now be removed`));
   await site.stop();
-  const after = labJson(L.run(`const db = require('./app/db'); console.log(JSON.stringify({ sessions: db.prepare("SELECT COUNT(*) n FROM sessions WHERE sid = 'from-the-backup'").get().n, log: db.prepare("SELECT detail FROM activity_log WHERE action = 'Backup restored'").get() }))`, { RESTORE_BACKUP: B }));
-  assert.equal(after.sessions, 0); assert.match(after.log.detail, new RegExp('^' + B.replace(/\./g, '\\.')));
+  const after = labJson(L.run(`const db = require('./app/db'); console.log(JSON.stringify({ sessions: db.prepare("SELECT COUNT(*) n FROM sessions WHERE sid = 'from-the-backup'").get().n, log: db.prepare("SELECT detail FROM activity_log WHERE action = 'Backup restored'").get(),
+    checked: db.prepare("SELECT COUNT(*) n FROM meta WHERE key = 'key_copy_checked'").get().n }))`, { RESTORE_BACKUP: B }));
+  assert.equal(after.sessions, 0); assert.match(after.log.detail, new RegExp('^' + B.replace(/\./g, '\\.'))); assert.equal(after.checked, 0);
 
   // With encryption: the backup must open with the key in the settings, and a backup from before a key change is brought back and moved to the new key.
   const E = encryptionLab(); const KEY = 'restore-key-0123456789-abcdefgh', KEY2 = 'restore-key-two-0123456789-abcd';
@@ -5915,6 +5917,8 @@ test('Security check: the saved copy of the key can be checked, yes or no; room 
   // The Backups page keeps the day of the change in view, for anyone holding copies downloaded before it.
   const later = new LabClient(lab.origin); later.cookie = boss.cookie;
   assert.match((await later.get('/admin/backups')).text, /The key was changed on \d+\/\d+\/\d{4}\. A backup or photo archive downloaded before then opens only with the key from before/);
+  // The copy that was checked was a copy of the key from before. Nobody has checked a copy of the new one yet, and the page says so.
+  assert.match(card((await later.get(page)).text), /Needs attention/); assert.match(card((await later.get(page)).text), /Never checked\./);
   await lab.stop();
   const sealed = require('../app/sealed');
   const up = path.join(L.dir, 'uploads');
@@ -5930,6 +5934,41 @@ test('Security check: the saved copy of the key can be checked, yes or no; room 
   // Both settings removed too soon: the files are locked, and the page says which key to put back.
   off = labJson(L.run(CHECK)).find((c) => /is encrypted/.test(c.title));
   assert.match(off.detail, /3 photos and documents are still encrypted, 3 of them with a key that is not in the settings\.$/); assert.match(off.fix, /put the key they were encrypted with back in DB_KEY, with DB_DECRYPT set to yes/);
+  fs.rmSync(L.dir, { recursive: true, force: true });
+});
+
+test('backups: a copy that does not pass its check, or does not hold the same rows as the database, never gets a backup\'s name', async () => {
+  const L = encryptionLab();
+  assert.ok(L.run(L.SEED).ok);
+  const dir = path.join(L.dir, 'backups');
+  // The copy is spoiled the moment it has been written, before the site looks at it: what a failing disk would do.
+  const NIGHT = (spoil, how = '{}') => `const Database = require('better-sqlite3-multiple-ciphers'); const fs = require('fs'); const real = Database.prototype.exec;
+    Database.prototype.exec = function (sql) { const out = real.call(this, sql); const m = /^VACUUM INTO '(.+)'$/.exec(sql); if (m) { const part = m[1]; ${spoil} } return out; };
+    const b = require('./app/backup'); const db = require('./app/db'); const now = new Date('2031-07-01T12:00:00Z');
+    b.runBackup({ now, ...${how} }).then((name) => ({ made: name }), (e) => ({ failed: e.message })).then((r) => { require('./app/app'); console.log(JSON.stringify({ ...r, failing: b.failing(),
+      why: (JSON.parse((db.prepare("SELECT value FROM meta WHERE key = 'backup_last_error'").get() || {}).value || '{}')).why || null,
+      line: require('./app/routes/security').checks({ headers: {}, ip: '203.0.113.9', socket: {} }).find((c) => /^A recent backup/.test(c.title)).detail })); });`;
+  const ROW_LOST = `const copy = new Database(part); copy.prepare("DELETE FROM meta WHERE key = 'marker'").run(); copy.close();`;
+  // A few bytes go wrong in a part of the copy that counting its rows never reads (the tail of one long value). Only SQLite's check finds it.
+  assert.ok(L.run(`require('./app/db').prepare("INSERT INTO meta (key, value) VALUES ('long', ?)").run('LONGVALUE'.repeat(3000))`).ok);
+  let r = labJson(L.run(NIGHT(`const at = fs.readFileSync(part).lastIndexOf('LONGVALUELONGVALUE'); const fd = fs.openSync(part, 'r+');
+    fs.writeSync(fd, Buffer.from([0x7f, 0xff, 0xff, 0xff]), 0, 4, Math.floor(at / 4096) * 4096); fs.closeSync(fd);`)));
+  assert.match(r.failed, /the copy did not pass its check/); assert.equal(r.failing, true); assert.match(r.why, /did not pass its check/);
+  assert.match(r.line, /The site tries again every half hour\./);
+  assert.deepEqual(fs.readdirSync(dir).filter((f) => /2031-07-01/.test(f)), []);   // no backup under the night's name, and no working copy left lying about
+  // A row goes missing from the copy. It still opens and still passes SQLite's check; only the count gives it away.
+  r = labJson(L.run(NIGHT(ROW_LOST)));
+  assert.match(r.failed, /does not hold the same rows as the database/); assert.equal(r.failing, true);
+  assert.deepEqual(fs.readdirSync(dir).filter((f) => /2031-07-01/.test(f)), []);
+  // Left alone, the same night's copy is made, and the warning clears.
+  r = labJson(L.run(NIGHT('')));
+  assert.equal(r.made, 'portal-2031-07-01.db'); assert.equal(r.failing, false);
+  assert.equal(require('../app/dbfile').inspect(path.join(dir, 'portal-2031-07-01.db'), '', { full: true }).fault, null);
+  // "Back up now" failing is reported as well. Nothing tries that one again by itself (the night's copy is there), so the page does not say it will.
+  r = labJson(L.run(NIGHT(ROW_LOST, '{ manual: true }')));
+  assert.match(r.failed, /does not hold the same rows/); assert.equal(r.failing, true);
+  assert.match(r.line, /^The last backup did not work \(.+\): the copy does not hold the same rows as the database\. The newest good backup is portal-2031-07-01\.db, today\.$/);
+  assert.deepEqual(fs.readdirSync(dir).filter((f) => /2031-07-01/.test(f)), ['portal-2031-07-01.db']);
   fs.rmSync(L.dir, { recursive: true, force: true });
 });
 
