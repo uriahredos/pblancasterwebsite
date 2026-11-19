@@ -342,7 +342,8 @@ router.post('/branch/view', everyBranch, (req, res) => {
   const b = req.body.branch === 'all' ? 'all' : isId(req.body.branch) && db.prepare('SELECT id FROM branches WHERE id = ?').get(req.body.branch) ? Number(req.body.branch) : null;
   if (b !== null) req.session.viewBranch = b;
   const back = String(req.body.back || '/');
-  res.redirect(/^\/(?![/\\])/.test(back) ? back : '/');
+  // Back to the page they were on. From a complaint page that is by way of the home page, as after signing in (see landing).
+  res.redirect(/^\/(?![/\\])/.test(back) ? require('./auth').landing(back) : '/');
 });
 
 // Profiles that make someone an office's admin (they manage that office's people, and nothing outside it),

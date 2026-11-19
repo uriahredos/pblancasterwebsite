@@ -16,7 +16,10 @@ const MULTIPART_PATHS = /^\/(parts|parts\/\d+\/edit|admin\/catalog\/import|admin
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000; // stay signed in on a phone for 30 days
 const VISITOR_MS = 2 * 60 * 60 * 1000;       // a visitor who has not signed in: long enough to fill in the sign-in or reset form
 // The anonymous complaint pages. Nothing about a request for one is written down anywhere: not in the log, not in the session.
-const complaintPage = (req) => req.path.startsWith('/complaint');
+// Capitals make no difference to which page is shown (/Complaint is the same form), so they make none here either.
+const complaintPage = (req) => /^\/complaint/i.test(req.path);
+// What a page does by itself: checking for news, saying "still here", locking when the site is reopened, showing the lock screen.
+const pageItself = (req) => ['/pulse', '/alive', '/lock'].includes(req.path) || (req.path === '/unlock' && req.method === 'GET');
 
 const app = express();
 app.set('view engine', 'ejs');
@@ -62,10 +65,11 @@ app.get('/vendor/html5-qrcode.min.js', (req, res) => {
 app.get('/healthz', (req, res) => res.type('text').send('ok'));
 app.use(express.static(path.join(__dirname, '..', 'public'), { maxAge: config.production ? '1h' : 0 }));
 
-// Request log. Complaint pages are left out on purpose and no user is ever logged. The page's own background calls
-// (/pulse and /alive) are left out too, so a request that is missing from the log says nothing about what it was.
+// Request log. Complaint pages are left out on purpose and no user is ever logged. What a page does by itself is left
+// out too, so a request that is missing from the log says nothing about what it was. That includes locking and the lock
+// screen: a site reopened straight at the complaint form locks like any other page, and must not stand out by doing so.
 app.use((req, res, next) => {
-  if (!complaintPage(req) && req.path !== '/pulse' && req.path !== '/alive') {
+  if (!complaintPage(req) && !pageItself(req)) {
     // A password-reset link is a key for an hour, so it is never written to the log.
     const shown = req.path.startsWith('/reset/') ? '/reset/…' : req.path;
     res.on('finish', () => console.log(`${req.method} ${shown} ${res.statusCode}`));

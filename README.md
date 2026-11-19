@@ -372,8 +372,8 @@ What the site does:
 
 - The complaint is stored with a category, the text, an optional "when/where", and the **date**. It is not stored with a user, an IP address, a device or a time of day. The table has no column for any of those.
 - Complaint ids are random and the table is not kept in arrival order, so a complaint cannot be lined up against the parts log or sign-in times.
-- Complaint pages are left out of the server's request log. So are the checks every open page makes in the background, so a request that is missing from the log says nothing about what it was.
-- Opening the form, sending a complaint or checking on one leaves the person's sign-in record exactly as it was: no "last seen" time, no new expiry, no page name. Someone who follows a link to the form while signed out lands on the home page after signing in, like anyone else, and their own browser takes them on to the form; the site keeps no note of where they were heading.
+- Complaint pages are left out of the server's request log. So is what every open page does by itself (checking for news in the background, locking, showing the lock screen), so a request that is missing from the log says nothing about what it was.
+- Opening the form, sending a complaint or checking on one leaves the person's sign-in record exactly as it was: no "last seen" time, no new expiry, no page name. Someone who follows a link to the form while signed out, or while the site is locked, lands on the home page after signing in or unlocking, like anyone else, and their own browser takes them on to the form; the site keeps no note of where they were heading.
 - The once-a-day notice counts by date and marks nothing on the complaint, so nothing stored shows whether a complaint arrived before or after that day's notice.
 - The tracking code is shown once and only a scrambled (hashed) copy is kept. Nobody, including an admin with the database file, can look up a code. A lost code cannot be recovered.
 - Checking a code does not record who checked.

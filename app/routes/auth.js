@@ -92,7 +92,7 @@ const safeNext = (n) => (typeof n === 'string' && /^\/(?![/\\])/.test(n) ? n : '
 // everyone else, and the page itself takes them on from there (see site.js). The site never requests a complaint page as
 // its first step after a sign-in, so neither the log nor the session shows that this is where the person was heading.
 const COMPLAINT_STOPS = { '/complaint': '/#complaint-form', '/complaint/status': '/#complaint-status' };
-const landing = (target) => (target.startsWith('/complaint') ? COMPLAINT_STOPS[target.replace(/[?#].*$/, '').replace(/\/$/, '')] || '/' : target);
+const landing = (target) => (/^\/complaint/i.test(target) ? COMPLAINT_STOPS[target.replace(/[?#].*$/, '').replace(/\/$/, '').toLowerCase()] || '/' : target);
 
 router.get('/login', (req, res) => {
   if (req.user) return res.redirect('/');
@@ -169,14 +169,14 @@ const passkeyCount = (userId) => db.prepare('SELECT COUNT(*) AS n FROM passkeys 
 router.get('/unlock', (req, res) => {
   if (!req.user) return res.redirect('/login');
   const target = safeNext(req.query.next);
-  if (!req.session.locked) return res.redirect(target);
+  if (!req.session.locked) return res.redirect(landing(target));
   res.render('unlock', { title: 'Welcome back', next: target, error: null, hasPasskey: passkeyCount(req.user.id) > 0 });
 });
 
 router.post('/unlock', (req, res) => {
   if (!req.user) return res.redirect('/login');
   const target = safeNext(req.body.next);
-  if (!req.session.locked) return res.redirect(target);
+  if (!req.session.locked) return res.redirect(landing(target));
   const page = (status, error) => res.status(status).render('unlock', { title: 'Welcome back', next: target, error, hasPasskey: passkeyCount(req.user.id) > 0 });
   if (lockedOut(req.user.username)) return page(429, 'Too many wrong passwords. Wait 15 minutes and try again, or ask an admin to reset it.');
   if (!spendCheck()) return page(429, BUSY);

@@ -5639,22 +5639,36 @@ test('signed-out visitors: only a page with a form leaves a session behind, it i
   const js = (await new Client().get('/site.js')).text;
   assert.match(js, /window\.portalFreshToken = fresh/); assert.match((await new Client().get('/passkey.js')).text, /window\.portalFreshToken \? window\.portalFreshToken\(\)/);
 
-  // Rows left over from when every visitor got a 30-day session are cleared when the site starts; sign-ins are not touched.
+  // Rows left over from when every visitor got a 30-day session are cut down to two hours when the site starts, not deleted
+  // on the spot: a sign-in page that was open while the site was updated still works. Sign-ins are not touched.
   const Store = require('../app/sessionStore');
   const put = db.prepare('INSERT INTO sessions (sid, expires, data) VALUES (?, ?, ?)');
   put.run('old-visitor', Date.now() + 29 * 24 * HOUR, JSON.stringify({ cookie: {}, csrf: 'x' }));
   put.run('new-visitor', Date.now() + HOUR, JSON.stringify({ cookie: {}, csrf: 'y' }));
   put.run('old-signed-in', Date.now() + 29 * 24 * HOUR, JSON.stringify({ cookie: {}, csrf: 'z', userId: userId('so.sam') }));
   put.run('ran-out', Date.now() - 1000, JSON.stringify({ cookie: {}, csrf: 'w', userId: userId('so.sam') }));
+  const open = new Client();
+  const openToken = await open.csrf('/login?next=%2Fpeople');                // a sign-in page somebody has open, from before the update
+  db.prepare('UPDATE sessions SET expires = ? WHERE sid = ?').run(Date.now() + 29 * 24 * HOUR, sidOf(open));
+  const lives = () => Object.fromEntries(db.prepare("SELECT sid, expires FROM sessions WHERE sid IN ('old-visitor', 'new-visitor', 'old-signed-in', 'ran-out')").all().map((x) => [x.sid, Math.round((x.expires - Date.now()) / HOUR)]));
   clearInterval(new Store(db, 30 * 24 * HOUR, 2 * HOUR).timer);
-  assert.deepEqual(db.prepare("SELECT sid FROM sessions WHERE sid IN ('old-visitor', 'new-visitor', 'old-signed-in', 'ran-out') ORDER BY sid").all().map((x) => x.sid), ['new-visitor', 'old-signed-in']);
-  db.prepare("DELETE FROM sessions WHERE sid IN ('new-visitor', 'old-signed-in')").run();
+  assert.deepEqual(lives(), { 'old-visitor': 2, 'new-visitor': 1, 'old-signed-in': 29 * 24 });
+  assert.ok(life(open) < 2.1 * HOUR);
+  assert.equal((await open.req('POST', '/login', new URLSearchParams({ _csrf: openToken, username: 'so.sam', password: 'meadow lantern copper 7', next: '/people' }))).location, '/people');
+  clearInterval(new Store(db, 30 * 24 * HOUR, 2 * HOUR).timer);              // a second start changes nothing
+  assert.deepEqual(lives(), { 'old-visitor': 2, 'new-visitor': 1, 'old-signed-in': 29 * 24 });
+  db.prepare("DELETE FROM sessions WHERE sid IN ('old-visitor', 'new-visitor', 'old-signed-in')").run();
 
   // The allowance for one address, tried on a site started with the ordinary settings (this file raises the sign-in
   // limit for its own sake, and the allowance follows it). 600 requests in five minutes from people who are not signed in,
   // then "wait". Someone who is signed in is never counted or refused, and neither is the health check.
+  // (It runs beside this file's own site, not in place of it: holding this one still for seconds leaves its open
+  // connections stale, and the next test's first request then fails.)
   const L = encryptionLab();
-  const out = L.run(`
+  const beside = (code) => new Promise((resolve) => require('child_process').execFile(process.execPath, ['-e', code],
+    { cwd: path.join(__dirname, '..'), env: { PATH: process.env.PATH, DATA_DIR: L.dir, BCRYPT_ROUNDS: '4', APP_TIMEZONE: 'America/New_York' }, encoding: 'utf8' },
+    (err, stdout, stderr) => resolve({ ok: !err, out: String(stdout || ''), err: String(stderr || '') })));
+  const out = await beside(`
     const db = require('./app/db'); const auth = require('./app/auth'); const app = require('./app/app');
     const id = auth.createUser({ username: 'lim.one', displayName: 'Lim One', password: 'correct horse battery', profile: 'Technician' });
     db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?').run(id);
@@ -5786,6 +5800,111 @@ test('complaint notice: every office with new complaints is counted and told, on
   db.prepare("DELETE FROM complaints WHERE description LIKE 'NOTICE-TEXT%'").run();
   if (was) db.prepare("UPDATE meta SET value = ? WHERE key = 'complaint_digest_date'").run(was.value); else db.prepare("DELETE FROM meta WHERE key = 'complaint_digest_date'").run();
   db.prepare("UPDATE users SET email = NULL WHERE username LIKE 'cn.%'").run();
+});
+
+test('complaint trail: capitals in the address, the lock screen, the Back button and switching office leave no trace of the form either', async () => {
+  makeUser('ct.tess', 'Tess Trail'); makeUser('ct.ida', 'Ida Idle');
+  const pw = 'correct horse battery';
+  const sidOf = (client) => decodeURIComponent(/portal\.sid=([^;]+)/.exec(client.cookie)[1]).slice(2).split('.')[0];
+  const rowOf = (client) => ({ ...db.prepare('SELECT expires, data FROM sessions WHERE sid = ?').get(sidOf(client)) });
+  const logged = async () => { await new Promise((r) => setTimeout(r, 30)); return logLines.splice(0).filter((l) => /^(GET|POST|HEAD) /.test(l)); };
+  const tess = await loggedIn('ct.tess');
+  await tess.get('/');
+  await logged();
+
+  // The same pages typed with capitals, or with a slash on the end, are shown just the same. So they are treated just the
+  // same: nothing in the log, and the session row is left exactly as it was.
+  const before = rowOf(tess);
+  await new Promise((r) => setTimeout(r, 15));
+  for (const url of ['/Complaint', '/COMPLAINT', '/complaint/', '/Complaint/Status', '/complaint/STATUS/']) {
+    const r = await tess.get(url);
+    assert.equal(r.status, 200, url);
+    assert.match(r.text, /<form method="post" action="\/complaint(\/status)?"/, url);
+  }
+  assert.deepEqual(await logged(), []);
+  assert.deepEqual(rowOf(tess), before);
+  // A sign-in aimed at one of them goes by the home page, like the plain address.
+  const aimed = async (next) => (await new Client().post('/login', { username: 'ct.tess', password: pw, next }, { page: '/login' })).location;
+  assert.equal(await aimed('/Complaint'), '/#complaint-form');
+  assert.equal(await aimed('/COMPLAINT/Status/'), '/#complaint-status');
+  assert.equal(await aimed('/people'), '/people');
+  // Face ID or a fingerprint does the same, signing in from scratch and unlocking.
+  const phone = new FakeDevice(base);
+  let opts = (await sendJson(tess, '/passkey/register/options')).body.options;
+  assert.equal((await sendJson(tess, '/passkey/register/verify', { response: phone.create(opts), device: 'Tess phone' })).status, 200);
+  const byFace = new Client();
+  opts = (await sendJson(byFace, '/passkey/auth/options', {}, '/login')).body.options;
+  assert.deepEqual((await sendJson(byFace, '/passkey/auth/verify', { response: phone.get(opts), next: '/complaint' }, '/login')).body, { ok: true, next: '/#complaint-form' });
+  assert.equal((await byFace.post('/lock', {}, { page: '/' })).status, 204);
+  opts = (await sendJson(byFace, '/passkey/auth/options', {}, '/unlock')).body.options;
+  assert.deepEqual((await sendJson(byFace, '/passkey/auth/verify', { response: phone.get(opts), next: '/Complaint/status' }, '/unlock')).body, { ok: true, next: '/#complaint-status' });
+  // None of those sign-ins kept a note of where the person was heading.
+  assert.doesNotMatch(db.prepare('SELECT data FROM sessions').all().map((x) => x.data).join('\n'), /complaint/i);
+
+  // The Back button after unlocking asks for the lock screen again while the site is open. That goes by the home page
+  // too, not straight to the form from a request that is on record.
+  assert.equal((await tess.get('/unlock?next=%2Fcomplaint')).location, '/#complaint-form');
+  assert.equal((await tess.post('/unlock', { password: pw, next: '/complaint/status' }, { page: '/' })).location, '/#complaint-status');
+  assert.equal((await tess.get('/unlock?next=%2Fpeople')).location, '/people');
+
+  // The site closed and opened again straight at the form (a restored tab, a bookmark): the page locks itself and the
+  // person unlocks. In the log that reads line for line like a site that sat unused on the home page until it locked.
+  const unlock = async (client, next) => {
+    const screen = await client.get('/unlock?next=' + encodeURIComponent(next));
+    assert.equal(screen.status, 200);
+    return client.req('POST', '/unlock', new URLSearchParams({ _csrf: /name="_csrf" value="([0-9a-f]+)"/.exec(screen.text)[1], password: pw, next }));
+  };
+  await logged();
+  assert.equal((await tess.post('/lock', {}, { page: '/complaint' })).status, 204);
+  assert.equal((await unlock(tess, '/complaint')).location, '/#complaint-form');
+  assert.equal((await tess.get('/')).status, 200);
+  const reopenedAtTheForm = await logged();
+  const ida = await loggedIn('ct.ida');
+  await ida.get('/');
+  await logged();
+  db.prepare("UPDATE sessions SET data = json_set(data, '$.seenAt', ?) WHERE sid = ?").run(Date.now() - 3 * 3600000, sidOf(ida));
+  assert.equal((await ida.get('/pulse')).location, '/unlock?next=%2Fpulse');   // the page's own check finds the site has locked
+  assert.equal((await unlock(ida, '/')).location, '/');
+  assert.equal((await ida.get('/')).status, 200);
+  assert.deepEqual(reopenedAtTheForm, await logged());
+  assert.deepEqual(reopenedAtTheForm, ['POST /unlock 302', 'GET / 200']);
+
+  // Someone who looks at every office, changing office while a complaint page is open, is taken back by the home page as well.
+  const corp = await loggedIn('owner');
+  assert.equal((await corp.post('/branch/view', { branch: 'all', back: '/complaint' }, { page: '/' })).location, '/#complaint-form');
+  assert.equal((await corp.post('/branch/view', { branch: 'all', back: '/Complaint/status' }, { page: '/' })).location, '/#complaint-status');
+  assert.equal((await corp.post('/branch/view', { branch: 'all', back: '/people' }, { page: '/' })).location, '/people');
+});
+
+test('alerts: an account that is switched off or removed gets nothing, even with a sign-in of theirs still on record', async () => {
+  const push = require('../app/push');
+  const pushed = [];
+  push.setSender(async (sub) => { pushed.push(sub.endpoint.split('/').pop()); });
+  const id = makeUser('al.dee', 'Dee Device');
+  const c = await loggedIn('al.dee');
+  const turnedOn = await c.post('/push/subscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/dee-phone', device: 'dee-phone',
+    p256dh: 'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM', auth: 'tBHItJI5svbpez7KI4CCXg' }, { page: '/settings/notifications' });
+  assert.equal(turnedOn.status, 200);
+  const tell = async () => { pushed.length = 0; await push.notify([id], 'task_assigned', { title: 'Note on your lead: Keystone Diner LLC', body: 'x', url: '/sales/1' }); return pushed.slice(); };
+  const signIns = () => db.prepare("SELECT COUNT(*) n FROM sessions WHERE json_extract(data, '$.userId') = ?").get(id).n;
+  assert.deepEqual(await tell(), ['dee-phone']);
+  // Switched off by something that did not end their sign-ins: the alerts stop all the same.
+  db.prepare('UPDATE users SET active = 0 WHERE id = ?').run(id);
+  assert.equal(signIns(), 1);
+  assert.deepEqual(await tell(), []);
+  db.prepare('UPDATE users SET active = 1, removed_at = ? WHERE id = ?').run(new Date().toISOString(), id);
+  assert.deepEqual(await tell(), []);
+  db.prepare('UPDATE users SET removed_at = NULL WHERE id = ?').run(id);
+  assert.deepEqual(await tell(), ['dee-phone']);
+  // Only their own sign-in counts. A registration that names somebody else's sign-in is not sent to.
+  const other = await loggedIn('tech2');
+  const mine = db.prepare('SELECT sid FROM push_subscriptions WHERE user_id = ?').get(id).sid;
+  db.prepare('UPDATE push_subscriptions SET sid = ? WHERE user_id = ?').run(decodeURIComponent(/portal\.sid=([^;]+)/.exec(other.cookie)[1]).slice(2).split('.')[0], id);
+  assert.deepEqual(await tell(), []);
+  db.prepare('UPDATE push_subscriptions SET sid = ? WHERE user_id = ?').run(mine, id);
+  assert.deepEqual(await tell(), ['dee-phone']);
+  db.prepare('DELETE FROM push_subscriptions WHERE user_id = ?').run(id);
+  push.setSender(async () => {});
 });
 
 // .

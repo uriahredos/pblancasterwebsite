@@ -15,10 +15,12 @@ class SqliteStore extends session.Store {
     this.delStmt = db.prepare('DELETE FROM sessions WHERE sid = ?');
     this.touchStmt = db.prepare('UPDATE sessions SET expires = ? WHERE sid = ?');
     this.purgeStmt = db.prepare('DELETE FROM sessions WHERE expires <= ?');
-    // Sessions of visitors who never signed in used to be kept as long as everyone else's. Any still here go now, with the expired ones.
+    // Sessions of visitors who never signed in used to be kept as long as everyone else's. Any still here get the short life
+    // from now (so a sign-in page that is open at this moment still works), and the expired ones go.
     // A tidy-up only: if it cannot run, the site still starts.
     try {
-      db.prepare("DELETE FROM sessions WHERE json_extract(data, '$.userId') IS NULL AND expires > ?").run(Date.now() + visitorTtlMs);
+      const soon = Date.now() + visitorTtlMs;
+      db.prepare("UPDATE sessions SET expires = ? WHERE json_extract(data, '$.userId') IS NULL AND expires > ?").run(soon, soon);
       this.purgeStmt.run(Date.now());
     } catch (e) { console.error('[sessions] could not clear old sessions:', e.message); }
     this.timer = setInterval(() => this.purgeStmt.run(Date.now()), 60 * 60 * 1000);
