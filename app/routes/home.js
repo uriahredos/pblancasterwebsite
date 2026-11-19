@@ -207,4 +207,13 @@ router.get('/my', requireLogin, (req, res) => {
   db.prepare('UPDATE training_requests SET unseen = 0 WHERE user_id = ? AND unseen = 1').run(req.user.id);
 });
 
+// The activity feed in full: everything on the home page's short list and further back, with shout-outs too.
+const FEED_KINDS = { talk: 'Discussions', photo: 'Photos', event: 'Events', shout: 'Shout-outs', hire: 'New people' };
+router.get('/feed', requireLogin, (req, res) => {
+  const show = Object.prototype.hasOwnProperty.call(FEED_KINDS, req.query.show) ? req.query.show : '';
+  const all = require('../feed').recent(req.user, 400, { full: true });
+  const kinds = Object.keys(FEED_KINDS).filter((k) => all.some((i) => i.kind === k)).map((k) => ({ key: k, label: FEED_KINDS[k], n: all.filter((i) => i.kind === k).length }));
+  res.render('feed', { title: 'Activity feed', items: (show ? all.filter((i) => i.kind === show) : all).slice(0, 100), kinds, show, total: all.length });
+});
+
 module.exports = router;

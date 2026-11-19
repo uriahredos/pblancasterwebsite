@@ -1,0 +1,23 @@
+<%- include('partials/header') %>
+<p class="back"><a class="back-link" href="/">Home</a></p>
+<h1>Activity feed</h1>
+<p class="lede">What people across the company have been doing over the last three months, newest first.</p>
+<% if (kinds.length > 1) { %>
+<p class="presets">
+  <a href="/feed" <%- show ? '' : 'aria-current="true"' %>>Everything</a>
+  <% kinds.forEach(function (k) { %><a href="/feed?show=<%= k.key %>" <%- show === k.key ? 'aria-current="true"' : '' %>><%= k.label %> (<%= k.n %>)</a><% }) %>
+</p>
+<% } %>
+<% if (!items.length) { %>
+<p class="card empty">Nothing here yet. Add a photo, start a discussion or post an event and it shows up here.</p>
+<% } else { %>
+<section class="panel p-around feed-page">
+  <ul class="feed">
+    <% items.forEach(function (i) { %>
+    <%- include('partials/feed_item', { i: i, anchor: false }) %>
+    <% }) %>
+  </ul>
+</section>
+<% } %>
+<p class="filter-actions spaced"><a class="btn small" href="/photos">Add a photo</a><% if (can('forum.use')) { %><a class="btn small" href="/discussions/new">Start a discussion</a><% } %><a class="btn small" href="/events">Events</a><a class="btn small" href="/shoutouts">Give a shout-out</a></p>
+<%- include('partials/footer') %>

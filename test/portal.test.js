@@ -5317,3 +5317,35 @@ test('on call: a phone shows the next four weeks and keeps the rest of the year 
   assert.match(css, /\.oncall-table:not\(\.all\) tr\.later \{ display: none; \}/);
   assert.match((await c.get('/site.js')).text, /data-oncall-all/);
 });
+
+test('the Feed page: the activity feed in full, with shout-outs and past events, and the home panel links to it', async () => {
+  const t1 = await loggedIn('tech1'); const t2 = await loggedIn('tech2');
+  const home = (await t1.get('/')).text;
+  assert.match(home, /<h2 id="around-h">Activity feed<\/h2><a href="\/feed">Feed<\/a>/);
+  assert.doesNotMatch(/<section class="panel p-around"[\s\S]*?<\/section>/.exec(home)[0], /href="\/people">People</);
+  assert.equal((await new Client().get('/feed')).location, '/login?next=%2Ffeed');
+  // More than the home page's eight, and things the home list leaves out.
+  const sec = db.prepare('SELECT id FROM forum_sections ORDER BY id LIMIT 1').get().id;
+  for (let i = 0; i < 11; i++) db.prepare('INSERT INTO forum_threads (section_id, user_id, title, created_at, last_post_at, last_post_user_id) VALUES (?, ?, ?, ?, ?, ?)').run(sec, userId('tech2'), `FEEDPAGE thread ${i}`, new Date(Date.now() - i * 60000).toISOString(), new Date().toISOString(), userId('tech2'));
+  await t2.post('/shoutouts', { to_user: String(userId('tech1')), message: 'FEEDPAGE covered my Saturday call' }, { page: '/shoutouts' });
+  const past = new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10);
+  db.prepare('INSERT INTO events (title, event_date, created_by, created_at) VALUES (?, ?, ?, ?)').run('FEEDPAGE cookout that already happened', past, userId('tech2'), new Date(Date.now() - 5 * 86400000).toISOString());
+  const feed = (await t1.get('/feed')).text.replace(/\s+/g, ' ');
+  assert.match(feed, /<h1>Activity feed<\/h1>/);
+  assert.equal((feed.match(/FEEDPAGE thread \d+<\/strong>/g) || []).length, 11);
+  assert.match(feed, /<li class="feed-shout"[^>]*>[\s\S]*?<strong>FEEDPAGE covered my Saturday call<\/strong>[\s\S]*?gave [^<]* a shout-out<\/p>/);
+  assert.match(feed, /FEEDPAGE cookout that already happened, /);
+  assert.ok((feed.match(/<li class="feed-/g) || []).length > 8);
+  const onHome = /<section class="panel p-around"[\s\S]*?<\/section>/.exec((await t1.get('/')).text)[0];
+  assert.ok((onHome.match(/<li class="feed-/g) || []).length <= 8); assert.doesNotMatch(onHome, /FEEDPAGE covered|already happened/);   // the home page keeps its short list
+  // One kind at a time.
+  assert.match(feed, /<a href="\/feed" aria-current="true">Everything<\/a>/); assert.match(feed, /<a href="\/feed\?show=shout" >Shout-outs \(\d+\)<\/a>/);
+  const shouts = (await t1.get('/feed?show=shout')).text;
+  assert.match(shouts, /FEEDPAGE covered my Saturday call/); assert.doesNotMatch(shouts, /FEEDPAGE thread/);
+  assert.match((await t1.get('/feed?show=nonsense')).text, /FEEDPAGE thread 0/);
+  // Never more than a hundred on the page.
+  const add = db.prepare('INSERT INTO forum_threads (section_id, user_id, title, created_at, last_post_at, last_post_user_id) VALUES (?, ?, ?, ?, ?, ?)');
+  for (let i = 0; i < 130; i++) add.run(sec, userId('tech2'), `FEEDFLOOD ${i}`, new Date(Date.now() - 86400000 - i * 1000).toISOString(), new Date().toISOString(), userId('tech2'));
+  assert.equal(((await t1.get('/feed')).text.match(/<li class="feed-/g) || []).length, 100);
+  db.prepare("DELETE FROM forum_threads WHERE title LIKE 'FEEDFLOOD %' OR title LIKE 'FEEDPAGE %'").run();
+});

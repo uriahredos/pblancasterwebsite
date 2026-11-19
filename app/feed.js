@@ -22,10 +22,13 @@ function ago(iso, now = Date.now()) {
 
 /**
  * The newest things from every office, newest first: people joining, photos added, discussions started
- * and events posted (shout-outs have their own list). Each item says which office it came from.
+ * and events posted. Each item says which office it came from.
+ * The home page takes the latest few (shout-outs have their own panel there). The Feed page asks for `full`: three
+ * months back, shout-outs included, and events that have already happened too.
  */
-function recent(user, limit = 8) {
-  const since = new Date(Date.now() - 30 * 86400000).toISOString();
+function recent(user, limit = 8, { full = false } = {}) {
+  const since = new Date(Date.now() - (full ? 90 : 30) * 86400000).toISOString();
+  const each = full ? 100 : 6;
   const items = [];
   const person = 'u.id AS user_id, u.display_name, u.photo_path, b.name AS office, b.id AS office_id';
   const from = 'JOIN users u ON u.id = x.USER LEFT JOIN branches b ON b.id = u.branch_id';
@@ -33,24 +36,30 @@ function recent(user, limit = 8) {
   for (const w of db.prepare(`SELECT x.id, x.intro, x.created_at, u.job_title, ${person},
       EXISTS (SELECT 1 FROM welcome_notes n WHERE n.welcome_id = x.id AND n.user_id = @me) AS waved,
       (SELECT COUNT(*) FROM welcome_notes n JOIN users nu ON nu.id = n.user_id WHERE n.welcome_id = x.id AND nu.active = 1) AS waves
-      FROM welcomes x ${from.replace('USER', 'user_id')} WHERE u.active = 1 AND x.created_at >= @since ORDER BY x.created_at DESC LIMIT 6`).all({ me: user.id, since: new Date(Date.now() - 14 * 86400000).toISOString() })) {
+      FROM welcomes x ${from.replace('USER', 'user_id')} WHERE u.active = 1 AND x.created_at >= @since ORDER BY x.created_at DESC LIMIT ${each}`).all({ me: user.id, since: full ? since : new Date(Date.now() - 14 * 86400000).toISOString() })) {
     items.push({ kind: 'hire', at: w.created_at, who: w, title: `${w.display_name} joined${w.office ? ' the ' + w.office + ' office' : ''}`, text: w.intro || w.job_title || '', url: `/people/${w.user_id}`,
       action: w.user_id === user.id || w.waved ? null : { url: `/welcome/${w.id}/wave`, label: '👋 Say welcome' }, done: w.waved ? 'You said welcome ✓' : '',
       extra: w.waves ? `${w.waves} ${w.waves === 1 ? 'welcome' : 'welcomes'}` : 'Be the first to say welcome', link: w.user_id === user.id ? { url: `/people/${w.user_id}#welcome`, label: 'See your messages' } : null });
   }
   for (const p of db.prepare(`SELECT x.id, x.caption, x.created_at, ${person} FROM wall_photos x ${from.replace('USER', 'user_id')}
-      WHERE x.created_at >= @since ORDER BY x.created_at DESC LIMIT 6`).all({ since })) {
+      WHERE x.created_at >= @since ORDER BY x.created_at DESC LIMIT ${each}`).all({ since })) {
     items.push({ kind: 'photo', at: p.created_at, who: p, title: `${p.display_name} added a photo`, text: p.caption || '', url: '/photos', photo: p.id });
   }
   if (user.perms && user.perms.has('forum.use')) {
     for (const t of db.prepare(`SELECT x.id, x.title, x.created_at, x.reply_count, ${person} FROM forum_threads x ${from.replace('USER', 'user_id')}
-        WHERE x.created_at >= @since ORDER BY x.created_at DESC LIMIT 6`).all({ since })) {
+        WHERE x.created_at >= @since ORDER BY x.created_at DESC LIMIT ${each}`).all({ since })) {
       items.push({ kind: 'talk', at: t.created_at, who: t, title: `${t.display_name} started a discussion`, text: t.title, url: `/discussions/t/${t.id}`, extra: t.reply_count ? `${t.reply_count} ${t.reply_count === 1 ? 'reply' : 'replies'}` : 'Be the first to reply' });
     }
   }
   for (const e of db.prepare(`SELECT x.id, x.title, x.event_date, x.created_at, eb.name AS host, ${person} FROM events x ${from.replace('USER', 'created_by')}
-      LEFT JOIN branches eb ON eb.id = x.branch_id WHERE x.created_at >= @since AND x.event_date >= @today ORDER BY x.created_at DESC LIMIT 4`).all({ since, today: localDate() })) {
+      LEFT JOIN branches eb ON eb.id = x.branch_id WHERE x.created_at >= @since AND x.event_date >= @today ORDER BY x.created_at DESC LIMIT ${full ? each : 4}`).all({ since, today: full ? '0000-00-00' : localDate() })) {
     items.push({ kind: 'event', at: e.created_at, who: e, title: `${e.display_name} posted an event`, text: `${e.title}, ${MONTHS[Number(e.event_date.slice(5, 7)) - 1]} ${Number(e.event_date.slice(8))}${e.host ? '' : ' (whole company)'}`, url: `/events#e${e.id}` });
+  }
+  if (full) {
+    for (const s of db.prepare(`SELECT x.id, x.message, x.created_at, t.display_name AS to_name, ${person} FROM shoutouts x ${from.replace('USER', 'from_user')}
+        JOIN users t ON t.id = x.to_user WHERE x.created_at >= @since ORDER BY x.created_at DESC LIMIT ${each}`).all({ since })) {
+      items.push({ kind: 'shout', at: s.created_at, who: s, title: `${s.display_name} gave ${s.to_name} a shout-out`, text: s.message, url: `/shoutouts#s${s.id}` });
+    }
   }
   items.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
   return items.slice(0, limit).map((i) => ({ ...i, when: ago(i.at), away: Boolean(i.who.office_id && i.who.office_id !== user.branch_id) }));
