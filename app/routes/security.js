@@ -19,7 +19,7 @@ const router = express.Router();
 const guard = requireEveryBranch('users.manage');
 const DAY = 86400000;
 const stored = (key) => (db.prepare('SELECT value FROM meta WHERE key = ?').get(key) || {}).value;
-const size = (bytes) => (bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 3).toFixed(1)} GB` : `${Math.max(1, Math.round(bytes / 1024 ** 2))} MB`);
+const size = (bytes) => (bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 3).toFixed(1).replace(/\.0$/, '')} GB` : `${Math.max(1, Math.round(bytes / 1024 ** 2))} MB`);
 const ago = (days) => (days === 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`);
 
 /** Room on the disk that holds the database, its backups and the photos. Null where the system cannot say: the line is then left out. */

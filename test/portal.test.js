@@ -5367,11 +5367,14 @@ test('the Feed page: the activity feed in full, with shout-outs and past events,
 // .
 // -- review: backups, restore and the key --
 // A running copy of the site on a lab folder (see encryptionLab), and a client that talks to it.
+const labSites = [];
+after(() => { for (const child of labSites) if (child.exitCode === null && !child.signalCode) child.kill('SIGKILL'); });   // a failed check must not leave one running
 async function labSite(L, settings = {}) {
   const { spawn } = require('child_process'); const net = require('net');
   const port = await new Promise((resolve) => { const s = net.createServer(); s.listen(0, () => { const p = s.address().port; s.close(() => resolve(p)); }); });
   let log = '';
   const child = spawn(process.execPath, ['app/server.js'], { cwd: L.root, env: L.env({ PORT: String(port), SESSION_SECRET: 'x'.repeat(40), ...settings }), stdio: ['ignore', 'pipe', 'pipe'] });
+  labSites.push(child);
   child.stdout.on('data', (d) => { log += d; }); child.stderr.on('data', (d) => { log += d; });
   const origin = `http://localhost:${port}`;
   const get = (url) => fetch(origin + url, { redirect: 'manual' }).then(async (r) => ({ status: r.status, text: await r.text(), headers: r.headers }));
@@ -5397,7 +5400,7 @@ const STOP_AT = (n, then) => `const fs = require('fs'); let seen = 0;
 
 test('backups: a copy counts only once it has been opened and checked; a failed night leaves nothing behind, is tried again and is reported; sessions are left out', async () => {
   const backup = require('../app/backup'); const dbfile = require('../app/dbfile'); const push = require('../app/push');
-  const dir = backup.backupDir; const had = new Set(fs.readdirSync(dir));
+  const dir = backup.backupDir; fs.mkdirSync(dir, { recursive: true }); const had = new Set(fs.readdirSync(dir));
   const owner = await loggedIn('owner'); const tech = await loggedIn('tech1');
   const page = '/admin/backups';
   const bellOf = (html) => (/<details class="bell"[\s\S]*?<\/details>/.exec(html) || [''])[0];
@@ -5898,6 +5901,9 @@ test('Security check: the saved copy of the key can be checked, yes or no; room 
   let lab = await labSite(L, { DB_KEY: KEY2, DB_KEY_OLD: KEY });
   assert.match(lab.log(), /The database now uses the new key\. Photos and documents are still moving to it: leave DB_KEY_OLD in the hosting settings until the Security check says it can be deleted\. Keep the key that was replaced on record/);
   assert.doesNotMatch(lab.log(), /DB_KEY_OLD can be removed/);
+  // The Backups page keeps the day of the change in view, for anyone holding copies downloaded before it.
+  const later = new LabClient(lab.origin); later.cookie = boss.cookie;
+  assert.match((await later.get('/admin/backups')).text, /The key was changed on \d+\/\d+\/\d{4}\. A backup or photo archive downloaded before then opens only with the key from before/);
   await lab.stop();
   const sealed = require('../app/sealed');
   const up = path.join(L.dir, 'uploads');

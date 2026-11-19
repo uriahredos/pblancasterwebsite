@@ -277,7 +277,7 @@ const RESTORE_HOW = (name) => `To go back to it, ${SETTINGS}, add a setting name
 function damaged(seen) {
   return new Stopped('The database file is damaged. The key is not the problem.',
     seen.good ? `The newest backup that opens is ${seen.good}. ${RESTORE_HOW(seen.good)}`
-      : 'No backup on the disk opens either. Tell whoever maintains the site before changing anything: the files are still there.', false);
+      : 'No backup on the disk passes its check either. Tell whoever maintains the site before changing anything: the files are still there.', false);
 }
 
 /** A start that failed because SQLite found the file damaged gets the closed page too, not a crash only the server log explains. */

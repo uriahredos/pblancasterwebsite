@@ -24,16 +24,22 @@ router.get('/admin/backups', requireBackupAccess, (req, res) => {
     proved: provedRecently(req), encrypted: Boolean(require('../db').encryption && require('../db').encryption.encrypted),
     title: 'Backups', backups: backup.listBackups().map((b) => ({ ...b, fault: backup.standing(b) })), keep: config.backupKeep, keepManual: backup.KEEP.manual,
     emailTo: config.backupEmailTo, hour: config.backupHour, failed: backup.report().failed,
+    keyChanged: (require('../db').prepare("SELECT value FROM meta WHERE key = 'db_key_changed_at'").get() || {}).value || null,
   });
 });
 
-router.post('/admin/backups/run', requireBackupAccess, async (req, res, next) => {
+router.post('/admin/backups/run', requireBackupAccess, async (req, res) => {
   try {
     const name = await backup.runBackup({ manual: true });
     activity.log(req.user, 'Backup made', name);
     flash(req, 'ok', `Backup ${name} created.`);
     res.redirect('/admin/backups');
-  } catch (e) { next(e); }
+  } catch (e) {
+    // The page itself says what went wrong (see "failed" above); an error page would say less.
+    console.error('[backup] failed:', e.message);
+    flash(req, 'err', 'The backup did not work.');
+    res.redirect('/admin/backups');
+  }
 });
 
 router.get('/admin/backups/photos.tar.gz', requireBackupAccess, needPassword, (req, res) => {

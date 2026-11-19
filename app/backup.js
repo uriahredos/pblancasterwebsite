@@ -44,8 +44,8 @@ function failed(e, kind) {
   // The people who look after backups hear about it on their phones; their bell and the Security check show it too.
   try {
     const access = require('./permissions');
-    const people = db.prepare('SELECT * FROM users WHERE active = 1').all().map((u) => access.loadAccess(u))
-      .filter((u) => u.allBranches && access.can(u, 'backups')).map((u) => u.id);
+    const people = db.prepare('SELECT DISTINCT u.* FROM users u JOIN push_subscriptions s ON s.user_id = u.id WHERE u.active = 1').all()
+      .map((u) => access.loadAccess(u)).filter((u) => u.allBranches && access.can(u, 'backups')).map((u) => u.id);
     require('./push').notify(people, 'backup_failed', { title: 'Last night\'s backup did not work', body: 'The site keeps trying. Open Backups to see why.', url: '/admin/backups' });
   } catch (err) { console.error('[backup] could not send the alert:', err.message); }
 }
@@ -67,7 +67,7 @@ function standing(b, deep = false) {
 function prune(kind) {
   let good = 0;
   for (const b of listBackups().filter((x) => x.kind === kind)) {
-    if (good >= KEEP[kind]) { fs.rmSync(path.join(backupDir, b.name), { force: true }); looked.delete(b.name); }
+    if (good >= KEEP[kind]) { dbfile.clear(path.join(backupDir, b.name)); looked.delete(b.name); }
     else if (!standing(b)) good += 1;
   }
 }

@@ -51,6 +51,8 @@ if (!process.env.SESSION_SECRET) {
   const e = db.encryption; const backup = require('./backup');
   const RECORD = 'Keep the key that was replaced on record for as long as any backup or photo archive downloaded while it was in use is kept: those open only with it.';
   if (e.changed === 'encrypted') console.log('[database key] The database has been encrypted. Keep a copy of DB_KEY somewhere safe: without it the data cannot be opened.');
+  // The day of a key change is kept, so the Backups page can say which downloaded copies need the key from before.
+  if (e.changed === 'rekeyed') db.prepare("INSERT INTO meta (key, value) VALUES ('db_key_changed_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(new Date().toISOString());
   if (e.changed === 'rekeyed') console.log(`[database key] The database now uses the new key. Photos and documents are still moving to it: leave DB_KEY_OLD in the hosting settings until the Security check says it can be deleted. ${RECORD}`);
   if (e.changed === 'decrypted') console.log(`[database key] The database has been decrypted, as DB_DECRYPT asked. Photos and documents are still being opened: leave DB_KEY in the hosting settings until the Security check says none are still encrypted. ${RECORD}`);
   if (e.note) console.warn(`[database key] ${e.note}`);
