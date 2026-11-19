@@ -119,8 +119,12 @@ async function nightly(now = new Date()) {
   return runBackup({ now });
 }
 
-/** Backups made before the database was encrypted (or under a key since changed) are brought into line with the key in use. */
+/**
+ * When the site starts: unfinished copies are cleared away, and backups made before the database was encrypted (or
+ * under a key since changed) are brought into line with the key in use.
+ */
 function alignWithKey() {
+  tidy();
   const done = dbfile.alignCopies(listBackups().map((b) => path.join(backupDir, b.name)), db.encryption);
   looked.clear();
   return done;
@@ -139,7 +143,7 @@ function report(now = new Date()) {
   return { count: all.length, newest, fault, good, age: good ? daysOld(good) : null, failed: failing() ? state.failed : null };
 }
 
-/** At start-up: clear away copies that were never finished (a stop part-way, a full disk) and empty files left under a backup's name. */
+/** Clear away copies that were never finished (a stop part-way, a full disk) and empty files left under a backup's name. */
 function tidy() {
   let names;
   try { names = fs.readdirSync(backupDir); } catch (e) { return; }
@@ -150,7 +154,6 @@ function tidy() {
     } catch (e) { /* gone already */ }
   }
 }
-tidy();
 
 function startNightlyBackups() {
   const tick = () => nightly().catch((e) => console.error('[backup] failed:', e.message));

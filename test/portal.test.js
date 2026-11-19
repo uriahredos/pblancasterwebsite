@@ -5487,14 +5487,17 @@ test('backups: a copy counts only once it has been opened and checked; a failed 
   for (const n of [4, 5, 6]) fs.writeFileSync(path.join(L.dir, 'backups', `portal-2031-05-0${n}.db`), '');
   fs.writeFileSync(path.join(L.dir, 'backups', 'portal-2031-05-07.db'), require('crypto').randomBytes(4096));
   fs.writeFileSync(path.join(L.dir, 'backups', 'portal-2031-05-08.db.partial'), 'half a copy'); fs.writeFileSync(path.join(L.dir, 'backups', 'portal-2031-05-08.db.partial-journal'), 'x');
+  assert.equal(L.state({ BACKUP_KEEP: '3' }).users, 1);                       // a start of the site clears the unfinished copy and the empty files
+  assert.doesNotMatch(names().join(' '), /partial|portal-2031-05-0[456]\.db/);
   assert.ok(L.run(NIGHTS([8]), { BACKUP_KEEP: '3' }).ok);
   const real = names().filter((n) => /^portal-2031-05-\d\d\.db$/.test(n) && dbfile.inspect(path.join(L.dir, 'backups', n), '').fault === null);
   assert.deepEqual(real, ['portal-2031-05-02.db', 'portal-2031-05-03.db', 'portal-2031-05-08.db']);   // the newest three good ones; the empty files pushed nothing out
-  assert.doesNotMatch(names().join(' '), /partial|portal-2031-05-0[1456]\.db/);  // unfinished copies and empty files are cleared at start-up
+  assert.equal(names().includes('portal-2031-05-01.db'), false); assert.ok(names().includes('portal-2031-05-07.db'));   // the oldest good one made way; the rubbish is left for a person to see
   // Seven presses of "Back up now": the newest five of those are kept, and the nightly copies are all still there.
   assert.ok(L.run(`const b = require('./app/backup'); (async () => { for (let i = 1; i <= 7; i++) await b.runBackup({ manual: true, now: new Date(Date.UTC(2031, 4, 9, 10, 0, i)) }); })();`, { BACKUP_KEEP: '3' }).ok);
   assert.equal(names().filter((n) => /-\d{6}\.db$/.test(n)).length, 5);
   assert.deepEqual(names().filter((n) => /^portal-2031-05-\d\d\.db$/.test(n) && n !== 'portal-2031-05-07.db'), real);
+  fs.rmSync(L.dir, { recursive: true, force: true });
 });
 
 test('backups: after a key is set or changed each stored copy is converted as a copy and swapped in, so a start that is cut short cannot leave a damaged backup', async () => {
@@ -5537,6 +5540,7 @@ test('backups: after a key is set or changed each stored copy is converted as a 
   assert.doesNotMatch(L.run(STOP_AT(6, ALIGN), { DB_KEY: KEY2, DB_KEY_OLD: KEY }).out, /FINISHED/);   // the working copy is under the new key; the backup has not been swapped yet
   assert.ok(fs.readdirSync(path.join(L.dir, 'backups')).some((f) => f.endsWith('.db.converting')));
   for (const b of L.backups()) assert.ok(opens(b, KEY), path.basename(b));
+  fs.rmSync(L.dir, { recursive: true, force: true });
 });
 
 test('restore: RESTORE_BACKUP brings a backup back at start-up, sets the database from before aside whole, does it once, and refuses without touching anything when it cannot', async () => {
@@ -5551,7 +5555,7 @@ test('restore: RESTORE_BACKUP brings a backup back at start-up, sets the databas
   const STATE = `const db = require('./app/db'); const get = (k) => (db.prepare('SELECT value v FROM meta WHERE key = ?').get(k) || {}).v || null;
     console.log(JSON.stringify({ restored: db.encryption.restored, era: get('era'), later: get('later'), marker: get('marker'), users: db.prepare('SELECT COUNT(*) n FROM users').get().n, integrity: db.pragma('integrity_check', { simple: true }) }));`;
   const QUICK = `const { db, status } = require('./app/dbfile').open(process.env.DATA_DIR); const get = (k) => (db.prepare('SELECT value v FROM meta WHERE key = ?').get(k) || {}).v || null;
-    console.log(JSON.stringify({ restored: status.restored, era: get('era'), marker: get('marker'), users: db.prepare('SELECT COUNT(*) n FROM users').get().n, integrity: db.pragma('integrity_check', { simple: true }) })); db.close();`;
+    console.log(JSON.stringify({ restored: status.restored, era: get('era'), later: get('later'), marker: get('marker'), users: db.prepare('SELECT COUNT(*) n FROM users').get().n, integrity: db.pragma('integrity_check', { simple: true }) })); db.close();`;
   const asides = (dir = L.dir) => fs.readdirSync(dir).filter((f) => /^portal-before-restore-[0-9-]+\.db$/.test(f));
   const listing = () => fs.readdirSync(L.dir).sort().join(' ');
   // Is the database from before the restore still whole somewhere: where it was, or set aside under its dated name?
@@ -5591,14 +5595,14 @@ test('restore: RESTORE_BACKUP brings a backup back at start-up, sets the databas
   assert.ok(stops >= 8, `only ${stops} stops were tried`);
   // ...and stopped at moments nobody chose.
   const { spawn } = require('child_process');
-  for (let i = 0; i < 3; i++) {
+  await Promise.all([0, 1, 2].map(async () => {
     const dir = copyOf();
     const child = spawn(process.execPath, ['-e', "require('./app/db')"], { cwd: L.root, env: L.env({ DATA_DIR: dir, RESTORE_BACKUP: B }), stdio: 'ignore' });
     await new Promise((done) => { setTimeout(() => child.kill('SIGKILL'), 30 + Math.random() * 150); child.once('exit', done); });
     assert.ok(kept(dir), `after a stop at a random moment the database from before is gone: ${fs.readdirSync(dir).join(' ')}`);
     assert.deepEqual([labJson(L.run(QUICK, { DATA_DIR: dir, RESTORE_BACKUP: B })).era, asides(dir).length, kept(dir)], [null, 1, true]);
     fs.rmSync(dir, { recursive: true, force: true });
-  }
+  }));
 
   // The restore itself. The site is as the backup had it; the newer work is not merged in, and not thrown away either.
   let s = labJson(L.run(STATE, { RESTORE_BACKUP: B }));
@@ -5613,23 +5617,25 @@ test('restore: RESTORE_BACKUP brings a backup back at start-up, sets the databas
 
   // The setting is still there at the next start: nothing is restored a second time, so work done since stays.
   assert.ok(L.run(`require('./app/db').prepare("INSERT INTO meta (key, value) VALUES ('later', 'entered after the restore')").run()`, { RESTORE_BACKUP: B }).ok);
-  s = labJson(L.run(STATE, { RESTORE_BACKUP: B }));
+  s = labJson(L.run(QUICK, { RESTORE_BACKUP: B }));
   assert.deepEqual([s.restored.again, s.later, asides().length], [true, 'entered after the restore', 1]);
   const CHECK = `require('./app/app'); const list = require('./app/routes/security').checks({ headers: {}, ip: '203.0.113.9', socket: {} }); console.log(JSON.stringify(list.find((c) => /restore setting/.test(c.title)) || null));`;
   const item = labJson(L.run(CHECK, { RESTORE_BACKUP: B }));
   assert.equal(item.ok, false); assert.match(item.detail, new RegExp(`restored from ${B.replace(/\./g, '\\.')} on \\d+/\\d+/\\d{4}`)); assert.match(item.fix, /delete RESTORE_BACKUP/);
-  // Once the setting has been removed the reminder goes, and setting it again later is a new request.
-  assert.equal(labJson(L.run(CHECK)), null);
-  s = labJson(L.run(STATE));
-  assert.deepEqual([s.restored, s.later], [null, 'entered after the restore']);
-  s = labJson(L.run(STATE, { RESTORE_BACKUP: B }));
+  // Something else opening the database without the setting (a script, a shell) changes nothing: the backup is still not restored twice.
+  assert.equal(labJson(L.run(CHECK)), null);                                    // and with the setting gone there is no reminder
+  s = labJson(L.run(QUICK, { RESTORE_BACKUP: B }));
+  assert.deepEqual([s.restored.again, s.later, asides().length], [true, 'entered after the restore', 1]);
+  // Once the site itself has started without the setting, setting it again later is a new request.
+  const between = await labSite(L); assert.equal((await between.get('/login')).status, 200); await between.stop();
+  s = labJson(L.run(QUICK, { RESTORE_BACKUP: B }));
   assert.deepEqual([s.restored.again, s.later, asides().length], [false, null, 2]);
 
   // A running site: the log says what was done, everyone is signed out, and the activity log has a line.
   let site = await labSite(L, { RESTORE_BACKUP: B });
   assert.match(site.log(), /RESTORE_BACKUP is still set\. .* was restored on an earlier start, so nothing was done this time/);
   await site.stop();
-  assert.ok(L.run("require('./app/db')").ok);                                   // a start without the setting: the next time it is set counts afresh
+  site = await labSite(L); await site.stop();                                   // the setting is taken out, as the Security check asks
   // A backup from before sessions were left out of them still signs nobody in when it is brought back.
   const olden = dbfile.connect(L.backups()[0], ''); olden.prepare("INSERT INTO sessions (sid, expires, data) VALUES ('from-the-backup', ?, '{}')").run(Date.now() + 600000); olden.close();
   site = await labSite(L, { RESTORE_BACKUP: B });
@@ -5643,16 +5649,17 @@ test('restore: RESTORE_BACKUP brings a backup back at start-up, sets the databas
   const E = encryptionLab(); const KEY = 'restore-key-0123456789-abcdefgh', KEY2 = 'restore-key-two-0123456789-abcd';
   assert.ok(E.run(E.SEED, { DB_KEY: KEY }).ok);
   const EB = path.basename(E.backups()[0]);
-  const wrong = E.run(STATE, { DB_KEY: KEY, RESTORE_BACKUP: EB.replace(/\d{6}\.db$/, '000000.db') });
+  const wrong = E.run(QUICK, { DB_KEY: KEY, RESTORE_BACKUP: EB.replace(/\d{6}\.db$/, '000000.db') });
   assert.equal(wrong.ok, false); assert.match(wrong.err, /there is no backup named/);
   fs.copyFileSync(E.backups()[0], path.join(E.dir, 'kept-elsewhere.db'));      // a copy taken off the server while the first key was in use
   assert.equal(E.state({ DB_KEY: KEY2, DB_KEY_OLD: KEY }).e.changed, 'rekeyed');
   fs.copyFileSync(path.join(E.dir, 'kept-elsewhere.db'), path.join(E.dir, 'backups', 'portal-2031-02-02.db'));
-  const locked = E.run(STATE, { DB_KEY: KEY2, RESTORE_BACKUP: 'portal-2031-02-02.db' });
+  const locked = E.run(QUICK, { DB_KEY: KEY2, RESTORE_BACKUP: 'portal-2031-02-02.db' });
   assert.equal(locked.ok, false); assert.match(locked.err, /does not open with the key in the hosting settings \(DB_KEY\)/); assert.doesNotMatch(locked.err + locked.out, /restore-key/);
-  s = labJson(E.run(STATE, { DB_KEY: KEY2, DB_KEY_OLD: KEY, RESTORE_BACKUP: 'portal-2031-02-02.db' }));
+  s = labJson(E.run(QUICK, { DB_KEY: KEY2, DB_KEY_OLD: KEY, RESTORE_BACKUP: 'portal-2031-02-02.db' }));
   assert.deepEqual([s.restored.backup, s.marker, s.users, s.integrity], ['portal-2031-02-02.db', 'kept', 1, 'ok']);
   assert.ok(dbfile.readable(E.file, KEY2)); assert.equal(dbfile.readable(E.file, KEY), false);
+  for (const lab of [L, E]) fs.rmSync(lab.dir, { recursive: true, force: true });
 });
 
 test('stopping: the site closes its database when it is told to stop, so the one file holds everything', async () => {
@@ -5682,6 +5689,7 @@ test('stopping: the site closes its database when it is told to stop, so the one
   const closed = await labSite(L);
   assert.equal((await closed.get('/')).status, 503);
   assert.equal(await closed.stop('SIGTERM'), 0);
+  fs.rmSync(L.dir, { recursive: true, force: true });
 });
 
 test('closed page: a damaged or missing database is called that, with the backup to go back to; a new site still starts by itself', async () => {
@@ -5760,6 +5768,7 @@ test('closed page: a damaged or missing database is called that, with the backup
   assert.equal((await site.get('/login')).status, 200); assert.match(site.log(), /No users yet/);
   await site.stop();
   assert.ok(dbfile.isPlain(N.file));
+  for (const lab of [L, P, N]) fs.rmSync(lab.dir, { recursive: true, force: true });
 });
 
 test('updates: the first start of a new version keeps a checked copy of the database as the last version left it, and only the newest two', async () => {
@@ -5797,6 +5806,7 @@ test('updates: the first start of a new version keeps a checked copy of the data
   assert.ok(N.run("require('./app/db')", { RENDER_GIT_COMMIT: 'eee5555' }).ok);
   assert.equal(N.backups().length, 0);
   assert.equal(labJson(N.run(`console.log(JSON.stringify((require('./app/db').prepare("SELECT value FROM meta WHERE key = 'code_version'").get() || {}).value))`, { RENDER_GIT_COMMIT: 'eee5555' })), 'eee5555');
+  for (const lab of [L, O, N]) fs.rmSync(lab.dir, { recursive: true, force: true });
 });
 
 test('the photo archive: the download is in the activity log, tar is told nothing of the site\'s settings, and a failed tar does not pass for a whole archive', async () => {
@@ -5919,6 +5929,7 @@ test('Security check: the saved copy of the key can be checked, yes or no; room 
   // Both settings removed too soon: the files are locked, and the page says which key to put back.
   off = labJson(L.run(CHECK)).find((c) => /is encrypted/.test(c.title));
   assert.match(off.detail, /3 photos and documents are still encrypted, 3 of them with a key that is not in the settings\.$/); assert.match(off.fix, /put the key they were encrypted with back in DB_KEY, with DB_DECRYPT set to yes/);
+  fs.rmSync(L.dir, { recursive: true, force: true });
 });
 
 // .

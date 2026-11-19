@@ -25,7 +25,7 @@
   <thead><tr><th>Backup</th><th>Made</th><th class="num">Size</th><th></th></tr></thead>
   <tbody>
   <% backups.forEach(function (b) { %>
-  <tr><td><%= b.name %><% if (b.kind === 'update') { %> <span class="tag off">Made before an update</span><% } %><% if (b.fault) { %> <span class="tag overdue"><%= b.fault === 'locked' ? 'Does not open with the key in use' : 'Damaged' %></span><% } %></td><td class="nowrap"><%= fmtDateTime(b.mtime) %></td><td class="num"><%= (b.size / 1024).toFixed(0) %> KB</td><td><a href="/admin/backups/<%= b.name %>">Download</a></td></tr>
+  <tr><td><%= b.name %><% if (b.kind === 'update') { %> <span class="tag off">Made before an update</span><% } %><% if (b.fault) { %> <span class="tag overdue"><%= b.fault === 'locked' ? 'Does not open with the key in use' : 'Damaged' %></span><% } %></td><td class="nowrap"><%= fmtDateTime(b.mtime) %></td><td class="num nowrap"><%= (b.size / 1024).toFixed(0) %> KB</td><td><a href="/admin/backups/<%= b.name %>">Download</a></td></tr>
   <% }) %>
   <% if (!backups.length) { %><tr><td colspan="4" class="empty">No backups yet. The first is made tonight, or use "Back up now".</td></tr><% } %>
   </tbody>

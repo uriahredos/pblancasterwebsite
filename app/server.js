@@ -44,6 +44,7 @@ if (!process.env.SESSION_SECRET) {
     require('./activity').log(null, 'Backup restored', `${r.backup}${r.aside ? `; the database from before was set aside as ${r.aside}` : ''}`);
     console.log(`[restore] The database was restored from ${r.backup}.${r.aside ? ` The database from before is set aside on the disk as ${r.aside}.` : ''} RESTORE_BACKUP can now be removed from the hosting settings.`);
   } else if (r) console.log(`[restore] RESTORE_BACKUP is still set. ${r.backup} was restored on an earlier start, so nothing was done this time. Remove the setting.`);
+  require('./dbfile').settled(config.dataDir);
 }
 
 // Encryption: say in the log what state the database is in (never the key), and bring older backups into line with it.

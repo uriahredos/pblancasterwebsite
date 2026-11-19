@@ -313,7 +313,8 @@ function sha(file) {
  *   3. the database in use and the files SQLite keeps beside it are renamed to portal-before-restore-<date and time>.db
  *      (and -wal, -shm): set aside whole, never deleted, and no longer where they could be replayed onto the backup;
  *   4. the copy takes the database's name;
- *   5. a marker records which backup was restored, so the same setting does nothing on later starts.
+ *   5. a marker records which backup was restored, so the same setting does nothing on later starts. The marker is
+ *      only forgotten when the site itself starts without the setting (see settled): setting it again then counts afresh.
  * If anything is wrong before step 2, everything is left exactly as it was and the site says why on its closed page.
  * Returns null when no restore is asked for, or { backup, at, aside, again } (again = done on an earlier start).
  */
@@ -350,10 +351,7 @@ function bringBack(dataDir, file, keys) {
   if (step && step.backup && step.stamp) finished = carryOut(step);       // a restore that was cut short is finished first
   else { fs.rmSync(plan, { force: true }); fs.rmSync(plan + '.tmp', { force: true }); fs.rmSync(temp, { force: true }); }   // a copy that was never completed
 
-  if (!want) {                                                            // the setting has gone: if it is set again later, it counts afresh
-    if (!finished) fs.rmSync(done, { force: true });
-    return finished;
-  }
+  if (!want) return finished;
   const last = readJson(done);
   if (last && last.backup === want) return finished || { ...last, again: true };
 
@@ -378,6 +376,15 @@ function bringBack(dataDir, file, keys) {
     throw refuse(`${want} could not be copied into place (${e.message}).`);
   }
   return carryOut(next);
+}
+
+/**
+ * The site has started without RESTORE_BACKUP: the note of the last restore is no longer needed. Only the site's own
+ * start does this. A script or a shell that opens the database without the setting must not be able to cause the
+ * same backup to be brought back a second time at the next restart.
+ */
+function settled(dataDir) {
+  if (!setting('RESTORE_BACKUP')) fs.rmSync(path.join(dataDir, 'portal.db.restored'), { force: true });
 }
 
 /**
@@ -537,5 +544,5 @@ const keyInUse = () => liveKey;
 
 module.exports = {
   KeyProblem, Stopped, MIN_KEY, BACKUP, PART, TURN, open, connect, isPlain, readable, rekey, alignCopies,
-  inspect, snapshot, clear, backupsIn, damage, beforeUpdate, keyInUse,
+  inspect, snapshot, clear, backupsIn, damage, beforeUpdate, keyInUse, settled,
 };
