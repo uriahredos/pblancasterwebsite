@@ -4,7 +4,6 @@ const path = require('path');
 const crypto = require('crypto');
 const { execFile } = require('child_process');
 const express = require('express');
-const multer = require('multer');
 const db = require('../db');
 const activity = require('../activity');
 const uploads = require('../uploads');
@@ -47,12 +46,14 @@ const getIssue = (id) => {
  * Make a picture of each page with pdftoppm (from poppler-utils). Resolves to the
  * file names, first page first; an empty list when the tool is missing or the PDF
  * cannot be read, in which case people simply open the PDF itself.
+ * The tool reads a file someone uploaded, so it is started with nothing of the site's settings but where programs are found:
+ * it never sees the database key.
  */
 function renderPages(pdfName) {
   const prefix = pdfName.replace(/\.pdf$/, '');
   return new Promise((resolve) => {
     execFile('pdftoppm', ['-jpeg', '-jpegopt', 'quality=82', '-scale-to-x', '1100', '-scale-to-y', '-1', '-f', '1', '-l', String(MAX_PAGES),
-      path.join(uploads.uploadDir, pdfName), path.join(uploads.uploadDir, prefix)], { timeout: 90 * 1000 }, (err) => {
+      path.join(uploads.uploadDir, pdfName), path.join(uploads.uploadDir, prefix)], { timeout: 90 * 1000, env: { PATH: process.env.PATH } }, (err) => {
       let files = [];
       try {
         files = fs.readdirSync(uploads.uploadDir).filter((f) => f.startsWith(prefix + '-') && f.endsWith('.jpg'))
@@ -109,20 +110,16 @@ router.get('/newsletters/:id/page/:n', requireLogin, (req, res, next) => {
 
 // ---- Uploading and removing --------------------------------------------------
 
-const upload = multer({
-  storage: multer.diskStorage({
-    destination: uploads.uploadDir,
-    filename: (req, file, cb) => cb(null, `nl-${crypto.randomBytes(16).toString('hex')}.pdf`),
-  }),
+const upload = uploads.receive({
+  name: () => `nl-${crypto.randomBytes(16).toString('hex')}.pdf`,
+  problem: 'uploadError',
   limits: { fileSize: MAX_PDF_BYTES, files: 1, fields: 20 },
 }).single('pdf');
 
 function parseUpload(req, res, next) {
   upload(req, res, (err) => {
-    req.uploadError = err ? (err.code === 'LIMIT_FILE_SIZE' ? 'The PDF is larger than 25 MB.' : 'The PDF could not be uploaded.') : null;
+    req.uploadError = err ? (err.code === 'LIMIT_FILE_SIZE' ? 'The PDF is larger than 25 MB.' : 'The PDF could not be uploaded.') : req.uploadError || null;
     req.body = req.body || {};
-    // If the form is refused after the file was saved, do not leave the file behind.
-    res.once('finish', () => { if (res.statusCode >= 400 && req.file) uploads.remove(req.file.filename); });
     next();
   });
 }
@@ -146,6 +143,7 @@ router.post('/admin/newsletters', requirePerm('newsletters.manage'), parseUpload
     if (errors.length) return adminPage(req, res, { errors, values });
 
     const pages = await renderPages(req.file.filename);
+    uploads.adopt(req, pages);                                  // the page pictures are kept, or dropped, with the PDF they came from
     const title = values.title || `${monthName(values.issue_month)} newsletter`;
     db.prepare('INSERT INTO newsletters (title, issue_month, highlights, pdf_path, page_files, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
       .run(title, values.issue_month, values.highlights || null, req.file.filename, JSON.stringify(pages), req.user.id, new Date().toISOString());

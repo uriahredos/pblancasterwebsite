@@ -62,7 +62,7 @@
   </label>
 
   <label data-show-action="return">Photo of the returned parts <span class="hint">Optional. JPEG or PNG, up to 10 MB.<% if (editing && values.photo_path) { %> A photo is already attached; choosing a new one replaces it.<% } %></span>
-    <input type="file" name="photo" accept="image/jpeg,image/png,image/webp,image/gif">
+    <input type="file" name="photo" accept="image/jpeg,image/png,image/webp,image/gif" data-shrink="1600">
   </label>
 
   <label>Note <span class="hint">Optional. Where it was left, anything useful.</span>
@@ -82,4 +82,5 @@
 </div>
 <script src="/parts-form.js?v=<%= assetV %>" defer></script>
 <script src="/scan.js?v=<%= assetV %>" defer></script>
+<script src="/shrink.js?v=<%= assetV %>" defer></script>
 <%- include('partials/footer') %>

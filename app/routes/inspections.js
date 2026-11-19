@@ -44,7 +44,7 @@ router.post('/inspection', requirePerm('inspections.submit'), uploads.photos(nul
   }
   if (req.photoError) errors.push(req.photoError);
   if (extras.length > MAX_PHOTOS) errors.push(`No more than ${MAX_PHOTOS} extra photos.`);
-  if (task) for (const [key, label] of SHOTS) if (shotFiles.filter((f) => f.fieldname === `shot_${key}`).length !== 1) errors.push(`Add the photo: ${label}.`);
+  if (task && req.photoError !== uploads.NO_ROOM) for (const [key, label] of SHOTS) if (shotFiles.filter((f) => f.fieldname === `shot_${key}`).length !== 1) errors.push(`Add the photo: ${label}.`);
   for (const f of req.files) if (!uploads.looksLikeImage(f.path)) { errors.push('Photos must be JPEG, PNG, WebP or GIF images.'); break; }
   if (errors.length) {
     req.files.forEach((f) => uploads.remove(f.filename));

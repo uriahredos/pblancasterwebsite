@@ -72,11 +72,12 @@
     <label><span class="sr">Your reply</span><textarea name="body" rows="5" maxlength="6000" required><%= values.body || '' %></textarea></label>
   </div>
   <label>Photos <span class="hint">Optional, up to <%= maxPhotos %>. Do not post customer names, addresses or codes.</span>
-    <input type="file" name="photos" accept="image/jpeg,image/png,image/webp,image/gif" multiple>
+    <input type="file" name="photos" accept="image/jpeg,image/png,image/webp,image/gif" multiple data-shrink="1600">
   </label>
   <button class="btn primary" type="submit">Post reply</button>
   <p class="hint">Replying follows the thread, so you will see later replies on your home page.</p>
 </form>
 <% } %>
 <script src="/format.js?v=<%= assetV %>"></script>
+<script src="/shrink.js?v=<%= assetV %>" defer></script>
 <%- include('partials/footer') %>

@@ -10,7 +10,6 @@ const { requirePerm, forbidden, flash } = require('../auth');
 const { clean, isYmd, localDate, fmtDate, money: fmtMoney } = require('../util');
 const path = require('path');
 const crypto = require('crypto');
-const multer = require('multer');
 const uploads = require('../uploads');
 const config = require('../config');
 const { verifyCsrf } = require('../auth');
@@ -218,8 +217,9 @@ router.get('/sales/summary', manage, (req, res) => {
 const FILE_TYPES = { 'application/pdf': '.pdf', 'image/jpeg': '.jpg', 'image/png': '.png',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
   'application/vnd.openxmlformats-officedocument.presentationml.presentation': '.pptx' };
-const takeFile = multer({
-  storage: multer.diskStorage({ destination: uploads.uploadDir, filename: (req, file, cb) => cb(null, crypto.randomBytes(16).toString('hex') + FILE_TYPES[file.mimetype]) }),
+const takeFile = uploads.receive({
+  name: (file) => crypto.randomBytes(16).toString('hex') + FILE_TYPES[file.mimetype],
+  problem: 'fileError',
   limits: { fileSize: config.maxPhotoBytes, files: 1, fields: 20 },
   fileFilter: (req, file, cb) => { if (FILE_TYPES[file.mimetype]) return cb(null, true); req.fileError = 'That kind of file cannot be added. Use a PDF, Word, Excel or PowerPoint file, or a picture.'; cb(null, false); },
 }).single('file');
