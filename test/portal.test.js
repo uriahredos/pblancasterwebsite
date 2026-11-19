@@ -5376,6 +5376,9 @@ test('contact list: an upload changes only accounts the uploader could edit by h
   db.prepare("UPDATE users SET email = 'carl@example.com' WHERE id = ?").run(corp);
   db.prepare("UPDATE users SET email = 'shay@example.com', phone = '717-555-0111' WHERE id = ?").run(shy);
   await loggedIn('imp.shy');                                                   // Shay uses the site, and has left "show my phone" and "show my email" unticked
+  const reset = R.person('imp.reset', 'Rae Resetpw', 'Technician', 1);
+  await loggedIn('imp.reset');                                                 // so does Rae, whose password an admin has since reset
+  db.prepare('UPDATE users SET must_change_password = 1 WHERE id = ?').run(reset);
   const fresh = auth.createUser({ username: 'imp.new', displayName: 'Nina Notyet', password: 'temp-pass-1234' });   // has an account, has never signed in
   const master = db.prepare('SELECT id, display_name FROM users WHERE is_master = 1').get();
   const row = (id) => ({ ...db.prepare('SELECT email, phone, job_title, started_on, show_phone, show_email, in_directory FROM users WHERE id = ?').get(id) });
@@ -5386,7 +5389,7 @@ test('contact list: an upload changes only accounts the uploader could edit by h
   // The Edit person page refuses this admin on both accounts. The upload must not be a way round that.
   for (const id of [master.id, corp]) assert.equal((await admin.get(`/admin/users/${id}/edit`)).status, 403);
   const csv = ['Name,Title,Email,Phone', `${master.display_name},Janitor,attacker@evil.example,717-555-0000`, 'Carl Corporate,Janitor,attacker2@evil.example,717-555-0001',
-    'Shay Private,Service Tech,shay.new@example.com,717-555-0112', 'Nina Notyet,Apprentice,nina@example.com,717-555-0113', 'Brand Newperson,Helper,brand@example.com,717-555-0114'].join('\n');
+    'Shay Private,Service Tech,shay.new@example.com,717-555-0112', 'Rae Resetpw,Service Tech,,717-555-0115', 'Nina Notyet,Apprentice,nina@example.com,717-555-0113', 'Brand Newperson,Helper,brand@example.com,717-555-0114'].join('\n');
   const send = (client, text) => client.post('/admin/people/import', [['file', new File([text], 'list.csv', { type: 'text/csv' })]], { multipart: true, page: '/admin/import' });
   db.prepare("DELETE FROM activity_log WHERE action LIKE 'Contact list%'").run();
   assert.equal((await send(admin, csv)).location, '/admin/import#contacts');
@@ -5394,18 +5397,19 @@ test('contact list: an upload changes only accounts the uploader could edit by h
   assert.deepEqual(row(corp), before.corp);
   // The uploader is told who was left alone.
   const page = (await admin.get('/admin/import')).text;
-  assert.match(page, /<strong>2<\/strong> existing accounts filled in and <strong>1<\/strong> person added/);
+  assert.match(page, /<strong>3<\/strong> existing accounts filled in and <strong>1<\/strong> person added/);
   assert.match(page, new RegExp(`<strong>Not changed, because you cannot edit these accounts:</strong> ${master.display_name}, Carl Corporate<`));
   // Someone the admin may edit: the list's email and phone replace what was there, but what the person keeps hidden stays hidden.
   assert.deepEqual(row(shy), { email: 'shay.new@example.com', phone: '717-555-0112', job_title: 'Service Tech', started_on: null, show_phone: 0, show_email: 0, in_directory: 1 });
+  assert.deepEqual([row(reset).phone, row(reset).show_phone], ['717-555-0115', 0]);
   // Someone who has never signed in, and someone the upload adds, are shown as before.
   assert.deepEqual([row(fresh).email, row(fresh).show_phone, row(fresh).show_email], ['nina@example.com', 1, 1]);
   const brand = db.prepare("SELECT id, show_phone, show_email, active FROM users WHERE display_name = 'Brand Newperson'").get();
   assert.deepEqual([brand.show_phone, brand.show_email, brand.active], [1, 1, 0]);
   // The log names whose email or phone changed.
   const log = db.prepare("SELECT action, detail FROM activity_log WHERE action LIKE 'Contact list%' ORDER BY id").all().map((r) => `${r.action}: ${r.detail}`);
-  assert.deepEqual(log, ['Contact list imported: 2 existing accounts updated, 1 person added, 2 left alone',
-    'Contact list: email or phone changed: Shay Private (email and phone), Nina Notyet (email and phone)']);
+  assert.deepEqual(log, ['Contact list imported: 3 existing accounts updated, 1 person added, 2 left alone',
+    'Contact list: email or phone changed: Shay Private (email and phone), Rae Resetpw (phone), Nina Notyet (email and phone)']);
   // Uploading the same list again changes nothing, so there are no names to log.
   await send(admin, csv);
   assert.equal(db.prepare("SELECT COUNT(*) n FROM activity_log WHERE action = 'Contact list: email or phone changed'").get().n, 1);

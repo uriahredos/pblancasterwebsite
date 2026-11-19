@@ -286,9 +286,6 @@ function findAccount(c, users) {
     || users.find((u) => lettersOnly(u.display_name) === lettersOnly(c.name)) || null;
 }
 
-/** Has this person signed in before? They have once they chose their own password, or the sign-in history has them. */
-const hasSignedIn = (u) => !u.must_change_password || Boolean(db.prepare("SELECT 1 FROM activity_log WHERE user_id = ? AND action = 'Signed in' LIMIT 1").get(u.id));
-
 const csvUpload = require('multer')({ storage: require('multer').memoryStorage(), limits: { fileSize: 2 * 1024 * 1024, files: 1 } }).single('file');
 router.post('/admin/people/import', requirePerm('users.manage'), (req, res, next) => csvUpload(req, res, (err) => {
   req.body = req.body || {}; req.uploadFailed = Boolean(err); next();
@@ -311,6 +308,9 @@ router.post('/admin/people/import', requirePerm('users.manage'), (req, res, next
     // Matching looks only at the branch being imported into; usernames must still be unique across the site.
     const taken = new Set(db.prepare('SELECT username FROM users').all().map((x) => x.username.toLowerCase()));
     const users = db.prepare('SELECT id, username, display_name, email, phone, is_master, profile_id, must_change_password FROM users WHERE branch_id = ? AND removed_at IS NULL').all(req.user.workBranch);
+    // Who has signed in before: anyone who has chosen their own password, or whom the sign-in history has (read once for the whole list).
+    const seen = new Set(db.prepare("SELECT DISTINCT a.user_id FROM activity_log a JOIN users u ON u.id = a.user_id WHERE a.action = 'Signed in' AND u.branch_id = ?").all(req.user.workBranch).map((r) => r.user_id));
+    const hasSignedIn = (u) => !u.must_change_password || seen.has(u.id);
     for (const c of read.people) {
       let u = findAccount(c, users);
       // The list changes only accounts this person could change on the Edit person page: never the master account (unless
