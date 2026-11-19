@@ -25,6 +25,11 @@ function listBackups() {
 const put = db.prepare('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
 const stored = (key) => (db.prepare('SELECT value FROM meta WHERE key = ?').get(key) || {}).value;
 const parsed = (key) => { try { return JSON.parse(stored(key)) || null; } catch (e) { return null; } };
+// A database just brought back from a backup remembers a failure from before that backup was made. It is not news: forget it.
+{
+  const back = db.encryption && db.encryption.restored;
+  if (back && !back.again && (parsed('backup_last_error') || {}).at < back.at) db.prepare("DELETE FROM meta WHERE key = 'backup_last_error'").run();
+}
 const state = { good: parsed('backup_last_good'), failed: parsed('backup_last_error'), alerted: stored('backup_alert_day') || null };
 function remember(what, key, value) {
   state[what] = value;

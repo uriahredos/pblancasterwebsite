@@ -5969,6 +5969,11 @@ test('backups: a copy that does not pass its check, or does not hold the same ro
   assert.match(r.failed, /does not hold the same rows/); assert.equal(r.failing, true);
   assert.match(r.line, /^The last backup did not work \(.+\): the copy does not hold the same rows as the database\. The newest good backup is portal-2031-07-01\.db, today\.$/);
   assert.deepEqual(fs.readdirSync(dir).filter((f) => /2031-07-01/.test(f)), ['portal-2031-07-01.db']);
+  // The night's copy was made while the failures before it were still the latest news, and it carries that with it.
+  // Brought back, it must not raise an alarm about a failure from before it existed: not on that start, nor on the next.
+  const AFTER = `const db = require('./app/db'); const b = require('./app/backup'); console.log(JSON.stringify({ again: db.encryption.restored.again, failing: b.failing() }));`;
+  assert.deepEqual(labJson(L.run(AFTER, { RESTORE_BACKUP: 'portal-2031-07-01.db' })), { again: false, failing: false });
+  assert.deepEqual(labJson(L.run(AFTER, { RESTORE_BACKUP: 'portal-2031-07-01.db' })), { again: true, failing: false });
   fs.rmSync(L.dir, { recursive: true, force: true });
 });
 
