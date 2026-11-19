@@ -40,7 +40,8 @@
 
 <h2>2. People</h2>
 <p class="lede">Pick each person's role. Who they report to follows from it, and so does their profile when the role gives one.</p>
-<% if (!people.length) { %><p class="empty">Nobody to show yet.</p><% } else { %>
+<% if (!people.length) { %><p class="empty">Nobody to show yet.</p><% } else { %><% if (cutAt) { %>
+<p class="hint">Only the first <%= cutAt %> people are listed here.<% if (showOffice) { %> To work on everyone in one office, choose that office instead of All offices.<% } %></p><% } %>
 <label class="grow pos-find">Find a person <input type="search" id="pos-find" placeholder="Start typing a name or role" autocomplete="off"></label>
 <form method="post" action="/admin/users/positions" id="pos-form">
   <input type="hidden" name="_csrf" value="<%= csrf %>">

@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS training_requests (
   created_at TEXT NOT NULL,
   created_local_date TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS training_user ON training_requests(user_id);
 
 -- Anonymous complaints. On purpose there is NO user id, username, IP address or
 -- time of day here, the id is random, and WITHOUT ROWID means rows are not kept
@@ -83,6 +84,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   expires INTEGER NOT NULL,
   data TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS sessions_expires ON sessions(expires);
 
 -- The parts list (from Sedona). Part numbers and descriptions only: no prices.
 CREATE TABLE IF NOT EXISTS parts_catalog (
@@ -126,6 +128,8 @@ for (const table of ['parts_submissions', 'training_requests']) {
   addColumn(table, 'edited_at', 'TEXT');
   addColumn(table, 'cancelled_at', 'TEXT');
 }
+// Parts requests still waiting on someone: counted for the bell on every page, so they get a small index of their own.
+db.exec("CREATE INDEX IF NOT EXISTS parts_open ON parts_submissions(user_id) WHERE action = 'request' AND cancelled_at IS NULL AND status IN ('new','ordered')");
 
 addColumn('parts_catalog', 'category', 'TEXT');
 
@@ -150,6 +154,7 @@ CREATE TABLE IF NOT EXISTS activity_log (
   action TEXT NOT NULL,
   detail TEXT
 );
+CREATE INDEX IF NOT EXISTS activity_user ON activity_log(user_id);
 
 CREATE TABLE IF NOT EXISTS password_resets (
   token_hash TEXT PRIMARY KEY,
@@ -238,6 +243,9 @@ CREATE TABLE IF NOT EXISTS inspections (
   created_local_date TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS inspections_date ON inspections(created_local_date);
+-- Each person's inspections by date ("when was their last one?"), and the few with a problem nobody has fixed yet.
+CREATE INDEX IF NOT EXISTS inspections_user ON inspections(user_id, created_local_date);
+CREATE INDEX IF NOT EXISTS inspections_open ON inspections(user_id) WHERE problems > 0 AND resolved_at IS NULL;
 -- The wording of each item is copied in, so old inspections still read correctly after the checklist changes.
 CREATE TABLE IF NOT EXISTS inspection_results (
   id INTEGER PRIMARY KEY,
@@ -246,11 +254,13 @@ CREATE TABLE IF NOT EXISTS inspection_results (
   ok INTEGER NOT NULL,
   note TEXT
 );
+CREATE INDEX IF NOT EXISTS inspection_results_inspection ON inspection_results(inspection_id);
 CREATE TABLE IF NOT EXISTS inspection_photos (
   id INTEGER PRIMARY KEY,
   inspection_id INTEGER NOT NULL REFERENCES inspections(id) ON DELETE CASCADE,
   path TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS inspection_photos_inspection ON inspection_photos(inspection_id);
 
 CREATE TABLE IF NOT EXISTS announcements (
   id INTEGER PRIMARY KEY,
@@ -269,6 +279,16 @@ CREATE TABLE IF NOT EXISTS announcement_reads (
   PRIMARY KEY (announcement_id, user_id)
 );
 `);
+// Certification reminders used to be ticked off as sent even while email was switched off. If it is still off, none
+// of those can have gone out, so the ticks on certifications that have not run out yet are cleared, once, and the
+// reminders go out when email is set up.
+if (!db.prepare("SELECT 1 FROM meta WHERE key = 'cert_reminders_1'").get()) {
+  db.transaction(() => {
+    if (!config.smtp.host) db.prepare("UPDATE certifications SET reminded_30 = 0, reminded_7 = 0 WHERE (reminded_30 = 1 OR reminded_7 = 1) AND expires_on >= date('now', '-1 day')").run();
+    db.prepare("INSERT INTO meta (key, value) VALUES ('cert_reminders_1', '1')").run();
+  })();
+}
+
 // ---- Newsletters, and a category and pin for announcements ----
 db.exec(`
 -- A monthly newsletter: the PDF as uploaded, plus a picture of each page for reading on a phone.
@@ -418,6 +438,8 @@ CREATE TABLE IF NOT EXISTS daily_answers (
 `);
 if (!db.prepare('SELECT 1 FROM branches').get()) db.prepare("INSERT INTO branches (name, created_at) VALUES ('Lancaster', ?)").run(new Date().toISOString());
 addColumn('users', 'branch_id', 'INTEGER');
+// Nearly every page asks "who is in this office?".
+db.exec('CREATE INDEX IF NOT EXISTS users_branch ON users(branch_id)');
 addColumn('users', 'job_title', 'TEXT');
 addColumn('users', 'started_on', 'TEXT');
 addColumn('users', 'about', 'TEXT');
@@ -591,11 +613,18 @@ addColumn('tasks', 'kind', "TEXT NOT NULL DEFAULT 'general'");
 addColumn('tasks', 'seen_at', 'TEXT');
 addColumn('tasks', 'inspection_id', 'INTEGER');
 addColumn('inspection_photos', 'label', 'TEXT');
-// Tidy up notes that were saved two or three times by repeated taps: the same person, task and words,
-// with no status change, within ten minutes of an earlier copy. The first copy stays.
-db.exec(`DELETE FROM task_notes WHERE status IS NULL AND body IS NOT NULL AND EXISTS (
-  SELECT 1 FROM task_notes o WHERE o.task_id = task_notes.task_id AND o.user_id = task_notes.user_id AND o.body = task_notes.body
-    AND o.id < task_notes.id AND (julianday(task_notes.created_at) - julianday(o.created_at)) * 1440 < 10)`);
+// Tidy up notes that were saved two or three times by repeated taps: the same person, task and words, with no
+// status change, within ten minutes of the copy straight before it. The first copy stays. Done once: the page has
+// refused such repeats ever since, and a note someone chose to write again later (after another note) is theirs to keep.
+if (!db.prepare("SELECT 1 FROM meta WHERE key = 'task_notes_tidy_1'").get()) {
+  db.transaction(() => {
+    db.exec(`DELETE FROM task_notes WHERE status IS NULL AND body IS NOT NULL AND EXISTS (
+      SELECT 1 FROM task_notes o WHERE o.task_id = task_notes.task_id AND o.user_id = task_notes.user_id AND o.body = task_notes.body
+        AND o.id < task_notes.id AND (julianday(task_notes.created_at) - julianday(o.created_at)) * 1440 < 10
+        AND NOT EXISTS (SELECT 1 FROM task_notes m WHERE m.task_id = task_notes.task_id AND m.id > o.id AND m.id < task_notes.id))`);
+    db.prepare("INSERT INTO meta (key, value) VALUES ('task_notes_tidy_1', '1')").run();
+  })();
+}
 if (!db.prepare('SELECT 1 FROM services').get()) {
   const add = db.prepare('INSERT INTO services (code, name, sort) VALUES (?, ?, ?)');
   // The company's own list of services, as its branch finder names them.

@@ -88,7 +88,7 @@ function assignable(viewer) {
   const ids = access.visibleUserIds(viewer);
   return db.prepare(
     `SELECT u.id, u.display_name, u.profile_id, p.name AS profile_name FROM users u LEFT JOIN profiles p ON p.id = u.profile_id
-     WHERE u.active = 1 ORDER BY u.display_name COLLATE NOCASE`).all().filter((u) => !ids || ids.includes(u.id));
+     WHERE u.active = 1 ${ids ? `AND u.id IN (${ids.map(Number).join(',')})` : ''} ORDER BY u.display_name COLLATE NOCASE, u.id`).all();
 }
 
 /** The profiles those people are on, with how many of them, for "give it to everyone on this profile". */
@@ -118,17 +118,26 @@ function listPage(req, res, extra = {}) {
   const show = ['overdue', 'done', 'all'].includes(req.query.show) ? req.query.show : 'open';
   const person = /^\d+$/.test(req.query.user || '') ? Number(req.query.user) : null;
   const today = localDate();
-  const rows = db.prepare(
+  // Only this person's tasks are read (the ones they gave, and their people's), and only the chosen person's when one
+  // is picked, so the 1,000 kept are the ones asked for and not the whole company's. One more is asked for than the
+  // page holds, only to know whether to say that there are more.
+  const ids = access.visibleUserIds(req.user);
+  const only = [];
+  if (ids) only.push(`(t.assigned_by = ${Number(req.user.id)} OR t.assigned_to IN (${ids.map(Number).join(',')}))`);
+  if (person) only.push(`t.assigned_to = ${Number(person)}`);
+  const found = db.prepare(
     `SELECT t.*, a.display_name AS to_name, b.display_name AS by_name FROM tasks t
      JOIN users a ON a.id = t.assigned_to JOIN users b ON b.id = t.assigned_by
-     ORDER BY t.done_at IS NOT NULL, ${tasks.ORDER} LIMIT 1000`).all()
+     ${only.length ? 'WHERE ' + only.join(' AND ') : ''}
+     ORDER BY t.done_at IS NOT NULL, ${tasks.ORDER} LIMIT 1001`).all();
+  const rows = found.slice(0, 1000)
     .filter((t) => mine(req.user, t) && (!person || t.assigned_to === person))
     .map((t) => tasks.decorate(t, today));
   tasks.withNotes(rows);
   const counts = { open: rows.filter((t) => !t.done_at).length, overdue: rows.filter((t) => t.overdue).length, done: rows.filter((t) => t.done_at).length };
   const shown = rows.filter((t) => (show === 'all' ? true : show === 'done' ? t.done_at : show === 'overdue' ? t.overdue : !t.done_at));
   res.status(extra.errors ? 400 : 200).render('admin_tasks', {
-    title: 'Manage tasks', rows: shown, counts, show, person, people: assignable(req.user), groups: groups(assignable(req.user)), errors: [], values: { to: [], groups: [] }, ...extra,
+    title: 'Manage tasks', rows: shown, counts, show, person, cut: found.length > 1000, people: assignable(req.user), groups: groups(assignable(req.user)), errors: [], values: { to: [], groups: [] }, ...extra,
   });
 }
 

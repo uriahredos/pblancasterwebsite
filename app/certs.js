@@ -26,6 +26,8 @@ function decorate(cert, today = localDate()) {
 
 /** Email each person once at 30 days and once at 7 days before one of their certifications expires. */
 async function runReminders(now = new Date()) {
+  // While email is not set up nothing can be sent, so nothing is ticked off: the reminders go out once it is.
+  if (!mail.isConfigured()) return 0;
   const today = localDate(now);
   const rows = db.prepare(
     `SELECT c.*, u.display_name, u.email FROM certifications c JOIN users u ON u.id = c.user_id
@@ -36,10 +38,13 @@ async function runReminders(now = new Date()) {
     if (d < 0 || d > 30) continue;
     const stage = d <= 7 ? 'reminded_7' : 'reminded_30';
     if (c[stage]) continue;
-    // Mark first so a mail problem cannot cause the same reminder every few hours.
-    db.prepare(`UPDATE certifications SET ${stage} = 1${stage === 'reminded_7' ? ', reminded_30 = 1' : ''} WHERE id = ?`).run(c.id);
-    if (c.email && await mail.send([c.email], `${c.name} expires ${d === 0 ? 'today' : 'in ' + d + (d === 1 ? ' day' : ' days')}`,
-      `Hi ${c.display_name},\n\nYour ${c.name} expires on ${fmtDate(c.expires_on)}.\n\nOnce it is renewed, give the new date to your manager so the record can be updated.\n\n${config.baseUrl}/my\n`)) sent++;
+    // Ticked off only once the email has really gone. Someone with no address yet, or a send that failed, is tried
+    // again at the next pass (every six hours), so the reminder is late rather than lost.
+    if (!c.email || !await mail.send([c.email], `${c.name} expires ${d === 0 ? 'today' : 'in ' + d + (d === 1 ? ' day' : ' days')}`,
+      `Hi ${c.display_name},\n\nYour ${c.name} expires on ${fmtDate(c.expires_on)}.\n\nOnce it is renewed, give the new date to your manager so the record can be updated.\n\n${config.baseUrl}/my\n`)) continue;
+    // (A record given a new date while the email was going out starts again, so it is left alone.)
+    db.prepare(`UPDATE certifications SET ${stage} = 1${stage === 'reminded_7' ? ', reminded_30 = 1' : ''} WHERE id = ? AND expires_on = ?`).run(c.id, c.expires_on);
+    sent++;
   }
   return sent;
 }

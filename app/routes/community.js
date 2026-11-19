@@ -14,6 +14,8 @@ const notFound = (res) => res.status(404).render('error', { title: 'Page not fou
 const isId = (v) => /^\d+$/.test(String(v || ''));
 const MAX_PHOTO = 4 * 1024 * 1024;   // the page shrinks photos before sending, so this is generous
 const WELCOME_DAYS = 14;
+const PEOPLE_PER_PAGE = 500;      // the People page shows this many at a time, with Next and Previous for the rest
+const POSITIONS_MAX = 1000;       // the Positions table stops here and says so
 
 // (for the People filter: only offices that have someone listed)
 const branches = () => db.prepare('SELECT * FROM branches b WHERE EXISTS (SELECT 1 FROM users u WHERE u.branch_id = b.id AND (u.active = 1 OR u.in_directory = 1)) ORDER BY name COLLATE NOCASE').all();
@@ -47,8 +49,15 @@ router.get('/people', requireLogin, (req, res) => {
   const departments = db.prepare("SELECT DISTINCT department FROM users WHERE department IS NOT NULL AND (active = 1 OR in_directory = 1) ORDER BY department COLLATE NOCASE").all().map((r) => r.department);
   const dept = departments.includes(req.query.dept) ? req.query.dept : '';
   if (dept) { where.push('u.department = ?'); params.push(dept); }
-  const people = db.prepare(`${PERSON} ${where.length ? 'AND ' + where.join(' AND ') : ''} ORDER BY u.display_name COLLATE NOCASE LIMIT 500`).all(...params).map(decorate);
-  res.render('people', { title: 'People', wide: true, people, q, branch, dept, departments, branches: branches(), total: db.prepare('SELECT COUNT(*) AS n FROM users WHERE active = 1 OR in_directory = 1').get().n });
+  // A page at a time, and the page says how many there are in all: nobody is left off the end without a word.
+  const matching = where.length ? 'AND ' + where.join(' AND ') : '';
+  const found = db.prepare(`SELECT COUNT(*) AS n FROM users u WHERE (u.active = 1 OR u.in_directory = 1) ${matching}`).get(...params).n;
+  const pages = Math.max(1, Math.ceil(found / PEOPLE_PER_PAGE));
+  const page = Math.min(pages, Math.max(1, isId(req.query.page) ? Number(req.query.page) : 1));
+  const people = db.prepare(`${PERSON} ${matching} ORDER BY u.display_name COLLATE NOCASE, u.id LIMIT ${PEOPLE_PER_PAGE} OFFSET ?`).all(...params, (page - 1) * PEOPLE_PER_PAGE).map(decorate);
+  const pageLink = (n) => '/people?' + new URLSearchParams(Object.entries({ q, branch: branch || '', dept, page: n > 1 ? String(n) : '' }).filter(([, v]) => v)).toString();
+  res.render('people', { title: 'People', wide: true, people, q, branch, dept, departments, branches: branches(), found, page, pages, pageLink, firstShown: (page - 1) * PEOPLE_PER_PAGE + 1,
+    total: db.prepare('SELECT COUNT(*) AS n FROM users WHERE active = 1 OR in_directory = 1').get().n });
 });
 
 router.get('/people/photo/:id', requireLogin, (req, res) => {
@@ -85,7 +94,7 @@ function positionPeople(user) {
   return db.prepare(`SELECT u.id, u.display_name, u.job_title, u.department, u.photo_path, u.branch_id, u.leads, u.manager_manual, u.profile_id, u.is_master, b.name AS branch,
       (SELECT um.manager_id FROM user_managers um JOIN users m ON m.id = um.manager_id WHERE um.user_id = u.id ORDER BY m.display_name COLLATE NOCASE LIMIT 1) AS manager_id
     FROM users u LEFT JOIN branches b ON b.id = u.branch_id
-    WHERE (u.active = 1 OR u.in_directory = 1) ${ids ? `AND u.id IN (${ids.map(Number).join(',') || 0})` : ''} ORDER BY u.display_name COLLATE NOCASE LIMIT 1000`).all();
+    WHERE (u.active = 1 OR u.in_directory = 1) ${ids ? `AND u.id IN (${ids.map(Number).join(',') || 0})` : ''} ORDER BY u.display_name COLLATE NOCASE LIMIT ${POSITIONS_MAX + 1}`).all();
 }
 router.get('/admin/positions', requirePerm('users.manage'), (req, res) => res.redirect('/admin/users/positions' + (isId(req.query.who) ? `?who=${req.query.who}` : '')));   // its old address
 router.get('/admin/users/chart', requirePerm('users.manage'), (req, res) => {
@@ -98,17 +107,19 @@ router.get('/admin/users/chart', requirePerm('users.manage'), (req, res) => {
 router.get('/admin/users/positions', requirePerm('users.manage'), (req, res) => {
   const saved = req.session.positionsSaved; delete req.session.positionsSaved;
   const problemsOnce = req.session.positionsProblems || []; delete req.session.positionsProblems;
-  const people = positionPeople(req.user);
+  const everyone = positionPeople(req.user);
+  // One more than the table holds is asked for, only to know whether the list had to be cut short.
+  const people = everyone.slice(0, POSITIONS_MAX);
   // Who each person could report to: the people of their own office.
   const byOffice = new Map();
   for (const p of people) { if (!byOffice.has(p.branch_id)) byOffice.set(p.branch_id, []); byOffice.get(p.branch_id).push(p); }
-  res.render('admin_positions', { title: 'Positions and reporting', wide: true, people, byOffice, problems: problemsOnce, profiles: db.prepare('SELECT id, name FROM profiles ORDER BY name COLLATE NOCASE').all().filter((pr) => access.canGrant(req.user, access.permsOf(pr.id))), titles: require('../team').titles(), roleTree: require('../team').roleTree(), canTitles: Boolean(req.user.allBranches), saved, focus: isId(req.query.who) ? Number(req.query.who) : 0, showOffice: req.user.viewBranch === null });
+  res.render('admin_positions', { title: 'Positions and reporting', wide: true, people, byOffice, problems: problemsOnce, profiles: db.prepare('SELECT id, name FROM profiles ORDER BY name COLLATE NOCASE').all().filter((pr) => access.canGrant(req.user, access.permsOf(pr.id))), titles: require('../team').titles(), roleTree: require('../team').roleTree(), canTitles: Boolean(req.user.allBranches), saved, focus: isId(req.query.who) ? Number(req.query.who) : 0, showOffice: req.user.viewBranch === null, cutAt: everyone.length > POSITIONS_MAX ? POSITIONS_MAX : 0 });
 });
 router.post('/admin/users/positions', requirePerm('users.manage'), (req, res) => {
   let changed = 0; const problems = []; const offices = new Set();
   const team = require('../team');
   db.transaction(() => {
-    const people = positionPeople(req.user); const names = new Map(people.map((p) => [p.id, p.display_name]));
+    const people = positionPeople(req.user).slice(0, POSITIONS_MAX); const names = new Map(people.map((p) => [p.id, p.display_name]));
     for (const p of people) {
       if (req.body[`job_${p.id}`] === undefined && req.body[`mgr_${p.id}`] === undefined) continue;
       let touched = false;

@@ -1,7 +1,7 @@
 <%- include('partials/header', { wide: true }) %>
 <p class="back"><a class="back-link" href="/tasks">Tasks</a></p>
 <h1>Manage tasks</h1>
-<p class="lede"><strong><%= counts.open %></strong> open<% if (counts.overdue) { %>, <strong><%= counts.overdue %> overdue</strong><% } %>, <%= counts.done %> done. A task shows in the person's notification bell, with its due date, until it is done.</p>
+<p class="lede"><strong><%= counts.open %></strong> open<% if (counts.overdue) { %>, <strong><%= counts.overdue %> overdue</strong><% } %>, <%= counts.done %> done.<% if (cut) { %> These are the first 1000 only<%= person ? '' : ': choose a person below to see all of theirs' %>.<% } %> A task shows in the person's notification bell, with its due date, until it is done.</p>
 <form method="get" class="filters card">
   <label>Show
     <select name="show">

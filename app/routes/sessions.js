@@ -83,7 +83,7 @@ function listPage(req, res, extra = {}) {
      ${person ? 'AND EXISTS (SELECT 1 FROM training_attendance a WHERE a.session_id = s.id AND a.user_id = ?)' : ''}
      ORDER BY s.completed_at IS NOT NULL, s.session_date DESC, s.id DESC LIMIT 300`).all(...(person ? [person] : []));
   const ids = access.visibleUserIds(req.user);
-  const users = db.prepare('SELECT id, display_name FROM users ORDER BY display_name COLLATE NOCASE').all().filter((u) => !ids || ids.includes(u.id));
+  const users = db.prepare(`SELECT id, display_name FROM users ${ids ? `WHERE id IN (${ids.map(Number).join(',')})` : ''} ORDER BY display_name COLLATE NOCASE, id`).all();
   // Prefill from a training request: /admin/training/sessions?request=12
   let values = {}; let wrongOffice = null;
   if (/^\d+$/.test(req.query.request || '')) {
@@ -130,7 +130,8 @@ router.get('/admin/training/sessions.csv', requirePerm('training.view'), (req, r
   const rows = db.prepare(
     `SELECT s.title, s.session_date, s.location, s.completed_at, u.id AS uid, u.display_name, u.username
      FROM training_attendance a JOIN training_sessions s ON s.id = a.session_id JOIN users u ON u.id = a.user_id
-     ORDER BY s.session_date, s.id, u.display_name COLLATE NOCASE`).all().filter((r) => !ids || ids.includes(r.uid));
+     ${ids ? `WHERE u.id IN (${ids.map(Number).join(',')})` : ''}
+     ORDER BY s.session_date, s.id, u.display_name COLLATE NOCASE, u.id`).all();
   sendCsv(res, `training-attendance-${localDate()}.csv`, ['Session', 'Date', 'Location', 'Held', 'Name', 'Username'],
     rows.map((r) => [r.title, r.session_date, r.location, r.completed_at ? 'Yes' : 'Not yet', r.display_name, r.username]));
 });
@@ -140,8 +141,8 @@ router.get('/admin/training/sessions/:id', requirePerm('training.view'), (req, r
   if (!session) return res.status(404).render('error', { title: 'Page not found', message: 'That session does not exist.' });
   const ids = access.visibleUserIds(req.user);
   const attending = new Set(db.prepare('SELECT user_id FROM training_attendance WHERE session_id = ?').all(session.id).map((r) => r.user_id));
-  const people = db.prepare('SELECT id, display_name, active FROM users WHERE removed_at IS NULL ORDER BY display_name COLLATE NOCASE').all()
-    .filter((u) => (u.active || attending.has(u.id)) && (!ids || ids.includes(u.id)));
+  const people = db.prepare(`SELECT id, display_name, active FROM users WHERE removed_at IS NULL ${ids ? `AND id IN (${ids.map(Number).join(',')})` : ''} ORDER BY display_name COLLATE NOCASE, id`).all()
+    .filter((u) => u.active || attending.has(u.id));
   const others = ids ? [...attending].filter((id) => !ids.includes(id)).length : 0;
   res.render('admin_session', {
     title: session.title, session, people, attending, others, canManage: access.can(req.user, 'training.manage'),

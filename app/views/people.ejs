@@ -11,7 +11,8 @@
   <% } %>
   <div class="filter-actions"><button class="btn primary" type="submit">Search</button><% if (q || branch || dept) { %><a class="btn" href="/people">Clear</a><% } %></div>
 </form>
-<p class="meta"><%= people.length %> <%= people.length === 1 ? 'person' : 'people' %><%= q || branch || dept ? ' found, of ' + total : '' %></p>
+<p class="meta"><% if (pages > 1) { %>Showing <%= firstShown %> to <%= firstShown + people.length - 1 %> of <%= found %> people<% } else { %><%= people.length %> <%= people.length === 1 ? 'person' : 'people' %><% } %><%= q || branch || dept ? ' found, of ' + total : '' %></p><% if (pages > 1) { %>
+<p class="filter-actions"><% if (page > 1) { %><a class="btn small" href="<%= pageLink(page - 1) %>">Previous</a><% } %><% if (page < pages) { %><a class="btn small" href="<%= pageLink(page + 1) %>">Next</a><% } %></p><% } %>
 <% if (!people.length) { %><p class="card empty">Nobody matches that. Try a shorter search.</p><% } %>
 <ul class="people">
   <% people.forEach(function (p) { %>
@@ -24,5 +25,6 @@
     </span>
   </a><% if (p.email && p.id !== user.id) { %><a class="teams-mini" href="https://teams.microsoft.com/l/chat/0/0?users=<%= encodeURIComponent(p.email) %>" target="_blank" rel="noopener noreferrer" title="Chat with <%= p.display_name %> in Teams" aria-label="Chat with <%= p.display_name %> in Teams"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H10l-4.500 3.500V16H4z"/><path d="M8 9.500h8M8 12.500h5"/></svg></a><% } %></li>
   <% }) %>
-</ul>
+</ul><% if (pages > 1) { %>
+<p class="filter-actions spaced"><% if (page > 1) { %><a class="btn small" href="<%= pageLink(page - 1) %>">Previous</a><% } %><% if (page < pages) { %><a class="btn small" href="<%= pageLink(page + 1) %>">Next</a><% } %></p><% } %>
 <%- include('partials/footer') %>

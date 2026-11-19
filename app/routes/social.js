@@ -28,13 +28,30 @@ const SHOUT = `SELECT s.*, f.display_name AS from_name, f.photo_path AS from_pho
   FROM shoutouts s JOIN users f ON f.id = s.from_user JOIN users t ON t.id = s.to_user`;
 const recentShoutouts = (me, limit = 3) => db.prepare(`${SHOUT} ORDER BY s.id DESC LIMIT @limit`).all({ me, limit });
 const shoutoutsFor = (me, userId, limit = 20) => db.prepare(`${SHOUT} WHERE s.to_user = @u ORDER BY s.id DESC LIMIT @limit`).all({ me, u: userId, limit });
-const everyone = () => db.prepare(`SELECT u.id, u.display_name, b.name AS branch FROM users u LEFT JOIN branches b ON b.id = u.branch_id WHERE ${LISTED} ORDER BY u.display_name COLLATE NOCASE`).all();
+const PICKER_MAX = 500;   // past this many people in the company, the "who is it for" list is your own office only
+
+/**
+ * Who can be picked for a shout-out: the person's own office first. People in other offices are listed too while the
+ * whole company is small enough for one list; after that they are reached from their own page, which opens this form
+ * with them already chosen (`chosenId`).
+ */
+function shoutPicker(user, chosenId) {
+  const pick = (where, ...args) => db.prepare(`SELECT u.id, u.display_name, b.name AS branch FROM users u LEFT JOIN branches b ON b.id = u.branch_id
+     WHERE ${LISTED} AND u.id <> ? AND ${where} ORDER BY u.display_name COLLATE NOCASE, u.id`).all(user.id, ...args);
+  const short = db.prepare(`SELECT COUNT(*) AS n FROM users u WHERE ${LISTED}`).get().n <= PICKER_MAX;
+  return {
+    people: pick('u.branch_id IS ?', user.branch_id),
+    away: short ? pick('u.branch_id IS NOT ?', user.branch_id) : chosenId ? pick('u.branch_id IS NOT ? AND u.id = ?', user.branch_id, chosenId) : [],
+    elsewhere: !short,
+  };
+}
 
 function shoutPage(req, res, extra = {}) {
   const to = isId(req.query.to) ? Number(req.query.to) : null;
+  const values = extra.values || { to_user: to };
   res.status(extra.errors ? 400 : 200).render('shoutouts', {
-    title: 'Shout-outs', rows: db.prepare(`${SHOUT} ORDER BY s.id DESC LIMIT 60`).all({ me: req.user.id }), people: everyone().filter((p) => p.id !== req.user.id),
-    errors: [], values: { to_user: to }, modOf: (authorId) => access.moderates(req.user, 'forum.moderate', authorId), ...extra,
+    title: 'Shout-outs', rows: db.prepare(`${SHOUT} ORDER BY s.id DESC LIMIT 60`).all({ me: req.user.id }), ...shoutPicker(req.user, values.to_user),
+    errors: [], values, modOf: (authorId) => access.moderates(req.user, 'forum.moderate', authorId), ...extra,
   });
 }
 router.get('/shoutouts', requireLogin, (req, res) => shoutPage(req, res));

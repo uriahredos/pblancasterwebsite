@@ -173,7 +173,7 @@ Record each person's licenses and certifications with an optional issuer, number
 
 - The list shows **Expired**, **days left** (within 60 days) or **Current**, soonest expiry first, with a filter for the ones needing attention and a CSV download.
 - Each person sees their own under My activity. In the last 30 days (and once expired) a warning shows on their home page.
-- They are emailed once at 30 days and once at 7 days before expiry (needs email set up and an email address on their account).
+- They are emailed once at 30 days and once at 7 days before expiry (needs email set up and an email address on their account). A reminder that cannot be sent yet (email not set up, no address on the account, or the mail server refused it) is not used up: it goes out once it can.
 - When something is renewed, edit the record and change the expiry date; reminders start again.
 - The menu shows a count of records expired or expiring within 30 days.
 - Needs the **Record and edit people's licenses and certifications** permission. Managers keep records for their own people only.
@@ -233,7 +233,7 @@ Something one person asks another to do, with an optional due date.
 
 - **Assigning** (Team > Manage tasks): say what needs doing, add details and a due date if you like, then choose who it is for. Tap a group button to give it to **Everyone** or to everyone on a profile (for example all Technicians), or type a name in the search box to pick particular people; you can mix both. Each person gets their own copy, and the form says how many people that will be before you send it. Needs the **Assign tasks** permission; a manager can assign to their own people only.
 - **For the person**: every open task appears at the top of their home page and in their notification bell (Alerts on a phone) by name with when it is due ("Due tomorrow", "Overdue by 2 days"), overdue first, and counts toward the bell's number. **Tasks** in the menu lists them with the details and a **Mark as done** button with an optional note.
-- **Following up**: the Manage tasks page shows open, overdue and done tasks, who each is for, and any note left when it was done. You can edit, reassign, mark done on someone's behalf, reopen or remove a task.
+- **Following up**: the Manage tasks page shows open, overdue and done tasks, who each is for, and any note left when it was done. You can edit, reassign, mark done on someone's behalf, reopen or remove a task. The page holds 1000 tasks, open ones first; when there are more it says so, and choosing a person shows all of that person's.
 - The person is emailed when a task is assigned if they have an email address and email is set up.
 
 ## Push alerts (`/settings/notifications`)
@@ -459,6 +459,7 @@ The **Community** menu holds People, Discussions, Daily question and Newsletters
 
 **People (`/people`) and profiles**
 - Everyone with an active account is listed, with a search over names, job titles, skills and "about me".
+- The list shows 500 people at a time in name order. When there are more, the line above it says so ("Showing 1 to 500 of 3005 people") and **Next** and **Previous** go through the rest. A search or an office filter with many answers works the same way.
 - Each person fills in their own profile under **My profile** (`/profile`): photo, job title, start date, about me, and "what I know about" (skills, separated by commas). All optional. The photo is shrunk on the phone before it is sent.
 - A profile also lists the person's certifications on file, by name only (no dates).
 - Phone and email show on a profile only if the person ticks the box for each.
@@ -482,7 +483,7 @@ The **Community** menu holds People, Discussions, Daily question and Newsletters
 - **On call:** an On call page for everyone shows who is on call now (with Call buttons) and the schedule ahead, for the person's office and any other office in the same market. Several people can be on call and several can be backups for the same days. People with the `oncall.manage` permission (given once to profiles that can assign tasks) load the year from the office's on-call spreadsheet saved as CSV, add people to a shift, swap one person for another and remove them. The hand-over day belongs to the next person. Who is on call now also shows on the home page.
 - **Vehicle inspection as a task:** in Manage tasks, choose "A vehicle inspection" as the kind of task. The person gets a **Do the vehicle inspection** button; the task cannot be ticked off by hand and finishes only when the inspection is sent with six required photos (front, rear, driver side, passenger side, front interior, rear interior). The finished task links to the inspection. It can only be given to people whose profile lets them send inspections.
 - **Task status and notes:** the person doing a task sets where it stands (Not started, In progress, Waiting) and can leave notes without closing it; choosing Finished closes it. The manager sees the status and latest note in Manage tasks, the full thread on the task's Edit page, and can add a note back. Updates send an alert to whoever assigned the task.
-- **Team > Positions** lists everyone in the office with their job title and department in one table; change as many as needed and save once. A department box suggests the departments already in use. People who manage users also get an **Edit job title and department** button on a person's page and an **Edit positions** button on People. Each change is written to the activity log.
+- **Team > Positions** lists everyone in the office with their job title and department in one table; change as many as needed and save once. Someone looking at all offices at once gets the first 1000 people and a line saying so; choosing one office shows everyone in it. A department box suggests the departments already in use. People who manage users also get an **Edit job title and department** button on a person's page and an **Edit positions** button on People. Each change is written to the activity log.
 - On **Edit person** (Team > Users), **Announce as a new hire** takes a job title, start date and a few words. The person then appears under **Welcome aboard** (in the Activity feed) on everyone's home page for 14 days.
 - Everyone can press **Say welcome**, and add a short message from the person's profile. The messages stay on the profile afterwards.
 
@@ -493,6 +494,7 @@ The **Community** menu holds People, Discussions, Daily question and Newsletters
 
 **Shout-outs (`/shoutouts`)**
 - Anyone can thank a coworker by name with a short note. The latest show on the home page and all of a person's shout-outs stay on their profile. Others can applaud. The person gets a push alert if they have alerts on.
+- **Who is it for?** lists the people in your own office first. While no more than 500 people are on the site, everyone else follows under "Other offices". Past that, the list is your own office only: for someone elsewhere, open their page from People and press **Give a shout-out** there.
 - Whoever wrote one, or a moderator, can remove it.
 
 **Birthdays and work anniversaries**
