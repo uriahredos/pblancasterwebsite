@@ -64,6 +64,8 @@ function merge(keepId, extraId) {
     db.prepare("DELETE FROM sessions WHERE json_extract(data, '$.userId') = ?").run(extra.id);
     db.prepare('DELETE FROM users WHERE id = ?').run(extra.id);
   })();
+  // The kept account took the extra one's photo over only if it had none. Otherwise no account shows that photo any more, so the file goes.
+  if (extra.photo_path && keep.photo_path && extra.photo_path !== keep.photo_path) require('./uploads').remove(extra.photo_path);
   require('./team').applyAuto(keep.branch_id);
   return true;
 }

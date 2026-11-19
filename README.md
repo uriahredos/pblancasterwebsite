@@ -144,6 +144,8 @@ When someone else changes the status or reply on a person's request (parts or tr
 
 - **Topics** (`/training/topics`): everyone who can send training requests sees the open, non-private requests and can tap **I want this too**. People who manage training also see **Edit wording** on each one; the original text stays in that request's history. The most wanted rise to the top, and the admin training log shows the count.
 - **Sessions** (`/admin/training/sessions`, from the Training log): schedule a session with a date, time and place. Scheduling one from a training request lists the requester and everyone who added their name, and sets the request to Scheduled.
+- A session can only be scheduled from a request that belongs to the office the session is in, and that the person scheduling it could open on the Training log (for a manager: a request from one of their own people). Someone who sees every office chooses the request's office first.
+- A session scheduled from a **private** request is not listed to the office under Coming up, on the Topics page or the home page. On the Topics page the people expected at it still see it. The form does not copy the request's wording into the session's title.
 - On the day, tick who came and press **Mark as held**; the linked request becomes Completed.
 - Each person sees **Training attended** under My activity. The sessions page can filter by person and export attendance as CSV.
 - Managers can tick attendance for their own people only.
@@ -162,7 +164,8 @@ Linked from the Users page. Records who added or edited a person, reset a passwo
 
 - **Spreadsheet exports** are recorded: who took which file and how many rows. The export of sales leads (every customer's contact details) also asks for the password again if it was not typed in the last ten minutes, like a backup.
 - **Sign-in history** is recorded too: each sign-in with how it was done (password, or Face ID / fingerprint) and on what kind of device; a wrong password against a real account, with the address it came from; a wrong password at the lock screen or on a form that asks for it again; the pause after ten wrong passwords; a refused expired temporary password; and changes of password or email address. Unlocks are not recorded. A wrong try against a username that does not exist is not recorded either, because what was typed there may well be a password. Passwords are never recorded.
-- **Only people who look after every office see the sign-in entries** (the **Sign-ins** button). An office admin does not get a list of who signed in when: next to the date on an anonymous complaint, that would be a hint about who sent it.
+- **Only people who look after every office see the sign-in entries** (the **Sign-ins** button). An office admin does not get a list of who signed in when: next to the date on an anonymous complaint, that would be a hint about who sent it. For the same reason an office admin does not see when someone changed their password or reset address, or set up or removed Face ID.
+- **Removing a person for good** deletes these entries about them (their sign-ins, wrong passwords, and changes of password, reset address and Face ID). What they did for the office stays in the log.
 
 ## Certifications (`/admin/certs`)
 
@@ -351,6 +354,7 @@ A profile is a set of permissions. Each person has exactly one profile, and what
 - **Managers**: when a person's profile is a "sees only their own people" profile, their Edit page lists everyone with tick-boxes. Tick the people they manage. The Users list shows who manages whom.
 - **Reset password**: a new temporary password, shown once. People can also use "Forgot your password?" if email is set up.
 - **Disable**: signed out at once and cannot sign in; their past submissions stay.
+- **Remove for good**: their sign-in, contact details, profile photo (the file too) and sign-in history are erased, and they leave every list. What they recorded for the office (parts, inspections, posts, tasks they gave) stays with their name on it. Someone who recorded nothing is deleted outright; having signed in does not count as a record. Backups made before the removal still hold the person: the nightly copies on the server for up to 14 nights, and any copy that was emailed or downloaded for as long as it is kept.
 
 ### The master account
 
@@ -359,7 +363,7 @@ One account is the master. It always has every permission whatever the profiles 
 ### Limits that stop access creeping upward
 
 - Nobody can give out more than they have: you can only assign profiles, and tick boxes, that are within your own permissions. Boxes you do not hold are shown locked.
-- You cannot edit, reset or disable someone whose profile allows more than yours.
+- You cannot edit, reset or disable someone whose profile allows more than yours. The contact list upload and **Announce as a new hire** follow the same rule: they leave those accounts, and the master account, as they are.
 - You cannot change your own profile or disable yourself.
 - A manager given the "manage people" box can edit, reset and disable their own people only; they cannot add accounts or change anyone's profile.
 
@@ -419,13 +423,16 @@ The **Community** menu holds People, Discussions, Daily question and Newsletters
 
 **Contact list (Setup > Import)**
 - Upload the office contact list as a CSV (in Excel: File > Save As > CSV) with a Name column and, optionally, Title, Email and Phone. A row with only a name in it (MANAGEMENT, SERVICE...) is a department heading for the rows under it.
-- People who already have an account are matched by email, by the "first.last" in the email, or by name, and keep the name they have on the site. Their job title, department, work email and phone are set from the list, and the phone and email are shown on their profile (each person can untick that under My profile).
+- People who already have an account are matched by email, by the "first.last" in the email, or by name, and keep the name they have on the site. Their job title, department, work email and phone are set from the list.
+- The phone and email are shown on the profile of anyone who has not signed in yet. For someone who already uses the site, whether they are shown stays as that person has it under My profile; an upload never switches it back on.
+- An upload only changes accounts the person uploading could change on Edit person. The master account (unless the master uploads the list) and anyone whose profile allows more than the uploader's are left exactly as they are, and are named on the result page.
+- The activity log names each existing account whose email or phone the upload changed.
 - Everyone else is added with sign-in switched off: they are on the People page, but cannot sign in until an admin presses Enable and Reset password under Users.
 - Names and titles typed in capitals are tidied ("JANE MCDONALD" becomes "Jane McDonald"). Uploading a newer list updates titles, departments and phones; nobody is removed. Disabling an account by hand takes that person off the People page.
 - The People page can be filtered by department.
 
 **New hires**
-- **Sales (only for profiles with the sales permission):** a lead board per office with stages (New, Contacted, Quote sent, Won, Lost), one owner per lead, follow-up dates that count on the owner's bell, notes, hand-over to a colleague and passing a lead to another office. Adding a lead checks company-wide for the same customer by name, phone, email or address and says who already has it. The `Sales` and `Sales manager` profiles are created once; no other profile, including Admin and Corporate admin, is given the sales permissions unless someone ticks them on the Profiles page. Sales managers can edit anyone's leads, export and remove them.
+- **Sales (only for profiles with the sales permission):** a lead board per office with stages (New, Contacted, Quote sent, Won, Lost), one owner per lead, follow-up dates that count on the owner's bell, notes, hand-over to a colleague and passing a lead to another office. Adding a lead checks for the same customer and says who already has it. Inside the person's own office, part of the name or the same address is enough. A customer of another office is found only by the whole name, the whole phone number or the whole email address, and the answer is only that office and who is working it, never the customer's name or details. While typing, each person can look up 60 different customers in 15 minutes (carrying on typing the same customer does not count again); past that the lookups stop being answered until the 15 minutes are up, the activity log notes it once, and the check made when the lead is saved still runs. The `Sales` and `Sales manager` profiles are created once. The **Admin** and **Corporate admin** profiles hold the sales permissions too, so an office's admin sees and can export that office's leads, and a corporate admin every office's; untick them on the Profiles page if that is not wanted. No other profile has them unless someone ticks them. Sales managers can edit anyone's leads, export and remove them. Removing a lead is written to the activity log by its number and office, not the customer's name.
 - **Sales tools:** *My day* (follow-ups due, quotes unanswered for 7 days, repeat work due within 45 days, leads quiet for 14 days, unowned leads); quote amount and date on a lead; a date won work comes round again, with one press to start the repeat lead; a lead quiet for 30 days can be taken by a colleague; the person who passed a lead from another office is named and told when it is won; *Team summary* for sales managers (per person, win rate, quote-to-decision time, sources, loss reasons); and a shared *Library* of files and links that sales managers add.
 - **Community first on the home page:** a strip under the greeting shows the company in numbers (offices, people, shout-outs this month, new discussions) and a "Meet an office this week" spotlight that changes weekly. **Activity feed** is one list, newest first, of people joining, photos, new discussions and events from every office, each tagged with the office it came from (other offices stand out). On a phone it sits straight after Shout-outs and On call.
 - **Comments on announcements:** anyone an announcement is for can ask a question or comment under it on the Announcements page; the poster is alerted. People remove their own comments; anyone who posts announcements can remove any.

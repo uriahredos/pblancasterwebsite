@@ -393,17 +393,8 @@ const getUser = (id) => (/^\d+$/.test(String(id)) ? db.prepare('SELECT * FROM us
 /** Profiles this person is allowed to hand out: only ones that hold nothing they lack themselves. */
 const grantableProfiles = (actor) => allProfiles().filter((p) => access.canGrant(actor, access.permsOf(p.id)));
 
-/**
- * May `actor` change `target`'s account? Never the master account (except the
- * master themselves), never someone outside their team, and never someone
- * whose profile can do more than their own.
- */
-function mayManage(actor, target) {
-  if (!target) return false;
-  if (target.is_master) return Boolean(actor.is_master);
-  if (!access.canSee(actor, target.id)) return false;
-  return !target.profile_id || access.canGrant(actor, access.permsOf(target.profile_id));
-}
+// May `actor` change `target`'s account? One rule for every page that changes an account (see permissions.js).
+const { mayManage } = access;
 
 /** Duplicate accounts this person may tidy: both the one kept and the one removed must be theirs to manage. */
 function duplicatesFor(actor) {
@@ -747,14 +738,16 @@ router.get('/admin/activity', requirePerm('activity.view'), (req, res) => {
   const q = clean(req.query.q, 60);
   // Sign-ins are recorded too, for the people who look after every office only. An office admin does not get a list of
   // who signed in when: next to an anonymous complaint's date, that would be a hint about who sent it.
-  const SIGN_INS = "('Signed in', 'Sign-in failed', 'Sign-in paused', 'Sign-in refused', 'Wrong password at the lock screen', 'Wrong password when asked to confirm')";
+  // The same goes for when someone changed a password, a reset address or Face ID.
+  const SIGN_INS = activity.sqlList(activity.SIGN_INS);
+  const PERSONAL = activity.sqlList([...activity.SIGN_INS, ...activity.ACCOUNT]);
   const maySeeSignIns = Boolean(req.user.allBranches);
   const signIns = maySeeSignIns && req.query.show === 'signins';
   const like = '%' + q.replace(/[\\%_]/g, '\\$&') + '%';
   const rows = db.prepare(
     `SELECT a.at, a.action, a.detail, u.display_name FROM activity_log a LEFT JOIN users u ON u.id = a.user_id
      WHERE ${req.user.viewBranch ? 'u.branch_id = ' + Number(req.user.viewBranch) : '1 = 1'}
-     ${!maySeeSignIns ? `AND a.action NOT IN ${SIGN_INS}` : signIns ? `AND a.action IN ${SIGN_INS}` : q ? '' : "AND a.action <> 'Signed in'"}
+     ${!maySeeSignIns ? `AND a.action NOT IN ${PERSONAL}` : signIns ? `AND a.action IN ${SIGN_INS}` : q ? '' : "AND a.action <> 'Signed in'"}
      ${q ? "AND (a.action LIKE ? ESCAPE '\\' OR a.detail LIKE ? ESCAPE '\\' OR u.display_name LIKE ? ESCAPE '\\')" : ''}
      ORDER BY a.id DESC LIMIT 500`).all(...(q ? [like, like, like] : []));
   res.render('admin_activity', { title: 'Activity log', rows, q, signIns, maySeeSignIns });

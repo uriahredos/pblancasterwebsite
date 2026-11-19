@@ -83,10 +83,13 @@ const phoneKey = (text) => { const d = String(text || '').replace(/\D/g, ''); re
 const emailKey = (text) => String(text || '').trim().toLowerCase();
 
 /**
- * Leads anywhere in the company that look like the same customer. Each match says who has it and why
- * it matched; the caller decides how much of it to show.
+ * Leads anywhere in the company that look like the same customer. Each match says who has it and why it matched.
+ * `office` is the office the asker works in (null: someone looking at every office). In that office part of a name
+ * is enough. A customer of another office is found only by the whole name, the whole phone number or the whole email
+ * address, so common words cannot be used to list other offices' customers, and such a match carries only the office
+ * and who is on it (`elsewhere`), never the customer's details.
  */
-function similar({ company, phone, email, address }, exceptId) {
+function similar({ company, phone, email, address }, exceptId, office = null) {
   const n = nameKey(company); const p = phoneKey(phone); const e = emailKey(email); const a = nameKey(address);
   if (!n && !p && !e) return [];
   const rows = db.prepare(
@@ -97,12 +100,14 @@ function similar({ company, phone, email, address }, exceptId) {
   const out = [];
   for (const r of rows) {
     const rn = nameKey(r.company);
+    const own = office === null || r.branch_id === office;
     const why = [];
-    if (n && rn && (rn === n || (n.length >= 5 && rn.includes(n)) || (rn.length >= 5 && n.includes(rn)))) why.push('same name');
+    if (n && rn && (rn === n || (own && ((n.length >= 5 && rn.includes(n)) || (rn.length >= 5 && n.includes(rn)))))) why.push('same name');
     if (p && phoneKey(r.phone) === p) why.push('same phone number');
     if (e && emailKey(r.email) === e) why.push('same email');
-    if (a && a.length >= 8 && nameKey(r.address) === a) why.push('same address');
-    if (why.length) out.push({ ...r, why: why.join(', '), stageName: stageName(r.stage) });
+    if (own && a && a.length >= 8 && nameKey(r.address) === a) why.push('same address');
+    if (why.length && own) out.push({ ...r, why: why.join(', '), stageName: stageName(r.stage) });
+    else if (why.length) out.push({ id: r.id, branch_id: r.branch_id, owner: r.owner, office: r.office, why: why.join(', '), elsewhere: true });
     if (out.length >= 8) break;
   }
   return out;
