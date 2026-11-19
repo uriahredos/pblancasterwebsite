@@ -42,7 +42,8 @@ async function runReminders(now = new Date()) {
     // again at the next pass (every six hours), so the reminder is late rather than lost.
     if (!c.email || !await mail.send([c.email], `${c.name} expires ${d === 0 ? 'today' : 'in ' + d + (d === 1 ? ' day' : ' days')}`,
       `Hi ${c.display_name},\n\nYour ${c.name} expires on ${fmtDate(c.expires_on)}.\n\nOnce it is renewed, give the new date to your manager so the record can be updated.\n\n${config.baseUrl}/my\n`)) continue;
-    db.prepare(`UPDATE certifications SET ${stage} = 1${stage === 'reminded_7' ? ', reminded_30 = 1' : ''} WHERE id = ?`).run(c.id);
+    // (A record given a new date while the email was going out starts again, so it is left alone.)
+    db.prepare(`UPDATE certifications SET ${stage} = 1${stage === 'reminded_7' ? ', reminded_30 = 1' : ''} WHERE id = ? AND expires_on = ?`).run(c.id, c.expires_on);
     sent++;
   }
   return sent;

@@ -88,7 +88,7 @@ router.get('/admin/parts', requirePerm('parts.view'), (req, res) => {
 
 router.get('/admin/parts.csv', requirePerm('parts.view'), (req, res) => {
   const { sql, params, order } = partsFilter(req.query, req.user);
-  const rows = db.prepare(
+  const rows = () => db.prepare(
     `SELECT s.*, u.display_name, u.username, i.part_name, i.quantity
      FROM parts_submissions s JOIN users u ON u.id = s.user_id
      JOIN parts_items i ON i.submission_id = s.id

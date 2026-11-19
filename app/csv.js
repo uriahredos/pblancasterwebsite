@@ -37,9 +37,13 @@ function sendCsv(res, filename, header, rows) {
   res.end();
 }
 
-/** Rows for sendCsv read straight from the database, one at a time: `toRow` turns each record into its list of cells. */
-function* rowsFrom(records, toRow) {
-  for (const r of records) yield toRow(r);
+/**
+ * Rows for sendCsv read straight from the database, one at a time: `toRow` turns each record into its list of cells.
+ * `read` starts the query and is only called once the file is being put together. A query that was started and then
+ * never read to the end would stop the site saving anything until its next restart, so it is never started early.
+ */
+function* rowsFrom(read, toRow) {
+  for (const r of typeof read === 'function' ? read() : read) yield toRow(r);
 }
 
 module.exports = { toCsv, sendCsv, rowsFrom };

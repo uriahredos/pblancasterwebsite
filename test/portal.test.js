@@ -5598,7 +5598,7 @@ test('People: past 500 the page says how many there are and goes on to the next 
   const owner = await loggedIn('owner');
   await owner.post('/branch/view', { branch: 'all', back: '/' }, { page: '/' });
   const all = (await owner.get('/admin/users/positions')).text;
-  assert.match(all, /Only the first 1000 people are listed here\. To work on everyone in one office, choose that office in the box at the top of the page\./);
+  assert.match(all, /Only the first 1000 people are listed here\. To work on everyone in one office, choose that office instead of All offices\./);
   assert.equal((all.match(/<tr id="p\d+"/g) || []).length, 1000);
   await owner.post('/branch/view', { branch: String(town), back: '/' }, { page: '/' });
   const oneOffice = (await owner.get('/admin/users/positions')).text;
@@ -5738,4 +5738,49 @@ test('spreadsheets: a very large export is the same file as before, put together
   const logged = db.prepare("SELECT detail FROM activity_log WHERE action = 'Spreadsheet exported' AND user_id = ? ORDER BY id DESC LIMIT 2").all(userId('sp.admin')).map((r) => r.detail.replace(/\d{4}-\d\d-\d\d/, 'DAY'));
   assert.deepEqual(logged, ['truck-inspections-DAY.csv, 2 rows', 'parts-DAY.csv, 2 rows']);
   db.prepare('DELETE FROM parts_submissions WHERE id = ?').run(sid); db.prepare('DELETE FROM inspections WHERE id = ?').run(iid);
+});
+
+test('spreadsheets: an export that goes wrong part-way never leaves the site unable to save', async () => {
+  const csv = require('../app/csv');
+  const reply = () => { const r = { headers: {}, body: [], req: {} }; r.setHeader = (k, v) => { r.headers[k] = v; }; r.send = (b) => { r.body.push(Buffer.from(b)); }; r.write = (b) => { r.body.push(b); }; r.end = () => {}; return r; };
+  const save = () => db.prepare("INSERT INTO meta (key, value) VALUES ('csv_probe', '1') ON CONFLICT(key) DO UPDATE SET value = value + 1").run();
+  const people = 'SELECT id, username FROM users ORDER BY id';
+  // The query is started only when the file is being put together, not when the rows are asked for.
+  let started = 0;
+  const rows = csv.rowsFrom(() => { started += 1; return db.prepare(people).iterate(); }, (u) => [u.id, u.username]);
+  assert.equal(started, 0); save();
+  const ok = reply(); csv.sendCsv(ok, 'people.csv', ['Id', 'Username'], rows);
+  assert.equal(started, 1); assert.equal(ok.body[0].toString('utf8'), csv.toCsv(['Id', 'Username'], db.prepare(people).all().map((u) => [u.id, u.username]))); save();
+  // A record that cannot be written stops that export only: the next thing anyone saves still goes in.
+  let n = 0;
+  assert.throws(() => csv.sendCsv(reply(), 'bad.csv', ['Id'], csv.rowsFrom(() => db.prepare(people).iterate(), (u) => { if (++n === 2) throw new Error('bad record'); return [u.id]; })), /bad record/);
+  save();
+  assert.throws(() => csv.sendCsv(reply(), 'bad.csv', ['Id'], csv.rowsFrom(() => db.prepare(people).iterate(), (u) => u.id)));   // a row that is not a list of cells
+  save();
+  assert.equal(db.prepare("SELECT value FROM meta WHERE key = 'csv_probe'").get().value, '4');
+  db.prepare("DELETE FROM meta WHERE key = 'csv_probe'").run();
+  // Over the site: both big exports, then a form saved straight afterwards.
+  speedOffice(); const boss = await loggedIn('sp.admin');
+  for (const p of ['/admin/parts.csv', '/admin/inspections.csv', '/admin/parts.csv?from=2020-01-01&sort=name', '/admin/inspections.csv?show=open']) { const r = await boss.get(p); assert.equal(r.status, 200, p); assert.equal(r.headers.get('content-type'), 'text/csv; charset=utf-8'); }
+  const t = await loggedIn('sp.tech1');
+  assert.equal((await t.post('/shoutouts', { to_user: String(userId('sp.tech2')), message: 'CSVPROBE thanks' }, { page: '/shoutouts' })).status, 302);
+  assert.equal(db.prepare("DELETE FROM shoutouts WHERE message = 'CSVPROBE thanks'").run().changes, 1);
+});
+
+test('certification reminders: a record given a new date while its email was going out starts again', async () => {
+  const certs = require('../app/certs');
+  const recorder = { sendMail: async (m) => { sent.push(m); } };
+  const day = (n) => { const d = new Date(`${require('../app/util').localDate()}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const who = makeUser('cert.renew', 'Rena Renewed'); db.prepare("UPDATE users SET email = 'rena@example.com' WHERE id = ?").run(who);
+  const id = db.prepare('INSERT INTO certifications (user_id, name, expires_on, created_at) VALUES (?, ?, ?, ?)').run(who, 'RENEW backflow license', day(20), new Date().toISOString()).lastInsertRowid;
+  // The record is renewed (as the Certifications page does it: new date, reminders start again) while the reminder is on its way.
+  mail.setTransport({ sendMail: async (m) => { if (/RENEW/.test(m.subject)) db.prepare('UPDATE certifications SET expires_on = ?, reminded_30 = 0, reminded_7 = 0 WHERE id = ?').run(day(385), id); sent.push(m); } });
+  try { await certs.runReminders(); } finally { mail.setTransport(recorder); }
+  assert.deepEqual(db.prepare('SELECT expires_on, reminded_30, reminded_7 FROM certifications WHERE id = ?').get(id), { expires_on: day(385), reminded_30: 0, reminded_7: 0 });
+  // So next year's reminder still goes, once.
+  const nextYear = new Date(Date.now() + 365 * 86400000); sent.length = 0;
+  await certs.runReminders(nextYear); await certs.runReminders(nextYear);
+  assert.deepEqual(sent.filter((m) => /RENEW/.test(m.subject)).map((m) => m.to), ['rena@example.com']);
+  assert.equal(db.prepare('SELECT reminded_30 FROM certifications WHERE id = ?').get(id).reminded_30, 1);
+  db.prepare('DELETE FROM certifications WHERE id = ?').run(id);
 });

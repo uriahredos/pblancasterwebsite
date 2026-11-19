@@ -143,7 +143,7 @@ router.get('/admin/inspections', requirePerm('inspections.view'), (req, res) => 
 
 router.get('/admin/inspections.csv', requirePerm('inspections.view'), (req, res) => {
   const { sql, params } = filter(req.user, req.query);
-  const rows = db.prepare(
+  const rows = () => db.prepare(
     `SELECT i.id, i.created_at, i.truck, i.odometer, i.notes, i.resolved_at, u.display_name, r.label, r.ok, r.note
      FROM inspections i JOIN users u ON u.id = i.user_id JOIN inspection_results r ON r.inspection_id = i.id
      ${sql} ORDER BY i.id, r.id`).iterate(...params);
