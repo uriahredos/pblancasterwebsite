@@ -7737,3 +7737,43 @@ test('Positions and welcomes follow the Edit person rule; forms that answer with
   db.prepare("DELETE FROM activity_log WHERE detail LIKE 'SEAMCHECK%'").run();
   db.prepare('DELETE FROM welcomes WHERE user_id = ?').run(boss);
 });
+
+test('reset addresses and keys: a duplicate entry never supplies an admin\'s email; the key box is never spell-checked; a backup carries no sign-in ids; a wrong restore setting is not repeated on the closed page', async () => {
+  // An admin with no email on file, and an entry in the same name that anybody in the office could have added.
+  const keepId = makeUser('seam.keeper', 'Kim Keeper', { profile: 'Admin' });
+  const extraId = auth.createUser({ username: 'seam.keeper.dir', displayName: 'Kim Keeper', password: 'correct horse battery' });
+  db.prepare("UPDATE users SET active = 0, in_directory = 1, email = 'someone.else@outside.example', phone = '717-555-0177' WHERE id = ?").run(extraId);
+  const owner = await loggedIn('owner');
+  assert.match((await owner.get('/admin/users')).text, /seam\.keeper\.dir/);
+  assert.equal((await owner.post('/admin/users/duplicates', { keep: String(keepId), extra: String(extraId) }, { page: '/admin/users' })).status, 302);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM users WHERE id = ?').get(extraId).n, 0);   // the extra entry is gone
+  const kept = db.prepare('SELECT email, phone FROM users WHERE id = ?').get(keepId);
+  assert.equal(kept.email, null);                                           // the reset address is not taken from the other entry
+  assert.equal(kept.phone, '717-555-0177');                                 // the rest still is
+  // The box for the saved key is one the page's spell checker leaves alone.
+  assert.match(fs.readFileSync(path.join(__dirname, '..', 'app', 'views', 'admin_security.ejs'), 'utf8'), /<input name="key" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" required>/);
+  assert.match((await owner.get('/site.js')).text, /el\.getAttribute\('spellcheck'\) === 'false'/);
+  // A backup holds no sign-in ids, in the sessions table or beside an alert registration.
+  const backup = require('../app/backup'); const dbfile = require('../app/dbfile');
+  const sid = db.prepare("SELECT sid FROM sessions WHERE json_extract(data, '$.userId') = ? ORDER BY expires DESC").get(userId('owner')).sid;
+  db.prepare("INSERT OR REPLACE INTO push_subscriptions (user_id, endpoint, p256dh, auth, device, created_at, sid) VALUES (?, 'https://fcm.googleapis.com/fcm/send/seam-sid', 'k', 'a', 'Phone', ?, ?)").run(userId('owner'), new Date().toISOString(), sid);
+  const name = await backup.runBackup({ manual: true });
+  const copy = dbfile.connect(path.join(backup.backupDir, name), '', { fileMustExist: true });
+  try {
+    assert.equal(copy.prepare('SELECT COUNT(*) n FROM sessions').get().n, 0);
+    assert.deepEqual(copy.prepare("SELECT sid FROM push_subscriptions WHERE endpoint LIKE '%/seam-sid'").all().map((r) => r.sid), [null]);
+  } finally { copy.close(); }
+  assert.equal(db.prepare("SELECT sid FROM push_subscriptions WHERE endpoint LIKE '%/seam-sid'").get().sid, sid);   // the live site keeps it
+  db.prepare("DELETE FROM push_subscriptions WHERE endpoint LIKE '%/seam-sid'").run();
+  fs.rmSync(path.join(backup.backupDir, name), { force: true });
+  // Whatever was typed into RESTORE_BACKUP by mistake is not shown to the world.
+  const L = encryptionLab();
+  try {
+    assert.ok(L.run(L.SEED).ok);
+    const typed = 'Qk3vX9pLm2Zr8TfYw1NcHs6Jd4Ga7UeBo5KiVtRx0Wz';
+    const r = L.run("try { require('./app/db'); console.log('OPENED'); } catch (e) { console.log('STOPPED ' + e.message + ' ' + (e.advice || '')); }", { RESTORE_BACKUP: typed });
+    const said = r.out + (r.err || '');
+    assert.match(said, /STOPPED [\s\S]*RESTORE_BACKUP is not the name of one of the site's backups/);
+    assert.doesNotMatch(said, new RegExp(typed));
+  } finally { fs.rmSync(L.dir, { recursive: true, force: true }); }
+});

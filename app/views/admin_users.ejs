@@ -14,7 +14,7 @@
 <div class="card dup-card" id="duplicates">
   <div class="rec-head"><strong><%= dupCount %> duplicate <%= dupCount === 1 ? 'account' : 'accounts' %> found</strong>
     <% if (dupCount > 1) { %><form method="post" action="/admin/users/duplicates" data-no-live data-confirm="Remove all <%= dupCount %> duplicate accounts? Anything recorded under them moves to the account that is kept. This cannot be undone."><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="all" value="1"><button class="btn small" type="submit">Remove all <%= dupCount %></button></form><% } %></div>
-  <p class="hint">The same person is on the list twice in one office, and the extra account is disabled or has no role. Removing it moves anything recorded under it (and its job title, email or phone if the other account lacks them) to the account that is kept.</p>
+  <p class="hint">The same person is on the list twice in one office, and the extra account is disabled or has no role. Removing it moves anything recorded under it (and its job title, email or phone if the other account lacks them; an admin's email is never taken from it) to the account that is kept.</p>
   <ul class="dup-list">
   <% duplicates.forEach(function (g) { g.extras.forEach(function (e) { %>
     <li>

@@ -58,7 +58,11 @@ function merge(keepId, extraId) {
       db.prepare(`DELETE FROM "${table}" WHERE "${column}" = ?`).run(extra.id);                                       // what the kept account already had its own of
     }
     db.prepare('DELETE FROM user_managers WHERE manager_id = user_id').run();
-    const fill = ['job_title', 'department', 'email', 'phone', 'photo_path', 'started_on', 'about', 'skills', 'birthday', 'default_truck'].filter((c) => !keep[c] && extra[c]);
+    // The email is where a password-reset link goes. For the master account and anyone who manages people it is only ever
+    // set by someone allowed to edit them, never picked up from another entry that anybody in the office could have added.
+    const access = require('./permissions');
+    const guarded = keep.is_master || (keep.profile_id && [...access.permsOf(keep.profile_id)].includes('users.manage'));
+    const fill = ['job_title', 'department', 'email', 'phone', 'photo_path', 'started_on', 'about', 'skills', 'birthday', 'default_truck'].filter((c) => !keep[c] && extra[c] && !(c === 'email' && guarded));
     for (const c of fill) db.prepare(`UPDATE users SET ${c} = ? WHERE id = ?`).run(extra[c], keep.id);
     if (extra.in_directory) db.prepare('UPDATE users SET in_directory = 1 WHERE id = ?').run(keep.id);
     db.prepare("DELETE FROM sessions WHERE json_extract(data, '$.userId') = ?").run(extra.id);

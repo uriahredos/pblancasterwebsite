@@ -47,7 +47,7 @@
   function spellCheck(root) {
     var skip = /user|name|email|phone|part|qty|quantity|number|code|skill|birth|date|address|street|truck|^q$|^oq$|search|password|token/i;
     Array.prototype.forEach.call((root || document).querySelectorAll('textarea, input[type=text], input:not([type])'), function (el) {
-      var prose = !(skip.test(el.name || '') || skip.test(el.id || '') || el.getAttribute('autocapitalize') === 'none' || el.hasAttribute('list'));
+      var prose = !(skip.test(el.name || '') || skip.test(el.id || '') || el.getAttribute('autocapitalize') === 'none' || el.getAttribute('spellcheck') === 'false' || el.hasAttribute('list'));
       if (!prose) return;
       el.spellcheck = true; el.setAttribute('autocorrect', 'on');
       if (!el.hasAttribute('autocapitalize')) el.setAttribute('autocapitalize', 'sentences');

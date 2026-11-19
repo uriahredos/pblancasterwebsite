@@ -476,13 +476,10 @@ addColumn('inspection_items', 'branch_id', 'INTEGER');
 addColumn('training_sessions', 'branch_id', 'INTEGER');
 addColumn('complaints', 'branch_id', 'INTEGER');          // the branch only; still nothing about who sent it
 // "notified" used to change when the daily notice went out, which showed whether a complaint came in before or after that
-// hour. The notice counts by date now and every complaint carries the same mark, so the old marks are evened out once.
-if (!db.prepare("SELECT 1 FROM meta WHERE key = 'complaint_notified_1'").get()) {
-  db.transaction(() => {
-    db.prepare('UPDATE complaints SET notified = 1 WHERE notified <> 1').run();
-    db.prepare("INSERT INTO meta (key, value) VALUES ('complaint_notified_1', '1')").run();
-  })();
-}
+// hour. The notice counts by date now and every complaint carries the same mark, so the marks are evened out.
+// Done at every start, not once: after going back to an older version for a while, its complaints would otherwise stand out.
+db.prepare('UPDATE complaints SET notified = 1 WHERE notified <> 1').run();
+db.prepare("INSERT OR IGNORE INTO meta (key, value) VALUES ('complaint_notified_1', '1')").run();
 db.exec(`
 CREATE TABLE IF NOT EXISTS announcement_comments (
   id INTEGER PRIMARY KEY,

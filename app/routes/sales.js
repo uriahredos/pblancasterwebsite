@@ -142,7 +142,8 @@ router.get('/sales/check', use, check);   // for a page that was opened before t
 
 router.post('/sales', use, (req, res) => {
   const { v, errors } = readLead(req.body);
-  const matches = errors.length ? [] : sales.similar(v, 0, officeOf(req.user));
+  const answered = errors.length > 0 || lookupAllowed(req.user, v);
+  const matches = errors.length ? [] : sales.similar(v, 0, officeOf(req.user)).filter((m) => answered || !m.elsewhere);
   // Someone may already be on this customer: say so once, and let the person decide.
   if (!errors.length && matches.length && req.body.anyway !== '1') {
     return board(req, res, { errors: ['This looks like a customer someone is already working. Check the list below, then check the box to add it anyway.'], values: v, matches, addOpen: true });

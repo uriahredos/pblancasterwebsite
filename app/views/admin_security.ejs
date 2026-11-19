@@ -13,7 +13,7 @@
     <form method="post" action="/admin/security/check-key" class="filters" id="key-copy" data-no-live autocomplete="off">
       <input type="hidden" name="_csrf" value="<%= csrf %>">
       <label class="grow">Paste your saved copy of the key <span class="hint">The site only answers yes or no. What you paste is not kept or shown again.</span>
-        <input name="key" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" required></label>
+        <input name="key" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" required></label>
       <div class="filter-actions"><button class="btn small" type="submit">Check</button></div>
     </form>
     <% } else if (c.keyBox) { %>

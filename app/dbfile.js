@@ -101,6 +101,9 @@ function rekey(file, from, to) {
 const plainly = (e) => (e.code === 'SQLITE_FULL' || e.code === 'ENOSPC' ? 'there is not enough room on the disk'
   : e.code === 'SQLITE_CORRUPT' || e.code === 'SQLITE_NOTADB' ? 'part of the database file is damaged' : e.message);
 
+/** The same for a page anyone on the internet may be shown: never the raw error, which can carry folder names. */
+const forPage = (e) => (['SQLITE_FULL', 'ENOSPC', 'SQLITE_CORRUPT', 'SQLITE_NOTADB'].includes(e.code) ? plainly(e) : 'the server log says why');
+
 /** Remove a working file and whatever SQLite left beside it. */
 function clear(file) {
   for (const ext of ['', ...SIDE]) fs.rmSync(file + ext, { force: true });
@@ -148,6 +151,8 @@ function snapshot(db, target) {
       copy.pragma('journal_mode = DELETE');                // one file, with nothing kept beside it
       copy.pragma('secure_delete = ON');                   // what is removed is wiped, not just struck off
       if (copy.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sessions'").get()) copy.exec('DELETE FROM sessions');
+      // Nor which sign-in each alert registration belonged to: after a restore every device waits for its owner to sign in again.
+      if (copy.prepare("SELECT 1 FROM pragma_table_info('push_subscriptions') WHERE name = 'sid'").get()) copy.exec('UPDATE push_subscriptions SET sid = NULL');
     } finally { copy.close(); }
     const seen = inspect(part, liveKey, { count: true });
     if (seen.fault) {
@@ -348,7 +353,8 @@ function bringBack(dataDir, file, keys) {
       flushFolder(dataDir);
       return { ...result, again: false };
     } catch (e) {
-      throw new Stopped(`Bringing back ${step.backup} was started and could not be finished (${e.message}).`,
+      console.error(`[restore] ${e.message}`);
+      throw new Stopped(`Bringing back ${step.backup} was started and could not be finished (${forPage(e)}).`,
         'Nothing has been deleted: the database from before is on the disk. Tell whoever maintains the site. The next start tries again.', true);
     }
   };
@@ -362,7 +368,7 @@ function bringBack(dataDir, file, keys) {
   const last = readJson(done);
   if (last && last.backup === want) return finished || { ...last, again: true };
 
-  if (!BACKUP.test(want)) throw refuse(`"${want.slice(0, 60)}" is not the name of one of the site's backups.`);
+  if (!BACKUP.test(want)) throw refuse("The value of RESTORE_BACKUP is not the name of one of the site's backups (they look like portal-2026-11-18.db).");
   const source = path.join(dataDir, 'backups', want);
   if (!fs.existsSync(source)) throw refuse(`there is no backup named ${want} on the disk.`);
   const u = opensWith(source, keys);
@@ -380,7 +386,8 @@ function bringBack(dataDir, file, keys) {
     writeWhole(plan, JSON.stringify(next));
   } catch (e) {
     for (const f of [plan, plan + '.tmp', temp]) fs.rmSync(f, { force: true });
-    throw refuse(`${want} could not be copied into place (${e.message}).`);
+    console.error(`[restore] ${e.message}`);
+    throw refuse(`${want} could not be copied into place (${forPage(e)}).`);
   }
   return carryOut(next);
 }
