@@ -56,9 +56,18 @@
 
   navigator.serviceWorker.ready.then(function (reg) {
     reg.pushManager.getSubscription().then(function (sub) {
-      // Keep the server in step with what this device actually has.
-      if (sub) { var j = sub.toJSON(); post('/push/subscribe', { endpoint: sub.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, device: deviceName() }); }
-      show(sub);
+      if (!sub) return show(null);
+      // The browser may still hold a registration from whoever used this device last. It only counts as "on" here when it
+      // is this person's own (the site then ties it to this sign-in). Otherwise the button to turn alerts on is offered,
+      // and pressing it makes the device theirs.
+      post('/push/attach', { endpoint: sub.endpoint }).then(function (res) { return res.json(); }).then(function (r) {
+        if (!r.ok) return show(null);
+        var listed = Array.prototype.some.call(document.querySelectorAll('[data-endpoint]'), function (li) { return li.getAttribute('data-endpoint') === sub.endpoint; });
+        var again = false; try { again = sessionStorage.getItem('alerts-listed') === '1'; sessionStorage.setItem('alerts-listed', '1'); } catch (e) { again = true; }
+        // The list below was drawn before the site knew about this device: draw it again, once.
+        if (!listed && !again) return location.reload();
+        show(sub);
+      }).catch(function () { show(null); });
     });
     on.addEventListener('click', function () {
       on.disabled = true;

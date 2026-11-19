@@ -23,6 +23,9 @@ CREATE TABLE IF NOT EXISTS push_prefs (
   PRIMARY KEY (user_id, kind)
 );
 `);
+// Which sign-in a device's registration belongs to (the session it was switched on or last opened in). A device only gets
+// alerts while that sign-in is alive. Registrations from before this was kept have none, and wait for their owner to open the site.
+if (!db.prepare("SELECT 1 FROM pragma_table_info('push_subscriptions') WHERE name = 'sid'").get()) db.exec('ALTER TABLE push_subscriptions ADD COLUMN sid TEXT');
 
 /** Every kind of alert: who it is offered to (a permission, or null for everyone) and how it reads on the settings page. */
 const KINDS = [
@@ -68,7 +71,19 @@ const wants = (userId, kind) => {
 };
 
 /**
- * Send an alert of this kind to these people, on every device they switched on,
+ * The devices of this person that may be sent to right now: the sign-in each one belongs to is still alive, and the
+ * account is in use. So signing out, a disabled account, a password reset by an admin, being stood down, "sign out
+ * everyone" and a sign-in that ran out all stop a device's alerts at once, whoever is sending and however they chose who to tell.
+ */
+function liveDevices(userId) {
+  return db.prepare(
+    `SELECT p.* FROM push_subscriptions p JOIN users u ON u.id = p.user_id JOIN sessions s ON s.sid = p.sid
+     WHERE p.user_id = ? AND u.active = 1 AND u.removed_at IS NULL AND s.expires > ? AND json_extract(s.data, '$.userId') = p.user_id
+     ORDER BY p.id`).all(userId, Date.now());
+}
+
+/**
+ * Send an alert of this kind to these people, on every device they switched on and are still signed in on,
  * unless they turned that kind off. Never throws and never holds up the page.
  */
 function notify(userIds, kind, { title, body, url }) {
@@ -77,7 +92,7 @@ function notify(userIds, kind, { title, body, url }) {
   const jobs = [];
   for (const id of ids) {
     if (!wants(id, kind)) continue;
-    for (const sub of db.prepare('SELECT * FROM push_subscriptions WHERE user_id = ?').all(id)) {
+    for (const sub of liveDevices(id)) {
       jobs.push(Promise.resolve().then(() => sender(sub, payload)).catch((err) => {
         // The phone or browser has dropped this subscription: forget it.
         if (err && (err.statusCode === 404 || err.statusCode === 410)) db.prepare('DELETE FROM push_subscriptions WHERE id = ?').run(sub.id);
@@ -96,4 +111,4 @@ function peopleWith(perm, ownerId, exceptId) {
     .map((u) => u.id);
 }
 
-module.exports = { KINDS, kindsFor, vapid, notify, peopleWith, wants, setSender };
+module.exports = { KINDS, kindsFor, vapid, notify, liveDevices, peopleWith, wants, setSender };

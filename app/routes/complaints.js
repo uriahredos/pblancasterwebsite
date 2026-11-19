@@ -66,9 +66,10 @@ router.post('/complaint', requirePerm('complaints.submit'), (req, res) => {
   if (errors.length) return res.status(400).render('complaint', { title: 'Anonymous complaint', values, errors });
 
   const code = newTrackingCode();
+  // "notified" is the same on every complaint from the start. The daily notice counts by date (see mail.js) and marks nothing.
   db.prepare(
-    `INSERT INTO complaints (id, category, description, occurred_text, tracking_code_hash, created_date, branch_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO complaints (id, category, description, occurred_text, tracking_code_hash, created_date, branch_id, notified)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 1)`
   ).run(crypto.randomBytes(8).toString('hex'), values.category, values.description,
     values.occurred_text || null, hashCode(code), localDate(), req.user.branch_id);
 

@@ -55,6 +55,57 @@
   }
   document.addEventListener('DOMContentLoaded', function () { spellCheck(document); });
 
+  // Signing in from a link to a complaint page lands on the home page like any other sign-in (the site keeps no note of
+  // where the person was heading), and this takes them on to the page they asked for. It waits for the home page to
+  // finish loading first (a few seconds at most), so what the server saw is an ordinary visit to the home page.
+  (function () {
+    var to = { '#complaint-form': '/complaint', '#complaint-status': '/complaint/status' }[location.hash];
+    if (!to || location.pathname !== '/' || !document.documentElement.hasAttribute('data-in')) return;
+    var go = function () { location.replace(to); };
+    if (document.readyState === 'complete') go(); else { window.addEventListener('load', go); setTimeout(go, 3000); }
+  })();
+
+  // A sign-in page can sit open for hours (a shared computer overnight), longer than the site keeps the form token of a
+  // visitor who has not signed in. A form sent from a page that old collects a fresh token first, so it is not refused
+  // as expired. passkey.js asks for the same before a Face ID sign-in. (The lock screen belongs to someone who is signed
+  // in, whose token lasts as long as their sign-in, so it is left alone.)
+  (function () {
+    if (document.documentElement.hasAttribute('data-in') || document.querySelector('.lock-screen') || !window.fetch || !window.DOMParser) return;
+    var loaded = Date.now();
+    function fresh() {
+      if (Date.now() - loaded < 60 * 60 * 1000) return Promise.resolve();
+      return fetch(location.href, { credentials: 'same-origin', cache: 'no-store' }).then(function (res) { return res.text(); }).then(function (html) {
+        var meta = new DOMParser().parseFromString(html, 'text/html').querySelector('meta[name="csrf"]');
+        var token = meta && meta.getAttribute('content');
+        if (!token) return;
+        loaded = Date.now();
+        var mine = document.querySelector('meta[name="csrf"]'); if (mine) mine.setAttribute('content', token);
+        Array.prototype.forEach.call(document.querySelectorAll('input[name="_csrf"]'), function (f) { f.value = token; });
+      }).catch(function () {});
+    }
+    window.portalFreshToken = fresh;
+    document.addEventListener('submit', function (e) {
+      var form = e.target;
+      if (!form || !form.querySelector || !form.querySelector('input[name="_csrf"]') || Date.now() - loaded < 60 * 60 * 1000) return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      var by = e.submitter;
+      fresh().then(function () { loaded = Date.now(); if (form.requestSubmit) form.requestSubmit(by || undefined); else form.submit(); });
+    }, true);
+  })();
+
+  // Alerts follow the sign-in. A device that already allows alerts tells the site which registration it holds, once per
+  // page and with nothing shown. If it is this person's own, their alerts carry on under the sign-in they are using now.
+  (function () {
+    if (!document.documentElement.hasAttribute('data-in') || !window.fetch) return;
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window) || Notification.permission !== 'granted') return;
+    navigator.serviceWorker.ready.then(function (reg) { return reg.pushManager.getSubscription(); }).then(function (sub) {
+      if (!sub) return;
+      var token = (document.querySelector('meta[name="csrf"]') || {}).content || '';
+      return fetch('/push/attach', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: '_csrf=' + encodeURIComponent(token) + '&endpoint=' + encodeURIComponent(sub.endpoint) });
+    }).catch(function () {});
+  })();
+
   // "Are you sure?" questions. Asked here, for the whole page, so they still work on parts of a page
   // that were swapped in without a reload.
   document.addEventListener('submit', function (e) {
@@ -202,6 +253,11 @@
     softGo(location.pathname + location.search + location.hash, { pop: true, keepScroll: false });
   });
 
+  // What counts as someone using the site, for the idle lock: a key, a tap or click, the mouse wheel, a finger on the screen.
+  // Only things a person does. A page that moves by itself (the home page banner scrolls every few seconds) must not
+  // count, so "scroll" is not here, and neither is anything a script made up (see isTrusted below).
+  var PERSON_EVENTS = ['keydown', 'input', 'pointerdown', 'wheel', 'touchstart', 'touchmove'];
+
   // ---- The bell keeps itself up to date. Every half minute, while the page is on screen, the counts are fetched
   // and copied in. This does not count as "using the site", so it never keeps a forgotten phone unlocked.
   //
@@ -238,11 +294,11 @@
     }
     setInterval(pulse, 30000);
     document.addEventListener('visibilitychange', function () { if (!document.hidden) setTimeout(pulse, 1500); });
-    // Nothing typed, tapped or scrolled for the whole time allowed: ask straight away instead of waiting for the next half minute.
+    // Nothing typed, tapped or wheeled for the whole time allowed: ask straight away instead of waiting for the next half minute.
     function armIdle() { if (!after) return; clearTimeout(idleTimer); idleTimer = setTimeout(pulse, after + 1500); }
     var noted = 0;
-    ['keydown', 'input', 'pointerdown', 'scroll', 'touchstart'].forEach(function (n) {
-      document.addEventListener(n, function () { lastActive = Date.now(); if (lastActive - noted > 5000) { noted = lastActive; armIdle(); } }, { passive: true, capture: true });
+    PERSON_EVENTS.forEach(function (n) {
+      document.addEventListener(n, function (e) { if (!e.isTrusted) return; lastActive = Date.now(); if (lastActive - noted > 5000) { noted = lastActive; armIdle(); } }, { passive: true, capture: true });
     });
     armIdle();
   })();
@@ -383,7 +439,7 @@
       last = Date.now();
       try { fetch('/alive', { method: 'HEAD', credentials: 'same-origin', cache: 'no-store' }).catch(function () {}); } catch (e) {}
     }
-    ['keydown', 'input', 'pointerdown', 'scroll'].forEach(function (n) { document.addEventListener(n, ping, { passive: true, capture: true }); });
+    PERSON_EVENTS.forEach(function (n) { document.addEventListener(n, function (e) { if (e.isTrusted) ping(); }, { passive: true, capture: true }); });
   })();
 
   // A form is sent once. On a slow connection a second or third tap on the button used to send it again.

@@ -310,11 +310,27 @@ test('admin user management: create with one-time temp password, reset, disable,
 test('anonymous complaint: nothing identifying is stored, logged or emailed', async () => {
   sent.length = 0;
   logLines.length = 0;
-  const tech = await loggedIn('tech1');
+  // The hardest case for leaving no trace: a link to the form opened while signed out, then signing in to get to it.
+  const tech = new Client();
+  assert.equal((await tech.get('/complaint')).location, '/login?next=%2Fcomplaint');
+  const signIn = await tech.post('/login', { username: 'tech1', password: 'correct horse battery', next: '/complaint' }, { page: '/login?next=%2Fcomplaint' });
+  assert.equal(signIn.location, '/#complaint-form');                        // the home page, like any sign-in; the page itself moves on to the form
+  assert.equal((await tech.get('/')).status, 200);
+  assert.match((await new Client().get('/site.js')).text, /'#complaint-form': '\/complaint', '#complaint-status': '\/complaint\/status'/);
   const techId = db.prepare("SELECT id FROM users WHERE username = 'tech1'").get().id;
+  // This person's session row, to the byte and the millisecond, before they go near a complaint page.
+  const techSid = decodeURIComponent(/portal\.sid=([^;]+)/.exec(tech.cookie)[1]).slice(2).split('.')[0];
+  const sessionRow = () => ({ ...db.prepare('SELECT sid, expires, data FROM sessions WHERE sid = ?').get(techSid) });
+  const rowBefore = sessionRow();
+  assert.equal(JSON.parse(rowBefore.data).userId, techId);
+  await new Promise((r) => setTimeout(r, 15));                              // long enough for a rewritten time to show
   const r = await tech.post('/complaint', { category: 'safety', description: 'Ladder on truck 309 is cracked', occurred_text: 'Monday at the shop' }, { page: '/complaint' });
   assert.equal(r.status, 200);
   const code = /<p class="code" id="code">([A-Z0-9-]{14})<\/p>/.exec(r.text)[1];
+  // Opening the form, sending it and checking on it with the code: the session row is exactly as it was. No last-seen
+  // time, no new expiry, no page name. So neither the row nor any backup of it can show the visit, or when it was.
+  assert.equal((await tech.post('/complaint/status', { code }, { page: '/complaint/status' })).status, 200);
+  assert.deepEqual(sessionRow(), rowBefore);
 
   // The table has no column that could hold an identity or a time.
   const cols = db.prepare("SELECT name FROM pragma_table_info('complaints')").all().map((c) => c.name).sort();
@@ -322,6 +338,7 @@ test('anonymous complaint: nothing identifying is stored, logged or emailed', as
   const row = db.prepare('SELECT * FROM complaints').get();
   assert.match(row.created_date, /^\d{4}-\d{2}-\d{2}$/);
   assert.match(row.id, /^[0-9a-f]{16}$/);
+  assert.equal(row.notified, 1);                                            // the same on every complaint from the start: it never changes, so it says nothing
 
   // Nothing in the complaint row, the session table or the log gives the author away.
   const everything = JSON.stringify(row);
@@ -329,7 +346,14 @@ test('anonymous complaint: nothing identifying is stored, logged or emailed', as
   assert.ok(!everything.includes(code) && !everything.includes(code.replace(/-/g, '')));
   const sessions = db.prepare('SELECT data FROM sessions').all().map((s) => s.data).join('\n');
   assert.ok(!sessions.includes(code) && !sessions.includes(row.id) && !/Ladder/.test(sessions));
+  assert.doesNotMatch(sessions, /complaint/i);                              // not even the page asked for before signing in
   assert.ok(!logLines.some((l) => /complaint|Ladder/i.test(l)), logLines.join('\n'));
+  // What the page does in the background is left out of the log as well, so a request that is missing from the log is
+  // nothing special. Ordinary pages are still there.
+  assert.equal((await tech.get('/pulse')).status, 200); assert.equal((await tech.req('HEAD', '/alive')).status, 204);
+  await new Promise((r) => setTimeout(r, 30));
+  assert.ok(!logLines.some((l) => /\/pulse|\/alive/.test(l)), logLines.join('\n'));
+  assert.ok(['GET /login 200', 'POST /login 302', 'GET / 200'].every((l) => logLines.includes(l)), logLines.join('\n'));
   assert.equal(sent.length, 0); // no email at the moment of submission
   assert.equal(db.prepare('SELECT COUNT(*) n FROM parts_submissions WHERE note LIKE ?').get('%Ladder%').n, 0);
   void techId;
@@ -337,13 +361,18 @@ test('anonymous complaint: nothing identifying is stored, logged or emailed', as
   // It never shows up under "My activity".
   assert.doesNotMatch((await tech.get('/my')).text, /Ladder/);
 
-  // The daily notice carries a count and a link only.
-  assert.equal(await mail.runComplaintDigest(), 1);
+  // The daily notice carries a count and a link only. It counts whole days, so a complaint is announced the day after it
+  // was written: nothing is marked on the complaint, and the notice cannot show whether it came before or after that hour.
+  assert.equal(await mail.runComplaintDigest(), 0);
+  assert.equal(sent.length, 0);
+  const nextDay = new Date(ymdFromNow(1) + 'T18:00:00Z');
+  assert.equal(await mail.runComplaintDigest(nextDay), 1);
   assert.equal(sent.length, 1);
   assert.equal(sent[0].to, 'reviewer@example.com');
   assert.equal(sent[0].subject, 'A new complaint was submitted');
   assert.doesNotMatch(sent[0].text, /Ladder|Terry|tech1|safety/i);
-  assert.equal(await mail.runComplaintDigest(), 0); // once a day
+  assert.equal(await mail.runComplaintDigest(nextDay), 0); // once a day
+  assert.deepEqual({ ...db.prepare('SELECT * FROM complaints').get() }, { ...row });   // sending the notice changed nothing on the complaint
 
   // Reviewer answers; anyone holding the code (even on another account) can read the reply.
   const reviewer = await loggedIn('reviewer');
@@ -5099,7 +5128,7 @@ test('sign-in history: sign-ins, wrong passwords and pauses are recorded for cor
   assert.equal(db.prepare('SELECT COUNT(*) n FROM activity_log').get().n, before);
   // Signing in: who, how and on what kind of device.
   const tessa = new Client(PHONE); await tessa.login('aud.tech', 'correct horse battery');
-  assert.deepEqual(mine().pop(), { action: 'Signed in', detail: 'With a password, on a phone or tablet' });
+  assert.equal(mine().pop().action, 'Signed in'); assert.match(mine().pop().detail, /^With a password, on a phone or tablet, from [0-9a-f.:]+$/);
   // Wrong passwords at the lock screen, and the pause after ten.
   await tessa.post('/lock', {}, { page: '/' });
   for (let i = 0; i < 10; i++) await tessa.post('/unlock', { password: 'wrong ' + i }, { page: '/unlock' });   // signing in wiped the earlier miss: ten more reach the limit
@@ -5665,6 +5694,524 @@ test('folding a duplicate account into the one kept: a photo nobody will see aga
 // .
 // .
 // -- review: sign-in, sessions, the lock and alerts --
+
+test('idle lock: only things a person does count as using the site, so a page that moves by itself still locks', async () => {
+  const js = (await new Client().get('/site.js')).text;
+  // One list of events feeds both the page's own idle clock and the "still here" call to the server.
+  const list = /var PERSON_EVENTS = \[([^\]]*)\]/.exec(js);
+  assert.ok(list, 'the list of events that count as activity');
+  assert.deepEqual(list[1].split(',').map((x) => x.trim().replace(/'/g, '')).sort(), ['input', 'keydown', 'pointerdown', 'touchmove', 'touchstart', 'wheel']);
+  // Scrolling is not in it (the home page banner scrolls itself every few seconds), nor is a resting mouse being "moved" by the page under it.
+  assert.doesNotMatch(js, /\[[^\]]*'(scroll|mousemove|pointermove)'[^\]]*\]\.forEach/);
+  assert.equal((js.match(/PERSON_EVENTS\.forEach/g) || []).length, 2);
+  // And only real ones: an event a script made up is ignored by both.
+  assert.match(js, /if \(!e\.isTrusted\) return; lastActive = Date\.now\(\)/);
+  assert.match(js, /if \(e\.isTrusted\) ping\(\)/);
+
+  // On the server, what the page does by itself never counts either: not the check for new alerts, not re-attaching this device's alerts.
+  makeUser('idle.ida', 'Ida Idle');
+  const c = await loggedIn('idle.ida');
+  await c.get('/');
+  const sidOf = () => decodeURIComponent(/portal\.sid=([^;]+)/.exec(c.cookie)[1]).slice(2).split('.')[0];
+  const seen = () => JSON.parse(db.prepare('SELECT data FROM sessions WHERE sid = ?').get(sidOf()).data).seenAt;
+  const token = await c.csrf('/');
+  db.prepare("UPDATE sessions SET data = json_set(data, '$.seenAt', ?) WHERE sid = ?").run(Date.now() - 5 * 60000, sidOf());
+  const was = seen();
+  assert.equal((await c.get('/pulse')).status, 200);
+  assert.equal((await c.req('POST', '/push/attach', new URLSearchParams({ _csrf: token, endpoint: 'https://fcm.googleapis.com/fcm/send/nobody' }))).status, 200);
+  assert.equal(seen(), was);
+  assert.equal((await c.req('HEAD', '/alive')).status, 204);                // a person typing or tapping: this one does count
+  assert.ok(seen() > was);
+});
+
+test('alerts: a device gets them only while its own sign-in is alive, and the next person at that device does not inherit them', async () => {
+  const push = require('../app/push');
+  const pushed = [];
+  push.setSender(async (sub, payload) => { pushed.push({ device: sub.endpoint.split('/').pop(), ...JSON.parse(payload) }); });
+  const take = async () => { await new Promise((r) => setTimeout(r, 30)); return pushed.splice(0); };
+  const devices = async () => (await take()).map((p) => p.device).sort();
+  const page = '/settings/notifications';
+  const KEYS = { p256dh: 'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM', auth: 'tBHItJI5svbpez7KI4CCXg' };
+  const ep = (name) => `https://fcm.googleapis.com/fcm/send/${name}`;
+  const turnOn = (client, name) => client.post('/push/subscribe', { endpoint: ep(name), ...KEYS, device: name }, { page });
+  // What every signed-in page does by itself on a device that already allows alerts: no prompt, nothing shown.
+  const reattach = async (client, name) => { const r = await client.post('/push/attach', { endpoint: ep(name) }, { page: '/' }); try { return JSON.parse(r.text).ok; } catch (e) { return false; } };
+  const signOut = (client) => client.post('/logout', {}, { page: '/' });
+  const owns = (name) => (db.prepare('SELECT u.username FROM push_subscriptions p JOIN users u ON u.id = p.user_id WHERE p.endpoint = ?').get(ep(name)) || {}).username;
+
+  access.ensureProfile('Alert tester', 'all', [...access.SUBMIT, 'forum.use']);
+  for (const [u, n] of [['al.ann', 'Ann Alert'], ['al.bob', 'Bob Borrow'], ['al.cat', 'Cat Colleague']]) db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(profileId('Alert tester'), makeUser(u, n));
+  makeUser('al.boss', 'Bea Boss', { role: 'admin', reviewer: true }); makeUser('al.corp', 'Cory Corporate', { role: 'admin', reviewer: true });
+  const ann = userId('al.ann'), bob = userId('al.bob');
+  const cat = await loggedIn('al.cat'); const boss = await loggedIn('al.boss');
+  let n = 0;
+  const thank = async (id) => assert.equal((await cat.post('/shoutouts', { to_user: String(id), message: `Thank you ${++n}` }, { page: '/shoutouts' })).status, 302);
+  // The senders that name one person directly, by id: these never checked the account at all.
+  const direct = (id) => push.notify([id], 'task_assigned', { title: 'Note on your lead: Keystone Bakery Supply', body: 'Cat Colleague: "customer signed, PO 88213"', url: '/sales/1' });
+
+  // Ann turns alerts on, on her phone and on the shared computer in the office. Each sign-in gets her alerts.
+  const phone = await loggedIn('al.ann'); let desk = await loggedIn('al.ann');
+  assert.equal((await turnOn(phone, 'ann-phone')).status, 200); assert.equal((await turnOn(desk, 'office-pc')).status, 200);
+  await thank(ann);
+  assert.deepEqual(await devices(), ['ann-phone', 'office-pc']);
+
+  // She signs out of the office computer. Nothing more goes to it, from that moment. Her phone carries on.
+  await signOut(desk);
+  await thank(ann); await direct(ann);
+  assert.deepEqual(await devices(), ['ann-phone', 'ann-phone']);
+
+  // Bob signs in on that computer. The browser there still holds the registration, but it is not his: the page's quiet
+  // re-attach does nothing for him, his alerts do not appear there, and Ann's do not come back because someone signed in.
+  const bobDesk = await loggedIn('al.bob');
+  assert.equal(await reattach(bobDesk, 'office-pc'), false);
+  await thank(bob); await direct(bob); await thank(ann);
+  assert.deepEqual(await devices(), ['ann-phone']);
+  assert.equal(owns('office-pc'), 'al.ann');
+  assert.doesNotMatch((await bobDesk.get(page)).text, /office-pc/);
+  await signOut(bobDesk);
+
+  // Ann signs in there again. The page re-attaches what she had already allowed: no new permission, nothing to press.
+  desk = await loggedIn('al.ann');
+  await thank(ann);
+  assert.deepEqual(await devices(), ['ann-phone']);                          // signing in alone is not enough: the device has to say it is the same one
+  assert.equal(await reattach(desk, 'office-pc'), true);
+  await thank(ann);
+  assert.deepEqual(await devices(), ['ann-phone', 'office-pc']);
+  // Her settings page lists the devices that get her alerts now, and the test alert goes to exactly those.
+  let mine = (await phone.get(page)).text;
+  assert.match(mine, /<strong>ann-phone<\/strong>/); assert.match(mine, /<strong>office-pc<\/strong>/);
+  await signOut(desk);
+  mine = (await phone.get(page)).text;
+  assert.match(mine, /<strong>ann-phone<\/strong>/); assert.doesNotMatch(mine, /<strong>office-pc<\/strong>/);
+  await phone.post('/push/test', {}, { page });
+  assert.deepEqual((await take()).map((p) => [p.device, p.title]), [['ann-phone', 'Test alert']]);
+  assert.match((await phone.get(page)).text, /Test alert sent to 1 device\./);
+
+  // Bob turns alerts on himself at the office computer. That is the one way to take a device over: it is his now, not Ann's.
+  const bobAgain = await loggedIn('al.bob');
+  assert.equal((await turnOn(bobAgain, 'office-pc')).status, 200);
+  assert.equal(owns('office-pc'), 'al.bob');
+  desk = await loggedIn('al.ann');
+  assert.equal(await reattach(desk, 'office-pc'), false);                    // and Ann, back at that computer, does not get it back by signing in
+  await thank(ann); await thank(bob);
+  assert.deepEqual(await devices(), ['ann-phone', 'office-pc']);
+  await signOut(desk); await signOut(bobAgain);
+
+  // Changing her own password signs her other devices out: only the one she changed it on keeps getting alerts.
+  const tablet = await loggedIn('al.ann'); await turnOn(tablet, 'ann-tablet');
+  await thank(ann);
+  assert.deepEqual(await devices(), ['ann-phone', 'ann-tablet']);
+  await phone.post('/account/password', { current: 'correct horse battery', password: 'harbor violet anchor 22', confirm: 'harbor violet anchor 22' });
+  await thank(ann);
+  assert.deepEqual(await devices(), ['ann-phone']);
+
+  // Things are waiting for Ann from three directions: a task, a discussion she follows, and a parts request.
+  await boss.post('/admin/tasks', { title: 'Alert task', to: String(ann) }, { page: '/admin/tasks' });
+  const task = db.prepare("SELECT id FROM tasks WHERE title = 'Alert task' AND assigned_to = ?").get(ann).id;
+  const section = db.prepare('SELECT id FROM forum_sections ORDER BY id LIMIT 1').get().id;
+  await phone.post('/discussions/new', [['section_id', String(section)], ['title', 'Alert thread'], ['body', 'First post']], { multipart: true, page: '/discussions/new' });
+  const thread = db.prepare("SELECT id FROM forum_threads WHERE title = 'Alert thread'").get().id;
+  await phone.post('/parts', [['action', 'request'], ['part_name', 'ALERT-PART'], ['quantity', '1'], ['source', 'van'], ['needed_by', '2031-10-01']], { multipart: true });
+  const request = lastParts().id;
+  await take();
+  const nudge = async (i) => {
+    await boss.post(`/admin/tasks/${task}/note`, { note: `Any news? ${i}` }, { page: `/admin/tasks/${task}` });
+    await cat.post(`/discussions/t/${thread}/reply`, [['body', `Reply ${i}: the customer is Marta Ruiz`]], { multipart: true, page: `/discussions/t/${thread}` });
+    await boss.post(`/admin/parts/${request}/status`, { status: i % 2 ? 'ordered' : 'new', back: 'requests' }, { page: '/admin/requests' });
+    await direct(ann);
+    return take();
+  };
+  let got = await nudge(1);
+  assert.deepEqual(got.map((p) => p.tag).sort(), ['forum_reply', 'request_status', 'task_assigned', 'task_assigned']);
+  assert.ok(got.every((p) => p.device === 'ann-phone'));
+
+  // An admin disables her account. Her phone still has the registration, and none of those senders reach it any more.
+  await boss.post(`/admin/users/${ann}/toggle-active`, {}, { page: '/admin/users' });
+  assert.equal(db.prepare('SELECT active FROM users WHERE id = ?').get(ann).active, 0);
+  assert.deepEqual(await nudge(2), []);
+  // Switched back on: still nothing, until she signs in on the phone again and the page re-attaches it.
+  await boss.post(`/admin/users/${ann}/toggle-active`, {}, { page: '/admin/users' });
+  assert.deepEqual(await nudge(3), []);
+  const phoneAgain = new Client(); await phoneAgain.login('al.ann', 'harbor violet anchor 22');
+  assert.equal(await reattach(phoneAgain, 'ann-phone'), true);
+  got = await nudge(4);
+  assert.equal(got.length, 4); assert.ok(got.every((p) => p.device === 'ann-phone'));
+
+  // A sign-in that has run out is no sign-in: nothing goes to its device.
+  const sidOf = (client) => decodeURIComponent(/portal\.sid=([^;]+)/.exec(client.cookie)[1]).slice(2).split('.')[0];
+  const expires = db.prepare('SELECT expires FROM sessions WHERE sid = ?').get(sidOf(phoneAgain)).expires;
+  db.prepare('UPDATE sessions SET expires = ? WHERE sid = ?').run(Date.now() - 1000, sidOf(phoneAgain));
+  assert.deepEqual(await nudge(5), []);
+  db.prepare('UPDATE sessions SET expires = ? WHERE sid = ?').run(expires, sidOf(phoneAgain));
+  assert.equal((await nudge(6)).length, 4);
+
+  // The lost-phone step: an admin resets her password. The phone is signed out and its alerts stop, though its registration is still on record.
+  await boss.post(`/admin/users/${ann}/reset-password`, {}, { page: '/admin/users' });
+  assert.deepEqual(await nudge(7), []);
+  assert.equal(owns('ann-phone'), 'al.ann');
+
+  // A corporate admin who is stood down is signed out, and so are their alerts.
+  const cory = await loggedIn('al.corp'); await turnOn(cory, 'cory-phone');
+  await thank(userId('al.corp'));
+  assert.deepEqual(await devices(), ['cory-phone']);
+  await boss.post(`/admin/corporate/admins/${userId('al.corp')}/remove`, {}, { page: '/admin/branches' });
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM sessions WHERE json_extract(data, '$.userId') = ?").get(userId('al.corp')).n, 0);
+  await thank(userId('al.corp'));
+  assert.deepEqual(await devices(), []);
+
+  // "Sign out everyone" stops everyone's alerts except on the device of the person who pressed it.
+  const bobPhone = await loggedIn('al.bob'); await turnOn(bobPhone, 'bob-phone'); await turnOn(boss, 'boss-pc');
+  await thank(bob); await thank(userId('al.boss'));
+  assert.deepEqual(await devices(), ['bob-phone', 'boss-pc']);
+  await boss.post('/admin/security/sign-out-everyone', {}, { page: '/admin/security' });
+  await direct(bob); await direct(userId('al.boss'));
+  assert.deepEqual(await devices(), ['boss-pc']);
+
+  // The pages do their part: every signed-in page re-attaches quietly, and the settings page no longer hands a device
+  // to whoever happens to open it.
+  const site = (await new Client().get('/site.js')).text; const settings = (await new Client().get('/push.js')).text;
+  assert.match(site, /fetch\('\/push\/attach'/); assert.match(site, /Notification\.permission !== 'granted'/);
+  assert.match(settings, /post\('\/push\/attach'/);
+  assert.equal((settings.match(/post\('\/push\/subscribe'/g) || []).length, 1);   // only behind the "Turn on" button
+  db.prepare("DELETE FROM push_subscriptions WHERE endpoint LIKE '%/ann-%' OR endpoint LIKE '%/office-pc' OR endpoint LIKE '%/cory-phone' OR endpoint LIKE '%/bob-phone' OR endpoint LIKE '%/boss-pc'").run();
+  db.prepare("DELETE FROM tasks WHERE title = 'Alert task'").run();
+  push.setSender(async () => {});
+});
+
+test('signed-out visitors: only a page with a form leaves a session behind, it is short-lived, and floods from one address are turned away', async () => {
+  const count = () => db.prepare('SELECT COUNT(*) n FROM sessions').get().n;
+  const cookies = (r) => r.headers.getSetCookie().filter((c) => c.startsWith('portal.sid'));
+  makeUser('so.sam', 'Sam Signedout');
+  const before = count();
+
+  // Pages that send a visitor elsewhere, pages that do not exist, files, refused forms: no session, and no cookie either.
+  const nothing = [['GET', '/', 302], ['GET', '/parts?action=take', 302], ['GET', '/no-such-page', 404], ['GET', '/wp-login.php', 404], ['GET', '/.env', 404],
+    ['GET', '/complaint', 302], ['GET', '/complaint/status', 302], ['GET', '/pulse', 401], ['GET', '/alive', 401], ['GET', '/unlock', 302], ['GET', '/account/password', 302],
+    ['GET', '/healthz', 200], ['GET', '/site.js', 200], ['GET', '/reset/' + 'cd'.repeat(32), 404], ['HEAD', '/', 302], ['HEAD', '/no-such-page', 404],
+    ['POST', '/login', 403], ['POST', '/forgot', 403], ['POST', '/lock', 403], ['POST', '/no-such-page', 403]];
+  for (const [method, url, status] of nothing) {
+    const r = await new Client().req(method, url, method === 'POST' ? new URLSearchParams({ username: 'so.sam', password: 'correct horse battery' }) : undefined);
+    assert.equal(r.status, status, `${method} ${url}`);
+    assert.deepEqual(cookies(r), [], `${method} ${url} set a session cookie`);
+  }
+  assert.equal(count(), before);
+
+  // The sign-in page has a form, so it gets one: a single row, kept for about two hours, not thirty days.
+  const sidOf = (client) => decodeURIComponent(/portal\.sid=([^;]+)/.exec(client.cookie)[1]).slice(2).split('.')[0];
+  const life = (client) => db.prepare('SELECT expires FROM sessions WHERE sid = ?').get(sidOf(client)).expires - Date.now();
+  const HOUR = 3600000;
+  const c = new Client();
+  assert.equal((await c.get('/parts?action=take')).location, '/login?next=%2Fparts%3Faction%3Dtake');
+  const form = await c.get('/login?next=%2Fparts%3Faction%3Dtake');
+  assert.match(form.text, /name="next" value="\/parts\?action=take"/);
+  assert.equal(count(), before + 1);
+  assert.ok(life(c) > 1.9 * HOUR && life(c) < 2.1 * HOUR, `a visitor's session lasts about two hours, not ${Math.round(life(c) / HOUR)}`);
+  await c.get('/login'); await c.get('/no-such-page'); await c.get('/');
+  assert.equal(count(), before + 1);                                         // the same visitor keeps the same row
+  assert.ok(life(c) < 2.1 * HOUR);
+  // Signing in works as before, goes back to the page that was asked for, and swaps the short session for the 30-day one.
+  const token = /name="_csrf" value="([0-9a-f]+)"/.exec(form.text)[1];
+  const signedIn = await c.req('POST', '/login', new URLSearchParams({ _csrf: token, username: 'so.sam', password: 'correct horse battery', next: '/parts?action=take' }));
+  assert.equal(signedIn.location, '/parts?action=take');
+  assert.equal((await c.get('/parts?action=take')).status, 200);
+  assert.equal(count(), before + 1);
+  assert.ok(life(c) > 29 * 24 * HOUR);
+  await c.post('/logout', {}, { page: '/' });
+  assert.equal(count(), before);
+
+  // Forgot password and a working reset link have forms too; the answer pages and a dead link do not.
+  db.prepare("UPDATE users SET email = 'sam@example.com' WHERE username = 'so.sam'").run();
+  sent.length = 0;
+  const f = new Client();
+  await f.post('/forgot', { who: 'so.sam' }, { page: '/forgot' });
+  assert.equal(count(), before + 1);
+  assert.ok(life(f) < 2.1 * HOUR);
+  const link = /http:\/\/portal\.test(\/reset\/[0-9a-f]{64})/.exec(sent.pop().text)[1];
+  const r = new Client();
+  assert.equal((await r.post(link, { password: 'meadow lantern copper 7', confirm: 'meadow lantern copper 7' }, { page: link })).location, '/login');
+  assert.equal(count(), before + 2);
+  assert.match((await r.get('/login')).text, /Password changed\. Sign in with your new password\./);
+  await new Client().login('so.sam', 'meadow lantern copper 7');
+
+  // A visitor's session that has run out is simply gone: the form it carried is refused, and a fresh page works.
+  const late = new Client();
+  const old = await late.csrf('/login');
+  db.prepare('UPDATE sessions SET expires = ? WHERE sid = ?').run(Date.now() - 1000, sidOf(late));
+  assert.equal((await late.req('POST', '/login', new URLSearchParams({ _csrf: old, username: 'so.sam', password: 'meadow lantern copper 7' }))).status, 403);
+  await late.login('so.sam', 'meadow lantern copper 7');
+  // The sign-in page copes with having sat open for hours: it collects a fresh token before it sends (checked in a browser too).
+  const js = (await new Client().get('/site.js')).text;
+  assert.match(js, /window\.portalFreshToken = fresh/); assert.match((await new Client().get('/passkey.js')).text, /window\.portalFreshToken \? window\.portalFreshToken\(\)/);
+
+  // Rows left over from when every visitor got a 30-day session are cut down to two hours when the site starts, not deleted
+  // on the spot: a sign-in page that was open while the site was updated still works. Sign-ins are not touched.
+  const Store = require('../app/sessionStore');
+  const put = db.prepare('INSERT INTO sessions (sid, expires, data) VALUES (?, ?, ?)');
+  put.run('old-visitor', Date.now() + 29 * 24 * HOUR, JSON.stringify({ cookie: {}, csrf: 'x' }));
+  put.run('new-visitor', Date.now() + HOUR, JSON.stringify({ cookie: {}, csrf: 'y' }));
+  put.run('old-signed-in', Date.now() + 29 * 24 * HOUR, JSON.stringify({ cookie: {}, csrf: 'z', userId: userId('so.sam') }));
+  put.run('ran-out', Date.now() - 1000, JSON.stringify({ cookie: {}, csrf: 'w', userId: userId('so.sam') }));
+  const open = new Client();
+  const openToken = await open.csrf('/login?next=%2Fpeople');                // a sign-in page somebody has open, from before the update
+  db.prepare('UPDATE sessions SET expires = ? WHERE sid = ?').run(Date.now() + 29 * 24 * HOUR, sidOf(open));
+  const lives = () => Object.fromEntries(db.prepare("SELECT sid, expires FROM sessions WHERE sid IN ('old-visitor', 'new-visitor', 'old-signed-in', 'ran-out')").all().map((x) => [x.sid, Math.round((x.expires - Date.now()) / HOUR)]));
+  clearInterval(new Store(db, 30 * 24 * HOUR, 2 * HOUR).timer);
+  assert.deepEqual(lives(), { 'old-visitor': 2, 'new-visitor': 1, 'old-signed-in': 29 * 24 });
+  assert.ok(life(open) < 2.1 * HOUR);
+  assert.equal((await open.req('POST', '/login', new URLSearchParams({ _csrf: openToken, username: 'so.sam', password: 'meadow lantern copper 7', next: '/people' }))).location, '/people');
+  clearInterval(new Store(db, 30 * 24 * HOUR, 2 * HOUR).timer);              // a second start changes nothing
+  assert.deepEqual(lives(), { 'old-visitor': 2, 'new-visitor': 1, 'old-signed-in': 29 * 24 });
+  db.prepare("DELETE FROM sessions WHERE sid IN ('old-visitor', 'new-visitor', 'old-signed-in')").run();
+
+  // The allowance for one address, tried on a site started with the ordinary settings (this file raises the sign-in
+  // limit for its own sake, and the allowance follows it). 600 requests in five minutes from people who are not signed in,
+  // then "wait". Someone who is signed in is never counted or refused, and neither is the health check.
+  // (It runs beside this file's own site, not in place of it: holding this one still for seconds leaves its open
+  // connections stale, and the next test's first request then fails.)
+  const L = encryptionLab();
+  const beside = (code) => new Promise((resolve) => require('child_process').execFile(process.execPath, ['-e', code],
+    { cwd: path.join(__dirname, '..'), env: { PATH: process.env.PATH, DATA_DIR: L.dir, BCRYPT_ROUNDS: '4', APP_TIMEZONE: 'America/New_York' }, encoding: 'utf8' },
+    (err, stdout, stderr) => resolve({ ok: !err, out: String(stdout || ''), err: String(stderr || '') })));
+  const out = await beside(`
+    const db = require('./app/db'); const auth = require('./app/auth'); const app = require('./app/app');
+    const id = auth.createUser({ username: 'lim.one', displayName: 'Lim One', password: 'correct horse battery', profile: 'Technician' });
+    db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?').run(id);
+    const server = app.listen(0, async () => {
+      const base = 'http://127.0.0.1:' + server.address().port;
+      const page = await fetch(base + '/login');
+      const cookie = page.headers.getSetCookie()[0].split(';')[0];
+      const token = /name="_csrf" value="([0-9a-f]+)"/.exec(await page.text())[1];
+      const login = await fetch(base + '/login', { method: 'POST', redirect: 'manual', headers: { cookie }, body: new URLSearchParams({ _csrf: token, username: 'lim.one', password: 'correct horse battery' }) });
+      const mine = login.headers.getSetCookie()[0].split(';')[0];
+      const tally = {}; let rows = 0;
+      for (let i = 0; i < 640; i++) { const r = await fetch(base + (i % 2 ? '/wp-login.php' : '/'), { redirect: 'manual' }); tally[r.status] = (tally[r.status] || 0) + 1; await r.arrayBuffer(); }
+      rows = db.prepare('SELECT COUNT(*) n FROM sessions').get().n;
+      const refused = await fetch(base + '/login'); const said = await refused.text();
+      const signedIn = []; for (let i = 0; i < 700; i++) { const r = await fetch(base + '/pulse', { headers: { cookie: mine } }); signedIn.push(r.status); await r.arrayBuffer(); }
+      const health = (await fetch(base + '/healthz')).status; const file = (await fetch(base + '/site.js')).status;
+      console.log(JSON.stringify({ login: login.status, tally, rows, refused: refused.status, said, signedIn: [...new Set(signedIn)], health, file }));
+      server.close(); db.close();
+    });`);
+  assert.ok(out.ok, out.err);
+  const lab = JSON.parse(out.out.trim().split('\n').pop());
+  assert.equal(lab.login, 302);
+  assert.deepEqual(lab.tally, { 302: 299, 404: 299, 429: 42 });               // 2 of the 600 went on the sign-in itself
+  assert.equal(lab.rows, 1);                                                  // and all of that left one row: the sign-in
+  assert.equal(lab.refused, 429); assert.equal(lab.said, 'Too many requests from this connection. Wait a few minutes and try again.');
+  assert.deepEqual(lab.signedIn, [200]); assert.equal(lab.health, 200); assert.equal(lab.file, 200);
+  fs.rmSync(L.dir, { recursive: true, force: true });
+});
+
+test('temporary password: the reset email cannot be set, and the password cannot be re-confirmed, until the person has chosen their own', async () => {
+  const id = auth.createUser({ username: 'tp.pat', displayName: 'Pat Pending', password: 'temp-pass-5678' });   // as an admin hands it out: must be changed
+  const c = new Client();
+  assert.equal((await c.login('tp.pat', 'temp-pass-5678')).location, '/account/password');
+  assert.doesNotMatch((await c.get('/account/password')).text, /action="\/account\/email"/);                     // the page does not offer it
+  const logged = () => db.prepare("SELECT COUNT(*) n FROM activity_log WHERE user_id = ? AND action = 'Email address changed'").get(id).n;
+  // Someone who saw the temporary password in a chat cannot quietly point password resets at their own address.
+  const tried = await c.post('/account/email', { email: 'pat@evil.example', current: 'temp-pass-5678' });
+  assert.equal(tried.location, '/account/password');
+  assert.equal(db.prepare('SELECT email FROM users WHERE id = ?').get(id).email, null);
+  assert.equal(logged(), 0);
+  assert.equal((await c.post('/account/confirm', { password: 'temp-pass-5678', next: '/admin/backups' })).location, '/account/password');
+  assert.deepEqual(await sendJson(c, '/account/confirm', { password: 'temp-pass-5678' }), { status: 403, body: { ok: false } });
+  sent.length = 0;
+  await new Client().post('/forgot', { who: 'tp.pat' }, { page: '/forgot' });
+  assert.equal(sent.length, 0);                                                                                  // so no reset link goes anywhere
+  // Once they have chosen their own password, both work as before.
+  assert.equal((await c.post('/account/password', { current: 'temp-pass-5678', password: 'copper meadow lantern 4', confirm: 'copper meadow lantern 4' })).status, 302);
+  await c.post('/account/email', { email: 'pat@example.com', current: 'copper meadow lantern 4' });
+  assert.equal(db.prepare('SELECT email FROM users WHERE id = ?').get(id).email, 'pat@example.com');
+  assert.equal(logged(), 1);
+  assert.deepEqual(await sendJson(c, '/account/confirm', { password: 'copper meadow lantern 4' }), { status: 200, body: { ok: true } });
+});
+
+test('sign-in history: a successful sign-in records the address it came from, with a password or with Face ID', async () => {
+  const id = makeUser('ip.ivy', 'Ivy Inward');
+  const mine = () => db.prepare("SELECT detail FROM activity_log WHERE user_id = ? AND action = 'Signed in' ORDER BY id").all(id).map((r) => r.detail);
+  const DESK = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36';
+  const c = new Client(DESK); await c.login('ip.ivy', 'correct horse battery');
+  // The same form the failed ones use ("Wrong password, from ..."), so the two can be lined up.
+  assert.match(mine().pop(), /^With a password, on a computer, from [0-9a-f.:]+$/);
+  await new Client().post('/login', { username: 'ip.ivy', password: 'not it at all' }, { page: '/login' });
+  const failed = db.prepare("SELECT detail FROM activity_log WHERE user_id = ? AND action = 'Sign-in failed' ORDER BY id DESC").get(id).detail;
+  assert.equal(failed.replace('Wrong password, from ', ''), mine().pop().split(', from ')[1]);
+  // Face ID or a fingerprint: the device, the kind of device, and the address.
+  const phone = new FakeDevice(base);
+  let opts = (await sendJson(c, '/passkey/register/options')).body.options;
+  assert.equal((await sendJson(c, '/passkey/register/verify', { response: phone.create(opts), device: 'Ivy iPhone (Safari)' })).status, 200);
+  const fresh = new Client();
+  opts = (await sendJson(fresh, '/passkey/auth/options', {}, '/login')).body.options;
+  assert.equal((await sendJson(fresh, '/passkey/auth/verify', { response: phone.get(opts) }, '/login')).status, 200);
+  assert.match(mine().pop(), /^With Face ID or a fingerprint \(Ivy iPhone \(Safari\)\), on a phone or tablet, from [0-9a-f.:]+$/);
+  // Still for corporate admins only: an office admin sees no sign-in entries, with or without an address.
+  access.ensureProfile('Office admin (one office)', 'all', access.ALL.filter((p) => p !== 'branches.all'));
+  db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(profileId('Office admin (one office)'), makeUser('ip.office', 'Olga Office'));
+  const office = await loggedIn('ip.office');
+  for (const url of ['/admin/activity', '/admin/activity?show=signins', '/admin/activity?q=Ivy', '/admin/activity?q=from']) assert.doesNotMatch((await office.get(url)).text, /Signed in|With a password|Wrong password, from/, url);
+  const corp = await loggedIn('owner');
+  assert.match((await corp.get('/admin/activity?show=signins&q=Ivy')).text, /Signed in<\/td><td>With a password, on a computer, from /);
+});
+
+test('complaint notice: every office with new complaints is counted and told, once a day, by date, with nothing about the complaints in the email', async () => {
+  const was = db.prepare("SELECT value FROM meta WHERE key = 'complaint_digest_date'").get();
+  const home = db.prepare('SELECT MIN(id) AS id FROM branches').get().id;
+  const office = (name) => db.prepare('INSERT INTO branches (name, created_at) VALUES (?, ?)').run(name, new Date().toISOString()).lastInsertRowid;
+  const north = office('Noticeville North'), south = office('Noticeville South');
+  access.ensureProfile('Office admin (one office)', 'all', access.ALL.filter((p) => p !== 'branches.all'));
+  access.ensureProfile('Corporate admin', 'all', access.ALL);
+  const person = (username, profile, branch, email, active = 1) => db.prepare('UPDATE users SET profile_id = ?, branch_id = ?, email = ?, active = ? WHERE id = ?').run(profileId(profile), branch, email, active, makeUser(username, username));
+  person('cn.north', 'Office admin (one office)', north, 'north@example.com');
+  person('cn.south', 'Office admin (one office)', south, 'south@example.com');
+  person('cn.corp', 'Corporate admin', home, 'corp@example.com');
+  person('cn.left', 'Office admin (one office)', north, 'left@example.com', 0);       // disabled: told nothing
+  person('cn.tech', 'Technician', north, 'tech@example.com');                         // cannot read complaints: told nothing
+  const add = (branch, date, text) => db.prepare("INSERT INTO complaints (id, category, description, tracking_code_hash, created_date, branch_id, notified) VALUES (?, 'other', ?, ?, ?, ?, 1)")
+    .run(nodeCrypto.randomBytes(8).toString('hex'), text, nodeCrypto.randomBytes(16).toString('hex'), date, branch);
+  db.prepare("INSERT INTO meta (key, value) VALUES ('complaint_digest_date', '2031-03-10') ON CONFLICT(key) DO UPDATE SET value = excluded.value").run();
+  add(home, '2031-03-10', 'NOTICE-TEXT home'); add(north, '2031-03-10', 'NOTICE-TEXT north one'); add(north, '2031-03-10', 'NOTICE-TEXT north two');
+  add(north, '2031-03-11', 'NOTICE-TEXT north, written on the day of the notice');
+  add(south, '2031-03-09', 'NOTICE-TEXT south, covered by an earlier notice');
+  // Who was told, out of the mailbox and the five people above (other reviewers made earlier in this file get theirs too).
+  const WATCHED = ['reviewer@example.com', 'north@example.com', 'south@example.com', 'corp@example.com', 'left@example.com', 'tech@example.com'];
+  const told = () => Object.fromEntries(sent.splice(0).filter((m) => WATCHED.includes(m.to)).map((m) => [m.to, m.subject]));
+  const marks = () => db.prepare("SELECT DISTINCT notified FROM complaints").all().map((r) => r.notified);
+  const before = db.prepare("SELECT id, notified FROM complaints WHERE description LIKE 'NOTICE-TEXT%' ORDER BY id").all();
+
+  // The notice of 11 March covers the day before: one in the first office, two in the north office, none in the south.
+  sent.length = 0;
+  assert.equal(await mail.runComplaintDigest(new Date('2031-03-11T18:00:00Z')), 3);
+  const bodies = sent.map((m) => m.text).join('\n');
+  assert.deepEqual(told(), {
+    'reviewer@example.com': 'A new complaint was submitted',          // the first office's mailbox, as before
+    'north@example.com': '2 new complaints were submitted',           // the north office's own reviewer: nobody was told before
+    'corp@example.com': '3 new complaints were submitted',            // someone who reads every office's complaints
+  });
+  assert.doesNotMatch(bodies, /NOTICE-TEXT|Noticeville|other/i);       // a count and a link, nothing else
+  assert.match(bodies, /^2 new anonymous complaints are waiting for review\.\n\nhttp:\/\/portal\.test\/admin\/complaints\n$/m);
+  assert.equal(await mail.runComplaintDigest(new Date('2031-03-11T22:00:00Z')), 0);   // once a day
+  assert.deepEqual(told(), {});
+  // The next day's notice picks up the one written on the 11th. Each complaint is counted exactly once.
+  assert.equal(await mail.runComplaintDigest(new Date('2031-03-12T18:00:00Z')), 1);
+  assert.deepEqual(told(), { 'north@example.com': 'A new complaint was submitted', 'corp@example.com': 'A new complaint was submitted' });
+  assert.equal(await mail.runComplaintDigest(new Date('2031-03-13T18:00:00Z')), 0);
+  assert.deepEqual(told(), {});
+  // Sending a notice marks nothing: every complaint carries the same value before and after, so the database cannot
+  // show which side of a notice one fell on.
+  assert.deepEqual(db.prepare("SELECT id, notified FROM complaints WHERE description LIKE 'NOTICE-TEXT%' ORDER BY id").all(), before);
+  assert.deepEqual(marks(), [1]);
+
+  db.prepare("DELETE FROM complaints WHERE description LIKE 'NOTICE-TEXT%'").run();
+  if (was) db.prepare("UPDATE meta SET value = ? WHERE key = 'complaint_digest_date'").run(was.value); else db.prepare("DELETE FROM meta WHERE key = 'complaint_digest_date'").run();
+  db.prepare("UPDATE users SET email = NULL WHERE username LIKE 'cn.%'").run();
+});
+
+test('complaint trail: capitals in the address, the lock screen, the Back button and switching office leave no trace of the form either', async () => {
+  makeUser('ct.tess', 'Tess Trail'); makeUser('ct.ida', 'Ida Idle');
+  const pw = 'correct horse battery';
+  const sidOf = (client) => decodeURIComponent(/portal\.sid=([^;]+)/.exec(client.cookie)[1]).slice(2).split('.')[0];
+  const rowOf = (client) => ({ ...db.prepare('SELECT expires, data FROM sessions WHERE sid = ?').get(sidOf(client)) });
+  // The request lines written since the last look (the captured log itself is left as it is, for whoever reads it next).
+  let read = logLines.length;
+  const logged = async () => { await new Promise((r) => setTimeout(r, 30)); const lines = logLines.slice(read).filter((l) => /^(GET|POST|HEAD) /.test(l)); read = logLines.length; return lines; };
+  const tess = await loggedIn('ct.tess');
+  await tess.get('/');
+  await logged();
+
+  // The same pages typed with capitals, or with a slash on the end, are shown just the same. So they are treated just the
+  // same: nothing in the log, and the session row is left exactly as it was.
+  const before = rowOf(tess);
+  await new Promise((r) => setTimeout(r, 15));
+  for (const url of ['/Complaint', '/COMPLAINT', '/complaint/', '/Complaint/Status', '/complaint/STATUS/']) {
+    const r = await tess.get(url);
+    assert.equal(r.status, 200, url);
+    assert.match(r.text, /<form method="post" action="\/complaint(\/status)?"/, url);
+  }
+  assert.deepEqual(await logged(), []);
+  assert.deepEqual(rowOf(tess), before);
+  // A sign-in aimed at one of them goes by the home page, like the plain address.
+  const aimed = async (next) => (await new Client().post('/login', { username: 'ct.tess', password: pw, next }, { page: '/login' })).location;
+  assert.equal(await aimed('/Complaint'), '/#complaint-form');
+  assert.equal(await aimed('/COMPLAINT/Status/'), '/#complaint-status');
+  assert.equal(await aimed('/people'), '/people');
+  // Face ID or a fingerprint does the same, signing in from scratch and unlocking.
+  const phone = new FakeDevice(base);
+  let opts = (await sendJson(tess, '/passkey/register/options')).body.options;
+  assert.equal((await sendJson(tess, '/passkey/register/verify', { response: phone.create(opts), device: 'Tess phone' })).status, 200);
+  const byFace = new Client();
+  opts = (await sendJson(byFace, '/passkey/auth/options', {}, '/login')).body.options;
+  assert.deepEqual((await sendJson(byFace, '/passkey/auth/verify', { response: phone.get(opts), next: '/complaint' }, '/login')).body, { ok: true, next: '/#complaint-form' });
+  assert.equal((await byFace.post('/lock', {}, { page: '/' })).status, 204);
+  opts = (await sendJson(byFace, '/passkey/auth/options', {}, '/unlock')).body.options;
+  assert.deepEqual((await sendJson(byFace, '/passkey/auth/verify', { response: phone.get(opts), next: '/Complaint/status' }, '/unlock')).body, { ok: true, next: '/#complaint-status' });
+  // None of those sign-ins kept a note of where the person was heading.
+  assert.doesNotMatch(db.prepare('SELECT data FROM sessions').all().map((x) => x.data).join('\n'), /complaint/i);
+
+  // The Back button after unlocking asks for the lock screen again while the site is open. That goes by the home page
+  // too, not straight to the form from a request that is on record.
+  assert.equal((await tess.get('/unlock?next=%2Fcomplaint')).location, '/#complaint-form');
+  assert.equal((await tess.post('/unlock', { password: pw, next: '/complaint/status' }, { page: '/' })).location, '/#complaint-status');
+  assert.equal((await tess.get('/unlock?next=%2Fpeople')).location, '/people');
+
+  // The site closed and opened again straight at the form (a restored tab, a bookmark): the page locks itself and the
+  // person unlocks. In the log that reads line for line like a site that sat unused on the home page until it locked.
+  const unlock = async (client, next) => {
+    const screen = await client.get('/unlock?next=' + encodeURIComponent(next));
+    assert.equal(screen.status, 200);
+    return client.req('POST', '/unlock', new URLSearchParams({ _csrf: /name="_csrf" value="([0-9a-f]+)"/.exec(screen.text)[1], password: pw, next }));
+  };
+  await logged();
+  assert.equal((await tess.post('/lock', {}, { page: '/complaint' })).status, 204);
+  assert.equal((await unlock(tess, '/complaint')).location, '/#complaint-form');
+  assert.equal((await tess.get('/')).status, 200);
+  const reopenedAtTheForm = await logged();
+  const ida = await loggedIn('ct.ida');
+  await ida.get('/');
+  await logged();
+  db.prepare("UPDATE sessions SET data = json_set(data, '$.seenAt', ?) WHERE sid = ?").run(Date.now() - 3 * 3600000, sidOf(ida));
+  assert.equal((await ida.get('/pulse')).location, '/unlock?next=%2Fpulse');   // the page's own check finds the site has locked
+  assert.equal((await unlock(ida, '/')).location, '/');
+  assert.equal((await ida.get('/')).status, 200);
+  assert.deepEqual(reopenedAtTheForm, await logged());
+  assert.deepEqual(reopenedAtTheForm, ['POST /unlock 302', 'GET / 200']);
+
+  // Someone who looks at every office, changing office while a complaint page is open, is taken back by the home page as well.
+  const corp = await loggedIn('owner');
+  assert.equal((await corp.post('/branch/view', { branch: 'all', back: '/complaint' }, { page: '/' })).location, '/#complaint-form');
+  assert.equal((await corp.post('/branch/view', { branch: 'all', back: '/Complaint/status' }, { page: '/' })).location, '/#complaint-status');
+  assert.equal((await corp.post('/branch/view', { branch: 'all', back: '/people' }, { page: '/' })).location, '/people');
+});
+
+test('alerts: an account that is switched off or removed gets nothing, even with a sign-in of theirs still on record', async () => {
+  const push = require('../app/push');
+  const pushed = [];
+  push.setSender(async (sub) => { pushed.push(sub.endpoint.split('/').pop()); });
+  const id = makeUser('al.dee', 'Dee Device');
+  const c = await loggedIn('al.dee');
+  const turnedOn = await c.post('/push/subscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/dee-phone', device: 'dee-phone',
+    p256dh: 'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM', auth: 'tBHItJI5svbpez7KI4CCXg' }, { page: '/settings/notifications' });
+  assert.equal(turnedOn.status, 200);
+  const tell = async () => { pushed.length = 0; await push.notify([id], 'task_assigned', { title: 'Note on your lead: Keystone Diner LLC', body: 'x', url: '/sales/1' }); return pushed.slice(); };
+  const signIns = () => db.prepare("SELECT COUNT(*) n FROM sessions WHERE json_extract(data, '$.userId') = ?").get(id).n;
+  assert.deepEqual(await tell(), ['dee-phone']);
+  // Switched off by something that did not end their sign-ins: the alerts stop all the same.
+  db.prepare('UPDATE users SET active = 0 WHERE id = ?').run(id);
+  assert.equal(signIns(), 1);
+  assert.deepEqual(await tell(), []);
+  db.prepare('UPDATE users SET active = 1, removed_at = ? WHERE id = ?').run(new Date().toISOString(), id);
+  assert.deepEqual(await tell(), []);
+  db.prepare('UPDATE users SET removed_at = NULL WHERE id = ?').run(id);
+  assert.deepEqual(await tell(), ['dee-phone']);
+  // Only their own sign-in counts. A registration that names somebody else's sign-in is not sent to.
+  const other = await loggedIn('tech2');
+  const mine = db.prepare('SELECT sid FROM push_subscriptions WHERE user_id = ?').get(id).sid;
+  db.prepare('UPDATE push_subscriptions SET sid = ? WHERE user_id = ?').run(decodeURIComponent(/portal\.sid=([^;]+)/.exec(other.cookie)[1]).slice(2).split('.')[0], id);
+  assert.deepEqual(await tell(), []);
+  db.prepare('UPDATE push_subscriptions SET sid = ? WHERE user_id = ?').run(mine, id);
+  assert.deepEqual(await tell(), ['dee-phone']);
+  db.prepare('DELETE FROM push_subscriptions WHERE user_id = ?').run(id);
+  push.setSender(async () => {});
+});
 
 // .
 // .
