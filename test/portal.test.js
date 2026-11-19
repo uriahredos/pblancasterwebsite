@@ -5807,7 +5807,9 @@ test('complaint trail: capitals in the address, the lock screen, the Back button
   const pw = 'correct horse battery';
   const sidOf = (client) => decodeURIComponent(/portal\.sid=([^;]+)/.exec(client.cookie)[1]).slice(2).split('.')[0];
   const rowOf = (client) => ({ ...db.prepare('SELECT expires, data FROM sessions WHERE sid = ?').get(sidOf(client)) });
-  const logged = async () => { await new Promise((r) => setTimeout(r, 30)); return logLines.splice(0).filter((l) => /^(GET|POST|HEAD) /.test(l)); };
+  // The request lines written since the last look (the captured log itself is left as it is, for whoever reads it next).
+  let read = logLines.length;
+  const logged = async () => { await new Promise((r) => setTimeout(r, 30)); const lines = logLines.slice(read).filter((l) => /^(GET|POST|HEAD) /.test(l)); read = logLines.length; return lines; };
   const tess = await loggedIn('ct.tess');
   await tess.get('/');
   await logged();
