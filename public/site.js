@@ -440,6 +440,14 @@
     }
   };
 
+  // On call, on a phone: the button brings in the rest of the schedule.
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-oncall-all]') : null;
+    if (!b) return;
+    var t = document.querySelector('.oncall-table'); if (t) t.classList.add('all');
+    b.parentNode.hidden = true;
+  });
+
   // Signing out leaves nothing behind on the device: half-written forms saved here are removed, and the site
   // tells the browser to drop the photos and files it kept (see the sign-out route).
   document.addEventListener('submit', function (e) {

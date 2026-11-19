@@ -39,8 +39,12 @@ function page(req, res, extra = {}) {
   const current = list.filter((g) => g.start_on <= today).sort(mineFirst);
   // Offices in the market with nobody down for today: say so, so an empty space is not mistaken for "nobody is on call there".
   const missing = offices.filter((o) => !current.some((g) => g.branch_id === o.id));
+  // On a phone the whole year is a very long scroll: the next four weeks show, and the rest waits behind a button.
+  const soon = new Date(`${today}T12:00:00Z`); soon.setUTCDate(soon.getUTCDate() + 28);
+  const soonUntil = soon.toISOString().slice(0, 10);
+  const upcoming = list.filter((g) => g.start_on > today).map((g, i) => ({ ...g, later: i >= 4 && g.start_on > soonUntil }));
   res.status(extra.errors ? 400 : 200).render('oncall', {
-    title: 'On call', wide: true, current, upcoming: list.filter((g) => g.start_on > today), many: offices.length > 1, market: offices[0] && offices[0].market, missing, officeCount: offices.length,
+    title: 'On call', wide: true, current, upcoming, laterCount: upcoming.filter((g) => g.later).length, many: offices.length > 1, market: offices[0] && offices[0].market, missing, officeCount: offices.length,
     canManage: access.can(req.user, 'oncall.manage'), roles: oncall.ROLES, mine: req.user.workBranch, errors: [], values: {}, problems: [], ...extra,
   });
 }

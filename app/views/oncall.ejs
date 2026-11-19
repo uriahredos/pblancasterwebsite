@@ -33,8 +33,8 @@
   <thead><tr><th>Days</th><% if (many) { %><th>Office</th><% } %><th>On call</th><th>Backup</th><th>Holiday</th></tr></thead>
   <tbody>
   <% var lastYear = ''; upcoming.forEach(function (g) { %>
-  <% if (g.year !== lastYear) { lastYear = g.year; %><tr class="year-row"><td colspan="<%= many ? 5 : 4 %>"><%= g.year %></td></tr><% } %>
-  <tr>
+  <% if (g.year !== lastYear) { lastYear = g.year; %><tr class="year-row<%= g.later ? ' later' : '' %>"><td colspan="<%= many ? 5 : 4 %>"><%= g.year %></td></tr><% } %>
+  <tr<%- g.later ? ' class="later"' : '' %>>
     <td class="nowrap" data-label="Days"><strong><%= g.label %></strong></td>
     <% if (many) { %><td data-label="Office"><%= g.office %></td><% } %>
     <% ['tech', 'backup'].forEach(function (role) { %>
@@ -63,6 +63,7 @@
   </tbody>
 </table>
 </div>
+<% if (laterCount) { %><p class="oncall-more"><button class="btn" type="button" data-oncall-all>Show the rest (<%= laterCount %> more)</button></p><% } %>
 <% } %>
 
 <% if (canManage) { %>

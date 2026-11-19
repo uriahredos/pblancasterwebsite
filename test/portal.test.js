@@ -5292,3 +5292,26 @@ test('browser rules: styles, fonts and connections from this site only, no frami
   assert.deepEqual(made(587), { secure: false, requireTLS: true, port: 587 });
   assert.deepEqual(made(465), { secure: true, requireTLS: false, port: 465 });
 });
+
+test('on call: a phone shows the next four weeks and keeps the rest of the year behind a button', async () => {
+  const office = db.prepare("INSERT INTO branches (name, created_at) VALUES ('Callville', ?)").run(new Date().toISOString()).lastInsertRowid;
+  const id = makeUser('call.one', 'Cal Callville'); db.prepare('UPDATE users SET branch_id = ? WHERE id = ?').run(office, id);
+  const day = (n) => { const d = new Date(Date.now() + n * 86400000); return d.toISOString().slice(0, 10); };
+  const add = db.prepare("INSERT INTO oncall_shifts (branch_id, start_on, end_on, role, name, phone, created_at) VALUES (?, ?, ?, 'tech', ?, '717-555-0100', ?)");
+  for (let w = 0; w < 20; w++) add.run(office, day(w * 7 - 1), day(w * 7 + 6), `Tech Week${w}`, new Date().toISOString());
+  const c = await loggedIn('call.one');
+  const page = (await c.get('/oncall')).text;
+  const rows = [...page.matchAll(/<tr( class="later")?>\s*<td class="nowrap" data-label="Days">/g)];
+  assert.equal(rows.length, 19);                                                       // 19 weeks to come after this one
+  const shown = rows.filter((r) => !r[1]).length, later = rows.filter((r) => r[1]).length;
+  assert.ok(shown >= 4 && shown <= 5, `shown ${shown}`); assert.equal(shown + later, 19);
+  assert.match(page, new RegExp(`data-oncall-all>Show the rest \\(${later} more\\)</button>`));
+  assert.ok(page.indexOf('Tech Week1<') < page.indexOf('class="later"'));              // the nearest weeks are never hidden
+  // A short schedule has nothing to hide and no button.
+  db.prepare('DELETE FROM oncall_shifts WHERE branch_id = ? AND start_on > ?').run(office, day(20));
+  const short = (await c.get('/oncall')).text;
+  assert.doesNotMatch(short, /data-oncall-all|class="later"/);
+  const css = (await new Client().get('/styles.css')).text;
+  assert.match(css, /\.oncall-table:not\(\.all\) tr\.later \{ display: none; \}/);
+  assert.match((await c.get('/site.js')).text, /data-oncall-all/);
+});
