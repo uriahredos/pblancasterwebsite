@@ -17,9 +17,10 @@
     <label><span class="sr">Message</span><textarea name="body" rows="8" maxlength="6000" required><%= values.body || '' %></textarea></label>
   </div>
   <label>Photos <span class="hint">Optional, up to <%= maxPhotos %>. Do not post customer names, addresses or codes.</span>
-    <input type="file" name="photos" accept="image/jpeg,image/png,image/webp,image/gif" multiple>
+    <input type="file" name="photos" accept="image/jpeg,image/png,image/webp,image/gif" multiple data-shrink="1600">
   </label>
   <button class="btn primary" type="submit">Post thread</button>
 </form>
 <script src="/format.js?v=<%= assetV %>"></script>
+<script src="/shrink.js?v=<%= assetV %>" defer></script>
 <%- include('partials/footer') %>

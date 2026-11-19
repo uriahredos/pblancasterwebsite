@@ -1,4 +1,6 @@
-// Photos picked on a phone are huge. Shrink each one before it is sent, so posting is quick on a weak signal.
+// Photos picked on a phone are huge, and carry hidden details: where and when they were taken, and on which phone.
+// Each one is redrawn here before it is sent, the right way up. That makes it quick to post on a weak signal and
+// leaves the hidden details behind, however small the picture already was.
 (function () {
   if (!window.DataTransfer || !window.File || !HTMLCanvasElement.prototype.toBlob) return;
   function shrink(file, max) {
@@ -8,12 +10,12 @@
       img.onerror = function () { URL.revokeObjectURL(url); resolve(file); };
       img.onload = function () {
         var scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
-        if (scale === 1 && file.size < 900000) { URL.revokeObjectURL(url); return resolve(file); }
-        var c = document.createElement('canvas');
-        c.width = Math.round(img.naturalWidth * scale); c.height = Math.round(img.naturalHeight * scale);
-        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        var c = document.createElement('canvas'), ctx = c.getContext('2d');
+        c.width = Math.max(1, Math.round(img.naturalWidth * scale)); c.height = Math.max(1, Math.round(img.naturalHeight * scale));
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);   // a see-through picture gets a white background, not a black one
+        ctx.drawImage(img, 0, 0, c.width, c.height);
         URL.revokeObjectURL(url);
-        c.toBlob(function (blob) { resolve(blob && blob.size < file.size ? new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' }) : file); }, 'image/jpeg', 0.82);
+        c.toBlob(function (blob) { resolve(blob ? new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' }) : file); }, 'image/jpeg', 0.82);
       };
       img.src = url;
     });

@@ -5371,6 +5371,400 @@ test('the Feed page: the activity feed in full, with shout-outs and past events,
 // .
 // .
 // -- review: uploaded files --
+// What these checks share: the uploads folder, a sender on a weak signal, and stand-in photos.
+const uplStore = require('../app/uploads'); const uplSeal = require('../app/sealed');
+const uplDir = path.join(dataDir, 'uploads');
+const uplList = () => fs.readdirSync(uplDir).sort();
+const uplHead = (name) => fs.readFileSync(path.join(uplDir, name)).subarray(0, 7).toString('latin1');
+const uplSleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function uplUntil(check, what, ms = 5000) { const end = Date.now() + ms; for (;;) { const v = check(); if (v) return v; assert.ok(Date.now() < end, `timed out waiting for ${what}`); await uplSleep(10); } }
+/** The folder goes back to exactly these names (deleting is done a moment after the answer is sent). */
+async function uplBackTo(names, what) { const end = Date.now() + 3000; while (Date.now() < end && uplList().join() !== names.join()) await uplSleep(10); assert.deepEqual(uplList().filter((n) => !names.includes(n)), [], what); assert.deepEqual(names.filter((n) => !uplList().includes(n)), [], `${what} (something was removed that should have stayed)`); }
+const uplPng = (bytes) => Buffer.concat([PNG.subarray(0, 8), require('crypto').randomBytes(bytes)]);   // passes the look at the first bytes, at any length
+const uplDoc = (bytes) => Buffer.concat([Buffer.from('%PDF-1.4\n'), require('crypto').randomBytes(bytes), Buffer.from('\n%%EOF\n')]);
+const uplFile = (field, data, type = 'image/png', name = 'p.png') => ({ field, name, type, data });
+// A real picture, 16 wide and 8 high: left half red, right half blue.
+const UPL_JPEG = Buffer.from('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAA0JCgsKCA0LCgsODg0PEyAVExISEyccHhcgLikxMC4pLSwzOko+MzZGNywtQFdBRkxOUlNSMj5aYVpQYEpRUk//2wBDAQ4ODhMREyYVFSZPNS01T09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0//wAARCAAIABADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDGrJoor0uHv+Xny/U9fPP+Xfz/AEP/2Q==', 'base64');
+const uplPiece = (code, body) => { const b = Buffer.alloc(4 + body.length); b[0] = 0xff; b[1] = code; b.writeUInt16BE(body.length + 2, 2); Buffer.from(body).copy(b, 4); return b; };
+/** That picture as a phone would send it: turned on its side, with the maker, the time, a position, an editing history and a comment hidden inside. */
+function uplPhonePhoto(orientation = 6, { bigEndian = false } = {}) {
+  const w16 = (b, v, at) => (bigEndian ? b.writeUInt16BE(v, at) : b.writeUInt16LE(v, at)); const w32 = (b, v, at) => (bigEndian ? b.writeUInt32BE(v, at) : b.writeUInt32LE(v, at));
+  const text = Buffer.from('Apple\0iPhone 15 Pro\0GPSLatitude 40.0379 N GPSLongitude 76.3055 W\x002026:11:02 08:15:44\0', 'latin1');
+  const list = Buffer.alloc(2 + 3 * 12 + 4); w16(list, 3, 0);
+  const entry = (i, tag, type, count, value) => { const at = 2 + i * 12; w16(list, tag, at); w16(list, type, at + 2); w32(list, count, at + 4); if (type === 3) w16(list, value, at + 8); else w32(list, value, at + 8); };
+  entry(0, 0x010f, 2, 6, 8 + list.length); entry(1, 0x0112, 3, 1, orientation); entry(2, 0x8825, 4, 1, 8 + list.length + 20);
+  const start = Buffer.alloc(8); start.write(bigEndian ? 'MM' : 'II', 0, 'latin1'); w16(start, 42, 2); w32(start, 8, 4);
+  return Buffer.concat([UPL_JPEG.subarray(0, 2),
+    uplPiece(0xe1, Buffer.concat([Buffer.from('Exif\0\0', 'latin1'), start, list, text])),
+    uplPiece(0xe1, Buffer.from('http://ns.adobe.com/xap/1.0/\0<x:xmpmeta><rdf:Description exif:GPSLatitude="40,2.274N" xmp:CreatorTool="Hidden Phone 9"/></x:xmpmeta>', 'latin1')),
+    uplPiece(0xed, Buffer.from('Photoshop 3.0\x008BIM\x04\x04 taken at 12 Main Street by J Smith', 'latin1')),
+    uplPiece(0xfe, Buffer.from('comment: customer gate code 4471', 'latin1')),
+    UPL_JPEG.subarray(2),
+    Buffer.from('a short video tacked on after the picture, with its own location +40.0379-076.3055/', 'latin1')]);
+}
+const UPL_HIDDEN = /GPS|Apple|iPhone|2026:11:02|xmpmeta|Hidden Phone|Photoshop|Main Street|gate code|40\.0379|tacked on/;
+/** The "which way up" value a stored JPEG still carries (0 when it carries none). */
+function uplTurn(buf) {
+  for (let at = 2; at + 4 <= buf.length && buf[at] === 0xff && buf[at + 1] !== 0xda;) {
+    const end = at + 2 + buf.readUInt16BE(at + 2);
+    if (buf[at + 1] === 0xe1 && buf.toString('latin1', at + 4, at + 10) === 'Exif\0\0') return require('../app/jpeg').orientationOf(buf.subarray(at + 10, end));
+    at = end;
+  }
+  return 0;
+}
+/**
+ * Send a form the way a phone on a weak signal does: everything up to the middle of the last file, then `during` runs
+ * while the connection stays open and the server waits, then the rest. cut: hang up instead of sending the rest.
+ */
+function uplSlowPost(client, url, token, fields, files, during, { cut = false } = {}) {
+  const http = require('http'); const at = new URL(base);
+  const B = '----upl' + require('crypto').randomBytes(8).toString('hex');
+  const field = (n, v) => `--${B}\r\nContent-Disposition: form-data; name="${n}"\r\n\r\n${v}\r\n`;
+  const head = (f) => `--${B}\r\nContent-Disposition: form-data; name="${f.field}"; filename="${f.name}"\r\nContent-Type: ${f.type}\r\n\r\n`;
+  return new Promise((resolve, reject) => {
+    const r = http.request({ host: at.hostname, port: at.port, method: 'POST', path: url, headers: { cookie: client.cookie, 'content-type': `multipart/form-data; boundary=${B}`, 'transfer-encoding': 'chunked' } }, (res) => {
+      const chunks = []; res.on('data', (d) => chunks.push(d)); res.on('end', () => resolve({ status: res.statusCode, location: res.headers.location, text: Buffer.concat(chunks).toString('utf8') }));
+    });
+    r.on('error', (e) => (cut ? resolve({ status: 0 }) : reject(e)));
+    (async () => {
+      r.write(field('_csrf', token));
+      for (const [n, v] of fields) r.write(field(n, v));
+      for (const f of files.slice(0, -1)) { r.write(head(f)); r.write(f.data); r.write('\r\n'); }
+      const last = files[files.length - 1], half = Math.floor(last.data.length / 2);
+      r.write(head(last)); r.write(last.data.subarray(0, half));
+      await during();
+      if (cut) { r.destroy(); return resolve({ status: 0 }); }
+      r.write(last.data.subarray(half)); r.write(`\r\n--${B}--\r\n`); r.end();
+    })().catch((e) => { r.destroy(); reject(e); });
+  });
+}
+/** Every form on the site that stores a file, with enough filled in to be accepted. made: the files to send. */
+async function uplForms(c) {
+  const section = db.prepare('SELECT id FROM forum_sections ORDER BY id LIMIT 1').get().id;
+  const me = db.prepare("SELECT id, branch_id FROM users WHERE username = 'upl.boss'").get();
+  const office = db.prepare('SELECT address, phone, about FROM branches WHERE id = ?').get(me.branch_id);
+  const officeFields = [['address', office.address || ''], ['phone', office.phone || ''], ['about', office.about || '']];
+  const items = [...new Set([...(await c.get('/inspection')).text.matchAll(/name="(item_\d+)"/g)].map((m) => m[1]))];
+  const thread = db.prepare('INSERT INTO forum_threads (section_id, user_id, title, created_at, last_post_at, last_post_user_id) VALUES (?, ?, ?, ?, ?, ?)').run(section, me.id, `Upload checks ${Date.now()}`, new Date().toISOString(), new Date().toISOString(), me.id).lastInsertRowid;
+  db.prepare('INSERT INTO forum_posts (thread_id, user_id, body, created_at) VALUES (?, ?, ?, ?)').run(thread, me.id, 'first post', new Date().toISOString());
+  const entry = db.prepare("INSERT INTO parts_submissions (user_id, action, source, created_at, created_local_date) VALUES (?, 'return', 'van', ?, ?)").run(me.id, new Date().toISOString(), new Date().toISOString().slice(0, 10)).lastInsertRowid;
+  db.prepare("INSERT INTO parts_items (submission_id, part_name, quantity) VALUES (?, 'UPL-EDIT', 1)").run(entry);
+  let n = 0; const tag = () => `${Date.now()}-${n++}`;
+  return [
+    { what: 'photo wall', url: '/photos', fields: () => [['caption', 'upload check']], wrong: () => [['caption', 'upload check']], field: 'photos', many: true },
+    { what: 'new discussion', url: '/discussions/new', fields: () => [['section_id', String(section)], ['title', `Upload check ${tag()}`], ['body', 'with photos']], wrong: () => [['section_id', String(section)], ['title', ''], ['body', 'no title']], field: 'photos', many: true },
+    { what: 'discussion reply', url: `/discussions/t/${thread}/reply`, fields: () => [['body', `reply ${tag()}`]], wrong: () => [['body', '']], field: 'photos', many: true },
+    { what: 'truck inspection', url: '/inspection', fields: () => [['truck', 'UPL-1'], ['odometer', '100'], ...items.map((i) => [i, 'ok'])], wrong: () => [['truck', ''], ['odometer', '100'], ...items.map((i) => [i, 'ok'])], field: 'photos', many: true },
+    { what: 'parts return', url: '/parts', fields: () => [['action', 'return'], ['part_name', 'UPL-PART'], ['quantity', '1'], ['source', 'van']], wrong: () => [['action', 'return'], ['part_name', 'UPL-PART'], ['quantity', '0'], ['source', 'van']], field: 'photo' },
+    { what: 'parts entry edited', url: `/parts/${entry}/edit`, fields: () => [['part_name', 'UPL-EDIT'], ['quantity', '2'], ['source', 'van']], wrong: () => [['part_name', 'UPL-EDIT'], ['quantity', '0'], ['source', 'van']], field: 'photo' },
+    { what: 'profile photo', url: '/profile', fields: () => [['about', 'upload check']], wrong: () => [['phone', 'not a number']], field: 'photo' },
+    { what: 'office photo', url: `/branches/${me.branch_id}`, fields: () => officeFields, wrong: () => [['phone', 'not a number']], field: 'photo' },
+    { what: 'newsletter', url: '/admin/newsletters', fields: () => [['issue_month', '2031-05'], ['title', `Upload check ${tag()}`]], wrong: () => [['issue_month', 'May']], field: 'pdf', pdf: true },
+    { what: 'sales library', url: '/sales/library', fields: () => [['title', `Upload check ${tag()}`]], wrong: () => [['title', '']], field: 'file', doc: true },
+  ];
+}
+let uplBoss = null;
+async function uplSignedIn() {
+  if (!uplBoss) { makeUser('upl.boss', 'Una Uploads', { role: 'admin', reviewer: true }); uplBoss = { office: db.prepare("SELECT b.id, b.photo_path FROM branches b JOIN users u ON u.branch_id = b.id WHERE u.username = 'upl.boss'").get() }; }
+  return loggedIn('upl.boss');
+}
+/** Take away what these checks posted, and any file that was not there when the check began. */
+function uplTidy(start) {
+  const me = userId('upl.boss');
+  for (const sql of ['DELETE FROM wall_photos WHERE user_id = ?', 'DELETE FROM forum_threads WHERE user_id = ?', 'DELETE FROM inspections WHERE user_id = ?', 'DELETE FROM parts_submissions WHERE user_id = ?',
+    'DELETE FROM sales_files WHERE uploaded_by = ?', 'DELETE FROM newsletters WHERE created_by = ?', "DELETE FROM tasks WHERE assigned_to = ? AND title = 'Upload check'", 'UPDATE users SET photo_path = NULL WHERE id = ?']) db.prepare(sql).run(me);
+  db.prepare('UPDATE branches SET photo_path = ? WHERE id = ?').run(uplBoss.office.photo_path, uplBoss.office.id);
+  for (const n of uplList()) if (!start.includes(n)) fs.rmSync(path.join(uplDir, n), { force: true });
+}
+/** Stands in for the tool that draws a newsletter's pages: it notes what it was started with, draws half a page, waits to be told to go on, then finishes. */
+function uplFakeRenderer() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'portal-pdftoppm-'));
+  const page = Buffer.concat([UPL_JPEG, require('crypto').randomBytes(4000)]);
+  fs.writeFileSync(path.join(dir, 'page.bin'), page);
+  fs.writeFileSync(path.join(dir, 'pdftoppm'), `#!${process.execPath}
+const fs = require('fs'); const path = require('path');
+if (process.argv[2] === 'can-you-run') process.exit(0);
+fs.writeFileSync(path.join(__dirname, 'started-with.json'), JSON.stringify(Object.keys(process.env).sort()));
+const page = fs.readFileSync(path.join(__dirname, 'page.bin')); const out = process.argv[process.argv.length - 1] + '-1.jpg';
+fs.writeFileSync(out, page.subarray(0, 2000));
+const wait = () => { if (!fs.existsSync(__dirname)) process.exit(1); if (!fs.existsSync(path.join(__dirname, 'go'))) return setTimeout(wait, 15); fs.appendFileSync(out, page.subarray(2000)); };
+wait();
+`, { mode: 0o755 });
+  const before = process.env.PATH;
+  // Some machines do not allow programs to be run from the temporary folder; there the newsletter's pages are left out of the check.
+  const works = require('child_process').spawnSync(path.join(dir, 'pdftoppm'), ['can-you-run'], { timeout: 10000 }).status === 0;
+  if (works) process.env.PATH = dir + path.delimiter + before;
+  return { dir, page, works, go: () => fs.writeFileSync(path.join(dir, 'go'), '1'), hold: () => fs.rmSync(path.join(dir, 'go'), { force: true }),
+    startedWith: () => JSON.parse(fs.readFileSync(path.join(dir, 'started-with.json'), 'utf8')), done: () => { process.env.PATH = before; fs.rmSync(dir, { recursive: true, force: true }); } };
+}
+
+test('uploaded files: a slow upload is never sealed part-way, on any form; what is kept is exactly what was sent, sealed once the form is accepted', async (t) => {
+  const c = await uplSignedIn(); const start = uplList(); const token = await c.csrf('/profile');
+  const k = uplSeal.keyFrom('upload-check-key-0123456789-abcdef');
+  const tool = uplFakeRenderer();
+  const forms = (await uplForms(c)).filter((f) => tool.works || !f.pdf);
+  if (!tool.works) t.diagnostic('programs cannot be run from the temporary folder here: the newsletter form was not checked');
+  try {
+    uplStore.useKeys({ current: k, all: [k], off: false });
+    uplStore.tend({ minAgeMs: 0, limit: 100000 });                                                   // what earlier checks left behind is sealed first, as a backlog would be
+    for (const f of forms) {
+      const before = uplList(); tool.hold();
+      const sent = f.pdf ? [uplFile('pdf', tinyPdf(), 'application/pdf', 'n.pdf')] : f.doc ? [uplFile('file', uplDoc(30000), 'application/pdf', 'prices.pdf')]
+        : f.many ? [uplFile(f.field, uplPng(20000)), uplFile(f.field, uplPng(20000))] : [uplFile(f.field, uplPng(20000))];
+      const arrived = () => { const mine = uplList().filter((n) => !before.includes(n)); return mine.length === sent.length && mine.reduce((sum, n) => sum + fs.statSync(path.join(uplDir, n)).size, 0) >= sent.reduce((sum, x) => sum + x.data.length, 0) - Math.ceil(sent[sent.length - 1].data.length / 2) - 200 && mine; };   // (the last few bytes sent may still be held back, in case they turn out to be the end of the file)
+      const answer = uplSlowPost(c, f.url, token, f.fields(), sent, async () => {
+        // The first files are whole and the last is half there. Two minutes pass (minAgeMs: 0) and the background pass comes round.
+        const mine = await uplUntil(arrived, `${f.what}: the first half to arrive`);
+        uplStore.tend({ minAgeMs: 0, limit: 100000 });
+        for (const n of mine) assert.notEqual(uplHead(n), 'PBSEAL1', `${f.what}: a file was sealed while its upload was still arriving`);
+      });
+      if (f.pdf) {
+        // The pages are being drawn from the PDF: neither is touched while that goes on.
+        const page = await uplUntil(() => uplList().find((n) => !before.includes(n) && /-1\.jpg$/.test(n)), 'the page picture to be started');
+        await uplUntil(() => fs.statSync(path.join(uplDir, page)).size === 2000, 'half a page');
+        uplStore.tend({ minAgeMs: 0, limit: 100000 });
+        for (const n of uplList().filter((x) => !before.includes(x))) assert.notEqual(uplHead(n), 'PBSEAL1', 'newsletter: a file was sealed while its pages were being drawn');
+        tool.go();
+      }
+      const r = await answer;
+      assert.equal(r.status, 302, `${f.what}: ${(/<div class="errors"[\s\S]*?<\/div>/.exec(r.text) || [r.text.slice(0, 200)])[0]}`);
+      const expect = f.pdf ? [sent[0].data, tool.page] : sent.map((x) => x.data);
+      const mine = await uplUntil(() => { const now = uplList().filter((n) => !before.includes(n) && !n.endsWith('.sealing')); return now.length === expect.length && now; }, `${f.what}: its files`);
+      const opened = mine.map((n) => uplSeal.read(path.join(uplDir, n), [k]));
+      for (const data of expect) assert.ok(opened.some((b) => b.equals(data)), `${f.what}: what is stored is not what was sent`);
+      for (const n of mine) assert.equal(uplHead(n), 'PBSEAL1', `${f.what}: stored without being sealed`);
+      assert.deepEqual(uplStore.tend({ minAgeMs: 0 }), { sealed: 0, moved: 0, opened: 0, left: 0, stuck: 0 }, `${f.what}: nothing is left for the background pass`);
+    }
+    // People still get exactly what was sent.
+    const raw = async (url) => { const r = await fetch(base + url, { headers: { cookie: c.cookie }, redirect: 'manual' }); return { status: r.status, body: Buffer.from(await r.arrayBuffer()) }; };
+    const issue = db.prepare("SELECT id FROM newsletters WHERE issue_month = '2031-05'").get();
+    if (tool.works) { assert.ok((await raw(`/newsletters/${issue.id}/page/1`)).body.equals(tool.page)); assert.ok((await raw(`/newsletters/${issue.id}/pdf`)).body.equals(tinyPdf())); }
+    const wall = db.prepare("SELECT id, path FROM wall_photos WHERE caption = 'upload check' ORDER BY id DESC").get();
+    assert.ok((await raw(`/wall/photo/${wall.id}`)).body.equals(uplSeal.read(path.join(uplDir, wall.path), [k])));
+    // The tool that draws the pages is started with nothing of the site's settings: it cannot see the database key.
+    if (tool.works) assert.deepEqual(tool.startedWith(), ['PATH']);
+  } finally {
+    tool.done(); uplTidy(start);
+    uplStore.useKeys({ current: null, all: [k], off: true }); uplStore.tend({ limit: 100000 }); uplStore.useKeys(null);   // back to ordinary files for the checks that follow
+  }
+});
+
+test('uploaded files: a form that is refused leaves nothing behind, and an error after saving does not take away a photo that was kept', async () => {
+  const c = await uplSignedIn(); const start = uplList(); const forms = await uplForms(c); const token = await c.csrf('/profile');
+  const send = (f, fields, files, opts) => c.post(f.url, [...fields, ...files.map((x) => [x.field, new File([x.data], x.name, { type: x.type })])], { multipart: true, page: '/profile', ...opts });
+  const fileFor = (f) => (f.pdf ? uplFile('pdf', tinyPdf(), 'application/pdf', 'n.pdf') : f.doc ? uplFile('file', uplDoc(3000), 'application/pdf', 'p.pdf') : uplFile(f.field, uplPng(3000)));
+  for (const f of forms) {
+    const before = uplList();
+    // The form expired (or was sent without its token).
+    const stale = await send(f, f.fields(), [fileFor(f)], { csrf: false });
+    assert.equal(stale.status, 403, f.what); assert.match(stale.text, /Form expired/);
+    await uplBackTo(before, `${f.what}: files left behind by an expired form`);
+    // Something in the form is wrong.
+    const wrong = await send(f, f.wrong(), f.what === 'photo wall' ? [fileFor(f), uplFile('photos', Buffer.from('not a picture'))] : [fileFor(f)]);
+    assert.equal(wrong.status, 400, f.what);
+    await uplBackTo(before, `${f.what}: files left behind by a form with a mistake in it`);
+    // The connection drops half-way through the file.
+    const big = { ...fileFor(f), data: f.pdf ? Buffer.concat([tinyPdf(), Buffer.alloc(40000)]) : f.doc ? uplDoc(40000) : uplPng(40000) };
+    await uplSlowPost(c, f.url, token, f.fields(), [big], () => uplUntil(() => uplList().length > before.length, `${f.what}: the first half to arrive`), { cut: true });
+    await uplBackTo(before, `${f.what}: files left behind by an upload that was cut off`);
+  }
+  // Something goes wrong on the server before the form is saved: the files go too.
+  const wallForm = forms[0]; let before = uplList();
+  db.exec("CREATE TEMP TRIGGER upl_fail BEFORE INSERT ON wall_photos BEGIN SELECT RAISE(ABORT, 'made to fail'); END");
+  try { assert.equal((await send(wallForm, wallForm.fields(), [uplFile('photos', uplPng(3000)), uplFile('photos', uplPng(3000))])).status, 500); } finally { db.exec('DROP TRIGGER upl_fail'); }
+  await uplBackTo(before, 'files left behind when the server failed before saving');
+  // ...but when it goes wrong after the form was saved, the file the database now points at stays.
+  const library = forms.find((f) => f.doc); const activity = require('../app/activity'); const realLog = activity.log; const doc = uplDoc(3000);
+  before = uplList();
+  activity.log = () => { throw new Error('made to fail after saving'); };
+  let failed;
+  try { failed = await send(library, [['title', 'Kept through an error']], [uplFile('file', doc, 'application/pdf', 'p.pdf')]); } finally { activity.log = realLog; }
+  assert.equal(failed.status, 500);
+  const kept = db.prepare("SELECT id, path FROM sales_files WHERE title = 'Kept through an error'").get();
+  await uplSleep(150);
+  assert.ok(fs.readFileSync(path.join(uplDir, kept.path)).equals(doc)); await uplBackTo(before.concat(kept.path).sort(), 'only the kept file is added');
+  const dl = await fetch(`${base}/sales/library/${kept.id}`, { headers: { cookie: c.cookie } });
+  assert.ok(Buffer.from(await dl.arrayBuffer()).equals(doc));
+  await c.post(`/sales/library/${kept.id}/delete`, {}, { page: '/sales/library' });
+  await uplBackTo(before, 'removing it from the library removes its file');
+  // An accepted form keeps its files, as before.
+  assert.equal((await send(wallForm, wallForm.fields(), [uplFile('photos', uplPng(3000))])).status, 302);
+  assert.equal(uplList().length, before.length + 1);
+  uplTidy(start);
+});
+
+test('uploaded files: the background pass opens each file once, does nothing when nothing changed, and a file that fails cannot hold it up', async () => {
+  const crypto = require('crypto'); const k = uplSeal.keyFrom('background-pass-key-0123456789-abc');
+  const real = { openSync: fs.openSync, statSync: fs.statSync, readdirSync: fs.readdirSync, seal: uplSeal.seal };
+  /** Run one pass and count what it asked of the disk: files opened for reading, files looked up, folder listings. */
+  const counted = (opts) => {
+    const n = { opened: 0, lookedUp: 0, listed: 0 };
+    fs.openSync = (...a) => { if (a[1] === 'r') n.opened += 1; return real.openSync(...a); };
+    fs.statSync = (...a) => { if (String(a[0]) !== uplDir) n.lookedUp += 1; return real.statSync(...a); };
+    fs.readdirSync = (...a) => { n.listed += 1; return real.readdirSync(...a); };
+    try { n.pass = uplStore.tend(opts); } finally { Object.assign(fs, { openSync: real.openSync, statSync: real.statSync, readdirSync: real.readdirSync }); }
+    return n;
+  };
+  const made = [];
+  const make = (name) => { fs.writeFileSync(path.join(uplDir, name), Buffer.concat([PNG.subarray(0, 8), crypto.randomBytes(300)])); made.push(name); };
+  let tick = 0;
+  const longAgo = () => { const then = new Date(Date.now() - 60000 - 1000 * tick++); fs.utimesSync(uplDir, then, then); };   // the folder last changed a minute or more ago
+  try {
+    for (let i = 0; i < 240; i++) make(`bulk-${String(i).padStart(3, '0')}.png`);
+    const total = uplList().length;
+
+    // No key in use: every file is looked at once, and then never again.
+    uplStore.useKeys({ current: null, all: [], off: false });
+    longAgo();
+    const first = counted(); assert.equal(first.opened, total); assert.equal(first.listed, 1);
+    const second = counted(); assert.deepEqual([second.opened, second.lookedUp, second.listed], [0, 0, 0], 'a pass with nothing changed asks the folder one question and stops');
+    assert.deepEqual(second.pass, { sealed: 0, moved: 0, opened: 0, left: 0, stuck: 0 });
+    make('bulk-new.png'); longAgo();                                                                // one file is added: only that one is opened
+    const third = counted(); assert.deepEqual([third.opened, third.listed], [1, 1]);
+    assert.equal(uplStore.census().plain, total + 1);
+
+    // A key is switched on: the work is spread over many short passes, and all of them together open each file a fixed number of times.
+    uplStore.useKeys({ current: k, all: [k], off: false });
+    let opened = 0, passes = 0, sealedSoFar = 0;
+    for (;;) {
+      const p = counted({ minAgeMs: 0, limit: 20 }); passes += 1; opened += p.opened; sealedSoFar += p.pass.sealed;
+      assert.ok(p.pass.sealed <= 20); assert.equal(p.pass.stuck, 0);
+      if (!p.pass.left) break;
+      assert.ok(passes < 200, 'the passes never finish');
+    }
+    assert.equal(sealedSoFar, total + 1); assert.equal(passes, Math.ceil((total + 1) / 20));
+    assert.ok(opened <= 3 * (total + 1), `${opened} files opened to seal ${total + 1}: every pass is reading the whole folder again`);
+    assert.equal(uplStore.census().sealed, total + 1);
+    longAgo(); counted({ minAgeMs: 0 });
+    const quiet = counted({ minAgeMs: 0 }); assert.deepEqual([quiet.opened, quiet.lookedUp, quiet.listed], [0, 0, 0]);
+
+    // Files that fail use up their turn in the pass, so one bad file (or twelve) cannot make a pass run on, and the good ones still get done.
+    let tries = 0;
+    uplSeal.seal = (file, key) => { tries += 1; if (/bulk-bad/.test(file)) throw new Error('made to fail'); return real.seal(file, key); };
+    for (let i = 0; i < 12; i++) make(`bulk-bad-${i}.png`);
+    for (let i = 0; i < 10; i++) make(`bulk-ok-${i}.png`);
+    const noise = logLines.length; let good = 0; passes = 0;
+    while (good < 10) {
+      const was = tries; const p = uplStore.tend({ minAgeMs: 0, limit: 5 }); passes += 1; good += p.sealed;
+      assert.ok(tries - was <= 5, `a pass limited to 5 files tried ${tries - was}`); assert.ok(p.stuck <= 5);
+      assert.ok(passes <= 8, 'the files that fail are holding up the ones that do not');
+    }
+    assert.ok(logLines.slice(noise).filter((l) => /could not convert bulk-bad/.test(l)).length <= passes * 5);
+    for (let i = 0; i < 10; i++) assert.equal(uplHead(`bulk-ok-${i}.png`), 'PBSEAL1');
+    for (let i = 0; i < 12; i++) assert.notEqual(uplHead(`bulk-bad-${i}.png`), 'PBSEAL1');             // untouched, and tried again later
+    uplSeal.seal = real.seal;
+    assert.ok(uplStore.tend({ minAgeMs: 0, limit: 100 }).sealed >= 1);
+  } finally {
+    Object.assign(fs, { openSync: real.openSync, statSync: real.statSync, readdirSync: real.readdirSync }); uplSeal.seal = real.seal;
+    for (const name of made) fs.rmSync(path.join(uplDir, name), { force: true });
+    uplStore.useKeys({ current: null, all: [k], off: true }); uplStore.tend({ limit: 100000 }); uplStore.useKeys(null);
+  }
+});
+
+test('uploaded files: a JPEG photo loses its hidden details as it arrives and stays the right way up; every photo box redraws the picture in the browser first', async () => {
+  const jpeg = require('../app/jpeg');
+  // The stripper on its own.
+  const phone = uplPhonePhoto(6); const lean = jpeg.strip(phone);
+  assert.match(phone.toString('latin1'), UPL_HIDDEN); assert.doesNotMatch(lean.toString('latin1'), UPL_HIDDEN);
+  assert.equal(uplTurn(phone), 6); assert.equal(uplTurn(lean), 6);                                   // still says "turn me a quarter turn"
+  assert.ok(lean.subarray(lean.length - (UPL_JPEG.length - 2)).equals(UPL_JPEG.subarray(2)));        // the picture itself, byte for byte, and nothing after it
+  assert.equal(lean.length, UPL_JPEG.length + 36);
+  assert.equal(jpeg.strip(lean), lean);                                                              // nothing more to take out
+  assert.equal(jpeg.strip(UPL_JPEG), UPL_JPEG);
+  for (const turn of [2, 3, 4, 5, 7, 8]) assert.equal(uplTurn(jpeg.strip(uplPhonePhoto(turn, { bigEndian: turn % 2 === 0 }))), turn);
+  assert.equal(jpeg.strip(uplPhonePhoto(1)).length, UPL_JPEG.length);                                // already upright: no note is needed at all
+  // Anything not laid out as expected is left exactly as it came.
+  const cutDetails = Buffer.concat([UPL_JPEG.subarray(0, 2), uplPiece(0xe1, Buffer.from('Exif\0\0MM\0*\0\0\0\x08\0\x09\x01\x12', 'latin1')), UPL_JPEG.subarray(2)]);
+  assert.equal(jpeg.strip(cutDetails), null);
+  assert.equal(jpeg.strip(Buffer.from('\xff\xd8\xff\xe0 not really a picture', 'latin1')), null);
+  assert.equal(jpeg.strip(PNG), null); assert.equal(jpeg.strip(Buffer.alloc(0)), null);
+  assert.equal(jpeg.strip(Buffer.concat([UPL_JPEG.subarray(0, 2), Buffer.from([0xff, 0xe1, 0xff, 0xff]), UPL_JPEG.subarray(2)])), null);   // a piece that says it is longer than the file
+  // A picture whose end is missing keeps everything from the picture data on, untouched; only the details before it go.
+  const noEnd = phone.subarray(0, phone.indexOf(Buffer.from([0xff, 0xd9]), phone.length - 90));
+  const noEndLean = jpeg.strip(noEnd);
+  assert.doesNotMatch(noEndLean.toString('latin1'), UPL_HIDDEN); assert.ok(noEndLean.subarray(noEndLean.length - 200).equals(noEnd.subarray(noEnd.length - 200)));
+
+  // On the site: every form that takes a picture stores it without the hidden details.
+  const c = await uplSignedIn(); const start = uplList(); const forms = (await uplForms(c)).filter((f) => !f.pdf);
+  for (const f of forms) {
+    const before = uplList();
+    const r = await c.post(f.url, [...f.fields(), [f.field, new File([phone], 'IMG_0042.jpg', { type: 'image/jpeg' })]], { multipart: true, page: '/profile' });
+    assert.equal(r.status, 302, f.what);
+    const mine = await uplUntil(() => { const now = uplList().filter((n) => !before.includes(n)); return now.length === 1 && now; }, `${f.what}: its file`);
+    const stored = fs.readFileSync(path.join(uplDir, mine[0]));
+    assert.ok(stored.equals(lean), `${f.what}: the photo was stored with its hidden details`);
+  }
+  // ...and it is what people are sent. The size checked for a profile photo is the size after the details are gone.
+  const me = userId('upl.boss');
+  const seen = await fetch(`${base}/people/photo/${me}`, { headers: { cookie: c.cookie } }); const body = Buffer.from(await seen.arrayBuffer());
+  assert.ok(body.equals(lean)); assert.doesNotMatch(body.toString('latin1'), UPL_HIDDEN); assert.equal(uplTurn(body), 6);
+  // Other kinds of picture, and a JPEG that cannot be read with certainty, are stored exactly as they arrive.
+  for (const [data, type] of [[PNG, 'image/png'], [cutDetails, 'image/jpeg']]) {
+    const before = uplList();
+    assert.equal((await c.post('/photos', [['caption', 'as it came'], ['photos', new File([data], 'x', { type })]], { multipart: true, page: '/photos' })).status, 302);
+    const mine = uplList().filter((n) => !before.includes(n));
+    assert.ok(fs.readFileSync(path.join(uplDir, mine[0])).equals(data));
+  }
+  assert.doesNotMatch(uplList().join(' '), /\.sealing/);
+
+  // In the browser: the parts form and both discussion forms now redraw their photos too, like the others, and a small photo is no longer sent as it is.
+  const thread = /\/discussions\/t\/(\d+)\/reply/.exec(forms.find((f) => f.what === 'discussion reply').url)[1];
+  for (const page of ['/parts', '/discussions/new', `/discussions/t/${thread}`, '/photos', '/inspection']) {
+    const html = (await c.get(page)).text;
+    assert.match(html, /<script src="\/shrink\.js\?v=[^"]+" defer><\/script>/, page);
+    for (const box of html.match(/<input type="file"[^>]*>/g)) assert.match(box, /data-shrink="\d+"/, `${page}: ${box}`);
+  }
+  const js = fs.readFileSync(path.join(__dirname, '..', 'public', 'shrink.js'), 'utf8');
+  assert.doesNotMatch(js, /file\.size/);                                                             // no "small enough, send it as it is"
+  assert.match(js, /resolve\(blob \? new File\(\[blob\]/); assert.match(js, /ctx\.drawImage\(img, 0, 0, c\.width, c\.height\)/);
+  assert.match(fs.readFileSync(path.join(__dirname, '..', 'public', 'profile.js'), 'utf8'), /out\.toBlob\(/);   // the profile photo has always been redrawn
+  uplTidy(start);
+});
+
+test('uploaded files: when the data disk is nearly full new photos and files are refused in one sentence, and everything else keeps working', async () => {
+  const MB = 1024 * 1024, GB = 1024 * MB;
+  const diskWith = (size, free) => () => ({ bsize: 4096, blocks: size / 4096, bavail: free / 4096, bfree: free / 4096 });
+  const c = await uplSignedIn(); const start = uplList(); const forms = await uplForms(c); const noise = logLines.length;
+  try {
+    // Nearly full: less than 5% of the disk (never asking for more than 500 MB), or less than 50 MB.
+    for (const [size, free, room] of [[GB, 60 * MB, true], [GB, 51 * MB, false], [GB, 0, false], [GB / 2, 40 * MB, false], [GB / 2, 52 * MB, true], [100 * GB, 400 * MB, false], [100 * GB, 600 * MB, true]]) {
+      uplStore.useDisk(diskWith(size, free)); assert.equal(uplStore.hasRoom(), room, `${free / MB} MB free of ${size / MB}`);
+    }
+    // If the disk cannot be asked, or answers nonsense, nothing is refused.
+    uplStore.useDisk(() => { throw new Error('not available here'); }); assert.equal(uplStore.hasRoom(), true);
+    uplStore.useDisk(() => ({})); assert.equal(uplStore.hasRoom(), true);
+    assert.equal((await c.post('/photos', [['caption', 'room unknown'], ['photos', new File([PNG], 'p.png', { type: 'image/png' })]], { multipart: true, page: '/photos' })).status, 302);
+
+    uplStore.useDisk(diskWith(GB, 20 * MB));
+    const SENTENCE = 'The site is almost out of storage space, so photos and files cannot be added right now; please tell your admin.';
+    for (const f of forms) {
+      const before = uplList();
+      const file = f.pdf ? new File([tinyPdf()], 'n.pdf', { type: 'application/pdf' }) : f.doc ? new File([uplDoc(2000)], 'p.pdf', { type: 'application/pdf' }) : new File([PNG], 'p.png', { type: 'image/png' });
+      const r = await c.post(f.url, [...f.fields(), ...(f.many ? [[f.field, file], [f.field, file]] : [[f.field, file]])], { multipart: true, page: '/profile' });
+      assert.equal(r.status, 400, f.what);
+      const errors = (/<div class="errors"[\s\S]*?<\/div>/.exec(r.text) || [''])[0];
+      assert.deepEqual(errors.match(/<li>[\s\S]*?<\/li>/g), [`<li>${SENTENCE}</li>`], f.what);          // that one sentence, and nothing else
+      await uplBackTo(before, `${f.what}: nothing is stored while the disk is nearly full`);
+      // The same form without a file is saved as usual (a newsletter or a photo post is nothing without its file).
+      if (!f.pdf && f.what !== 'photo wall') {
+        const plain = await c.post(f.url, f.doc ? [...f.fields(), ['link', 'https://example.com/sheet']] : f.fields(), { multipart: true, page: '/profile' });
+        assert.equal(plain.status, 302, `${f.what} without a file`);
+      }
+    }
+    // A truck inspection that needs its six photos says the one thing that matters, not six more lines about missing photos.
+    const me = userId('upl.boss'); const inspection = forms.find((f) => f.what === 'truck inspection');
+    const task = db.prepare("INSERT INTO tasks (title, assigned_to, assigned_by, created_at, kind) VALUES ('Upload check', ?, ?, ?, 'inspection')").run(me, me, new Date().toISOString()).lastInsertRowid;
+    const six = await c.post('/inspection', [...inspection.fields(), ['task', String(task)], ...['front', 'rear', 'driver', 'passenger', 'cab', 'back'].map((s) => [`shot_${s}`, new File([PNG], 'p.png', { type: 'image/png' })])], { multipart: true, page: '/profile' });
+    assert.equal(six.status, 400); assert.deepEqual((/<div class="errors"[\s\S]*?<\/div>/.exec(six.text) || [''])[0].match(/<li>[\s\S]*?<\/li>/g), [`<li>${SENTENCE}</li>`]);
+    assert.equal(logLines.slice(noise).filter((l) => /\[files\] The data disk is nearly full/.test(l)).length, 1);   // said once in the log, not once per upload
+    // Signing in and ordinary saves are untouched.
+    const other = new Client(); await other.login('tech1', 'correct horse battery');
+    assert.equal((await other.post('/training', { description: 'still works', wants_contact: 'no', is_private: 'no' }, { page: '/training' })).status, 302);
+  } finally { uplStore.useDisk(null); }
+  assert.equal(uplStore.hasRoom(), true, 'the machine running these checks is itself nearly out of disk space');
+  assert.equal((await c.post('/photos', [['caption', 'room again'], ['photos', new File([PNG], 'p.png', { type: 'image/png' })]], { multipart: true, page: '/photos' })).status, 302);
+  uplTidy(start);
+});
 
 // .
 // .

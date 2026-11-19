@@ -3,10 +3,10 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const express = require('express');
-const multer = require('multer');
 const db = require('../db');
 const config = require('../config');
 const mail = require('../mail');
+const uploads = require('../uploads');
 const { requireLogin, requirePerm, verifyCsrf, forbidden, flash } = require('../auth');
 const access = require('../permissions');
 const stock = require('../stock');
@@ -19,11 +19,8 @@ const uploadDir = path.join(config.dataDir, 'uploads');
 const EXT = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif' };
 const MAX_ITEMS = 40;
 
-const upload = multer({
-  storage: multer.diskStorage({
-    destination: uploadDir,
-    filename: (req, file, cb) => cb(null, crypto.randomBytes(16).toString('hex') + EXT[file.mimetype]),
-  }),
+const upload = uploads.receive({
+  name: (file) => crypto.randomBytes(16).toString('hex') + EXT[file.mimetype],
   limits: { fileSize: config.maxPhotoBytes, files: 1, fields: 200 },
   fileFilter: (req, file, cb) => {
     if (EXT[file.mimetype]) return cb(null, true);
@@ -53,7 +50,7 @@ function looksLikeImage(file) {
     (b.toString('latin1', 0, 4) === 'RIFF' && b.toString('latin1', 8, 12) === 'WEBP');
 }
 
-const removeFile = (file) => { if (file) fs.rm(file.path, { force: true }, () => {}); };
+const removeFile = (file) => { if (file) uploads.remove(file.filename); };
 const asArray = (v) => (v === undefined ? [] : Array.isArray(v) ? v : [v]);
 
 function readForm(body) {
@@ -233,7 +230,7 @@ router.post('/parts/:id/edit', requireLogin, parseUpload, verifyCsrf, (req, res)
     const add = db.prepare('INSERT INTO parts_items (submission_id, part_name, quantity) VALUES (?, ?, ?)');
     for (const it of values.items) add.run(row.id, it.part_name, Number(it.quantity));
   })();
-  if (photo && row.photo_path) fs.rm(path.join(uploadDir, path.basename(row.photo_path)), { force: true }, () => {});
+  if (photo && row.photo_path) uploads.remove(row.photo_path);
   flash(req, 'ok', 'Entry updated.');
   res.redirect(backTo(req.user, row));
 });
@@ -254,7 +251,7 @@ router.get('/parts/photo/:id', requireLogin, (req, res) => {
   const row = db.prepare('SELECT user_id, photo_path FROM parts_submissions WHERE id = ?').get(req.params.id);
   if (!row || !row.photo_path) return res.status(404).render('error', { title: 'Page not found', message: 'No photo here.' });
   if (row.user_id !== req.user.id && !(access.can(req.user, 'parts.view') && access.canSee(req.user, row.user_id))) return forbidden(res);
-  require('../uploads').send(res, row.photo_path, { 'Cache-Control': 'private, no-store' });
+  uploads.send(res, row.photo_path, { 'Cache-Control': 'private, no-store' });
 });
 
 module.exports = router;
