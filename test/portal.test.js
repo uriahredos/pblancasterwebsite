@@ -2163,7 +2163,9 @@ test('discussions: threads, replies with photos, following, new-reply notices, s
   assert.doesNotMatch(thread, /Discussions <span class="badge"/);
   home = (await t1.get('/')).text;
   assert.doesNotMatch(home, /New replies/); assert.doesNotMatch(home, /Discussions <span class="badge"/);
-  assert.match(home, /id="around-h">Around the company[\s\S]*started a discussion[\s\S]*XR550 will not take a new zone[\s\S]*1 reply/);
+  // The activity feed leads with the thing itself and puts who did what under it.
+  assert.match(home, /id="around-h">Activity feed[\s\S]*<p class="feed-title"><a href="\/discussions\/t\/\d+"><strong>XR550 will not take a new zone<\/strong><\/a><\/p>\s*<p class="feed-text">[^<]* started a discussion<\/p>[\s\S]*1 reply/);
+  assert.doesNotMatch(home, /Around the company/);
   // The replier follows too, so the asker's answer reaches them; unfollowing stops that.
   await t1.post(`${tp}/reply`, { body: 'That was it, thanks.' }, { page: tp, multipart: true });
   assert.match((await t2.get('/')).text, /<strong>Terry Tech<\/strong> replied in/);
@@ -4129,11 +4131,11 @@ test('community first: the company in numbers, one list of what people across th
   const offices = db.prepare('SELECT COUNT(*) n FROM branches').get().n;
   assert.match(strip, new RegExp(`<a href="/branches"><strong>${offices.toLocaleString('en-US')}</strong><span>Offices</span></a>`));
   assert.match(strip, /<a href="\/people"><strong>[\d,]+<\/strong><span>People Here<\/span>/); assert.match(strip, /Shout-Outs? This Month/);
-  // Around the company sits straight after shout-outs in the main column, and each item names the office it came from.
+  // The activity feed sits straight after shout-outs in the main column, and each item names the office it came from.
   const sec = db.prepare('SELECT id FROM forum_sections ORDER BY sort_order LIMIT 1').get().id;
   await t2.post('/discussions/new', { section_id: String(sec), title: 'FEED-TEST best ladder rack?', body: 'Asking for the van.' }, { page: '/discussions/new', multipart: true });
   const feed = /<section class="panel p-around"[\s\S]*?<\/section>/.exec((await t1.get('/')).text.replace(/\s+/g, ' '))[0];
-  assert.match(feed, /<li class="feed-talk"[\s\S]*?Uma Tech started a discussion<\/strong>[\s\S]*?FEED-TEST best ladder rack\?[\s\S]*?<span class="pill ">Lancaster office<\/span> <span>just now<\/span> · <span>Be the first to reply/);
+  assert.match(feed, /<li class="feed-talk"[\s\S]*?FEED-TEST best ladder rack\?<\/strong>[\s\S]*?Uma Tech started a discussion[\s\S]*?<span class="pill ">Lancaster office<\/span> <span>just now<\/span> · <span>Be the first to reply/);
   const other = db.prepare("SELECT u.username FROM users u WHERE u.branch_id IS NOT NULL AND u.branch_id <> 1 AND u.active = 1 LIMIT 1").get();
   if (other) assert.match((await (await loggedIn(other.username)).get('/')).text.replace(/\s+/g, ' '), /FEED-TEST best ladder rack\?[\s\S]*?<span class="pill away">Lancaster office<\/span>/);   // from another office: marked as such
 

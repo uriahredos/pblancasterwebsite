@@ -25,7 +25,7 @@
 </div>
 
 <% if (slides.length) { %>
-<section class="spotlight" id="spotlight" aria-roledescription="carousel" aria-label="Around the company">
+<section class="spotlight" id="spotlight" aria-roledescription="carousel" aria-label="Highlights">
   <div class="spot-track" id="spot-track" tabindex="0">
     <% slides.forEach(function (sl, n) { %>
     <a class="spot-slide spot-<%= sl.kind %>" href="<%= sl.url %>" aria-roledescription="slide" aria-label="<%= n + 1 %> of <%= slides.length %>">
@@ -163,7 +163,7 @@
     </section>
     <% } %>
     <section class="panel p-around" aria-labelledby="around-h">
-      <div class="panel-head"><h2 id="around-h">Around the company</h2><a href="/people">People</a></div>
+      <div class="panel-head"><h2 id="around-h">Activity feed</h2><a href="/people">People</a></div>
       <% if (!around.length) { %>
       <div class="one-line"><p class="empty">Quiet so far. Be the first: add a photo or start a discussion.</p><span class="filter-actions"><a class="btn small" href="/photos">Add a photo</a><% if (can('forum.use')) { %><a class="btn small" href="/discussions/new">Start a discussion</a><% } %></span></div>
       <% } else { %>
@@ -172,8 +172,10 @@
         <li class="feed-<%= i.kind %><%= i.inBanner ? ' in-banner' : '' %>" <%- i.kind === 'hire' && firstHire ? 'id="welcome"' : '' %>><% if (i.kind === 'hire') firstHire = false; %>
           <a class="feed-who" href="/people/<%= i.who.user_id %>"><%- include('partials/avatar', { who: { id: i.who.user_id, display_name: i.who.display_name, photo_path: i.who.photo_path } }) %></a>
           <div class="feed-body">
-            <p class="feed-title"><a href="<%= i.url %>"><strong><%= i.title %></strong></a></p>
-            <% if (i.text) { %><p class="feed-text"><%= i.text %></p><% } %>
+            <%# The thing itself leads (the event, the discussion, the caption), with who did what under it. A new hire is the thing, so that line stays on top. %>
+            <% var lead = i.text && i.kind !== 'hire'; %>
+            <p class="feed-title"><a href="<%= i.url %>"><strong><%= lead ? i.text : i.title %></strong></a></p>
+            <% if (lead) { %><p class="feed-text"><%= i.title %></p><% } else if (i.text) { %><p class="feed-text"><%= i.text %></p><% } %>
             <% if (i.photo) { %><a class="feed-photo" href="/wall/photo/<%= i.photo %>"><img src="/wall/photo/<%= i.photo %>" alt="<%= i.text || 'Photo from ' + i.who.display_name %>" loading="lazy"></a><% } %>
             <p class="feed-meta"><% if (i.who.office) { %><span class="pill <%= i.away ? 'away' : '' %>"><%= i.who.office %> office</span> <% } %><span><%= i.when %></span><% if (i.extra) { %> · <span><%= i.extra %></span><% } %><% if (i.done) { %> · <span><%= i.done %></span><% } %></p>
           </div>
