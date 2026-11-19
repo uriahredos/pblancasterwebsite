@@ -145,7 +145,7 @@ When someone else changes the status or reply on a person's request (parts or tr
 - **Topics** (`/training/topics`): everyone who can send training requests sees the open, non-private requests and can tap **I want this too**. People who manage training also see **Edit wording** on each one; the original text stays in that request's history. The most wanted rise to the top, and the admin training log shows the count.
 - **Sessions** (`/admin/training/sessions`, from the Training log): schedule a session with a date, time and place. Scheduling one from a training request lists the requester and everyone who added their name, and sets the request to Scheduled.
 - A session can only be scheduled from a request that belongs to the office the session is in, and that the person scheduling it could open on the Training log (for a manager: a request from one of their own people). Someone who sees every office chooses the request's office first.
-- A session scheduled from a **private** request is not listed under Coming up, on the Topics page or the home page, and the form does not copy the request's wording into the session's title.
+- A session scheduled from a **private** request is not listed to the office under Coming up, on the Topics page or the home page. On the Topics page the people expected at it still see it. The form does not copy the request's wording into the session's title.
 - On the day, tick who came and press **Mark as held**; the linked request becomes Completed.
 - Each person sees **Training attended** under My activity. The sessions page can filter by person and export attendance as CSV.
 - Managers can tick attendance for their own people only.

@@ -20,12 +20,14 @@ router.get('/training/topics', requirePerm('training.submit'), (req, res) => {
             EXISTS (SELECT 1 FROM training_votes v WHERE v.request_id = t.id AND v.user_id = ?) AS mine
      FROM training_requests t JOIN users u ON u.id = t.user_id
      WHERE ${OPEN} AND u.branch_id = ? ORDER BY votes DESC, t.id DESC LIMIT 200`).all(req.user.id, req.user.branch_id);
-  // Sessions scheduled from a private request are left out, as they are on the home page.
+  // Sessions scheduled from a private request are left out, as they are on the home page. The people expected at one
+  // (whoever asked, and anyone the manager has ticked) still see it here, or they would have nowhere to see when it is.
   const upcoming = db.prepare(
     `SELECT s.id, s.title, s.session_date, s.session_time, s.location FROM training_sessions s
      LEFT JOIN training_requests t ON t.id = s.request_id
-     WHERE s.completed_at IS NULL AND s.session_date >= ? AND s.branch_id = ? AND (t.id IS NULL OR t.is_private = 0)
-     ORDER BY s.session_date, s.session_time`).all(localDate(), req.user.branch_id);
+     WHERE s.completed_at IS NULL AND s.session_date >= ? AND s.branch_id = ?
+       AND (t.id IS NULL OR t.is_private = 0 OR EXISTS (SELECT 1 FROM training_attendance a WHERE a.session_id = s.id AND a.user_id = ?))
+     ORDER BY s.session_date, s.session_time`).all(localDate(), req.user.branch_id, req.user.id);
   res.render('training_topics', { title: 'Training topics', topics, upcoming });
 });
 

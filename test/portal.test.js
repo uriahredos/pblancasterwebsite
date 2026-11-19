@@ -5474,12 +5474,15 @@ test('training sessions: a request from another office or team cannot be schedul
   assert.match(form, new RegExp(`name="request_id" value="${priv}"`)); assert.doesNotMatch(form, /value="TRNPRIV/);
   assert.match((await admin.get(`${list}?request=${open}`)).text, /value="TRNOPEN panel programming"/);
   // ...and whatever the session is called, one made from a private request is not listed to the office under Coming up.
+  // The person who asked is expected at it, so she still sees when it is.
   await admin.post(list, { title: 'TRNPRIV zone expanders', session_date: '2031-08-03', request_id: String(priv) }, { page: list });
   const sPriv = db.prepare('SELECT MAX(id) id FROM training_sessions').get().id;
   await admin.post(list, { title: 'TRNOPEN panel programming', session_date: '2031-08-04', request_id: String(open) }, { page: list });
   assert.deepEqual(state(), { status: 'scheduled', unseen: 1 });
-  const topics = (await tc.get('/training/topics')).text;
+  R.person('trn.mate', 'Matt Trainford', 'Technician', here);
+  const topics = (await (await loggedIn('trn.mate')).get('/training/topics')).text;
   assert.match(topics, /<h2>Coming up<\/h2>[\s\S]*?TRNOPEN panel programming[\s\S]*?<h2>Requested<\/h2>/); assert.doesNotMatch(topics, /TRNPRIV/);
+  assert.match((await tc.get('/training/topics')).text, /<h2>Coming up<\/h2>[\s\S]*?TRNPRIV zone expanders[\s\S]*?TRNOPEN panel programming[\s\S]*?<h2>Requested<\/h2>/);
   // Their own admin sees which request a session is for, and marking it held finishes the request.
   assert.match((await admin.get(`${list}/${sPriv}`)).text, new RegExp(`For training request: <a href="/admin/training/${priv}">TRNPRIV zone expanders`));
   assert.doesNotMatch((await mgr.get(`${list}/${sPriv}`)).text, /For training request/);          // the office's session, but not her request to read
