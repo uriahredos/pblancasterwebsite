@@ -64,7 +64,7 @@ function checks(req) {
   add(held.good && !held.fault && !held.failed && held.age <= 2, 'A recent backup exists and opens',
     held.failed ? `The last backup did not work (${util.fmtDateTime(held.failed.at)}): ${held.failed.why}. The site tries again every half hour.${newestGood ? ` The newest good backup is ${newestGood}.` : ' There is no good backup.'}`
       : !held.count ? 'No backup has been made yet.'
-        : held.fault ? `The newest backup, ${held.newest.name}, ${held.fault === 'locked' ? 'does not open with the key in use' : 'is damaged'}.${newestGood ? ` The newest that opens is ${newestGood}.` : ' None of the backups opens.'}`
+        : held.fault ? `The newest backup, ${held.newest.name}, ${held.fault === 'locked' ? 'does not open with the key in use' : held.fault === 'plain' ? 'is not encrypted' : 'is damaged'}.${newestGood ? ` The newest that opens is ${newestGood}.` : ' None of the backups opens.'}`
           : `Newest: ${newestGood}. It opens with the key in use and passes its check.`,
     'Open Backups and press "Back up now". Backups are made nightly; if they have stopped, or pressing the button does not work either, tell whoever maintains the site.');
   add(config.backupEmailTo.length > 0 && mail.isConfigured(), 'Backups are kept somewhere else too',

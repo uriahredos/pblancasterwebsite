@@ -97,6 +97,10 @@ function rekey(file, from, to) {
   } finally { db.close(); }
 }
 
+/** Why a copy could not be made, in words for a page rather than SQLite's own. */
+const plainly = (e) => (e.code === 'SQLITE_FULL' || e.code === 'ENOSPC' ? 'there is not enough room on the disk'
+  : e.code === 'SQLITE_CORRUPT' || e.code === 'SQLITE_NOTADB' ? 'part of the database file is damaged' : e.message);
+
 /** Remove a working file and whatever SQLite left beside it. */
 function clear(file) {
   for (const ext of ['', ...SIDE]) fs.rmSync(file + ext, { force: true });
@@ -146,7 +150,10 @@ function snapshot(db, target) {
       if (copy.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sessions'").get()) copy.exec('DELETE FROM sessions');
     } finally { copy.close(); }
     const seen = inspect(part, liveKey, { count: true });
-    if (seen.fault) throw new Error(seen.fault === 'locked' ? 'the copy did not open with the key' : `the copy did not pass its check (it is ${seen.fault})`);
+    if (seen.fault) {
+      throw new Error(seen.fault === 'locked' ? 'the copy did not open with the key' : seen.fault === 'empty' ? 'the copy came out empty'
+        : 'the copy did not pass its check, so part of the database file may be damaged');
+    }
     delete want.sessions; delete seen.rows.sessions;
     if (JSON.stringify(seen.rows) !== JSON.stringify(want)) throw new Error('the copy does not hold the same rows as the database');
     flush(part);
@@ -384,7 +391,7 @@ function bringBack(dataDir, file, keys) {
  * same backup to be brought back a second time at the next restart.
  */
 function settled(dataDir) {
-  if (!setting('RESTORE_BACKUP')) fs.rmSync(path.join(dataDir, 'portal.db.restored'), { force: true });
+  try { if (!setting('RESTORE_BACKUP')) fs.rmSync(path.join(dataDir, 'portal.db.restored'), { force: true }); } catch (e) { /* it is only a note; the next start tries again */ }
 }
 
 /**
@@ -475,31 +482,36 @@ function open(dataDir) {
 function beforeUpdate(db, dataDir, version, day) {
   const now = String(version || '').trim();
   if (!now) return null;
-  const has = (table) => Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
-  const put = (k, v) => db.prepare('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(k, v);
-  if (has('meta') && (db.prepare("SELECT value FROM meta WHERE key = 'code_version'").get() || {}).value === now) return null;
-  let made = null; let failed = null;
-  if (has('users') && db.prepare('SELECT 1 FROM users').get()) {          // a site with nobody in it has nothing to keep
-    const name = `portal-${/^\d{4}-\d{2}-\d{2}$/.test(day || '') ? day : stamp().slice(0, 10)}-${stamp().slice(11)}-before-update.db`;
-    try {
-      fs.mkdirSync(path.join(dataDir, 'backups'), { recursive: true });
-      const size = snapshot(db, path.join(dataDir, 'backups', name));
-      made = { name, at: new Date().toISOString(), size, kind: 'update' };
-    } catch (e) {
-      failed = e;
-      console.error(`[backup] The copy before this update could not be made: ${e.message}`);
+  try {
+    const has = (table) => Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
+    const put = (k, v) => db.prepare('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(k, v);
+    if (has('meta') && (db.prepare("SELECT value FROM meta WHERE key = 'code_version'").get() || {}).value === now) return null;
+    let made = null; let failed = null;
+    if (has('users') && db.prepare('SELECT 1 FROM users').get()) {        // a site with nobody in it has nothing to keep
+      const name = `portal-${/^\d{4}-\d{2}-\d{2}$/.test(day || '') ? day : stamp().slice(0, 10)}-${stamp().slice(11)}-before-update.db`;
+      try {
+        fs.mkdirSync(path.join(dataDir, 'backups'), { recursive: true });
+        const size = snapshot(db, path.join(dataDir, 'backups', name));
+        made = { name, at: new Date().toISOString(), size, kind: 'update' };
+      } catch (e) {
+        failed = e;
+        console.error(`[backup] The copy before this update could not be made: ${e.message}`);
+      }
     }
+    // Remembered straight away, so a start that fails further on does not make a second "before" copy of a half-changed database.
+    db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)');
+    put('code_version', now);
+    if (failed) put('backup_last_error', JSON.stringify({ at: new Date().toISOString(), why: plainly(failed), code: failed.code || null, kind: 'update' }));
+    if (made) {
+      put('backup_last_good', JSON.stringify(made));
+      const mine = backupsIn(dataDir).filter((b) => /-before-update\.db$/.test(b.name));
+      for (const b of mine.slice(2)) clear(b.file);                       // the newest two are kept
+    }
+    return made && made.name;
+  } catch (e) {
+    console.error(`[backup] The copy before this update: ${e.message}`);   // whatever went wrong here, the site still starts as it did before
+    return null;
   }
-  // Remembered straight away, so a start that fails further on does not make a second "before" copy of a half-changed database.
-  db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)');
-  put('code_version', now);
-  if (failed) { try { put('backup_last_error', JSON.stringify({ at: new Date().toISOString(), why: failed.message, code: failed.code || null, kind: 'update' })); } catch (e) { /* the log has it */ } }
-  if (made) {
-    put('backup_last_good', JSON.stringify(made));
-    const mine = backupsIn(dataDir).filter((b) => /-before-update\.db$/.test(b.name));
-    for (const b of mine.slice(2)) fs.rmSync(b.file, { force: true });    // the newest two are kept
-  }
-  return made && made.name;
 }
 
 /**
@@ -544,5 +556,5 @@ const keyInUse = () => liveKey;
 
 module.exports = {
   KeyProblem, Stopped, MIN_KEY, BACKUP, PART, TURN, open, connect, isPlain, readable, rekey, alignCopies,
-  inspect, snapshot, clear, backupsIn, damage, beforeUpdate, keyInUse, settled,
+  inspect, snapshot, clear, plainly, backupsIn, damage, beforeUpdate, keyInUse, settled,
 };

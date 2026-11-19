@@ -33,12 +33,9 @@ function remember(what, key, value) {
 }
 /** True while the latest try at a backup failed and none has worked since. */
 const failing = () => Boolean(state.failed && (!state.good || state.failed.at > state.good.at));
-/** Why a backup failed, in words for a page rather than SQLite's own. */
-const plainly = (e) => (e.code === 'SQLITE_FULL' || e.code === 'ENOSPC' ? 'there is not enough room on the disk'
-  : e.code === 'SQLITE_CORRUPT' || e.code === 'SQLITE_NOTADB' ? 'part of the database file is damaged' : e.message);
 
 function failed(e, kind) {
-  remember('failed', 'backup_last_error', { at: new Date().toISOString(), why: plainly(e), code: e.code || null, kind });
+  remember('failed', 'backup_last_error', { at: new Date().toISOString(), why: dbfile.plainly(e), code: e.code || null, kind });
   if (kind !== 'nightly' || state.alerted === localDate()) return;        // one alert a day, however many tries fail
   remember('alerted', 'backup_alert_day', localDate());
   // The people who look after backups hear about it on their phones; their bell and the Security check show it too.
@@ -54,11 +51,16 @@ function failed(e, kind) {
 // Opening an encrypted file takes a moment, so the answer is kept for as long as the file is unchanged.
 const looked = new Map();
 const idOf = (b) => `${b.size}:${b.mtime}`;
-/** '' when this backup opens with the key in use and holds a site; otherwise 'empty', 'locked' (the key does not open it) or 'damaged'. `deep` has SQLite check the whole file as well. */
+/**
+ * '' when this backup opens with the key in use and holds a site; otherwise 'empty', 'locked' (the key does not open
+ * it), 'plain' (the site is encrypted and this copy is not) or 'damaged'. `deep` has SQLite check the whole file as well.
+ */
 function standing(b, deep = false) {
   const was = looked.get(b.name);
   if (was && was.id === idOf(b) && (was.deep || !deep || was.fault)) return was.fault;
-  const fault = dbfile.inspect(path.join(backupDir, b.name), dbfile.keyInUse(), { light: !deep }).fault || '';
+  const file = path.join(backupDir, b.name);
+  let fault = dbfile.inspect(file, dbfile.keyInUse(), { light: !deep }).fault || '';
+  try { if (fault === 'locked' && dbfile.keyInUse() && dbfile.isPlain(file)) fault = 'plain'; } catch (e) { /* gone */ }
   looked.set(b.name, { id: idOf(b), fault, deep });
   return fault;
 }

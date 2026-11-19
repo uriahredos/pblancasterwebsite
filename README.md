@@ -325,7 +325,7 @@ Also worth knowing:
 
 - **A backup kept off the server** (a download, an emailed copy with the `.gz` taken off) has to be put in `/data/backups` under its original name first, through the Render Shell.
 - **The database that was set aside** stays in `/data` until someone removes it, and is as big as the database. Once the restore is known to be right it can be deleted through the Render Shell. Going back to it is a job for whoever maintains the site: it has to be put back together with the files beside it.
-- **A lost or damaged disk.** Render keeps its own daily snapshots of the disk and can put the whole disk back (database, backups and photos together) from the service's Disk page. Try that first. On a brand-new empty disk: let the site start once, put the backup in `/data/backups` and the photos in `/data/uploads`, then follow the steps above.
+- **A lost or damaged disk.** The service's Disk page in Render lists Render's own daily snapshots of the whole disk. If they are there, putting one back restores the database, the backups and the photos together, so try that first. On a brand-new empty disk: let the site start once, put the backup in `/data/backups` and the photos in `/data/uploads`, then follow the steps above.
 - **If the database file is damaged or missing** while backups are on the disk, the site does not quietly start as an empty site. It shows its closed page, which says what is wrong, names the newest backup that opens and gives step 2 above. To start a new, empty site on purpose where old backups exist, add `NEW_SITE` with the value `yes` for that one start, then delete it (the Security check reminds you).
 
 ## Database encryption (`DB_KEY`)
