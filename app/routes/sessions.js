@@ -20,9 +20,12 @@ router.get('/training/topics', requirePerm('training.submit'), (req, res) => {
             EXISTS (SELECT 1 FROM training_votes v WHERE v.request_id = t.id AND v.user_id = ?) AS mine
      FROM training_requests t JOIN users u ON u.id = t.user_id
      WHERE ${OPEN} AND u.branch_id = ? ORDER BY votes DESC, t.id DESC LIMIT 200`).all(req.user.id, req.user.branch_id);
+  // Sessions scheduled from a private request are left out, as they are on the home page.
   const upcoming = db.prepare(
-    `SELECT id, title, session_date, session_time, location FROM training_sessions
-     WHERE completed_at IS NULL AND session_date >= ? AND branch_id = ? ORDER BY session_date, session_time`).all(localDate(), req.user.branch_id);
+    `SELECT s.id, s.title, s.session_date, s.session_time, s.location FROM training_sessions s
+     LEFT JOIN training_requests t ON t.id = s.request_id
+     WHERE s.completed_at IS NULL AND s.session_date >= ? AND s.branch_id = ? AND (t.id IS NULL OR t.is_private = 0)
+     ORDER BY s.session_date, s.session_time`).all(localDate(), req.user.branch_id);
   res.render('training_topics', { title: 'Training topics', topics, upcoming });
 });
 
@@ -44,6 +47,17 @@ const getSession = (id, user) => {
   const s = /^\d+$/.test(String(id)) ? db.prepare('SELECT * FROM training_sessions WHERE id = ?').get(id) : null;
   return s && (!user.viewBranch || s.branch_id === user.viewBranch) ? s : null;
 };
+
+/**
+ * The training request a session may be tied to: one this person could open on the Training log (their own office's,
+ * or for a manager one of their own people's) whose sender belongs to the office the session is in. Anything else is
+ * treated as no request at all, so its wording is never shown and its status never moves.
+ */
+function requestFor(user, requestId, branchId) {
+  const t = requestId ? db.prepare(
+    'SELECT t.id, t.description, t.is_private, t.status, t.user_id, u.branch_id FROM training_requests t JOIN users u ON u.id = t.user_id WHERE t.id = ?').get(requestId) : null;
+  return t && t.branch_id === branchId && access.canSee(user, t.user_id) ? t : null;
+}
 
 function readSession(body) {
   const values = {
@@ -69,13 +83,17 @@ function listPage(req, res, extra = {}) {
   const ids = access.visibleUserIds(req.user);
   const users = db.prepare('SELECT id, display_name FROM users ORDER BY display_name COLLATE NOCASE').all().filter((u) => !ids || ids.includes(u.id));
   // Prefill from a training request: /admin/training/sessions?request=12
-  let values = {};
+  let values = {}; let wrongOffice = null;
   if (/^\d+$/.test(req.query.request || '')) {
-    const t = db.prepare('SELECT id, description, user_id FROM training_requests WHERE id = ?').get(req.query.request);
-    if (t && access.canSee(req.user, t.user_id)) values = { title: t.description.split('\n')[0].slice(0, 150), request_id: t.id };
+    const t = requestFor(req.user, Number(req.query.request), req.user.workBranch);
+    // A private request does not offer its wording as the title: the title is what the office sees.
+    if (t) values = { title: t.is_private ? '' : t.description.split('\n')[0].slice(0, 150), request_id: t.id };
+    // Someone who sees every office is told which office to choose first, since the session belongs to the office being looked at.
+    else if (req.user.allBranches) wrongOffice = db.prepare('SELECT b.name FROM training_requests t JOIN users u ON u.id = t.user_id JOIN branches b ON b.id = u.branch_id WHERE t.id = ?').get(req.query.request);
   }
   res.status(extra.errors ? 400 : 200).render('admin_sessions', {
-    title: 'Training sessions', sessions, users, person, errors: [], values, canManage: access.can(req.user, 'training.manage'), ...extra,
+    title: 'Training sessions', sessions, users, person, values, canManage: access.can(req.user, 'training.manage'),
+    errors: wrongOffice ? [`That request is from the ${wrongOffice.name} office. Choose that office first, then schedule the session from the request.`] : [], ...extra,
   });
 }
 
@@ -83,6 +101,8 @@ router.get('/admin/training/sessions', requirePerm('training.view'), (req, res) 
 
 router.post('/admin/training/sessions', requirePerm('training.manage'), (req, res) => {
   const { values, errors } = readSession(req.body);
+  const request = requestFor(req.user, values.request_id, req.user.workBranch);
+  if (values.request_id && !request) return forbidden(res);   // another office's or another team's request, or one that is gone
   if (errors.length) return listPage(req, res, { errors, values });
   const info = db.prepare(
     `INSERT INTO training_sessions (title, request_id, session_date, session_time, location, notes, created_by, created_at, branch_id)
@@ -95,9 +115,8 @@ router.post('/admin/training/sessions', requirePerm('training.manage'), (req, re
     db.prepare(`INSERT OR IGNORE INTO training_attendance (session_id, user_id)
                 SELECT ?, user_id FROM training_requests WHERE id = ?
                 UNION SELECT ?, user_id FROM training_votes WHERE request_id = ?`).run(id, values.request_id, id, values.request_id);
-    const t = db.prepare('SELECT status, user_id FROM training_requests WHERE id = ?').get(values.request_id);
-    if (t && ['new', 'reviewed'].includes(t.status)) {
-      db.prepare("UPDATE training_requests SET status = 'scheduled', unseen = ? WHERE id = ?").run(t.user_id === req.user.id ? 0 : 1, values.request_id);
+    if (['new', 'reviewed'].includes(request.status)) {
+      db.prepare("UPDATE training_requests SET status = 'scheduled', unseen = ? WHERE id = ?").run(request.user_id === req.user.id ? 0 : 1, values.request_id);
     }
   }
   activity.log(req.user, 'Training session added', `${values.title} on ${fmtDate(values.session_date)}`);
@@ -124,7 +143,7 @@ router.get('/admin/training/sessions/:id', requirePerm('training.view'), (req, r
   const others = ids ? [...attending].filter((id) => !ids.includes(id)).length : 0;
   res.render('admin_session', {
     title: session.title, session, people, attending, others, canManage: access.can(req.user, 'training.manage'),
-    request: session.request_id ? db.prepare('SELECT id, description FROM training_requests WHERE id = ?').get(session.request_id) : null,
+    request: requestFor(req.user, session.request_id, session.branch_id),
   });
 });
 
@@ -142,9 +161,11 @@ router.post('/admin/training/sessions/:id', requirePerm('training.manage'), (req
     for (const id of picked) add.run(session.id, id);
     if (req.body.held === '1' && !session.completed_at) {
       db.prepare('UPDATE training_sessions SET completed_at = ? WHERE id = ?').run(new Date().toISOString(), session.id);
+      // The request it was scheduled from is finished too, when it belongs to the office the session is in.
       if (session.request_id) {
-        db.prepare("UPDATE training_requests SET status = 'completed', unseen = (user_id <> ?) WHERE id = ? AND cancelled_at IS NULL")
-          .run(req.user.id, session.request_id);
+        db.prepare(`UPDATE training_requests SET status = 'completed', unseen = (user_id <> ?) WHERE id = ? AND cancelled_at IS NULL
+                    AND user_id IN (SELECT id FROM users WHERE branch_id = ?)`)
+          .run(req.user.id, session.request_id, session.branch_id);
       }
       activity.log(req.user, 'Training session held', `${session.title}: ${picked.length} attended`);
     } else if (req.body.held === '0' && session.completed_at) {

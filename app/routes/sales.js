@@ -102,19 +102,38 @@ function board(req, res, extra = {}) {
 }
 router.get('/sales', use, (req, res) => board(req, res));
 
+// The check below answers a name, a phone number or an email address with who has that customer, in any office.
+// Adding a lead takes a handful of lookups, so each person gets 60 in 15 minutes. Past that the answer is empty until
+// the 15 minutes are up, and the activity log says so once.
+const LOOKUP_LIMIT = 60;
+const LOOKUP_MS = 15 * 60 * 1000;
+const LOOKUPS = new Map(); // user id -> { n, until }
+function lookupAllowed(user) {
+  const now = Date.now();
+  if (LOOKUPS.size > 5000) for (const [k, v] of LOOKUPS) if (v.until <= now) LOOKUPS.delete(k);
+  let l = LOOKUPS.get(user.id);
+  if (!l || l.until <= now) { l = { n: 0, until: now + LOOKUP_MS }; LOOKUPS.set(user.id, l); }
+  l.n += 1;
+  if (l.n === LOOKUP_LIMIT + 1) activity.log(user, 'Customer lookups paused', `More than ${LOOKUP_LIMIT} checks for an existing customer in 15 minutes, so no more are answered until the 15 minutes are up`);
+  return l.n <= LOOKUP_LIMIT;
+}
+
 // Asked by the "new lead" form while someone types: is anyone already on this customer?
-router.get('/sales/check', use, (req, res) => {
-  const office = officeOf(req.user);
-  const matches = sales.similar({ company: clean(req.query.company, 120), phone: clean(req.query.phone, 30), email: clean(req.query.email, 120), address: clean(req.query.address, 200) });
-  res.json({ matches: matches.map((m) => ({
-    company: m.company, owner: m.owner || 'nobody yet', office: m.office, stage: m.stageName, why: m.why,
-    url: office === null || m.branch_id === office ? `/sales/${m.id}` : null,      // another office's lead is named, not opened
-  })) });
-});
+// The page sends what was typed in the body of the request, so a customer's details are not left in a web address.
+function check(req, res) {
+  if (!lookupAllowed(req.user)) return res.status(429).json({ matches: [] });
+  const typed = req.method === 'POST' ? req.body : req.query;
+  const matches = sales.similar({ company: clean(typed.company, 120), phone: clean(typed.phone, 30), email: clean(typed.email, 120), address: clean(typed.address, 200) }, 0, officeOf(req.user));
+  res.json({ matches: matches.map((m) => (m.elsewhere
+    ? { company: null, owner: m.owner || 'nobody yet', office: m.office, stage: null, why: m.why, url: null }      // another office's customer: who to ask, and no more
+    : { company: m.company, owner: m.owner || 'nobody yet', office: m.office, stage: m.stageName, why: m.why, url: `/sales/${m.id}` })) });
+}
+router.post('/sales/check', use, check);
+router.get('/sales/check', use, check);   // for a page that was opened before the form changed to sending it in the body
 
 router.post('/sales', use, (req, res) => {
   const { v, errors } = readLead(req.body);
-  const matches = errors.length ? [] : sales.similar(v);
+  const matches = errors.length ? [] : sales.similar(v, 0, officeOf(req.user));
   // Someone may already be on this customer: say so once, and let the person decide.
   if (!errors.length && matches.length && req.body.anyway !== '1') {
     return board(req, res, { errors: ['This looks like a customer someone is already working. Check the list below, then check the box to add it anyway.'], values: v, matches, addOpen: true });
@@ -240,7 +259,8 @@ function page(req, res, lead, extra = {}) {
   const notes = db.prepare('SELECT n.*, u.display_name AS author FROM lead_notes n JOIN users u ON u.id = n.user_id WHERE n.lead_id = ? ORDER BY n.id').all(lead.id);
   const offices = db.prepare('SELECT id, name, number FROM branches WHERE id <> ? ORDER BY name COLLATE NOCASE').all(lead.branch_id);
   res.status(extra.errors ? 400 : 200).render('sales_lead', {
-    title: lead.company, lead, notes, stages: sales.STAGES, sources: sales.SOURCES, people: salesPeople(lead.branch_id), offices,
+    // The customer's name heads the page itself, not the browser tab, where it would stay in the browser's history.
+    title: 'Lead', lead, notes, stages: sales.STAGES, sources: sales.SOURCES, people: salesPeople(lead.branch_id), offices,
     mayTake: lead.open && lead.owner_id !== req.user.id && (lead.owner_id === null || lead.released), releaseDays: sales.RELEASE_DAYS,
     canEdit: mayEdit(req.user, lead), isManager: access.can(req.user, 'sales.manage'), errors: [], values: lead, ...extra,
   });
@@ -371,7 +391,8 @@ router.post('/sales/:id/delete', requirePerm('sales.manage'), (req, res) => {
   if (!lead) return;
   db.prepare('DELETE FROM lead_notes WHERE lead_id = ?').run(lead.id);
   db.prepare('DELETE FROM leads WHERE id = ?').run(lead.id);
-  activity.log(req.user, 'Lead removed', lead.company);
+  // By number and office only: a customer who asked to be removed should not have their name left in the log by the removal.
+  activity.log(req.user, 'Lead removed', `Lead ${lead.id}, ${lead.office} office`);
   flash(req, 'ok', 'Lead removed.');
   res.redirect('/sales');
 });

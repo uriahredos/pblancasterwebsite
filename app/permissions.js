@@ -58,7 +58,7 @@ const GROUPS = [
   ] },
 ];
 const ALL = GROUPS.flatMap((g) => g.items.map((i) => i[0]));
-// Sales is its own side of the site: no starting profile but the Sales ones is given it, not even an office admin.
+// Sales is its own side of the site. Besides the two Sales profiles, only Admin and Corporate admin start with it.
 const SALES = ['sales.use', 'sales.manage'];
 const SUBMIT = ['parts.submit', 'training.submit', 'complaints.submit', 'inspections.submit'];
 
@@ -244,7 +244,19 @@ function moderates(user, perm, authorId) {
 /** May `actor` hand out (or edit) a profile holding these permissions? Only ones they hold themselves. */
 const canGrant = (actor, perms) => [...perms].every((p) => actor.perms.has(p));
 
+/**
+ * May `actor` change `target`'s account? Never the master account (except the
+ * master themselves), never someone outside their team, and never someone
+ * whose profile can do more than their own.
+ */
+function mayManage(actor, target) {
+  if (!target) return false;
+  if (target.is_master) return Boolean(actor.is_master);
+  if (!canSee(actor, target.id)) return false;
+  return !target.profile_id || canGrant(actor, permsOf(target.profile_id));
+}
+
 module.exports = {
   GROUPS, ALL, SUBMIT, DEFAULTS, profileByName, permsOf, setPermissions, createProfile, ensureProfile,
-  loadAccess, can, visibleUserIds, canSee, canGrant, moderates, migrate,
+  loadAccess, can, visibleUserIds, canSee, canGrant, mayManage, moderates, migrate,
 };

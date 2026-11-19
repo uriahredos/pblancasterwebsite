@@ -286,6 +286,9 @@ function findAccount(c, users) {
     || users.find((u) => lettersOnly(u.display_name) === lettersOnly(c.name)) || null;
 }
 
+/** Has this person signed in before? They have once they chose their own password, or the sign-in history has them. */
+const hasSignedIn = (u) => !u.must_change_password || Boolean(db.prepare("SELECT 1 FROM activity_log WHERE user_id = ? AND action = 'Signed in' LIMIT 1").get(u.id));
+
 const csvUpload = require('multer')({ storage: require('multer').memoryStorage(), limits: { fileSize: 2 * 1024 * 1024, files: 1 } }).single('file');
 router.post('/admin/people/import', requirePerm('users.manage'), (req, res, next) => csvUpload(req, res, (err) => {
   req.body = req.body || {}; req.uploadFailed = Boolean(err); next();
@@ -302,13 +305,17 @@ router.post('/admin/people/import', requirePerm('users.manage'), (req, res, next
 
   const auth = require('../auth');
   const technician = access.profileByName('Technician') || db.prepare('SELECT * FROM profiles ORDER BY id LIMIT 1').get();
-  const result = { updated: [], created: [] };
+  const result = { updated: [], created: [], skipped: [] };
+  const changed = new Map();   // existing accounts whose email or phone the list changed, for the log
   db.transaction(() => {
     // Matching looks only at the branch being imported into; usernames must still be unique across the site.
     const taken = new Set(db.prepare('SELECT username FROM users').all().map((x) => x.username.toLowerCase()));
-    const users = db.prepare('SELECT id, username, display_name, email FROM users WHERE branch_id = ? AND removed_at IS NULL').all(req.user.workBranch);
+    const users = db.prepare('SELECT id, username, display_name, email, phone, is_master, profile_id, must_change_password FROM users WHERE branch_id = ? AND removed_at IS NULL').all(req.user.workBranch);
     for (const c of read.people) {
       let u = findAccount(c, users);
+      // The list changes only accounts this person could change on the Edit person page: never the master account (unless
+      // the master uploads it), and nobody whose profile can do more than their own. Those are left exactly as they are.
+      if (u && !u.added && !access.mayManage(req.user, u)) { if (!result.skipped.includes(u.display_name)) result.skipped.push(u.display_name); continue; }
       if (!u) {
         let username = (c.email ? c.email.split('@')[0] : c.name.replace(/\s+/g, '.')).toLowerCase().replace(/[^a-z0-9._-]/g, '').slice(0, 36).padEnd(3, 'x');
         for (let i = 2; taken.has(username); i++) username = `${username.replace(/\d+$/, '')}${i}`;
@@ -316,18 +323,32 @@ router.post('/admin/people/import', requirePerm('users.manage'), (req, res, next
         // A random password nobody knows, and switched off: listed for everyone to see, but no sign-in until an admin enables it.
         const id = auth.createUser({ username, displayName: c.name, email: c.email, password: require('crypto').randomBytes(24).toString('hex'), profile: technician.id, branchId: req.user.workBranch });
         db.prepare('UPDATE users SET active = 0 WHERE id = ?').run(id);
-        u = { id, username, display_name: c.name, email: c.email };
+        u = { id, username, display_name: c.name, email: c.email, added: true };
         users.push(u); result.created.push(c.name);
-      } else result.updated.push(u.display_name);
-      // The list is the branch's own record of titles and work contact details, so it sets those (the work email included) and shows them.
+      } else if (!u.added) {
+        result.updated.push(u.display_name);
+        const what = [c.email && c.email !== (u.email || '').toLowerCase() && 'email', c.phone && c.phone !== (u.phone || '') && 'phone'].filter(Boolean);
+        if (what.length) changed.set(u.id, `${u.display_name} (${what.join(' and ')})`);
+      }
+      // The list is the branch's own record of titles and work contact details, so it sets those (the work email included).
+      // It shows them on the profile for someone who has not signed in yet. Once a person uses the site, what is shown is their own choice.
+      const show = u.added || !hasSignedIn(u) ? 1 : 0;
       db.prepare(`UPDATE users SET in_directory = 1, job_title = COALESCE(NULLIF(?, ''), job_title), department = COALESCE(?, department),
                     email = COALESCE(NULLIF(?, ''), email), phone = COALESCE(NULLIF(?, ''), phone),
-                    show_phone = CASE WHEN ? <> '' THEN 1 ELSE show_phone END, show_email = CASE WHEN ? <> '' THEN 1 ELSE show_email END WHERE id = ?`)
-        .run(c.title, c.department, c.email, c.phone, c.phone, c.email, u.id);
+                    show_phone = CASE WHEN ? <> '' AND ? = 1 THEN 1 ELSE show_phone END, show_email = CASE WHEN ? <> '' AND ? = 1 THEN 1 ELSE show_email END WHERE id = ?`)
+        .run(c.title, c.department, c.email, c.phone, c.phone, show, c.email, show, u.id);
       if (c.title) require('../team').ensureTitle(c.title, c.department);
     }
   })();
-  activity.log(req.user, 'Contact list imported', `${result.updated.length} existing accounts updated, ${result.created.length} people added`);
+  const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  activity.log(req.user, 'Contact list imported', `${count(result.updated.length, 'existing account', 'existing accounts')} updated, ${count(result.created.length, 'person', 'people')} added${result.skipped.length ? `, ${result.skipped.length} left alone` : ''}`);
+  // Whose email or phone the list changed is written down by name, over as many lines as it takes.
+  const lines = [];
+  for (const name of changed.values()) {
+    if (lines.length && lines[lines.length - 1].length + name.length < 450) lines[lines.length - 1] += `, ${name}`;
+    else lines.push(name);
+  }
+  for (const line of lines) activity.log(req.user, 'Contact list: email or phone changed', line);
   req.session.contactResult = result;
   res.redirect('/admin/import#contacts');
 });
@@ -511,6 +532,8 @@ router.post('/admin/users/:id/welcome', requirePerm('users.manage'), (req, res) 
     activity.log(req.user, 'New hire welcome taken down', target.display_name);
     return res.redirect(req.body.back === 'person' ? `/people/${target.id}` : back);
   }
+  // Announcing someone sets their job title and start date, so it is for people who could edit that person anyway.
+  if (!access.mayManage(req.user, target)) return forbidden(res);
   db.transaction(() => {
     db.prepare('UPDATE users SET job_title = COALESCE(?, job_title), started_on = COALESCE(?, started_on) WHERE id = ?').run(job || null, started || null, target.id);
     if (job) require('../team').ensureTitle(job, target.department);

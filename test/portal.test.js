@@ -3161,7 +3161,8 @@ test('contact list: a CSV fills in existing accounts, adds everyone else with si
   assert.equal(db.prepare('SELECT COUNT(*) n FROM users').get().n, before + 1);            // the heading and the empty row are not people
   const who = (name) => db.prepare('SELECT username, display_name, job_title, department, email, phone, show_phone, show_email, active, in_directory, must_change_password FROM users WHERE display_name = ?').get(name);
   // Matched by the first.last in the email; keeps the name it has here, takes the title, department and work contact details.
-  assert.deepEqual(who('Danny Rivers'), { username: 'daniel.rivers', display_name: 'Danny Rivers', job_title: 'Service Tech', department: 'Service', email: 'daniel.rivers@example.com', phone: '(717) 555-0102', show_phone: 1, show_email: 1, active: 1, in_directory: 1, must_change_password: 0 });
+  // He already uses the site, so whether his phone and email are shown stays as he has it.
+  assert.deepEqual(who('Danny Rivers'), { username: 'daniel.rivers', display_name: 'Danny Rivers', job_title: 'Service Tech', department: 'Service', email: 'daniel.rivers@example.com', phone: '(717) 555-0102', show_phone: 0, show_email: 0, active: 1, in_directory: 1, must_change_password: 0 });
   assert.deepEqual([who('Mia Old-Email').email, who('Mia Old-Email').job_title, who('Mia Old-Email').phone, who('Mia Old-Email').show_phone], ['mia.new@example.com', 'CED Agent', null, 0]);   // "(TEAMS)" is not a phone number
   assert.deepEqual([who('Terry Tech').job_title, who('Terry Tech').phone, who('Terry Tech').department], ['Lead Tech, Nights', '717-555-0103', 'Service']);
   // New to the site: listed, tidied, and unable to sign in until an admin enables the account.
@@ -5119,7 +5120,7 @@ test('sign-in history: sign-ins, wrong passwords and pauses are recorded for cor
   const admin = await loggedIn('aud.admin'); const corp = await loggedIn('aud.corp');
   await corp.post('/branch/view', { branch: String(office), back: '/' }, { page: '/' });
   const officeView = (await admin.get('/admin/activity')).text;
-  assert.match(officeView, /Password changed/); assert.match(officeView, /Email address changed/);
+  assert.doesNotMatch(officeView, /Password changed|Email address changed/);                        // nor when someone changed a password or reset address
   assert.doesNotMatch(officeView, /Signed in|Sign-in failed|Sign-in paused|Wrong password at the lock screen|show=signins/);
   assert.doesNotMatch((await admin.get('/admin/activity?show=signins')).text, /Signed in|Sign-in failed|Sign-in paused/);
   assert.doesNotMatch((await admin.get('/admin/activity?q=Tessa')).text, /Signed in|Sign-in failed|Sign-in paused|Wrong password at the lock screen/);
@@ -5356,6 +5357,257 @@ test('the Feed page: the activity feed in full, with shout-outs and past events,
 
 // ===== Fixes from the November 2026 review. Each area keeps its checks under its own heading. =====
 // -- review: accounts and access --
+const accessChecks = {
+  /** A profile with everything an office admin has, for one office only (in these checks the profile called Admin sees every office). */
+  oneOffice: () => access.ensureProfile('Office admin (one office)', 'all', access.ALL.filter((p) => p !== 'branches.all')),
+  office: (name) => db.prepare('INSERT INTO branches (name, created_at) VALUES (?, ?)').run(name, new Date().toISOString()).lastInsertRowid,
+  person: (username, name, profile, office) => {
+    const id = makeUser(username, name);
+    db.prepare('UPDATE users SET profile_id = ?, branch_id = ? WHERE id = ?').run(typeof profile === 'string' ? profileId(profile) : profile, office, id);
+    return id;
+  },
+};
+
+test('contact list: an upload changes only accounts the uploader could edit by hand, never the master account, and does not undo a hidden phone or email', async () => {
+  const R = accessChecks;
+  R.person('imp.admin', 'Irma Importer', R.oneOffice(), 1);                    // an office admin in the master account's office
+  const corp = R.person('imp.corp', 'Carl Corporate', 'Corporate admin', 1);
+  const shy = R.person('imp.shy', 'Shay Private', 'Technician', 1);
+  db.prepare("UPDATE users SET email = 'carl@example.com' WHERE id = ?").run(corp);
+  db.prepare("UPDATE users SET email = 'shay@example.com', phone = '717-555-0111' WHERE id = ?").run(shy);
+  await loggedIn('imp.shy');                                                   // Shay uses the site, and has left "show my phone" and "show my email" unticked
+  const fresh = auth.createUser({ username: 'imp.new', displayName: 'Nina Notyet', password: 'temp-pass-1234' });   // has an account, has never signed in
+  const master = db.prepare('SELECT id, display_name FROM users WHERE is_master = 1').get();
+  const row = (id) => ({ ...db.prepare('SELECT email, phone, job_title, started_on, show_phone, show_email, in_directory FROM users WHERE id = ?').get(id) });
+  const was = row(master.id);
+  db.prepare("UPDATE users SET email = 'max@example.com' WHERE id = ?").run(master.id);
+  const before = { master: row(master.id), corp: row(corp) };
+  const admin = await loggedIn('imp.admin');
+  // The Edit person page refuses this admin on both accounts. The upload must not be a way round that.
+  for (const id of [master.id, corp]) assert.equal((await admin.get(`/admin/users/${id}/edit`)).status, 403);
+  const csv = ['Name,Title,Email,Phone', `${master.display_name},Janitor,attacker@evil.example,717-555-0000`, 'Carl Corporate,Janitor,attacker2@evil.example,717-555-0001',
+    'Shay Private,Service Tech,shay.new@example.com,717-555-0112', 'Nina Notyet,Apprentice,nina@example.com,717-555-0113', 'Brand Newperson,Helper,brand@example.com,717-555-0114'].join('\n');
+  const send = (client, text) => client.post('/admin/people/import', [['file', new File([text], 'list.csv', { type: 'text/csv' })]], { multipart: true, page: '/admin/import' });
+  db.prepare("DELETE FROM activity_log WHERE action LIKE 'Contact list%'").run();
+  assert.equal((await send(admin, csv)).location, '/admin/import#contacts');
+  assert.deepEqual(row(master.id), before.master);
+  assert.deepEqual(row(corp), before.corp);
+  // The uploader is told who was left alone.
+  const page = (await admin.get('/admin/import')).text;
+  assert.match(page, /<strong>2<\/strong> existing accounts filled in and <strong>1<\/strong> person added/);
+  assert.match(page, new RegExp(`<strong>Not changed, because you cannot edit these accounts:</strong> ${master.display_name}, Carl Corporate<`));
+  // Someone the admin may edit: the list's email and phone replace what was there, but what the person keeps hidden stays hidden.
+  assert.deepEqual(row(shy), { email: 'shay.new@example.com', phone: '717-555-0112', job_title: 'Service Tech', started_on: null, show_phone: 0, show_email: 0, in_directory: 1 });
+  // Someone who has never signed in, and someone the upload adds, are shown as before.
+  assert.deepEqual([row(fresh).email, row(fresh).show_phone, row(fresh).show_email], ['nina@example.com', 1, 1]);
+  const brand = db.prepare("SELECT id, show_phone, show_email, active FROM users WHERE display_name = 'Brand Newperson'").get();
+  assert.deepEqual([brand.show_phone, brand.show_email, brand.active], [1, 1, 0]);
+  // The log names whose email or phone changed.
+  const log = db.prepare("SELECT action, detail FROM activity_log WHERE action LIKE 'Contact list%' ORDER BY id").all().map((r) => `${r.action}: ${r.detail}`);
+  assert.deepEqual(log, ['Contact list imported: 2 existing accounts updated, 1 person added, 2 left alone',
+    'Contact list: email or phone changed: Shay Private (email and phone), Nina Notyet (email and phone)']);
+  // Uploading the same list again changes nothing, so there are no names to log.
+  await send(admin, csv);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM activity_log WHERE action = 'Contact list: email or phone changed'").get().n, 1);
+  // A corporate admin is refused the master account in the same way. The master account's own upload does change it.
+  await send(await loggedIn('imp.corp'), `Name,Email\n${master.display_name},attacker3@evil.example`);
+  assert.deepEqual(row(master.id), before.master);
+  await send(await loggedIn('master'), `Name,Phone\n${master.display_name},717-555-0999`);
+  assert.equal(row(master.id).phone, '717-555-0999');
+  // The same rule for announcing someone as a new hire, which sets a job title and start date: only for people the admin may edit.
+  assert.equal((await admin.post(`/admin/users/${master.id}/welcome`, { job_title: 'Janitor', started_on: '2020-01-01' }, { page: '/admin/users' })).status, 403);
+  assert.deepEqual([row(master.id).job_title, row(master.id).started_on], [before.master.job_title, before.master.started_on]);
+  assert.equal((await admin.post(`/admin/users/${shy}/welcome`, { started_on: '2026-11-02' }, { page: '/admin/users' })).status, 302);
+  assert.equal(row(shy).started_on, '2026-11-02');
+  db.prepare('UPDATE users SET email = ?, phone = ?, in_directory = ? WHERE id = ?').run(was.email, was.phone, was.in_directory, master.id);
+  db.prepare('DELETE FROM welcomes WHERE user_id = ?').run(shy);
+  require('../app/removal').remove(brand.id);
+});
+
+test('training sessions: a request from another office or team cannot be scheduled, shown or marked done, and a private request does not become a session title the office sees', async () => {
+  const R = accessChecks;
+  const here = R.office('Trainford'); const there = R.office('Elsewhere Falls');
+  const tech = R.person('trn.tech', 'Tara Trainford', 'Technician', here);
+  R.person('trn.admin', 'Adam Trainford', R.oneOffice(), here); R.person('trn.mgr', 'Mona Noteam', 'Manager', here);   // a manager with nobody assigned
+  R.person('trn.far', 'Fern Elsewhere', R.oneOffice(), there);
+  const tc = await loggedIn('trn.tech');
+  await tc.post('/training', { description: 'TRNPRIV zone expanders\nMore about it', wants_contact: 'no', is_private: 'yes' });
+  const priv = db.prepare('SELECT MAX(id) id FROM training_requests').get().id;
+  await tc.post('/training', { description: 'TRNOPEN panel programming', wants_contact: 'no', is_private: 'no' });
+  const open = db.prepare('SELECT MAX(id) id FROM training_requests').get().id;
+  const list = '/admin/training/sessions';
+  const far = await loggedIn('trn.far'); const mgr = await loggedIn('trn.mgr'); const admin = await loggedIn('trn.admin');
+  const state = () => ({ ...db.prepare('SELECT status, unseen FROM training_requests WHERE id = ?').get(priv) });
+
+  // Another office's admin, and a manager who does not manage the requester, are refused the request itself.
+  // Naming it on a new session used to show its wording and move it along; now that is refused too.
+  for (const c of [far, mgr]) {
+    assert.equal((await c.get(`/admin/training/${priv}`)).status, 403);
+    assert.doesNotMatch((await c.get(`${list}?request=${priv}`)).text, /TRNPRIV|name="request_id"|Trainford office/);
+    assert.equal((await c.post(list, { title: 'anything', session_date: '2031-08-01', request_id: String(priv) }, { page: list })).status, 403);
+  }
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM training_sessions WHERE request_id = ?').get(priv).n, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM training_attendance WHERE user_id = ?').get(tech).n, 0);
+  assert.deepEqual(state(), { status: 'new', unseen: 0 });
+  // A session tied to it before this was checked (made by hand here): the wording is not shown, and holding the session leaves the request alone.
+  const stray = db.prepare('INSERT INTO training_sessions (title, request_id, session_date, created_by, created_at, branch_id) VALUES (?, ?, ?, ?, ?, ?)')
+    .run('Stray session', priv, '2031-08-02', userId('trn.far'), new Date().toISOString(), there).lastInsertRowid;
+  assert.doesNotMatch((await far.get(`${list}/${stray}`)).text, /TRNPRIV|For training request/);
+  await far.post(`${list}/${stray}`, { held: '1' }, { page: `${list}/${stray}` });
+  assert.ok(db.prepare('SELECT completed_at FROM training_sessions WHERE id = ?').get(stray).completed_at);
+  assert.deepEqual(state(), { status: 'new', unseen: 0 });
+  db.prepare('DELETE FROM training_sessions WHERE id = ?').run(stray);
+  // Someone who sees every office schedules from a request while looking at that request's office, not from "All offices".
+  const owner = await loggedIn('owner');
+  await owner.post('/branch/view', { branch: 'all', back: '/' }, { page: '/' });
+  const afar = (await owner.get(`${list}?request=${open}`)).text;
+  assert.match(afar, /That request is from the Trainford office\. Choose that office first/); assert.doesNotMatch(afar, /name="request_id"|value="TRNOPEN/);
+  assert.equal((await owner.post(list, { title: 'From afar', session_date: '2031-08-05', request_id: String(open) }, { page: list })).status, 403);
+  assert.deepEqual({ ...db.prepare('SELECT status FROM training_requests WHERE id = ?').get(open) }, { status: 'new' });
+
+  // The office's own admin schedules from either request as before. A private request does not offer its wording as the title...
+  const form = (await admin.get(`${list}?request=${priv}`)).text;
+  assert.match(form, new RegExp(`name="request_id" value="${priv}"`)); assert.doesNotMatch(form, /value="TRNPRIV/);
+  assert.match((await admin.get(`${list}?request=${open}`)).text, /value="TRNOPEN panel programming"/);
+  // ...and whatever the session is called, one made from a private request is not listed to the office under Coming up.
+  await admin.post(list, { title: 'TRNPRIV zone expanders', session_date: '2031-08-03', request_id: String(priv) }, { page: list });
+  const sPriv = db.prepare('SELECT MAX(id) id FROM training_sessions').get().id;
+  await admin.post(list, { title: 'TRNOPEN panel programming', session_date: '2031-08-04', request_id: String(open) }, { page: list });
+  assert.deepEqual(state(), { status: 'scheduled', unseen: 1 });
+  const topics = (await tc.get('/training/topics')).text;
+  assert.match(topics, /<h2>Coming up<\/h2>[\s\S]*?TRNOPEN panel programming[\s\S]*?<h2>Requested<\/h2>/); assert.doesNotMatch(topics, /TRNPRIV/);
+  // Their own admin sees which request a session is for, and marking it held finishes the request.
+  assert.match((await admin.get(`${list}/${sPriv}`)).text, new RegExp(`For training request: <a href="/admin/training/${priv}">TRNPRIV zone expanders`));
+  assert.doesNotMatch((await mgr.get(`${list}/${sPriv}`)).text, /For training request/);          // the office's session, but not her request to read
+  await admin.post(`${list}/${sPriv}`, [['people', String(tech)], ['held', '1']], { page: `${list}/${sPriv}` });
+  assert.equal(state().status, 'completed');
+  db.prepare('DELETE FROM training_sessions WHERE branch_id = ?').run(here);
+});
+
+test('sales: the "already on this customer" check answers a part of a name only inside the office, says only who to ask about another office\'s customer, and pauses after 60 lookups', async () => {
+  const R = accessChecks;
+  const here = R.office('Lookupville'); const there = R.office('Farfield');
+  R.person('lk.sam', 'Sam Lookup', 'Sales', here); R.person('lk.busy', 'Bo Busy', 'Sales', here); R.person('lk.harry', 'Harry Farfield', 'Sales', there);
+  const sam = await loggedIn('lk.sam'); const far = await loggedIn('lk.harry');
+  await far.post('/sales', { company: 'Susquehanna Cold Storage LLC', phone: '(717) 555-0199', email: 'ed@susqcold.example', address: '400 River Road, Columbia' }, { page: '/sales' });
+  const lead = db.prepare("SELECT id FROM leads WHERE company = 'Susquehanna Cold Storage LLC'").get().id;
+  await sam.post('/sales', { company: 'Lititz Storage Barn' }, { page: '/sales' });
+  const own = db.prepare("SELECT id FROM leads WHERE company = 'Lititz Storage Barn'").get().id;
+  const ask = async (client, q) => JSON.parse((await client.get('/sales/check?' + new URLSearchParams(q))).text).matches;
+
+  // Part of a name finds the customer in the asker's own office, with a link to it, and nothing anywhere else.
+  assert.deepEqual(await ask(sam, { company: 'Stora' }), [{ company: 'Lititz Storage Barn', owner: 'Sam Lookup', office: 'Lookupville', stage: 'New', why: 'same name', url: `/sales/${own}` }]);
+  for (const q of [{ company: 'Cold Storage' }, { company: 'Susquehanna' }, { company: 'Susquehanna Cold Storage of Columbia' }, { company: 'Nobody', address: '400 River Road, Columbia' }, { company: 'Nobody', phone: '555-0199' }]) {
+    assert.deepEqual(await ask(sam, q), [], JSON.stringify(q));
+  }
+  // The whole name, the whole phone number or the whole email does find it. The answer is the office and who to ask, and no more.
+  const elsewhere = { company: null, owner: 'Harry Farfield', office: 'Farfield', stage: null, url: null };
+  assert.deepEqual(await ask(sam, { company: 'susquehanna cold storage' }), [{ ...elsewhere, why: 'same name' }]);
+  assert.deepEqual(await ask(sam, { company: 'Nobody', phone: '717.555.0199' }), [{ ...elsewhere, why: 'same phone number' }]);
+  assert.deepEqual(await ask(sam, { company: 'Nobody', email: 'ED@susqcold.example' }), [{ ...elsewhere, why: 'same email' }]);
+  assert.equal((await sam.get(`/sales/${lead}`)).status, 403);
+  // The check made when a lead is saved follows the same rule.
+  assert.equal((await sam.post('/sales', { company: 'Cold Storage' }, { page: '/sales' })).status, 302);       // part of another office's customer name: nothing to warn about
+  const dup = await sam.post('/sales', { company: 'Susquehanna Cold Storage', phone: '717 555 0199' }, { page: '/sales' });
+  assert.equal(dup.status, 400);
+  assert.match(dup.text, /<strong>Another office&#39;s customer<\/strong> <span class="meta">· same name, same phone number<\/span><\/span><span>Harry Farfield · Farfield<\/span>/);
+  assert.doesNotMatch(dup.text, /Cold Storage LLC|susqcold|River Road/);
+  // The page asks in the body of a request, so what is typed about a customer is not left in a web address.
+  const posted = await sam.post('/sales/check', { company: 'Lititz Storage Barn' }, { page: '/sales' });
+  assert.equal(posted.status, 200); assert.equal(JSON.parse(posted.text).matches[0].url, `/sales/${own}`);
+  const js = (await sam.get('/sales.js')).text;
+  assert.match(js, /fetch\('\/sales\/check', \{ method: 'POST'/); assert.doesNotMatch(js, /sales\/check\?/);
+
+  // Sixty lookups in fifteen minutes is plenty for adding leads. After that the answer is empty until the time is up, and the log says so once.
+  const busy = await loggedIn('lk.busy');
+  for (let i = 0; i < 60; i++) assert.equal((await busy.get('/sales/check?company=Lititz%20Storage%20Barn')).status, 200, `lookup ${i + 1}`);
+  const over = await busy.get('/sales/check?company=Lititz%20Storage%20Barn');
+  assert.equal(over.status, 429); assert.deepEqual(JSON.parse(over.text), { matches: [] });
+  assert.equal((await busy.post('/sales/check', { company: 'Lititz Storage Barn' }, { page: '/sales' })).status, 429);
+  const paused = db.prepare("SELECT detail FROM activity_log WHERE action = 'Customer lookups paused' AND user_id = ?").all(userId('lk.busy'));
+  assert.equal(paused.length, 1); assert.match(paused[0].detail, /60/);
+  assert.equal((await sam.get('/sales/check?company=Lititz%20Storage%20Barn')).status, 200);                    // each person has their own count
+  // Saving a lead is not held up by it: the check there still runs.
+  assert.equal((await busy.post('/sales', { company: 'Lititz Storage Barn' }, { page: '/sales' })).status, 400);
+  db.prepare('DELETE FROM lead_notes WHERE lead_id IN (SELECT id FROM leads WHERE branch_id IN (?, ?))').run(here, there);
+  db.prepare('DELETE FROM leads WHERE branch_id IN (?, ?)').run(here, there);
+});
+
+test('sales: removing a lead is logged by its number and office, not the customer\'s name, and the name is not the page title', async () => {
+  const R = accessChecks;
+  const office = R.office('Forgetford');
+  R.person('fg.mgr', 'Mia Forgetford', 'Sales manager', office);
+  const mgr = await loggedIn('fg.mgr');
+  await mgr.post('/sales', { company: 'Homer Forgetme', phone: '717-555-0177' }, { page: '/sales' });
+  const lead = db.prepare("SELECT id FROM leads WHERE company = 'Homer Forgetme'").get().id;
+  // The customer's name heads the page, but is not what the browser keeps as the page's title in its history.
+  const page = (await mgr.get(`/sales/${lead}`)).text;
+  assert.match(page, /<h1>Homer Forgetme<\/h1>/); assert.match(page, /<title>Lead · /); assert.doesNotMatch(page, /<title>[^<]*Forgetme/);
+  await mgr.post(`/sales/${lead}/delete`, {}, { page: `/sales/${lead}` });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM leads WHERE id = ?').get(lead).n, 0);
+  assert.equal(db.prepare("SELECT detail FROM activity_log WHERE action = 'Lead removed' ORDER BY id DESC").get().detail, `Lead ${lead}, Forgetford office`);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM activity_log WHERE detail LIKE '%Forgetme%'").get().n, 0);
+});
+
+test('activity log: an office admin does not see when people changed a password, a reset address or Face ID; people who look after every office do', async () => {
+  const R = accessChecks;
+  const office = R.office('Logford');
+  const tid = R.person('log.tech', 'Lena Logford', 'Technician', office); const aid = R.person('log.admin', 'Alan Logford', R.oneOffice(), office); R.person('log.corp', 'Cora Logford', 'Corporate admin', office);
+  const activity = require('../app/activity');
+  const lena = await loggedIn('log.tech');
+  await lena.post('/account/email', { email: 'lena@example.com', current: 'correct horse battery' });
+  await lena.post('/account/password', { current: 'correct horse battery', password: 'walnut ferry lantern 4', confirm: 'walnut ferry lantern 4' });
+  const kinds = ['Email address changed', 'Password changed', 'Password reset by email', 'Face ID / fingerprint sign-in set up', 'Face ID / fingerprint sign-in removed'];
+  for (const a of kinds.slice(2)) activity.log({ id: tid }, a, 'Written for this check');
+  activity.log({ id: aid }, 'Stock count', 'LOGFORD-PART counted');
+  assert.deepEqual(db.prepare('SELECT action FROM activity_log WHERE user_id = ? AND action <> ? ORDER BY id').all(tid, 'Signed in').map((r) => r.action), kinds);
+  // To the minute, next to the date on an anonymous complaint, these would hint at who sent it, just as sign-ins would.
+  const admin = await loggedIn('log.admin');
+  const hidden = /Password changed|Password reset by email|Email address changed|Face ID \/ fingerprint sign-in/;
+  assert.match((await admin.get('/admin/activity')).text, /LOGFORD-PART counted/);
+  for (const url of ['/admin/activity', '/admin/activity?q=Lena', '/admin/activity?q=changed', '/admin/activity?show=signins']) assert.doesNotMatch((await admin.get(url)).text, hidden, url);
+  const corp = await loggedIn('log.corp');
+  await corp.post('/branch/view', { branch: String(office), back: '/' }, { page: '/' });
+  const all = (await corp.get('/admin/activity?q=Lena')).text;
+  for (const a of kinds) assert.ok(all.includes(`<td>Lena Logford</td><td class="nowrap">${a}</td>`), a);
+});
+
+test('removing a person: their photo file and sign-in history go with them, and sign-ins alone do not keep their name on file', async () => {
+  const R = accessChecks;
+  const office = R.office('Removeford');
+  require('../app/routes/auth').clearLoginFailures();
+  const used = R.person('rmv.used', 'Una Usedit', 'Technician', office);       // signed in, chose a password, added a photo; recorded nothing for the office
+  const guessed = R.person('rmv.guess', 'Gus Guessed', 'Technician', office);  // never signed in; someone typed a wrong password against the username
+  const busy = R.person('rmv.busy', 'Bix Busy', 'Technician', office);         // has a parts entry, so the name stays on it
+  const addPhoto = (client) => client.post('/profile', [['about', 'Hello'], ['photo', new File([PNG], 'me.png', { type: 'image/png' })]], { multipart: true, page: '/profile' });
+  const una = await loggedIn('rmv.used');
+  await una.post('/account/password', { current: 'correct horse battery', password: 'copper meadow lantern 7', confirm: 'copper meadow lantern 7' });
+  await addPhoto(una);
+  assert.equal((await new Client().post('/login', { username: 'rmv.guess', password: 'not the password 1' }, { page: '/login' })).status, 401);
+  await addPhoto(await loggedIn('rmv.busy'));
+  db.prepare("INSERT INTO parts_submissions (user_id, action, source, created_at, created_local_date) VALUES (?, 'take', 'van', ?, ?)").run(busy, new Date().toISOString(), new Date().toISOString().slice(0, 10));
+  require('../app/activity').log({ id: busy }, 'Stock count', 'REMOVEFORD-PART counted');
+  const logged = (id) => db.prepare('SELECT action FROM activity_log WHERE user_id = ? ORDER BY id').all(id).map((r) => r.action);
+  assert.deepEqual(logged(used), ['Signed in', 'Password changed']); assert.deepEqual(logged(guessed), ['Sign-in failed']); assert.deepEqual(logged(busy), ['Signed in', 'Stock count']);
+  const file = (name) => path.join(dataDir, 'uploads', name);
+  const photos = [used, busy].map((id) => db.prepare('SELECT photo_path FROM users WHERE id = ?').get(id).photo_path);
+  for (const p of photos) assert.ok(p && fs.existsSync(file(p)));
+
+  const owner = await loggedIn('owner');
+  await owner.post('/branch/view', { branch: String(office), back: '/' }, { page: '/' });
+  for (const id of [used, guessed, busy]) await owner.post(`/admin/users/${id}/remove`, {}, { page: '/admin/users' });
+  // Nothing was on record for the first two but their own sign-ins, so they are gone entirely, that history included.
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM users WHERE id IN (?, ?)').get(used, guessed).n, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM activity_log WHERE user_id IN (?, ?)').get(used, guessed).n, 0);
+  // Bix's parts entry keeps the name. The sign-in history does not stay with it; what Bix did for the office does.
+  assert.deepEqual({ ...db.prepare('SELECT username, display_name, photo_path FROM users WHERE id = ?').get(busy) }, { username: `removed-${busy}`, display_name: 'Bix Busy', photo_path: null });
+  assert.deepEqual(logged(busy), ['Stock count']);
+  // The photo files themselves are deleted, not just forgotten.
+  for (const p of photos) {
+    for (let i = 0; i < 80 && fs.existsSync(file(p)); i++) await new Promise((r) => setTimeout(r, 25));
+    assert.equal(fs.existsSync(file(p)), false, p);
+  }
+});
 
 // .
 // .

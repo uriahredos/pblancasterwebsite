@@ -60,7 +60,7 @@
 <div class="card dupes">
   <p class="plain"><strong>Already being worked?</strong></p>
   <ul class="plain-rows">
-    <% matches.forEach(function (m) { %><li><span><strong><%= m.company %></strong> <span class="meta">· <%= m.why %></span></span><span><%= m.owner || 'Nobody yet' %> · <%= m.office %> · <%= m.stageName %></span></li><% }) %>
+    <% matches.forEach(function (m) { %><li><span><strong><%= m.elsewhere ? "Another office's customer" : m.company %></strong> <span class="meta">· <%= m.why %></span></span><span><%= m.owner || 'Nobody yet' %> · <%= m.office %><%= m.elsewhere ? '' : ' · ' + m.stageName %></span></li><% }) %>
   </ul>
 </div>
 <% } %>
