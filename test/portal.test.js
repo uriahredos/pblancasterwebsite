@@ -5353,3 +5353,26 @@ test('the Feed page: the activity feed in full, with shout-outs and past events,
   assert.equal(((await t1.get('/feed')).text.match(/<li class="feed-/g) || []).length, 100);
   db.prepare("DELETE FROM forum_threads WHERE title LIKE 'FEEDFLOOD %' OR title LIKE 'FEEDPAGE %'").run();
 });
+
+// ===== Fixes from the November 2026 review. Each area keeps its checks under its own heading. =====
+// -- review: accounts and access --
+
+// .
+// .
+// .
+// -- review: sign-in, sessions, the lock and alerts --
+
+// .
+// .
+// .
+// -- review: backups, restore and the key --
+
+// .
+// .
+// .
+// -- review: uploaded files --
+
+// .
+// .
+// .
+// -- review: speed and small defects --
