@@ -11,7 +11,7 @@ router.get('/settings/notifications', requireLogin, (req, res) => {
   const kinds = push.kindsFor(req.user).map((k) => ({ ...k, on: push.wants(req.user.id, k.key) }));
   res.render('settings_notifications', {
     title: 'Notification settings', kinds, publicKey: push.vapid().publicKey,
-    devices: db.prepare('SELECT id, device, endpoint, created_at FROM push_subscriptions WHERE user_id = ? ORDER BY id').all(req.user.id),
+    devices: push.liveDevices(req.user.id),      // the devices that get alerts now: switched on, and still signed in
   });
 });
 
@@ -38,10 +38,19 @@ router.post('/push/subscribe', requireLogin, (req, res) => {
   const auth = clean(req.body.auth, 100);
   if (!pushHost(endpoint) || !/^[A-Za-z0-9_-]{20,}$/.test(p256dh) || !/^[A-Za-z0-9_-]{8,}$/.test(auth)) return res.status(400).json({ ok: false });
   db.prepare(
-    `INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, device, created_at) VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT(endpoint) DO UPDATE SET user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth, device = excluded.device`
-  ).run(req.user.id, endpoint, p256dh, auth, clean(req.body.device, 60) || 'This device', new Date().toISOString());
+    `INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, device, created_at, sid) VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(endpoint) DO UPDATE SET user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth, device = excluded.device, sid = excluded.sid`
+  ).run(req.user.id, endpoint, p256dh, auth, clean(req.body.device, 60) || 'This device', new Date().toISOString(), req.sessionID);
   res.json({ ok: true });
+});
+
+// Every signed-in page on a device that already allows alerts calls this by itself (see site.js). If that device's
+// registration is this person's own, it now belongs to the sign-in they are using, so their alerts carry on after signing
+// in again with nothing to press. Somebody else's registration is left as it is: the next person at a shared computer
+// does not inherit the last person's alerts. Turning alerts on is the only way to take a device over.
+router.post('/push/attach', requireLogin, (req, res) => {
+  const mine = db.prepare('UPDATE push_subscriptions SET sid = ? WHERE endpoint = ? AND user_id = ?').run(req.sessionID, clean(req.body.endpoint, 1000), req.user.id).changes > 0;
+  res.json({ ok: mine });
 });
 
 router.post('/push/unsubscribe', requireLogin, (req, res) => {
@@ -52,11 +61,9 @@ router.post('/push/unsubscribe', requireLogin, (req, res) => {
 });
 
 router.post('/push/test', requireLogin, async (req, res) => {
-  const row = db.prepare('SELECT COUNT(*) AS n FROM push_subscriptions WHERE user_id = ?').get(req.user.id);
   // A test goes out whatever is ticked, so it always proves the device works.
-  const subs = db.prepare('SELECT * FROM push_subscriptions WHERE user_id = ?').all(req.user.id);
-  const sent = subs.length ? await push.notify([req.user.id], 'test', { title: 'Test alert', body: 'Alerts are working on this device.', url: '/settings/notifications' }) : 0;
-  flash(req, sent ? 'ok' : 'err', sent ? `Test alert sent to ${row.n} ${row.n === 1 ? 'device' : 'devices'}. It should appear within a few seconds.` : 'No device has alerts turned on yet. Turn them on above first.');
+  const sent = await push.notify([req.user.id], 'test', { title: 'Test alert', body: 'Alerts are working on this device.', url: '/settings/notifications' });
+  flash(req, sent ? 'ok' : 'err', sent ? `Test alert sent to ${sent} ${sent === 1 ? 'device' : 'devices'}. It should appear within a few seconds.` : 'No device has alerts turned on yet. Turn them on above first.');
   res.redirect('/settings/notifications');
 });
 

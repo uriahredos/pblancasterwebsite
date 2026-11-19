@@ -88,9 +88,15 @@ function wrongPassword(req, password) {
 
 // Only allow redirects back into this site.
 const safeNext = (n) => (typeof n === 'string' && /^\/(?![/\\])/.test(n) ? n : '/');
+// Where someone goes once they have signed in or unlocked. Asked for a complaint page? They land on the home page like
+// everyone else, and the page itself takes them on from there (see site.js). The site never requests a complaint page as
+// its first step after a sign-in, so neither the log nor the session shows that this is where the person was heading.
+const COMPLAINT_STOPS = { '/complaint': '/#complaint-form', '/complaint/status': '/#complaint-status' };
+const landing = (target) => (target.startsWith('/complaint') ? COMPLAINT_STOPS[target.replace(/[?#].*$/, '').replace(/\/$/, '')] || '/' : target);
 
 router.get('/login', (req, res) => {
   if (req.user) return res.redirect('/');
+  auth.formToken(req, res);
   res.render('login', { title: 'Sign in', next: safeNext(req.query.next), username: '', error: null });
 });
 
@@ -130,11 +136,13 @@ router.post('/login', loginLimiter, (req, res, next) => {
     req.session.seenAt = Date.now();
     req.session.fresh = true;
     req.session.csrf = auth.newCsrfToken();
-    req.session.afterPassword = target;
+    // Where they were heading is only kept when a password change comes first, and is used once (see below). A complaint page is never kept.
+    const changeFirst = user.must_change_password || weak;
+    if (changeFirst && landing(target) === target) req.session.afterPassword = target;
     proved(req);
-    activity.log(user, 'Signed in', `With a password, on ${onWhat(req)}${weak ? '. The password is too easy to guess and has to be replaced' : ''}`);
+    activity.log(user, 'Signed in', `With a password, on ${onWhat(req)}, from ${clientIp(req)}${weak ? '. The password is too easy to guess and has to be replaced' : ''}`);
     if (weak) auth.flash(req, 'err', 'Your password is too easy to guess, so it needs replacing before you carry on.');
-    res.redirect(user.must_change_password || weak ? '/account/password' : target);
+    res.redirect(changeFirst ? '/account/password' : landing(target));
   });
 });
 
@@ -179,7 +187,7 @@ router.post('/unlock', (req, res) => {
     auth.flash(req, 'err', 'Your password is too easy to guess, so it needs replacing before you carry on.');
   }
   auth.unlock(req); proved(req);
-  res.redirect(target);
+  res.redirect(landing(target));
 });
 
 // ---- Forgot password --------------------------------------------------------
@@ -194,6 +202,7 @@ const findReset = (token) => db.prepare(
 ).get(hashToken(token), new Date().toISOString());
 
 router.get('/forgot', (req, res) => {
+  if (mail.isConfigured()) auth.formToken(req, res);
   res.render('forgot', { title: 'Forgot password', sent: false, available: mail.isConfigured(), error: null });
 });
 
@@ -215,6 +224,7 @@ router.post('/forgot', resetLimiter, (req, res) => {
 
 router.get('/reset/:token', (req, res) => {
   const found = findReset(req.params.token);
+  if (found) auth.formToken(req, res);
   res.status(found ? 200 : 404).render('reset', { title: 'Choose a new password', valid: Boolean(found), token: req.params.token, error: null });
 });
 
@@ -238,6 +248,8 @@ router.post('/reset/:token', resetLimiter, (req, res) => {
 router.post('/account/confirm', (req, res) => {
   const wantsJson = req.is('application/json');
   if (!req.user) return wantsJson ? res.status(401).json({ ok: false }) : res.redirect('/login');
+  // Still on a temporary password: choosing their own comes before anything that asks for the password again.
+  if (req.user.must_change_password) return wantsJson ? res.status(403).json({ ok: false }) : res.redirect('/account/password');
   const error = wrongPassword(req, req.body.password);
   if (!error) proved(req);
   if (wantsJson) return res.status(error ? 401 : 200).json({ ok: !error, error: error || undefined });
@@ -249,6 +261,9 @@ router.post('/account/confirm', (req, res) => {
 // so changing it takes the password, not just an open session.
 router.post('/account/email', (req, res) => {
   if (!req.user) return res.redirect('/login');
+  // A temporary password is handed over in a message that others may see. Until the person has replaced it, it must not
+  // be enough to point password resets at some other address. (The page does not offer the email box in that state.)
+  if (req.user.must_change_password) return res.redirect('/account/password');
   const email = clean(req.body.email, 120);
   const wrong = (email || null) === (req.user.email || null) ? null : wrongPassword(req, req.body.current);
   if (wrong) auth.flash(req, 'err', wrong === 'That password is not right.' ? 'Type your current password to change your email address.' : wrong);
@@ -299,6 +314,7 @@ router.post('/account/password', (req, res) => {
 
 module.exports = router;
 module.exports.safeNext = safeNext;
+module.exports.landing = landing;
 module.exports.clearLoginFailures = () => FAILS.clear();
 module.exports.provedRecently = provedRecently;
 module.exports.proved = proved;

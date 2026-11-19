@@ -3,15 +3,20 @@ const path = require('path');
 const express = require('express');
 const session = require('express-session');
 const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const config = require('./config');
 const db = require('./db');
 const SqliteStore = require('./sessionStore');
 const auth = require('./auth');
 const util = require('./util');
 const device = require('./device');
+const { rateKey } = require('./clientip');
 
 const MULTIPART_PATHS = /^\/(parts|parts\/\d+\/edit|admin\/catalog\/import|admin\/stock\/import|admin\/import|admin\/newsletters|inspection|profile|admin\/people\/import|admin\/company\/contacts|admin\/company\/details|photos|branches\/\d+|discussions\/new|discussions\/t\/\d+\/reply|sales\/library|admin\/oncall\/import)$/;
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000; // stay signed in on a phone for 30 days
+const VISITOR_MS = 2 * 60 * 60 * 1000;       // a visitor who has not signed in: long enough to fill in the sign-in or reset form
+// The anonymous complaint pages. Nothing about a request for one is written down anywhere: not in the log, not in the session.
+const complaintPage = (req) => req.path.startsWith('/complaint');
 
 const app = express();
 app.set('view engine', 'ejs');
@@ -57,9 +62,10 @@ app.get('/vendor/html5-qrcode.min.js', (req, res) => {
 app.get('/healthz', (req, res) => res.type('text').send('ok'));
 app.use(express.static(path.join(__dirname, '..', 'public'), { maxAge: config.production ? '1h' : 0 }));
 
-// Request log. Complaint pages are left out on purpose and no user is ever logged.
+// Request log. Complaint pages are left out on purpose and no user is ever logged. The page's own background calls
+// (/pulse and /alive) are left out too, so a request that is missing from the log says nothing about what it was.
 app.use((req, res, next) => {
-  if (!req.path.startsWith('/complaint')) {
+  if (!complaintPage(req) && req.path !== '/pulse' && req.path !== '/alive') {
     // A password-reset link is a key for an hour, so it is never written to the log.
     const shown = req.path.startsWith('/reset/') ? '/reset/…' : req.path;
     res.on('finish', () => console.log(`${req.method} ${shown} ${res.statusCode}`));
@@ -70,23 +76,37 @@ app.use((req, res, next) => {
 app.use(session({
   name: 'portal.sid',
   secret: config.sessionSecret,
-  store: new SqliteStore(db, SESSION_MS),
+  store: new SqliteStore(db, SESSION_MS, VISITOR_MS),
   resave: false,
   saveUninitialized: false,
   rolling: true,
   cookie: { httpOnly: true, sameSite: 'lax', secure: config.production, maxAge: SESSION_MS },
 }));
+// A complaint page leaves the person's session row exactly as it found it (the store checks for this mark), so the row
+// cannot show that they opened or sent one, or when.
+app.use((req, res, next) => { if (complaintPage(req)) Object.defineProperty(req.session, 'leaveAlone', { value: true }); next(); });
 
 app.use(express.urlencoded({ extended: false, limit: '200kb' }));
 app.use(express.json({ limit: '60kb' }));   // Face ID / fingerprint sign-in talks to the server in JSON
 
 app.use(auth.loadUser);
 
+// Visitors who are not signed in get a generous allowance per address (a whole office can share one): enough for everyone
+// there to sign in several times over. It is only there so a flood from one place cannot keep the site busy or fill the
+// disk. People who are signed in are never counted, and neither is the health check (answered above).
+app.use(rateLimit({
+  windowMs: 5 * 60 * 1000, limit: config.loginRateLimit * 60, standardHeaders: true, legacyHeaders: false, keyGenerator: rateKey,
+  skip: (req) => Boolean(req.user),
+  handler: (req, res) => res.status(429).type('text/plain').send('Too many requests from this connection. Wait a few minutes and try again.'),
+}));
+
 app.use((req, res, next) => {
-  if (!req.session.csrf) req.session.csrf = auth.newCsrfToken();
-  res.locals.csrf = req.session.csrf;
-  res.locals.flash = req.session.flash || null;
-  delete req.session.flash;
+  // Someone signed in always has a form token. A visitor who is not gets one only from a page that shows them a form
+  // (sign-in, forgot password, reset: see routes/auth.js), so nothing else they ask for leaves a session behind.
+  if (req.user) auth.formToken(req, res); else res.locals.csrf = req.session.csrf || '';
+  // A message waiting to be shown is kept for the next ordinary page rather than used up on a complaint page.
+  res.locals.flash = complaintPage(req) ? null : req.session.flash || null;
+  if (!complaintPage(req)) delete req.session.flash;
   res.locals.path = req.path;
   // How long this device may sit unused: the page needs it too, to check when it comes back from the background.
   res.locals.lockAfterMs = device.lockAfterMs(req);
@@ -110,8 +130,9 @@ app.use((req, res, next) => {
   const lockAfter = res.locals.lockAfterMs;
   if (!s.locked && lockAfter && s.seenAt && now - s.seenAt > lockAfter) s.locked = true;
   if (!s.locked) {
-    // The page's own background check for new alerts is not the person doing something: it must not hold off the lock.
-    if (req.path !== '/pulse') s.seenAt = now;
+    // What the page does by itself (checking for new alerts, re-attaching this device's alerts) is not the person doing
+    // something: it must not hold off the lock. A complaint page leaves no last-seen time either.
+    if (req.path !== '/pulse' && req.path !== '/push/attach' && !complaintPage(req)) s.seenAt = now;
     if (s.fresh && req.method === 'GET') { res.locals.fresh = true; delete s.fresh; }
     return next();
   }

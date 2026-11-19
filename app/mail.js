@@ -2,6 +2,7 @@
 const nodemailer = require('nodemailer');
 const config = require('./config');
 const db = require('./db');
+const access = require('./permissions');
 const { localDate, localHour } = require('./util');
 
 let transport = null;
@@ -57,6 +58,13 @@ function notifyTraining({ id, name, description, wantsContact, isPrivate }) {
  * Complaint notices go out once a day at a fixed hour and carry only a count,
  * so the arrival time of the email says nothing about when (or by whom) a
  * complaint was written.
+ *
+ * The count is by date: each notice covers the whole days since the last one, up to and including yesterday. Nothing is
+ * marked on a complaint when its notice goes, so the database never shows whether one arrived before or after that hour.
+ *
+ * Every office is counted. An office's notice goes to the people there who may read its complaints and have an email
+ * address on their account, and to those who read complaints for every office. The COMPLAINT_NOTIFY_TO mailbox is the
+ * first office's. Each address gets one email with its own total. Returns how many complaints were counted.
  */
 async function runComplaintDigest(now = new Date()) {
   const today = localDate(now);
@@ -66,14 +74,35 @@ async function runComplaintDigest(now = new Date()) {
   db.prepare(
     "INSERT INTO meta (key, value) VALUES ('complaint_digest_date', ?) " +
     'ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(today);
-  const { n } = db.prepare('SELECT COUNT(*) AS n FROM complaints WHERE notified = 0 AND branch_id = (SELECT MIN(id) FROM branches)').get();
-  if (n === 0) return 0;
-  db.prepare('UPDATE complaints SET notified = 1 WHERE notified = 0').run();
-  await send(config.complaintNotifyTo,
-    n === 1 ? 'A new complaint was submitted' : `${n} new complaints were submitted`,
-    `${n === 1 ? 'A new anonymous complaint is' : n + ' new anonymous complaints are'} waiting for review.\n\n` +
-    `${config.baseUrl}/admin/complaints\n`);
-  return n;
+  const offices = new Map(db.prepare('SELECT branch_id, COUNT(*) AS n FROM complaints WHERE created_date >= ? AND created_date < ? GROUP BY branch_id')
+    .all(last ? last.value : '', today).map((r) => [r.branch_id, r.n]));
+  if (offices.size === 0) return 0;
+  const total = [...offices.values()].reduce((a, b) => a + b, 0);
+  const home = db.prepare('SELECT MIN(id) AS id FROM branches').get().id;
+  // Which offices each address hears about ('all' for someone who reads every office's complaints).
+  const reach = new Map();
+  const add = (address, office) => {
+    const key = String(address).trim().toLowerCase();
+    if (!key) return;
+    const r = reach.get(key) || { address: String(address).trim(), offices: new Set() };
+    r.offices.add(office); reach.set(key, r);
+  };
+  for (const address of config.complaintNotifyTo) add(address, home);
+  // With no mail server there is nobody to work out: the people are only looked up when a notice can actually go.
+  const people = transport ? db.prepare("SELECT * FROM users WHERE active = 1 AND email IS NOT NULL AND email <> ''").all() : [];
+  for (const u of people) {
+    const reviewer = access.loadAccess(u);
+    if (access.can(reviewer, 'complaints.review')) add(u.email, reviewer.allBranches ? 'all' : u.branch_id);
+  }
+  for (const r of reach.values()) {
+    const n = r.offices.has('all') ? total : [...r.offices].reduce((sum, office) => sum + (offices.get(office) || 0), 0);
+    if (n === 0) continue;
+    await send([r.address],
+      n === 1 ? 'A new complaint was submitted' : `${n} new complaints were submitted`,
+      `${n === 1 ? 'A new anonymous complaint is' : n + ' new anonymous complaints are'} waiting for review.\n\n` +
+      `${config.baseUrl}/admin/complaints\n`);
+  }
+  return total;
 }
 
 function startComplaintDigest() {

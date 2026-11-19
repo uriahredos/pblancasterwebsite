@@ -18,9 +18,11 @@
     return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   }
   function post(url, data) {
-    data = data || {}; data._csrf = csrf;
-    return fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(data) })
-      .then(function (r) { return r.json().catch(function () { return { ok: false }; }); });
+    // On a sign-in page that has sat open for hours, site.js first collects a fresh form token (see there).
+    return (window.portalFreshToken ? window.portalFreshToken() : Promise.resolve()).then(function () {
+      data = data || {}; data._csrf = (document.querySelector('meta[name="csrf"]') || {}).content || csrf;
+      return fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(data) });
+    }).then(function (r) { return r.json().catch(function () { return { ok: false }; }); });
   }
   function show(msg) { if (errorBox) { errorBox.textContent = msg; errorBox.hidden = !msg; } }
   function busy(btn, on, label) { if (!btn) return; btn.disabled = on; if (label) btn.textContent = label; }

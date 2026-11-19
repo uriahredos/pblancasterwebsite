@@ -173,6 +173,12 @@ function requireEveryBranch(perm) {
 function newCsrfToken() {
   return crypto.randomBytes(24).toString('hex');
 }
+/** The form token for this session, made the first time a page with a form needs one. */
+function formToken(req, res) {
+  if (!req.session.csrf) req.session.csrf = newCsrfToken();
+  res.locals.csrf = req.session.csrf;
+  return req.session.csrf;
+}
 
 function verifyCsrf(req, res, next) {
   const sent = String((req.body && req.body._csrf) || '');
@@ -208,5 +214,5 @@ function flash(req, type, text) {
 
 module.exports = {
   hashPassword, checkLogin, tempPassword, tempExpired, issueTemp, createUser, loadUser,
-  requireLogin, requirePerm, requireEveryBranch, forbidden, newCsrfToken, verifyCsrf, flash, endSessions, unlock,
+  requireLogin, requirePerm, requireEveryBranch, forbidden, newCsrfToken, formToken, verifyCsrf, flash, endSessions, unlock,
 };

@@ -154,14 +154,14 @@ Totals for the last seven days: taken, returned, requested, by person, most-take
 
 ## Forgot password
 
-The sign-in page has a **Forgot your password?** link. It emails a link that works once and expires in an hour. It needs email set up on the site and an email address on the person's account; people add their own on the Change password page, or an admin adds it on their Edit page. Without email set up, the page tells people to ask an admin.
+The sign-in page has a **Forgot your password?** link. It emails a link that works once and expires in an hour. It needs email set up on the site and an email address on the person's account; people add their own on the Change password page (once they have replaced a temporary password with their own), or an admin adds it on their Edit page. Without email set up, the page tells people to ask an admin.
 
 ## Activity log (`/admin/activity`)
 
 Linked from the Users page. Records who added or edited a person, reset a password, disabled an account, changed a profile's tick-boxes (listing what was added and removed), imported the catalog, changed stock, ran or downloaded a backup, or added a training session. Needs the **See the activity log** permission. What a complaint says, who sent it and replies to it are never recorded there; the only complaint event logged is that one was deleted, and by whom.
 
 - **Spreadsheet exports** are recorded: who took which file and how many rows. The export of sales leads (every customer's contact details) also asks for the password again if it was not typed in the last ten minutes, like a backup.
-- **Sign-in history** is recorded too: each sign-in with how it was done (password, or Face ID / fingerprint) and on what kind of device; a wrong password against a real account, with the address it came from; a wrong password at the lock screen or on a form that asks for it again; the pause after ten wrong passwords; a refused expired temporary password; and changes of password or email address. Unlocks are not recorded. A wrong try against a username that does not exist is not recorded either, because what was typed there may well be a password. Passwords are never recorded.
+- **Sign-in history** is recorded too: each sign-in with how it was done (password, or Face ID / fingerprint), on what kind of device and the address it came from; a wrong password against a real account, with the address it came from; a wrong password at the lock screen or on a form that asks for it again; the pause after ten wrong passwords; a refused expired temporary password; and changes of password or email address. Unlocks are not recorded. A wrong try against a username that does not exist is not recorded either, because what was typed there may well be a password. Passwords are never recorded.
 - **Only people who look after every office see the sign-in entries** (the **Sign-ins** button). An office admin does not get a list of who signed in when: next to the date on an anonymous complaint, that would be a hint about who sent it.
 
 ## Certifications (`/admin/certs`)
@@ -238,6 +238,7 @@ Something one person asks another to do, with an optional due date.
 Alerts that pop up on a phone or computer even when the site is closed. Reached from **Notification settings** at the bottom of the bell, or at the bottom of Alerts or More on a phone.
 
 - **Each person turns alerts on per device** with "Turn on alerts on this device"; the phone or browser asks them to allow notifications. The page lists their devices and can send a test alert.
+- **A device gets alerts only while it is signed in.** Signing out stops them on that device at once. So does anything that signs the person out: a disabled account, an admin resetting the password, being stood down as a corporate admin, "sign out everyone", or 30 days without opening the site. When the same person signs in on that device again, their alerts carry on by themselves, with nothing to press. Someone else who signs in on that device does not get them, and does not get the previous person's either, unless they turn alerts on for themselves there.
 - **iPhone and iPad**: alerts only work once the site has been added to the Home Screen (Safari > Share > Add to Home Screen) and opened from there. Android and computers work from the browser.
 - **What sends an alert**
 
@@ -315,7 +316,9 @@ The import file contains people's names and emails, so it is not kept in the cod
 Set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` and `MAIL_FROM` to an account the site may send from, then:
 
 - `NOTIFY_TO`: who is emailed about each new **parts request**, **training request** and **low stock** crossing. Take and return entries do not send email. A training request marked private sends only "a private request was submitted", without the text or the name.
-- `COMPLAINT_NOTIFY_TO`: who gets the complaint notice. This is sent **once a day** (at `COMPLAINT_DIGEST_HOUR`, default 5 pm) and says only how many new complaints there are. It is not sent the moment a complaint arrives, because the arrival time could point to who wrote it.
+- **The complaint notice** is sent **once a day** (at `COMPLAINT_DIGEST_HOUR`, default 5 pm) and says only how many new complaints there are. It is not sent the moment a complaint arrives, because the arrival time could point to who wrote it. For the same reason it counts whole days: a complaint is in the notice of the day after it was written.
+  - Every office is counted. An office's notice goes to the people in that office whose profile lets them read complaints and who have an email address on their account, and to people who read complaints for every office. Each person gets one email with their own total.
+  - `COMPLAINT_NOTIFY_TO`: an extra mailbox for the first office's notice.
 
 With no SMTP settings the site works normally and skips email.
 
@@ -350,7 +353,7 @@ A profile is a set of permissions. Each person has exactly one profile, and what
 - **Edit**: name, username, email and profile.
 - **Managers**: when a person's profile is a "sees only their own people" profile, their Edit page lists everyone with tick-boxes. Tick the people they manage. The Users list shows who manages whom.
 - **Reset password**: a new temporary password, shown once. People can also use "Forgot your password?" if email is set up.
-- **Disable**: signed out at once and cannot sign in; their past submissions stay.
+- **Disable**: signed out at once and cannot sign in; alerts to their phone or computer stop; their past submissions stay.
 
 ### The master account
 
@@ -369,7 +372,9 @@ What the site does:
 
 - The complaint is stored with a category, the text, an optional "when/where", and the **date**. It is not stored with a user, an IP address, a device or a time of day. The table has no column for any of those.
 - Complaint ids are random and the table is not kept in arrival order, so a complaint cannot be lined up against the parts log or sign-in times.
-- Complaint pages are left out of the server's request log.
+- Complaint pages are left out of the server's request log. So are the checks every open page makes in the background, so a request that is missing from the log says nothing about what it was.
+- Opening the form, sending a complaint or checking on one leaves the person's sign-in record exactly as it was: no "last seen" time, no new expiry, no page name. Someone who follows a link to the form while signed out lands on the home page after signing in, like anyone else, and their own browser takes them on to the form; the site keeps no note of where they were heading.
+- The once-a-day notice counts by date and marks nothing on the complaint, so nothing stored shows whether a complaint arrived before or after that day's notice.
 - The tracking code is shown once and only a scrambled (hashed) copy is kept. Nobody, including an admin with the database file, can look up a code. A lost code cannot be recovered.
 - Checking a code does not record who checked.
 - A cap of 5 complaints per account per day stops flooding. The count is held in memory only and is never saved.
@@ -507,19 +512,19 @@ One site for every office. Each person belongs to one office; everything that ex
 - **Announcements** go to the office they were posted in. People who can see every office can choose **Every office** when posting.
 - **Complaints** record which office they came from (still nothing about who sent them) and go to that office's reviewers.
 - **Profiles (permission sets), backups and the Forms history import** cover the whole site, so they are only for people who can see every office.
-- **Email**: the `NOTIFY_TO` and `COMPLAINT_NOTIFY_TO` mailboxes are the first office's. Other offices rely on the site's own alerts (the bell and push alerts) for new requests, truck problems and low stock.
+- **Email**: the `NOTIFY_TO` and `COMPLAINT_NOTIFY_TO` mailboxes are the first office's. Other offices rely on the site's own alerts (the bell and push alerts) for new requests, truck problems and low stock. The daily complaint notice is different: every office's reviewers get it, at the email address on their own account.
 
 
 ## The lock, and Face ID / fingerprint sign-in
 
 - **A page left open does not stay readable.** Once the site has locked, a page that is still on the screen goes to the lock screen by itself (within seconds of the time running out, and even with no connection), instead of waiting for the next tap.
 - **Signing out leaves nothing behind on the device:** half-written forms saved on it are removed, and the browser is told to drop the photos and files it kept from the site.
-- **The site locks itself** when it is closed and reopened, and when it is left unused: after 10 minutes on a phone or tablet (`LOCK_AFTER_MINUTES_PHONE`) and 20 minutes on a computer (`LOCK_AFTER_MINUTES_DESKTOP`); 0 switches that timer off, closing still locks. A device counts as a phone or tablet when its browser says so or when it has a touch screen and no mouse (which is how an iPad is recognized); anything that is not plainly a desk computer gets the shorter time. Corporate > Security check shows both times and which kind the device in front of you counts as. A locked site shows only a lock screen with the person's name: nothing else opens, and forms sent while locked are not accepted, until they confirm who they are.
+- **The site locks itself** when it is closed and reopened, and when it is left unused: after 10 minutes on a phone or tablet (`LOCK_AFTER_MINUTES_PHONE`) and 20 minutes on a computer (`LOCK_AFTER_MINUTES_DESKTOP`); 0 switches that timer off, closing still locks. Only what a person does counts as using it: a key, a tap or click, the mouse wheel, a finger on the screen. A page that moves by itself (the banner on the home page) or checks for news in the background does not keep the site open. A device counts as a phone or tablet when its browser says so or when it has a touch screen and no mouse (which is how an iPad is recognized); anything that is not plainly a desk computer gets the shorter time. Corporate > Security check shows both times and which kind the device in front of you counts as. A locked site shows only a lock screen with the person's name: nothing else opens, and forms sent while locked are not accepted, until they confirm who they are.
 - **To get back in**: Face ID, a fingerprint, Windows Hello or the device's screen-lock code if that is set up on the device, or the password. On a device where it is set up the phone asks for the face or fingerprint straight away.
 - **Setting it up**: each person does it once per phone or computer under **Password and Face ID** (More on a phone, their name at the top on a computer), with **Set up on this device**. The home page offers it until they have. Devices are listed there and can be removed.
 - **Signing in from scratch** (after Sign out, or on the sign-in page) also works with **Sign in with Face ID or fingerprint**, with no username or password typed.
 - The face or fingerprint never leaves the device and the site never sees it. The device holds a key made for this site alone (a "passkey") and the site stores only the matching public key. It works only on the site's real address, so a look-alike site cannot use it.
-- **Lost phone**: an admin presses **Reset password** for that person. That signs them out everywhere and removes all their Face ID / fingerprint devices; they set it up again after signing in with the temporary password.
+- **Lost phone**: an admin presses **Reset password** for that person. That signs them out everywhere, stops alerts going to their devices, and removes all their Face ID / fingerprint devices; they set it up again after signing in with the temporary password.
 - People stay remembered on a device for 30 days, so the lock screen knows who they are; **Sign out** on the lock screen is for a shared device.
 - Short trips out of the site (taking a photo for a form, checking a text) do not lock it unless they last longer than the limit. Unsent parts, training and inspection forms keep their draft.
 - Changing the site's address (for example to a custom domain) means everyone sets up Face ID again; passwords are not affected.
@@ -527,12 +532,15 @@ One site for every office. Each person belongs to one office; everything that ex
 ## Security notes
 
 - **Signing in**: passwords are stored only as bcrypt hashes. Wrong guesses are limited two ways: 10 per connection per 15 minutes, and 10 per username per 15 minutes wherever they come from. Resetting the password by email lifts the wait.
-- **Signed out everywhere**: changing a password signs that person out on every other device; an admin resetting a password or disabling an account signs them out on all of them.
+- **Signed out everywhere**: changing a password signs that person out on every other device; an admin resetting a password or disabling an account signs them out on all of them. Push alerts stop on every device that was signed out.
 - **Sessions** last 30 days on a device, in a cookie the page's scripts cannot read, sent only over HTTPS in production.
+- **Visitors who are not signed in** leave nothing in the database, except on the pages that have a form for them (sign-in, forgot password, a working reset link), and that record is dropped after two hours. A sign-in page that has sat open longer than that still works: it collects what it needs again when the form is sent.
+- **A flood from one address**: visitors who are not signed in get 600 requests per address in five minutes (sixty times the sign-in limit, `LOGIN_RATE_LIMIT`), which is enough for a whole office to sign in several times over; after that they are asked to wait. People who are signed in are never counted, and neither is the hosting company's health check.
+- **The reset email** can only be set or changed by someone who has already replaced their temporary password with their own.
 - **Every form** carries a one-time-per-session token, so another website cannot submit forms as a signed-in person.
 - **Every page** except sign-in and password reset needs a sign-in; every management page and action checks the profile's permission, and a manager's reach stops at their own people.
 - **Uploads** are stored outside the public folder under random names, checked to really be images (or a PDF for newsletters), and only served to people allowed to see the entry they belong to.
-- **Push alerts** are only ever sent to Google's, Apple's, Mozilla's or Microsoft's alert services.
+- **Push alerts** are only ever sent to Google's, Apple's, Mozilla's or Microsoft's alert services, and only for a device that is still signed in.
 - **Password-reset links** work once, expire in an hour, are stored hashed, and are left out of the server log.
 - **The lock**: see above. A phone left on a desk or a browser left open does not leave the site open.
 - Not included: a required second step on top of the password. Face ID / fingerprint is offered, not forced, so the site is still as strong as people's passwords.

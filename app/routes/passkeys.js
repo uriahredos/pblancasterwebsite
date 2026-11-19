@@ -13,6 +13,7 @@ const config = require('../config');
 const auth = require('../auth');
 const activity = require('../activity');
 const { clean } = require('../util');
+const { clientIp } = require('../clientip');
 
 const router = express.Router();
 const MAX_PER_PERSON = 10;
@@ -131,19 +132,21 @@ router.post('/passkey/auth/verify', limiter, async (req, res, next) => {
     // The device is right, but the account is waiting on a temporary password that has since expired.
     if (auth.tempExpired(row)) return fail(res, 401, 'The temporary password on this account has expired, so it needs new sign-in details. Ask your admin for them.');
 
-    const target = require('./auth').safeNext(req.body.next);
+    const { safeNext, landing } = require('./auth');
+    const target = safeNext(req.body.next);
     if (req.user) {                                   // unlocking a session that already knows who this is
       auth.unlock(req);
-      return res.json({ ok: true, next: target });
+      return res.json({ ok: true, next: landing(target) });
     }
     req.session.regenerate((err) => {                 // signing in from scratch
       if (err) return next(err);
       req.session.userId = row.user_id;
       req.session.csrf = auth.newCsrfToken();
-      req.session.afterPassword = target;
+      // Kept only when a password change comes first, and never a complaint page (see landing in routes/auth.js).
+      if (row.must_change_password && landing(target) === target) req.session.afterPassword = target;
       auth.unlock(req);
-      activity.log({ id: row.user_id }, 'Signed in', `With Face ID or a fingerprint (${row.device || 'a device'}), on ${require('../device').kind(req) === 'phone' ? 'a phone or tablet' : 'a computer'}`);
-      res.json({ ok: true, next: row.must_change_password ? '/account/password' : target });
+      activity.log({ id: row.user_id }, 'Signed in', `With Face ID or a fingerprint (${row.device || 'a device'}), on ${require('../device').kind(req) === 'phone' ? 'a phone or tablet' : 'a computer'}, from ${clientIp(req)}`);
+      res.json({ ok: true, next: row.must_change_password ? '/account/password' : landing(target) });
     });
   } catch (e) { next(e); }
 });
