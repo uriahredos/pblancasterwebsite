@@ -9,6 +9,21 @@
     <% if (c.fix) { %><p class="hint sec-fix"><strong>What to do:</strong> <%= c.fix %></p><% } %>
     <% if (c.code) { %><p class="code sec-key"><%= c.code %></p><% } %>
     <% if (c.after) { %><p class="hint"><%= c.after %></p><% } %>
+    <% if (c.keyBox && proved) { %>
+    <form method="post" action="/admin/security/check-key" class="filters" id="key-copy" data-no-live autocomplete="off">
+      <input type="hidden" name="_csrf" value="<%= csrf %>">
+      <label class="grow">Paste your saved copy of the key <span class="hint">The site only answers yes or no. What you paste is not kept or shown again.</span>
+        <input name="key" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" required></label>
+      <div class="filter-actions"><button class="btn small" type="submit">Check</button></div>
+    </form>
+    <% } else if (c.keyBox) { %>
+    <form method="post" action="/account/confirm" class="filters" id="key-copy" data-no-live>
+      <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="next" value="/admin/security#key-copy">
+      <label class="grow">Type your password to check a saved copy of the key
+        <input name="password" type="password" autocomplete="current-password" required></label>
+      <div class="filter-actions"><button class="btn small" type="submit">Continue</button></div>
+    </form>
+    <% } %>
   </li>
 <% }) %>
 </ul>

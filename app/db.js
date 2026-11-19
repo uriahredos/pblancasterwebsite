@@ -9,6 +9,8 @@ fs.mkdirSync(path.join(config.dataDir, 'uploads'), { recursive: true });
 const { db, status: encryption } = require('./dbfile').open(config.dataDir);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
+// A new version of the code keeps a checked copy of the database, as the last version left it, before it makes any of the changes below.
+require('./dbfile').beforeUpdate(db, config.dataDir, process.env.RENDER_GIT_COMMIT, require('./util').localDate());
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (

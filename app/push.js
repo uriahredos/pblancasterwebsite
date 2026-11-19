@@ -38,8 +38,10 @@ const KINDS = [
   { key: 'parts_request', perm: 'parts.manage', group: 'For what you manage', label: 'Someone requests parts' },
   { key: 'truck_problem', perm: 'inspections.view', group: 'For what you manage', label: 'A truck problem is reported' },
   { key: 'low_stock', perm: 'stock.manage', group: 'For what you manage', label: 'A part drops to or below its minimum' },
+  // Backups cover every office, so this one is only offered to people who see them all.
+  { key: 'backup_failed', perm: 'backups', everyOffice: true, group: 'For what you manage', label: 'A nightly backup does not work' },
 ];
-const kindsFor = (user) => KINDS.filter((k) => !k.perm || access.can(user, k.perm));
+const kindsFor = (user) => KINDS.filter((k) => (!k.perm || access.can(user, k.perm)) && (!k.everyOffice || user.allBranches));
 
 /** The signing keys are made once and kept in the database, so there is nothing to configure. */
 let keys = null;
