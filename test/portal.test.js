@@ -5366,6 +5366,554 @@ test('the Feed page: the activity feed in full, with shout-outs and past events,
 // .
 // .
 // -- review: backups, restore and the key --
+// A running copy of the site on a lab folder (see encryptionLab), and a client that talks to it.
+async function labSite(L, settings = {}) {
+  const { spawn } = require('child_process'); const net = require('net');
+  const port = await new Promise((resolve) => { const s = net.createServer(); s.listen(0, () => { const p = s.address().port; s.close(() => resolve(p)); }); });
+  let log = '';
+  const child = spawn(process.execPath, ['app/server.js'], { cwd: L.root, env: L.env({ PORT: String(port), SESSION_SECRET: 'x'.repeat(40), ...settings }), stdio: ['ignore', 'pipe', 'pipe'] });
+  child.stdout.on('data', (d) => { log += d; }); child.stderr.on('data', (d) => { log += d; });
+  const origin = `http://localhost:${port}`;
+  const get = (url) => fetch(origin + url, { redirect: 'manual' }).then(async (r) => ({ status: r.status, text: await r.text(), headers: r.headers }));
+  for (let i = 0; i < 100; i++) { try { await get('/healthz'); break; } catch (e) { await new Promise((r) => setTimeout(r, 100)); } }
+  const stop = (signal = 'SIGTERM') => new Promise((r) => { if (child.exitCode !== null || child.signalCode) return r(child.exitCode); child.once('exit', (code) => r(code)); child.kill(signal); });
+  return { origin, get, log: () => log, stop };
+}
+class LabClient extends Client {
+  constructor(origin) { super(); this.origin = origin; }
+  async req(method, url, body) {
+    const res = await fetch(this.origin + url, { method, body, redirect: 'manual', headers: this.cookie ? { cookie: this.cookie } : {} });
+    const set = res.headers.getSetCookie();
+    if (set.length) this.cookie = set.map((c) => c.split(';')[0]).join('; ');
+    return { status: res.status, location: res.headers.get('location'), text: await res.text(), headers: res.headers };
+  }
+}
+// The last line a lab run printed, as JSON.
+const labJson = (r) => { assert.ok(r.ok, r.err); return JSON.parse(r.out.trim().split('\n').pop()); };
+// A lab run that stops itself dead, the way a deploy or a crash stops the site, just before its nth file operation.
+const STOP_AT = (n, then) => `const fs = require('fs'); let seen = 0;
+  for (const op of ['copyFileSync', 'renameSync', 'rmSync', 'writeFileSync']) { const real = fs[op]; fs[op] = (...a) => { seen += 1; if (seen === ${n}) process.kill(process.pid, 'SIGKILL'); return real(...a); }; }
+  ${then}; console.log('FINISHED');`;
+
+test('backups: a copy counts only once it has been opened and checked; a failed night leaves nothing behind, is tried again and is reported; sessions are left out', async () => {
+  const backup = require('../app/backup'); const dbfile = require('../app/dbfile'); const push = require('../app/push');
+  const dir = backup.backupDir; const had = new Set(fs.readdirSync(dir));
+  const owner = await loggedIn('owner'); const tech = await loggedIn('tech1');
+  const page = '/admin/backups';
+  const bellOf = (html) => (/<details class="bell"[\s\S]*?<\/details>/.exec(html) || [''])[0];
+  const checkLine = () => require('../app/routes/security').checks({ headers: {}, ip: '203.0.113.9', socket: {} }).find((c) => /^A recent backup exists/.test(c.title));
+  const pushed = []; push.setSender(async (sub, payload) => { if (/\/backup-/.test(sub.endpoint)) pushed.push({ to: sub.user_id, ...JSON.parse(payload) }); });
+  const subscribe = (username) => db.prepare('INSERT OR REPLACE INTO push_subscriptions (user_id, endpoint, p256dh, auth, device, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(userId(username), `https://fcm.googleapis.com/fcm/send/backup-${username}`, 'k', 'a', 'Test phone', new Date().toISOString());
+  subscribe('owner'); subscribe('tech1'); subscribe('admin');               // admin: runs an office, but has no backups permission
+  db.prepare("DELETE FROM meta WHERE key IN ('backup_alert_day')").run();
+
+  try {
+    // A night the old way of working would have called done: an empty file under tonight's name. It is not a backup, so one is made.
+    const night = new Date('2031-03-10T12:00:00Z'), next = new Date('2031-03-11T12:00:00Z');
+    fs.writeFileSync(path.join(dir, 'portal-2031-03-10.db'), '');
+    assert.equal(await backup.nightly(night), 'portal-2031-03-10.db');
+    assert.ok(fs.statSync(path.join(dir, 'portal-2031-03-10.db')).size > 0);
+    assert.equal(dbfile.inspect(path.join(dir, 'portal-2031-03-10.db'), '').fault, null);
+    assert.equal(await backup.nightly(night), null);                          // a good one is there: once a night is enough
+    assert.equal(backup.failing(), false);
+    assert.equal(checkLine().ok, true); assert.match(checkLine().detail, /portal-2031-03-10\.db, today\. It opens with the key in use and passes its check/);
+
+    // The copy leaves the sign-in sessions out; the site's own are untouched.
+    const sid = db.prepare("SELECT sid FROM sessions WHERE json_extract(data, '$.userId') = ?").get(userId('owner')).sid;
+    const live = db.prepare('SELECT COUNT(*) n FROM sessions').get().n;
+    assert.ok(live > 0);
+    const copy = dbfile.connect(path.join(dir, 'portal-2031-03-10.db'), '', { readonly: true });
+    assert.equal(copy.prepare('SELECT COUNT(*) n FROM sessions').get().n, 0);
+    assert.equal(copy.prepare('SELECT COUNT(*) n FROM users').get().n, db.prepare('SELECT COUNT(*) n FROM users').get().n);
+    copy.close();
+    assert.equal(fs.readFileSync(path.join(dir, 'portal-2031-03-10.db')).includes(sid), false);
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM sessions').get().n, live);
+    assert.equal((await owner.get('/')).status, 200);                         // still signed in
+
+    // A night that fails (here the copy cannot be written): no file is left under the night's name, and it says so.
+    const inTheWay = path.join(dir, 'portal-2031-03-11.db.partial');
+    fs.mkdirSync(path.join(inTheWay, 'x'), { recursive: true });
+    await assert.rejects(backup.nightly(next));
+    assert.equal(fs.existsSync(path.join(dir, 'portal-2031-03-11.db')), false);
+    assert.equal(backup.failing(), true);
+    const err = JSON.parse(db.prepare("SELECT value FROM meta WHERE key = 'backup_last_error'").get().value);
+    assert.equal(err.kind, 'nightly'); assert.ok(err.at && err.why);
+    await assert.rejects(backup.nightly(next));                               // the next tick tries again, rather than calling it done
+    await new Promise((r) => setTimeout(r, 30));
+    // The people who hold backups are told once, on their phones and on the bell; nobody else is.
+    assert.deepEqual(pushed.map((p) => [p.to, p.tag, p.url]), [[userId('owner'), 'backup_failed', '/admin/backups']]);
+    assert.match(bellOf((await owner.get('/')).text), /href="\/admin\/backups"><span class="bell-n">1<\/span><span>backup did not work<\/span>/);
+    assert.doesNotMatch(bellOf((await tech.get('/')).text), /backup/);
+    assert.doesNotMatch(bellOf((await (await loggedIn('admin')).get('/')).text), /backup did not work/);
+    assert.match((await owner.get(page)).text, /<strong>The last backup did not work<\/strong>/);
+    const line = checkLine();
+    assert.equal(line.ok, false); assert.match(line.detail, /^The last backup did not work \(.+\): .+ The site tries again every half hour\. The newest good backup is portal-2031-03-10\.db/);
+    assert.match((await owner.get('/settings/notifications')).text, /value="backup_failed" checked/);
+    assert.doesNotMatch((await tech.get('/settings/notifications')).text, /backup_failed/);
+
+    // The cause goes away: the next tick makes the copy, and the warnings clear.
+    fs.rmSync(inTheWay, { recursive: true, force: true });
+    assert.equal(await backup.nightly(next), 'portal-2031-03-11.db');
+    assert.equal(backup.failing(), false);
+    assert.equal(JSON.parse(db.prepare("SELECT value FROM meta WHERE key = 'backup_last_good'").get().value).name, 'portal-2031-03-11.db');
+    assert.doesNotMatch(bellOf((await owner.get('/')).text), /backup did not work/);
+    assert.doesNotMatch((await owner.get(page)).text, /The last backup did not work/);
+    assert.equal(checkLine().ok, true);
+
+    // A backup that does not open is shown as such, on the Backups page and on the Security check.
+    fs.writeFileSync(path.join(dir, 'portal-2031-03-12.db'), require('crypto').randomBytes(8192));
+    assert.match((await owner.get(page)).text, /portal-2031-03-12\.db <span class="tag overdue">Does not open with the key in use<\/span>/);
+    assert.equal(checkLine().ok, false); assert.match(checkLine().detail, /The newest backup, portal-2031-03-12\.db, does not open with the key in use\. The newest that opens is portal-2031-03-11\.db/);
+    assert.match((await owner.get(page)).text, /kept apart: the newest 5\./);
+  } finally {
+    for (const f of fs.readdirSync(dir)) if (!had.has(f)) fs.rmSync(path.join(dir, f), { recursive: true, force: true });
+    db.prepare("DELETE FROM meta WHERE key IN ('backup_last_error', 'backup_alert_day')").run();
+    db.prepare("DELETE FROM push_subscriptions WHERE endpoint LIKE '%/backup-%'").run();
+    push.setSender(async () => {});
+  }
+
+  // Each kind of copy has its own limit, and only copies that open count towards it. A separate site, keeping 3 nightly copies.
+  const L = encryptionLab();
+  assert.ok(L.run(L.SEED).ok);                                                // one "Back up now" copy
+  const names = () => fs.readdirSync(path.join(L.dir, 'backups')).sort();
+  const day = (n) => `new Date('2031-05-${String(n).padStart(2, '0')}T12:00:00Z')`;
+  const NIGHTS = (list) => `const b = require('./app/backup'); (async () => { for (const d of [${list.map(day).join(', ')}]) await b.runBackup({ now: d }); console.log(JSON.stringify(b.listBackups().map((x) => x.name))); })();`;
+  assert.ok(L.run(NIGHTS([1, 2, 3]), { BACKUP_KEEP: '3' }).ok);
+  // Three failed nights the old way (empty files), one file of rubbish, then a good night.
+  for (const n of [4, 5, 6]) fs.writeFileSync(path.join(L.dir, 'backups', `portal-2031-05-0${n}.db`), '');
+  fs.writeFileSync(path.join(L.dir, 'backups', 'portal-2031-05-07.db'), require('crypto').randomBytes(4096));
+  fs.writeFileSync(path.join(L.dir, 'backups', 'portal-2031-05-08.db.partial'), 'half a copy'); fs.writeFileSync(path.join(L.dir, 'backups', 'portal-2031-05-08.db.partial-journal'), 'x');
+  assert.ok(L.run(NIGHTS([8]), { BACKUP_KEEP: '3' }).ok);
+  const real = names().filter((n) => /^portal-2031-05-\d\d\.db$/.test(n) && dbfile.inspect(path.join(L.dir, 'backups', n), '').fault === null);
+  assert.deepEqual(real, ['portal-2031-05-02.db', 'portal-2031-05-03.db', 'portal-2031-05-08.db']);   // the newest three good ones; the empty files pushed nothing out
+  assert.doesNotMatch(names().join(' '), /partial|portal-2031-05-0[1456]\.db/);  // unfinished copies and empty files are cleared at start-up
+  // Seven presses of "Back up now": the newest five of those are kept, and the nightly copies are all still there.
+  assert.ok(L.run(`const b = require('./app/backup'); (async () => { for (let i = 1; i <= 7; i++) await b.runBackup({ manual: true, now: new Date(Date.UTC(2031, 4, 9, 10, 0, i)) }); })();`, { BACKUP_KEEP: '3' }).ok);
+  assert.equal(names().filter((n) => /-\d{6}\.db$/.test(n)).length, 5);
+  assert.deepEqual(names().filter((n) => /^portal-2031-05-\d\d\.db$/.test(n) && n !== 'portal-2031-05-07.db'), real);
+});
+
+test('backups: after a key is set or changed each stored copy is converted as a copy and swapped in, so a start that is cut short cannot leave a damaged backup', async () => {
+  const dbfile = require('../app/dbfile');
+  const KEY = 'convert-key-0123456789-abcdefgh', KEY2 = 'convert-key-two-0123456789-abcd';
+  const L = encryptionLab();
+  assert.ok(L.run(L.SEED).ok);
+  assert.ok(L.run(`require('./app/backup').runBackup({ now: new Date('2031-06-01T12:00:00Z') })`).ok);
+  assert.equal(L.backups().length, 2);
+  const made = Object.fromEntries(L.backups().map((b) => [b, fs.statSync(b).mtimeMs]));
+  const opens = (f, k) => dbfile.isPlain(f) === !k && dbfile.inspect(f, k, { full: true }).fault === null;
+  // Bringing the stored copies into line with the key, as a start does, but stopped dead before the nth file operation.
+  const ALIGN = `const d = require('./app/dbfile'); const dir = process.env.DATA_DIR + '/backups';
+    console.log(JSON.stringify(d.alignCopies(fs.readdirSync(dir).filter((f) => d.BACKUP.test(f)).map((f) => dir + '/' + f), { encrypted: true, usingOldKey: false })))`;
+
+  // The first start with a key. Whatever the moment it stops, every backup is either still the ordinary file it was or
+  // already a whole encrypted one: never something that opens with neither.
+  let working = 0;
+  for (let n = 5; n <= 9; n++) {
+    if (/FINISHED/.test(L.run(STOP_AT(n, ALIGN), { DB_KEY: KEY }).out)) break;
+    for (const b of L.backups()) assert.ok(opens(b, '') || opens(b, KEY), `after a stop at step ${n}, ${path.basename(b)} opens with neither`);
+    // The rewriting is done to a working copy beside the backup; the backup itself is only ever swapped whole.
+    if (fs.readdirSync(path.join(L.dir, 'backups')).some((f) => f.endsWith('.db.converting'))) working += 1;
+  }
+  assert.ok(working >= 2);
+  // The start that is allowed to finish: both under the key, nothing left lying about, and each still dated the night it was made.
+  const s = L.state({ DB_KEY: KEY });
+  assert.equal(s.e.encrypted, true); assert.equal(s.aligned.plain + s.aligned.foreign, 0);
+  for (const b of L.backups()) { assert.ok(opens(b, KEY), path.basename(b)); assert.ok(Math.abs(fs.statSync(b).mtimeMs - made[b]) < 2); }
+  assert.deepEqual(fs.readdirSync(path.join(L.dir, 'backups')).filter((f) => !/^portal-[0-9-]+\.db$/.test(f)), []);
+
+  // A copy that the key does not open is reported as that, not counted as encrypted.
+  fs.writeFileSync(path.join(L.dir, 'backups', 'portal-2031-06-03.db'), require('crypto').randomBytes(8192));
+  const CHECK = `require('./app/app'); const list = require('./app/routes/security').checks({ headers: {}, ip: '203.0.113.9', socket: {} }); console.log(JSON.stringify(list.find((c) => c.title === 'The database is encrypted')));`;
+  const item = labJson(L.run(CHECK, { DB_KEY: KEY }));
+  assert.equal(item.ok, false); assert.match(item.detail, /2 of 3 backups are encrypted\. 1 does not open with the key in use\./);
+  fs.rmSync(path.join(L.dir, 'backups', 'portal-2031-06-03.db'));
+
+  // A key change is carried out the same way: each copy opens with the old key or the new one at every moment.
+  assert.doesNotMatch(L.run(STOP_AT(6, ALIGN), { DB_KEY: KEY2, DB_KEY_OLD: KEY }).out, /FINISHED/);   // the working copy is under the new key; the backup has not been swapped yet
+  assert.ok(fs.readdirSync(path.join(L.dir, 'backups')).some((f) => f.endsWith('.db.converting')));
+  for (const b of L.backups()) assert.ok(opens(b, KEY), path.basename(b));
+});
+
+test('restore: RESTORE_BACKUP brings a backup back at start-up, sets the database from before aside whole, does it once, and refuses without touching anything when it cannot', async () => {
+  const dbfile = require('../app/dbfile');
+  const L = encryptionLab();
+  assert.ok(L.run(L.SEED).ok);
+  const B = path.basename(L.backups()[0]);
+  // Work entered after the backup, which sits only in the file SQLite keeps beside the database: the site is stopped dead, as a deploy stops it.
+  L.run(`const db = require('./app/db'); db.prepare("INSERT INTO meta (key, value) VALUES ('era', 'after the backup')").run(); process.kill(process.pid, 'SIGKILL');`);
+  assert.ok(fs.statSync(L.file + '-wal').size > 0);
+  const before = { db: L.sha(L.file), wal: L.sha(L.file + '-wal') };
+  const STATE = `const db = require('./app/db'); const get = (k) => (db.prepare('SELECT value v FROM meta WHERE key = ?').get(k) || {}).v || null;
+    console.log(JSON.stringify({ restored: db.encryption.restored, era: get('era'), later: get('later'), marker: get('marker'), users: db.prepare('SELECT COUNT(*) n FROM users').get().n, integrity: db.pragma('integrity_check', { simple: true }) }));`;
+  const QUICK = `const { db, status } = require('./app/dbfile').open(process.env.DATA_DIR); const get = (k) => (db.prepare('SELECT value v FROM meta WHERE key = ?').get(k) || {}).v || null;
+    console.log(JSON.stringify({ restored: status.restored, era: get('era'), marker: get('marker'), users: db.prepare('SELECT COUNT(*) n FROM users').get().n, integrity: db.pragma('integrity_check', { simple: true }) })); db.close();`;
+  const asides = (dir = L.dir) => fs.readdirSync(dir).filter((f) => /^portal-before-restore-[0-9-]+\.db$/.test(f));
+  const listing = () => fs.readdirSync(L.dir).sort().join(' ');
+  // Is the database from before the restore still whole somewhere: where it was, or set aside under its dated name?
+  const kept = (dir) => {
+    const whole = (db, wal) => fs.existsSync(db) && L.sha(db) === before.db && fs.existsSync(wal) && L.sha(wal) === before.wal;
+    const here = path.join(dir, 'portal.db');
+    return whole(here, here + '-wal') || asides(dir).some((a) => whole(path.join(dir, a), (fs.existsSync(path.join(dir, a) + '-wal') ? path.join(dir, a) : here) + '-wal'));
+  };
+
+  // What cannot be done is refused, with the reason, and nothing on the disk changes.
+  const garbage = path.join(L.dir, 'backups', 'portal-2031-01-01.db'), empty = path.join(L.dir, 'backups', 'portal-2031-01-02.db');
+  fs.writeFileSync(garbage, Buffer.concat([fs.readFileSync(L.backups()[0]).subarray(0, 4096), require('crypto').randomBytes(8192)])); fs.writeFileSync(empty, '');
+  const was = listing();
+  for (const [name, says] of [['../portal.db', /is not the name of one of the site's backups/], ['portal-1999-01-01.db', /there is no backup named portal-1999-01-01\.db/],
+    [path.basename(empty), /is empty/], [path.basename(garbage), /is damaged/]]) {
+    const r = L.run(QUICK, { RESTORE_BACKUP: name });
+    assert.equal(r.ok, false, name); assert.match(r.err, /The site was asked to bring back a backup \(RESTORE_BACKUP in the hosting settings\) and could not/); assert.match(r.err, says); assert.match(r.err, /Nothing has been changed/);
+    assert.equal(listing(), was); assert.equal(L.sha(L.file), before.db); assert.equal(L.sha(L.file + '-wal'), before.wal);
+  }
+  fs.rmSync(garbage); fs.rmSync(empty);
+
+  // Stopped dead before each file operation of the restore in turn: the database from before is never lost, and the next start finishes the job, once.
+  const copyOf = () => { const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'portal-restore-')); fs.cpSync(L.dir, dir, { recursive: true }); return dir; };
+  let stops = 0;
+  for (let n = 1; n < 40; n++) {
+    const dir = copyOf();
+    const r = L.run(STOP_AT(n, "require('./app/dbfile').open(process.env.DATA_DIR)"), { DATA_DIR: dir, RESTORE_BACKUP: B });
+    const finished = /FINISHED/.test(r.out);
+    if (!finished) { stops += 1; assert.ok(kept(dir), `after a stop at step ${n} the database from before is gone: ${fs.readdirSync(dir).join(' ')}`); }
+    const s = labJson(L.run(QUICK, { DATA_DIR: dir, RESTORE_BACKUP: B }));
+    assert.deepEqual([s.era, s.marker, s.users, s.integrity], [null, 'kept', 1, 'ok'], `step ${n}`);
+    assert.ok(kept(dir), `step ${n}`); assert.equal(asides(dir).length, 1, `step ${n}`);
+    assert.doesNotMatch(fs.readdirSync(dir).join(' '), /restore-plan|restoring/);
+    fs.rmSync(dir, { recursive: true, force: true });
+    if (finished) break;
+  }
+  assert.ok(stops >= 8, `only ${stops} stops were tried`);
+  // ...and stopped at moments nobody chose.
+  const { spawn } = require('child_process');
+  for (let i = 0; i < 3; i++) {
+    const dir = copyOf();
+    const child = spawn(process.execPath, ['-e', "require('./app/db')"], { cwd: L.root, env: L.env({ DATA_DIR: dir, RESTORE_BACKUP: B }), stdio: 'ignore' });
+    await new Promise((done) => { setTimeout(() => child.kill('SIGKILL'), 30 + Math.random() * 150); child.once('exit', done); });
+    assert.ok(kept(dir), `after a stop at a random moment the database from before is gone: ${fs.readdirSync(dir).join(' ')}`);
+    assert.deepEqual([labJson(L.run(QUICK, { DATA_DIR: dir, RESTORE_BACKUP: B })).era, asides(dir).length, kept(dir)], [null, 1, true]);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+
+  // The restore itself. The site is as the backup had it; the newer work is not merged in, and not thrown away either.
+  let s = labJson(L.run(STATE, { RESTORE_BACKUP: B }));
+  assert.deepEqual([s.restored.backup, s.restored.again, s.era, s.marker, s.users, s.integrity], [B, false, null, 'kept', 1, 'ok']);
+  assert.equal(asides().length, 1); assert.equal(s.restored.aside, asides()[0]);
+  // The file SQLite kept beside the old database went with it, so it can no longer be replayed onto the restored one...
+  const aside = path.join(L.dir, asides()[0]);
+  assert.equal(L.sha(aside), before.db); assert.equal(L.sha(aside + '-wal'), before.wal);
+  // ...and the database that was set aside still opens, with the newer work in it.
+  const old = dbfile.connect(aside, '', { readonly: true });
+  assert.equal(old.prepare("SELECT value v FROM meta WHERE key = 'era'").get().v, 'after the backup'); old.close();
+
+  // The setting is still there at the next start: nothing is restored a second time, so work done since stays.
+  assert.ok(L.run(`require('./app/db').prepare("INSERT INTO meta (key, value) VALUES ('later', 'entered after the restore')").run()`, { RESTORE_BACKUP: B }).ok);
+  s = labJson(L.run(STATE, { RESTORE_BACKUP: B }));
+  assert.deepEqual([s.restored.again, s.later, asides().length], [true, 'entered after the restore', 1]);
+  const CHECK = `require('./app/app'); const list = require('./app/routes/security').checks({ headers: {}, ip: '203.0.113.9', socket: {} }); console.log(JSON.stringify(list.find((c) => /restore setting/.test(c.title)) || null));`;
+  const item = labJson(L.run(CHECK, { RESTORE_BACKUP: B }));
+  assert.equal(item.ok, false); assert.match(item.detail, new RegExp(`restored from ${B.replace(/\./g, '\\.')} on \\d+/\\d+/\\d{4}`)); assert.match(item.fix, /delete RESTORE_BACKUP/);
+  // Once the setting has been removed the reminder goes, and setting it again later is a new request.
+  assert.equal(labJson(L.run(CHECK)), null);
+  s = labJson(L.run(STATE));
+  assert.deepEqual([s.restored, s.later], [null, 'entered after the restore']);
+  s = labJson(L.run(STATE, { RESTORE_BACKUP: B }));
+  assert.deepEqual([s.restored.again, s.later, asides().length], [false, null, 2]);
+
+  // A running site: the log says what was done, everyone is signed out, and the activity log has a line.
+  let site = await labSite(L, { RESTORE_BACKUP: B });
+  assert.match(site.log(), /RESTORE_BACKUP is still set\. .* was restored on an earlier start, so nothing was done this time/);
+  await site.stop();
+  assert.ok(L.run("require('./app/db')").ok);                                   // a start without the setting: the next time it is set counts afresh
+  // A backup from before sessions were left out of them still signs nobody in when it is brought back.
+  const olden = dbfile.connect(L.backups()[0], ''); olden.prepare("INSERT INTO sessions (sid, expires, data) VALUES ('from-the-backup', ?, '{}')").run(Date.now() + 600000); olden.close();
+  site = await labSite(L, { RESTORE_BACKUP: B });
+  assert.equal((await site.get('/login')).status, 200);
+  assert.match(site.log(), new RegExp(`\\[restore\\] The database was restored from ${B.replace(/\./g, '\\.')}\\. The database from before is set aside on the disk as portal-before-restore-[0-9-]+\\.db\\. RESTORE_BACKUP can now be removed`));
+  await site.stop();
+  const after = labJson(L.run(`const db = require('./app/db'); console.log(JSON.stringify({ sessions: db.prepare("SELECT COUNT(*) n FROM sessions WHERE sid = 'from-the-backup'").get().n, log: db.prepare("SELECT detail FROM activity_log WHERE action = 'Backup restored'").get() }))`, { RESTORE_BACKUP: B }));
+  assert.equal(after.sessions, 0); assert.match(after.log.detail, new RegExp('^' + B.replace(/\./g, '\\.')));
+
+  // With encryption: the backup must open with the key in the settings, and a backup from before a key change is brought back and moved to the new key.
+  const E = encryptionLab(); const KEY = 'restore-key-0123456789-abcdefgh', KEY2 = 'restore-key-two-0123456789-abcd';
+  assert.ok(E.run(E.SEED, { DB_KEY: KEY }).ok);
+  const EB = path.basename(E.backups()[0]);
+  const wrong = E.run(STATE, { DB_KEY: KEY, RESTORE_BACKUP: EB.replace(/\d{6}\.db$/, '000000.db') });
+  assert.equal(wrong.ok, false); assert.match(wrong.err, /there is no backup named/);
+  fs.copyFileSync(E.backups()[0], path.join(E.dir, 'kept-elsewhere.db'));      // a copy taken off the server while the first key was in use
+  assert.equal(E.state({ DB_KEY: KEY2, DB_KEY_OLD: KEY }).e.changed, 'rekeyed');
+  fs.copyFileSync(path.join(E.dir, 'kept-elsewhere.db'), path.join(E.dir, 'backups', 'portal-2031-02-02.db'));
+  const locked = E.run(STATE, { DB_KEY: KEY2, RESTORE_BACKUP: 'portal-2031-02-02.db' });
+  assert.equal(locked.ok, false); assert.match(locked.err, /does not open with the key in the hosting settings \(DB_KEY\)/); assert.doesNotMatch(locked.err + locked.out, /restore-key/);
+  s = labJson(E.run(STATE, { DB_KEY: KEY2, DB_KEY_OLD: KEY, RESTORE_BACKUP: 'portal-2031-02-02.db' }));
+  assert.deepEqual([s.restored.backup, s.marker, s.users, s.integrity], ['portal-2031-02-02.db', 'kept', 1, 'ok']);
+  assert.ok(dbfile.readable(E.file, KEY2)); assert.equal(dbfile.readable(E.file, KEY), false);
+});
+
+test('stopping: the site closes its database when it is told to stop, so the one file holds everything', async () => {
+  const dbfile = require('../app/dbfile');
+  const L = encryptionLab();
+  assert.ok(L.run(L.SEED).ok);
+  const site = await labSite(L);
+  assert.equal((await site.get('/login')).status, 200);                         // a visit writes to the database
+  assert.ok(fs.existsSync(L.file + '-wal'));
+  // An open, idle connection (a browser tab left on the site) must not hold the stop up.
+  const idle = require('net').connect(Number(new URL(site.origin).port), 'localhost'); idle.on('error', () => {});
+  idle.write('GET /healthz HTTP/1.1\r\nHost: localhost\r\n\r\n');
+  await new Promise((r) => setTimeout(r, 100));
+  const began = Date.now();
+  assert.equal(await site.stop('SIGTERM'), 0);                                  // a clean exit, not one the host had to force
+  assert.ok(Date.now() - began < 5000);
+  idle.destroy();
+  // Nothing is left beside the database: a copy of portal.db alone is the whole of it.
+  assert.deepEqual(fs.readdirSync(L.dir).filter((f) => /^portal\.db./.test(f)), []);
+  const alone = path.join(L.dir, 'copied-by-hand.db'); fs.copyFileSync(L.file, alone);
+  const copy = dbfile.connect(alone, '', { readonly: true });
+  assert.equal(copy.prepare('SELECT COUNT(*) n FROM users').get().n, 1); assert.ok(copy.prepare('SELECT COUNT(*) n FROM sessions').get().n >= 1);
+  assert.equal(copy.pragma('integrity_check', { simple: true }), 'ok'); copy.close();
+  assert.doesNotMatch(site.log(), /did not close cleanly/);
+  // The closed page stops when asked as well.
+  fs.writeFileSync(L.file, require('crypto').randomBytes(8192));
+  const closed = await labSite(L);
+  assert.equal((await closed.get('/')).status, 503);
+  assert.equal(await closed.stop('SIGTERM'), 0);
+});
+
+test('closed page: a damaged or missing database is called that, with the backup to go back to; a new site still starts by itself', async () => {
+  const dbfile = require('../app/dbfile');
+  const KEY = 'closed-page-key-0123456789-abcd';
+  const damage = (file, at) => { const fd = fs.openSync(file, 'r+'); fs.writeSync(fd, require('crypto').randomBytes(100), 0, 100, at); fs.closeSync(fd); };
+  const settle = (L, settings) => assert.ok(L.run("const db = require('./app/db'); db.pragma('wal_checkpoint(TRUNCATE)'); db.close();", settings).ok);
+
+  // Encrypted, the key in the settings is right, and the first page of the file is damaged.
+  const L = encryptionLab();
+  assert.ok(L.run(L.SEED, { DB_KEY: KEY }).ok); settle(L, { DB_KEY: KEY });
+  const B = path.basename(L.backups()[0]);
+  damage(L.file, 1000);
+  let site = await labSite(L, { DB_KEY: KEY });
+  let page = await site.get('/');
+  assert.equal(page.status, 503); assert.match(page.text, /PB Portal is closed for the moment/);
+  assert.match(page.text, /The database file is damaged\. The key is not the problem\./);
+  assert.match(page.text, new RegExp(`The newest backup that opens is ${B.replace(/\./g, '\\.')}\\. To go back to it, open the hosting settings \\(Render, then the service, then Environment\\), add a setting named RESTORE_BACKUP with the value ${B.replace(/\./g, '\\.')} and save`));
+  assert.match(page.text, /Anything entered after that backup was made will not be in it/);
+  assert.doesNotMatch(page.text, /Nothing has been lost|different key|put the right value back/);
+  assert.equal((await site.get('/healthz')).status, 200);
+  assert.match(site.log(), /showing a "closed" page/); assert.doesNotMatch(site.log() + page.text, /closed-page-key/);
+  await site.stop();
+  // A key that really is wrong still gets the page about the key, and opens neither the file nor the backup.
+  site = await labSite(L, { DB_KEY: 'not-the-right-key-not-at-all-99' });
+  page = await site.get('/');
+  assert.match(page.text, /different key from the one in the hosting settings/); assert.match(page.text, /Nothing has been lost/); assert.doesNotMatch(page.text, /damaged/);
+  await site.stop();
+  // Following the page: the backup comes back, the damaged file is set aside, and the site opens.
+  site = await labSite(L, { DB_KEY: KEY, RESTORE_BACKUP: B });
+  assert.equal((await site.get('/login')).status, 200);
+  await site.stop();
+  assert.equal(L.state({ DB_KEY: KEY, RESTORE_BACKUP: B }).sign, true);
+  assert.equal(fs.readdirSync(L.dir).filter((f) => /^portal-before-restore-[0-9-]+\.db$/.test(f)).length, 1);
+
+  // Not encrypted, and the first bytes are damaged: there never was a key, and the page does not ask for one.
+  const P = encryptionLab();
+  assert.ok(P.run(P.SEED).ok); settle(P, {});
+  const PB = path.basename(P.backups()[0]);
+  damage(P.file, 4);
+  site = await labSite(P);
+  page = await site.get('/');
+  assert.equal(page.status, 503); assert.match(page.text, /The database file is damaged/); assert.match(page.text, new RegExp(`RESTORE_BACKUP with the value ${PB.replace(/\./g, '\\.')}`));
+  assert.doesNotMatch(page.text, /DB_KEY|Nothing has been lost/);
+  await site.stop();
+  // Damage further in, which only shows once the site reads that part: the same page, not a start that fails over and over.
+  fs.copyFileSync(P.backups()[0], P.file);
+  const size = fs.statSync(P.file).size; const fd = fs.openSync(P.file, 'r+'); fs.writeSync(fd, Buffer.alloc(size - 4096, 7), 0, size - 4096, 4096); fs.closeSync(fd);
+  site = await labSite(P);
+  page = await site.get('/');
+  assert.equal(page.status, 503); assert.match(page.text, /The database file is damaged/);
+  await site.stop();
+
+  // The database file is gone (or empty) while backups of the site are on the disk: no quiet start as an empty site.
+  for (const state of ['missing', 'empty']) {
+    for (const ext of ['', '-wal', '-shm']) fs.rmSync(P.file + ext, { force: true });
+    if (state === 'empty') fs.writeFileSync(P.file, '');
+    site = await labSite(P, { BOOTSTRAP_ADMIN_USERNAME: 'newboss', BOOTSTRAP_ADMIN_PASSWORD: 'a password for the first start' });
+    page = await site.get('/login');
+    assert.equal(page.status, 503); assert.match(page.text, new RegExp(`The database file is ${state}, but a backup of this site is on the disk\\.`));
+    assert.match(page.text, new RegExp(`The newest backup that opens is ${PB.replace(/\./g, '\\.')}\\. To bring it back, .* add a setting named RESTORE_BACKUP with the value ${PB.replace(/\./g, '\\.')} and save\\. If this is meant to be a new, empty site instead, add a setting named NEW_SITE with the value yes\\.`));
+    assert.doesNotMatch(page.text, /Nothing has been lost/); assert.doesNotMatch(site.log(), /Created the master account/);
+    await site.stop();
+    assert.equal(fs.existsSync(P.file) && fs.statSync(P.file).size > 0, false);  // and nothing was created in its place
+  }
+  // NEW_SITE=yes says an empty site is meant. The Security check then asks for the setting to be taken out again.
+  site = await labSite(P, { NEW_SITE: 'yes', BOOTSTRAP_ADMIN_USERNAME: 'newboss', BOOTSTRAP_ADMIN_PASSWORD: 'a password for the first start' });
+  assert.equal((await site.get('/login')).status, 200); assert.match(site.log(), /Created the master account "newboss"/);
+  await site.stop();
+  const CHECK = `require('./app/app'); const list = require('./app/routes/security').checks({ headers: {}, ip: '203.0.113.9', socket: {} }); console.log(JSON.stringify(list.filter((c) => /new-site/.test(c.title))));`;
+  assert.match(labJson(P.run(CHECK, { NEW_SITE: 'yes' }))[0].fix, /delete NEW_SITE/);
+  assert.deepEqual(labJson(P.run(CHECK)), []);
+  // A site that has never run (no backups) starts by itself, exactly as before.
+  const N = encryptionLab();
+  site = await labSite(N);
+  assert.equal((await site.get('/login')).status, 200); assert.match(site.log(), /No users yet/);
+  await site.stop();
+  assert.ok(dbfile.isPlain(N.file));
+});
+
+test('updates: the first start of a new version keeps a checked copy of the database as the last version left it, and only the newest two', async () => {
+  const dbfile = require('../app/dbfile');
+  const L = encryptionLab();
+  assert.ok(L.run(L.SEED).ok);
+  const before = () => L.backups().filter((b) => /-before-update\.db$/.test(b));
+  const version = (v) => labJson(L.run(`const db = require('./app/db'); console.log(JSON.stringify({ v: (db.prepare("SELECT value FROM meta WHERE key = 'code_version'").get() || {}).value || null, list: require('./app/backup').listBackups().map((b) => b.kind) }))`, v ? { RENDER_GIT_COMMIT: v } : {}));
+  assert.equal(version(null).v, null); assert.equal(before().length, 0);        // the host gives no version: nothing happens
+  assert.equal(version('aaa1111').v, 'aaa1111'); assert.equal(before().length, 1);
+  assert.equal(dbfile.inspect(before()[0], '', { full: true }).fault, null);
+  assert.equal(version('aaa1111').list.filter((k) => k === 'update').length, 1); // the same version again: no second copy
+  // Two more versions. (The copies are named to the second; these are given names of their own so the test need not wait for the clock.)
+  const rename = (n) => { const to = before()[0].replace(/-\d{6}-before/, `-00000${n}-before`); fs.renameSync(before().find((b) => !/-00000\d-before/.test(b)), to); return to; };
+  const one = rename(1);
+  version('bbb2222'); assert.equal(before().length, 2); rename(2);
+  version('ccc3333'); assert.equal(before().length, 2); assert.equal(before().includes(one), false);   // the newest two are kept
+  assert.equal(L.backups().filter((b) => /-\d{6}\.db$/.test(b)).length, 1);     // the "Back up now" copy is not theirs to push out
+  // The copy is taken before the new version changes anything. A database from the first release still has its old shape in the copy.
+  const O = encryptionLab(); const Database = require('better-sqlite3-multiple-ciphers');
+  const old = new Database(O.file);
+  old.exec(`CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE, display_name TEXT NOT NULL, email TEXT,
+      password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user', can_review_complaints INTEGER NOT NULL DEFAULT 0,
+      must_change_password INTEGER NOT NULL DEFAULT 1, active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL);
+    INSERT INTO users (username, display_name, password_hash, role, created_at) VALUES ('boss', 'First Admin', 'x', 'admin', '2026-01-02');`);
+  old.close();
+  assert.ok(O.run("require('./app/db')", { RENDER_GIT_COMMIT: 'ddd4444' }).ok);
+  const kept = O.backups().filter((b) => /-before-update\.db$/.test(b));
+  assert.equal(kept.length, 1);
+  const copy = dbfile.connect(kept[0], '', { readonly: true });
+  const tables = copy.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((t) => t.name);
+  assert.deepEqual(tables, ['users']); assert.equal(copy.prepare('SELECT username FROM users').get().username, 'boss'); copy.close();
+  // A site with nobody in it yet has nothing to keep; the version is still remembered.
+  const N = encryptionLab();
+  assert.ok(N.run("require('./app/db')", { RENDER_GIT_COMMIT: 'eee5555' }).ok);
+  assert.equal(N.backups().length, 0);
+  assert.equal(labJson(N.run(`console.log(JSON.stringify((require('./app/db').prepare("SELECT value FROM meta WHERE key = 'code_version'").get() || {}).value))`, { RENDER_GIT_COMMIT: 'eee5555' })), 'eee5555');
+});
+
+test('the photo archive: the download is in the activity log, tar is told nothing of the site\'s settings, and a failed tar does not pass for a whole archive', async () => {
+  const owner = await loggedIn('owner');
+  assert.equal((await owner.post('/account/confirm', { password: 'correct horse battery', next: '/admin/backups' }, { page: '/admin/backups' })).status, 302);
+  const url = '/admin/backups/photos.tar.gz';
+  const logged = () => db.prepare("SELECT COUNT(*) n FROM activity_log WHERE action = 'Photo archive downloaded' AND user_id = ?").get(userId('owner')).n;
+  const was = logged();
+  const res = await fetch(base + url, { headers: { cookie: owner.cookie } });
+  assert.equal(res.status, 200); assert.equal(res.headers.get('content-type'), 'application/gzip');
+  const whole = Buffer.from(await res.arrayBuffer());
+  assert.deepEqual([whole[0], whole[1]], [0x1f, 0x8b]);                          // a gzip file, complete
+  assert.ok(require('zlib').gunzipSync(whole).length > 0);
+  assert.equal(logged(), was + 1);
+  assert.match(db.prepare("SELECT detail FROM activity_log WHERE action = 'Photo archive downloaded' ORDER BY id DESC").get().detail, /^\d+ files?$/);
+  assert.equal((await (await loggedIn('tech1')).get(url)).status, 403);
+  assert.equal(logged(), was + 1);
+
+  // A stand-in for tar that notes what it was given, writes a little and fails.
+  const fake = fs.mkdtempSync(path.join(os.tmpdir(), 'portal-tar-'));
+  fs.writeFileSync(path.join(fake, 'tar'), `#!/bin/sh\nenv > "${fake}/given.txt"\nprintf 'half an archive'\nexit 2\n`, { mode: 0o755 });
+  const realPath = process.env.PATH; process.env.PATH = `${fake}:${realPath}`; process.env.SMTP_PASS = 'a-secret-that-must-not-travel';
+  try {
+    const cut = await fetch(base + url, { headers: { cookie: owner.cookie } });
+    await assert.rejects(cut.arrayBuffer());                                     // the download breaks off instead of ending as if complete
+    const given = fs.readFileSync(path.join(fake, 'given.txt'), 'utf8');
+    assert.match(given, /^PATH=/m);
+    assert.doesNotMatch(given, /DATA_DIR|SMTP_PASS|a-secret-that-must-not-travel|NOTIFY_TO|BASE_URL/);
+  } finally { process.env.PATH = realPath; delete process.env.SMTP_PASS; fs.rmSync(fake, { recursive: true, force: true }); }
+});
+
+test('Security check: the saved copy of the key can be checked, yes or no; room on the disk is shown; switching encryption off says how many files still need the key', async () => {
+  const security = require('../app/routes/security');
+  // Room on the disk: enough means three times the database and at least 15% of the disk.
+  const GB = 1024 ** 3, MB = 1024 ** 2;
+  assert.equal(security.roomy({ free: 800 * MB, total: GB, database: 7 * MB }), true);
+  assert.equal(security.roomy({ free: 100 * MB, total: GB, database: 7 * MB }), false);     // under 15% of the disk
+  assert.equal(security.roomy({ free: 170 * MB, total: GB, database: 60 * MB }), false);    // under three times the database
+  const owner = await loggedIn('owner');
+  const mine = (await owner.get('/admin/security')).text;
+  assert.match(mine, /<strong>The disk has room to spare<\/strong><\/div>\s*<p class="plain">[\d.]+ (MB|GB) free of [\d.]+ (MB|GB)\. The database is \d+ MB\.<\/p>/);
+  assert.match(mine, /<strong>A recent backup exists and opens<\/strong>/);
+  assert.doesNotMatch(mine, /saved copy of the key|check-key|restore setting|new-site setting/);   // this test site has no key: nothing to check, nothing extra shown
+  // Without a key there is nothing to compare with, and the box needs a password typed in the last few minutes.
+  assert.equal((await (await loggedIn('tech1')).post('/admin/security/check-key', { key: 'anything' }, { page: '/' })).status, 403);
+  await owner.post('/admin/security/check-key', { key: 'anything-at-all-0123456789' }, { page: '/admin/security' });
+  assert.match((await owner.get('/admin/security')).text, /The database is not encrypted, so there is no key to check/);
+  db.prepare("UPDATE sessions SET data = json_remove(data, '$.pwAt') WHERE json_extract(data, '$.userId') = ?").run(userId('owner'));
+  await owner.post('/admin/security/check-key', { key: 'anything-at-all-0123456789' }, { page: '/admin/security' });
+  assert.match((await owner.get('/admin/security')).text, /Type your password first/);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM meta WHERE key = 'key_copy_checked'").get().n, 0);
+
+  // An encrypted site, running.
+  const KEY = 'saved-copy-key-0123456789-abcdefg', WRONG = 'saved-copy-key-0123456789-abcdefX';
+  const L = encryptionLab();
+  assert.ok(L.run(L.SEED, { DB_KEY: KEY }).ok);
+  assert.ok(L.run(`const auth = require('./app/auth'); const db = require('./app/db');
+    auth.createUser({ username: 'lab.boss', displayName: 'Lab Boss', password: 'correct horse battery', profile: 'Admin', master: true });
+    db.prepare('UPDATE users SET must_change_password = 0').run();`, { DB_KEY: KEY }).ok);
+  const site = await labSite(L, { DB_KEY: KEY });
+  const boss = new LabClient(site.origin); await boss.login('lab.boss', 'correct horse battery');
+  const page = '/admin/security';
+  const card = (html) => (/<li class="card[^"]*">\s*<div class="rec-head">[^\n]*The saved copy of the key has been checked[\s\S]*?<\/li>/.exec(html) || [''])[0];
+  let html = (await boss.get(page)).text;
+  assert.match(card(html), /Needs attention/); assert.match(card(html), /Never checked\./);
+  assert.match(card(html), /<form method="post" action="\/admin\/security\/check-key"[^>]*autocomplete="off">/); assert.match(card(html), /<input name="key" type="text" autocomplete="off"/);
+  // A copy with one character wrong: no. Nothing is recorded as checked.
+  assert.equal((await boss.post(`${page}/check-key`, { key: WRONG }, { page })).location, '/admin/security#key-copy');
+  html = (await boss.get(page)).text;
+  assert.match(html, /No\. That is not the key the site is using\./); assert.match(card(html), /Never checked\./);
+  // The right one, with the stray spaces a paste brings: yes, and the day is remembered.
+  await boss.post(`${page}/check-key`, { key: `  ${KEY}\n` }, { page });
+  html = (await boss.get(page)).text;
+  assert.match(html, /Yes\. That is the key the site is using\./);
+  assert.match(card(html), /class="tag return">OK/); assert.match(card(html), /Last checked on \d+\/\d+\/\d{4}\./);
+  // Five tries in a quarter of an hour, then no more, right or wrong.
+  for (let i = 0; i < 3; i++) await boss.post(`${page}/check-key`, { key: WRONG }, { page });
+  await boss.post(`${page}/check-key`, { key: KEY }, { page });
+  assert.match((await boss.get(page)).text, /Too many tries\. Wait 15 minutes and try again\./);
+  // Someone who cannot see this page cannot use the box.
+  const tech = new LabClient(site.origin); await tech.login('enc.one', 'correct horse battery');
+  assert.equal((await tech.post(`${page}/check-key`, { key: KEY }, { page: '/' })).status, 403);
+  await site.stop();
+  // Neither the key nor what was pasted is in the log, on a page, or anywhere in the database. Only the day of the last match is kept.
+  assert.doesNotMatch(site.log() + html, /saved-copy-key/);
+  const kept = L.run(`const db = require('./app/db'); const out = {};
+    for (const t of db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all()) out[t.name] = db.prepare('SELECT * FROM "' + t.name + '"').all();
+    console.log(JSON.stringify(out));`, { DB_KEY: KEY });
+  assert.ok(kept.ok); assert.doesNotMatch(kept.out, /saved-copy-key/);
+  const all = JSON.parse(kept.out.trim().split('\n').pop());
+  assert.match(all.meta.find((m) => m.key === 'key_copy_checked').value, /^\d{4}-\d{2}-\d{2}$/);
+  assert.deepEqual(all.activity_log.filter((a) => a.action === 'Saved key checked').map((a) => a.detail), ['It did not match the key in use', 'It matched the key in use', 'It did not match the key in use', 'It did not match the key in use', 'It did not match the key in use']);
+  // Checked more than six months ago: time to do it again.
+  const CHECK = `const db = require('./app/db'); require('./app/app'); if (process.env.SET_DAY) db.prepare("UPDATE meta SET value = ? WHERE key = 'key_copy_checked'").run(process.env.SET_DAY);
+    const list = require('./app/routes/security').checks({ headers: {}, ip: '203.0.113.9', socket: {} }); console.log(JSON.stringify(list.filter((c) => /saved copy|is encrypted/.test(c.title))));`;
+  const longAgo = new Date(Date.now() - 200 * 86400000).toISOString().slice(0, 10);
+  const stale = labJson(L.run(CHECK, { DB_KEY: KEY, SET_DAY: longAgo })).find((c) => /saved copy/.test(c.title));
+  assert.equal(stale.ok, false); assert.match(stale.detail, /^Last checked on \d+\/\d+\/\d{4}\.$/); assert.match(stale.fix, /paste it into the box below/);
+
+  // A key change, and then encryption switched off. The log says what the page says: leave the key where it is until the files have followed.
+  const KEY2 = 'saved-copy-two-0123456789-abcdef';
+  let lab = await labSite(L, { DB_KEY: KEY2, DB_KEY_OLD: KEY });
+  assert.match(lab.log(), /The database now uses the new key\. Photos and documents are still moving to it: leave DB_KEY_OLD in the hosting settings until the Security check says it can be deleted\. Keep the key that was replaced on record/);
+  assert.doesNotMatch(lab.log(), /DB_KEY_OLD can be removed/);
+  await lab.stop();
+  const sealed = require('../app/sealed');
+  const up = path.join(L.dir, 'uploads');
+  for (const name of ['one.jpg', 'two.jpg', 'three.jpg']) { fs.writeFileSync(path.join(up, name), PNG); sealed.seal(path.join(up, name), sealed.keyFrom(KEY2)); }
+  lab = await labSite(L, { DB_KEY: KEY2, DB_DECRYPT: 'yes' });
+  assert.match(lab.log(), /The database has been decrypted, as DB_DECRYPT asked\. Photos and documents are still being opened: leave DB_KEY in the hosting settings until the Security check says none are still encrypted/);
+  await lab.stop();
+  // While photos are still sealed the page counts them and says to keep the key until none are left. No new key is offered meanwhile.
+  let off = labJson(L.run(CHECK, { DB_KEY: KEY2, DB_DECRYPT: 'yes' })).find((c) => /is encrypted/.test(c.title));
+  assert.equal(off.ok, false); assert.match(off.detail, /3 photos and documents are still encrypted\.$/);
+  assert.match(off.fix, /^Leave DB_KEY and DB_DECRYPT in the hosting settings until this page says no photos or documents are still encrypted/); assert.match(off.fix, /Keep the old key on record/);
+  assert.equal(off.code, undefined);
+  // Both settings removed too soon: the files are locked, and the page says which key to put back.
+  off = labJson(L.run(CHECK)).find((c) => /is encrypted/.test(c.title));
+  assert.match(off.detail, /3 photos and documents are still encrypted, 3 of them with a key that is not in the settings\.$/); assert.match(off.fix, /put the key they were encrypted with back in DB_KEY, with DB_DECRYPT set to yes/);
+});
 
 // .
 // .

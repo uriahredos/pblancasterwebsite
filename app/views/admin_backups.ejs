@@ -1,7 +1,8 @@
 <%- include('partials/header') %>
 <p class="back"><a class="back-link" href="/admin/users">Users</a></p>
 <h1>Backups</h1>
-<p class="lede">A copy of the database is made every night after <%= hour %>:00 and the newest <%= keep %> are kept. <% if (emailTo.length) { %>Each night's copy is also emailed to <%= emailTo.join(', ') %>.<% } else { %>Nightly copies are not being emailed anywhere.<% } %></p>
+<p class="lede">A copy of the database is made every night after <%= hour %>:00 and the newest <%= keep %> are kept. Copies made with "Back up now" are kept apart: the newest <%= keepManual %>. <% if (emailTo.length) { %>Each night's copy is also emailed to <%= emailTo.join(', ') %>.<% } else { %>Nightly copies are not being emailed anywhere.<% } %></p>
+<% if (failed) { %><p class="errors"><strong>The last backup did not work</strong> (<%= fmtDateTime(failed.at) %>): <%= failed.why %>. The site tries again every half hour. If it keeps failing, tell whoever maintains the site.</p><% } %>
 <div class="notice">
   <p><strong>These copies sit on the same disk as the site.</strong> They protect against mistakes, not against losing the disk. Download one now and then and keep it somewhere else, or turn on the nightly email.</p>
   <% if (encrypted) { %><p><strong>Backups and photos are encrypted.</strong> A backup, and the files in the photo archive, can only be opened with the database key kept in the hosting settings (DB_KEY). Keep a copy of that key somewhere safe: neither is any use without it.</p>
@@ -24,7 +25,7 @@
   <thead><tr><th>Backup</th><th>Made</th><th class="num">Size</th><th></th></tr></thead>
   <tbody>
   <% backups.forEach(function (b) { %>
-  <tr><td><%= b.name %></td><td class="nowrap"><%= fmtDateTime(b.mtime) %></td><td class="num"><%= (b.size / 1024).toFixed(0) %> KB</td><td><a href="/admin/backups/<%= b.name %>">Download</a></td></tr>
+  <tr><td><%= b.name %><% if (b.kind === 'update') { %> <span class="tag off">Made before an update</span><% } %><% if (b.fault) { %> <span class="tag overdue"><%= b.fault === 'locked' ? 'Does not open with the key in use' : 'Damaged' %></span><% } %></td><td class="nowrap"><%= fmtDateTime(b.mtime) %></td><td class="num"><%= (b.size / 1024).toFixed(0) %> KB</td><td><a href="/admin/backups/<%= b.name %>">Download</a></td></tr>
   <% }) %>
   <% if (!backups.length) { %><tr><td colspan="4" class="empty">No backups yet. The first is made tonight, or use "Back up now".</td></tr><% } %>
   </tbody>

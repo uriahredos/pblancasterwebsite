@@ -1,4 +1,5 @@
 'use strict';
+const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const express = require('express');
@@ -21,8 +22,8 @@ const needPassword = (req, res, next) => (provedRecently(req) ? next() : (flash(
 router.get('/admin/backups', requireBackupAccess, (req, res) => {
   res.render('admin_backups', {
     proved: provedRecently(req), encrypted: Boolean(require('../db').encryption && require('../db').encryption.encrypted),
-    title: 'Backups', backups: backup.listBackups(), keep: config.backupKeep,
-    emailTo: config.backupEmailTo, hour: config.backupHour,
+    title: 'Backups', backups: backup.listBackups().map((b) => ({ ...b, fault: backup.standing(b) })), keep: config.backupKeep, keepManual: backup.KEEP.manual,
+    emailTo: config.backupEmailTo, hour: config.backupHour, failed: backup.report().failed,
   });
 });
 
@@ -36,11 +37,23 @@ router.post('/admin/backups/run', requireBackupAccess, async (req, res, next) =>
 });
 
 router.get('/admin/backups/photos.tar.gz', requireBackupAccess, needPassword, (req, res) => {
+  let files = 0;
+  try { files = fs.readdirSync(path.join(config.dataDir, 'uploads')).length; } catch (e) { /* nothing uploaded yet */ }
+  activity.log(req.user, 'Photo archive downloaded', `${files} ${files === 1 ? 'file' : 'files'}`);
   res.setHeader('Content-Type', 'application/gzip');
   res.setHeader('Content-Disposition', `attachment; filename="portal-photos-${localDate()}.tar.gz"`);
-  const tar = spawn('tar', ['-czf', '-', '-C', config.dataDir, 'uploads']);
-  tar.stdout.pipe(res);
+  // tar is given nothing of the site's settings: it needs to be found, and that is all.
+  const tar = spawn('tar', ['-czf', '-', '-C', config.dataDir, 'uploads'], { env: { PATH: process.env.PATH }, stdio: ['ignore', 'pipe', 'ignore'] });
+  tar.stdout.pipe(res, { end: false });
   tar.on('error', () => res.destroy());
+  // The download only ends cleanly when tar did. 1 means a file changed while it was read (photos are sealed in the
+  // background), which still gives a whole archive; anything worse breaks the download off, so it cannot pass for a complete one.
+  tar.on('close', (code) => {
+    if (code === 0 || code === 1) return res.end();
+    console.error(`[backup] the photo archive was cut short: tar ended with ${code === null ? 'a signal' : 'code ' + code}`);
+    res.destroy();
+  });
+  res.on('close', () => { if (tar.exitCode === null) tar.kill(); });
 });
 
 router.get('/admin/backups/:name', requireBackupAccess, needPassword, (req, res) => {
