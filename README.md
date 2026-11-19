@@ -421,7 +421,7 @@ The **Community** menu holds People, Discussions, Daily question and Newsletters
 - Upload the office contact list as a CSV (in Excel: File > Save As > CSV) with a Name column and, optionally, Title, Email and Phone. A row with only a name in it (MANAGEMENT, SERVICE...) is a department heading for the rows under it.
 - People who already have an account are matched by email, by the "first.last" in the email, or by name, and keep the name they have on the site. Their job title, department, work email and phone are set from the list, and the phone and email are shown on their profile (each person can untick that under My profile).
 - Everyone else is added with sign-in switched off: they are on the People page, but cannot sign in until an admin presses Enable and Reset password under Users.
-- Names and titles typed in capitals are tidied ("MIKE MCDONNELL" becomes "Mike McDonnell"). Uploading a newer list updates titles, departments and phones; nobody is removed. Disabling an account by hand takes that person off the People page.
+- Names and titles typed in capitals are tidied ("JANE MCDONALD" becomes "Jane McDonald"). Uploading a newer list updates titles, departments and phones; nobody is removed. Disabling an account by hand takes that person off the People page.
 - The People page can be filtered by department.
 
 **New hires**

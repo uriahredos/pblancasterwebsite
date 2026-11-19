@@ -25,7 +25,7 @@ const monthIndex = (text) => { const k = String(text || '').trim().toLowerCase()
 const ymd = (y, m, d) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 const valid = (y, m, d) => { const t = new Date(Date.UTC(y, m, d)); return t.getUTCMonth() === m && t.getUTCDate() === d; };
 
-/** "D. Mowbray 717-371-8185" -> { name, phone }. A cell with no number is just a name. */
+/** "D. Marlow 717-555-0121" -> { name, phone }. A cell with no number is just a name. */
 function person(cell) {
   const text = String(cell || '').replace(/\s+/g, ' ').trim();
   if (!text) return null;

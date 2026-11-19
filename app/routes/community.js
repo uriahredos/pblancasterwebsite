@@ -246,7 +246,7 @@ router.post('/profile', requireLogin, uploads.photos('photo', 1), verifyCsrf, (r
 
 const ACRONYMS = new Set(['CED', 'HR', 'IT', 'GM', 'PM', 'VP', 'CEO', 'CFO', 'COO', 'II', 'III', 'IV', 'NICET', 'HVAC']);
 const SMALL = new Set(['of', 'and', 'the', 'for', 'to', 'in']);
-/** "MIKE MCDONNELL" -> "Mike McDonnell". Left alone if it already has lower-case letters. */
+/** "JANE MCDONALD" -> "Jane McDonald". Left alone if it already has lower-case letters. */
 function tidyName(text) {
   const t = String(text || '').trim().replace(/\s+/g, ' ');
   if (/[a-z]/.test(t)) return t;

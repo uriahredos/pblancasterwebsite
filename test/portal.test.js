@@ -797,21 +797,21 @@ test('logo banner and light/dark switch are on every page', async () => {
 
 test('an admin can change a person\'s name, username and email after the account exists', async () => {
   const admin = await loggedIn('admin');
-  const id = auth.createUser({ username: 'uriah.redos', displayName: 'uriah.redos', password: 'correct horse battery' });
+  const id = auth.createUser({ username: 'jamie.rivers', displayName: 'jamie.rivers', password: 'correct horse battery' });
   db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?').run(id);
   const page = `/admin/users/${id}/edit`;
   assert.match((await admin.get('/admin/users')).text, new RegExp(`href="${page}"`));
-  assert.match((await admin.get(page)).text, /value="uriah\.redos"/);
-  assert.equal((await admin.post(page, { username: 'uriah.redos', display_name: 'Uriah Redos', email: '' }, { page })).status, 302);
-  assert.equal(db.prepare('SELECT display_name FROM users WHERE id = ?').get(id).display_name, 'Uriah Redos');
-  const user = await loggedIn('uriah.redos'); // sign-in is unaffected
-  assert.match((await user.get('/')).text, /Hi, Uriah<\/h1>[\s\S]*|Uriah Redos<\/a>[\s\S]*Hi, Uriah<\/h1>/);
+  assert.match((await admin.get(page)).text, /value="jamie\.rivers"/);
+  assert.equal((await admin.post(page, { username: 'jamie.rivers', display_name: 'Jamie Rivers', email: '' }, { page })).status, 302);
+  assert.equal(db.prepare('SELECT display_name FROM users WHERE id = ?').get(id).display_name, 'Jamie Rivers');
+  const user = await loggedIn('jamie.rivers'); // sign-in is unaffected
+  assert.match((await user.get('/')).text, /Hi, Jamie<\/h1>[\s\S]*|Jamie Rivers<\/a>[\s\S]*Hi, Jamie<\/h1>/);
 
-  assert.equal((await admin.post(page, { username: 'tech1', display_name: 'Uriah Redos' }, { page })).status, 400); // taken
-  assert.equal((await admin.post(page, { username: 'uriah.redos', display_name: '' }, { page })).status, 400);
-  assert.equal((await admin.post(page, { username: 'uriah.redos', display_name: 'U', email: 'nope' }, { page })).status, 400);
-  assert.equal((await admin.post(page, { username: 'uredos', display_name: 'Uriah Redos', email: 'u@example.com' }, { page })).status, 302);
-  await loggedIn('uredos');
+  assert.equal((await admin.post(page, { username: 'tech1', display_name: 'Jamie Rivers' }, { page })).status, 400); // taken
+  assert.equal((await admin.post(page, { username: 'jamie.rivers', display_name: '' }, { page })).status, 400);
+  assert.equal((await admin.post(page, { username: 'jamie.rivers', display_name: 'U', email: 'nope' }, { page })).status, 400);
+  assert.equal((await admin.post(page, { username: 'jrivers', display_name: 'Jamie Rivers', email: 'u@example.com' }, { page })).status, 302);
+  await loggedIn('jrivers');
   assert.equal((await user.get(page)).status, 403);
   assert.equal((await user.post(page, { username: 'x', display_name: 'Hacked' })).status, 403);
 });
@@ -3627,8 +3627,8 @@ test('company: the office list loads once, offices say what they do, and anyone 
   const file = { format: 'pb-company-contacts-1', contacts: [
     { section: 'HR', group: '', topic: 'General HR inbox', name: '', email: 'askhr@example.com' },
     { section: 'Health & Safety / Fleet', group: 'Fleet', topic: 'Escalations', name: 'Marv <Fleet>', email: 'marv@example.com', note: 'Director of Fleet' },
-    { section: 'Regional Layout', group: 'Northeast', topic: 'Regional Vice President', name: 'Dana Good', email: 'dana@example.com' },
-    { section: 'Regional Layout', group: 'Northeast', topic: 'Regional Director', name: 'Dave Thomas', email: 'dave@example.com', note: 'NJ | PA | DE' },
+    { section: 'Regional Layout', group: 'Northeast', topic: 'Regional Vice President', name: 'Robin Vale', email: 'dana@example.com' },
+    { section: 'Regional Layout', group: 'Northeast', topic: 'Regional Director', name: 'Sam Carter', email: 'dave@example.com', note: 'NJ | PA | DE' },
     { section: '', name: 'No section' }, { section: 'HR', topic: 'nobody' }] };
   const sendContacts = (c, obj) => c.post('/admin/company/contacts', [['file', new File([JSON.stringify(obj)], 'c.json', { type: 'application/json' })]], { multipart: true, page: '/admin/branches' });
   assert.equal((await sendContacts(t1, file)).status, 403);
@@ -3643,7 +3643,7 @@ test('company: the office list loads once, offices say what they do, and anyone 
   assert.match(main, /<span class="mini-num">\d{3}<\/span><span class="mini-label">Offices<\/span><span class="mini-sub">in 46 states/);
   assert.match(main, /My office<\/span><span class="mini-sub">Lancaster · Northeast/);
   assert.match(main, new RegExp(`href="/branches\\?service=${svc('FE')}"><span class="office-no">FE</span><span class="svc-name">Fire Extinguishers</span><span class="meta">\\d+ offices`));
-  assert.match(main, /Northeast<\/strong><time>\d+ offices<\/time>[\s\S]*?Regional Vice President<\/span><br><strong>Dana Good<\/strong>[\s\S]*?1 regional director[\s\S]*?Dave Thomas<\/strong> <span class="meta">NJ \| PA \| DE/);
+  assert.match(main, /Northeast<\/strong><time>\d+ offices<\/time>[\s\S]*?Regional Vice President<\/span><br><strong>Robin Vale<\/strong>[\s\S]*?1 regional director[\s\S]*?Sam Carter<\/strong> <span class="meta">NJ \| PA \| DE/);
   assert.match(main, /href="\/contacts#health-safety-fleet"/);
 
   // Put things back for anything that runs after.
@@ -4067,23 +4067,23 @@ test('on call: the rota is loaded from the spreadsheet, everyone sees who is on 
   const today = ymdFromNow(0);
   // The sheet as the office keeps it: a year, a heading line, then a line per stretch. Dates roll over year ends by themselves.
   const sheet = ['2027,,,,11/13/2026', ',,,,', '2027,,Technician,Manager,Holiday', ',,,,',
-    'December,28-Jan. 04,D. Mowbray 717-371-8185,T. Walton 717-406-6389,New Years Eve',
-    'January,04-11,J. Zug 717-517-2281,D. Anderson 717-468-8370,',
-    'January,25-Feb 01,P. Caraballo 717-740-1957,,',
-    'February,22-MAR 01,M. Stough 717-874-0348,J. Negron 717-371-5609,',
-    'May,17-24,M. Wise,J. Negron 717-371-5609,',
-    'June ,28- July 06,P. Candelaria 717-917-2860,J. Negron 717-371-5609,Independence Day',
-    'October,18-25,"M. Mcdonnell 717-740-9178\n",T. Walton 717-406-6389,',
-    'December,27-JAN 03,C. McCurdy 717-829-6147,S. Aviles 717-435-0581,New Years Eve',
-    'January,03-10,M. Stough 717-874-0348,J. Moyer 717-344-9533,'].join('\n');
+    'December,28-Jan. 04,D. Marlow 717-555-0121,T. Weller 717-555-0122,New Years Eve',
+    'January,04-11,J. Zane 717-555-0123,D. Archer 717-555-0124,',
+    'January,25-Feb 01,P. Castell 717-555-0125,,',
+    'February,22-MAR 01,M. Stone 717-555-0126,J. Nolan 717-555-0127,',
+    'May,17-24,M. Wynn,J. Nolan 717-555-0127,',
+    'June ,28- July 06,P. Calder 717-555-0128,J. Nolan 717-555-0127,Independence Day',
+    'October,18-25,"M. Mcdowell 717-555-0129\n",T. Weller 717-555-0122,',
+    'December,27-JAN 03,C. McCall 717-555-0130,S. Avery 717-555-0131,New Years Eve',
+    'January,03-10,M. Stone 717-555-0126,J. Mercer 717-555-0132,'].join('\n');
   const read = oncall.parseSheet(require('../app/routes/catalog').parseCsv(sheet));
   assert.deepEqual(read.problems, []);
   assert.deepEqual([...new Set(read.shifts.map((x) => `${x.start_on}>${x.end_on}`))], ['2026-12-28>2027-01-04', '2027-01-04>2027-01-11', '2027-01-25>2027-02-01', '2027-02-22>2027-03-01',
     '2027-05-17>2027-05-24', '2027-06-28>2027-07-06', '2027-10-18>2027-10-25', '2027-12-27>2028-01-03', '2028-01-03>2028-01-10']);
-  assert.deepEqual(read.shifts.find((x) => x.name === 'M. Wise'), { start_on: '2027-05-17', end_on: '2027-05-24', role: 'tech', name: 'M. Wise', phone: null, note: null });
+  assert.deepEqual(read.shifts.find((x) => x.name === 'M. Wynn'), { start_on: '2027-05-17', end_on: '2027-05-24', role: 'tech', name: 'M. Wynn', phone: null, note: null });
   assert.deepEqual(read.shifts.filter((x) => x.start_on === '2026-12-28').map((x) => [x.role, x.name, x.phone, x.note]),
-    [['tech', 'D. Mowbray', '717-371-8185', 'New Years Eve'], ['backup', 'T. Walton', '717-406-6389', 'New Years Eve']]);
-  assert.equal(read.shifts.find((x) => /Mcdonnell/.test(x.name)).phone, '717-740-9178');           // a line break inside the cell is fine
+    [['tech', 'D. Marlow', '717-555-0121', 'New Years Eve'], ['backup', 'T. Weller', '717-555-0122', 'New Years Eve']]);
+  assert.equal(read.shifts.find((x) => /Mcdowell/.test(x.name)).phone, '717-555-0129');           // a line break inside the cell is fine
   assert.match(oncall.parseSheet([['no year here']]).problems[0], /needs the year/);
 
   // Only people who keep the rota can change it.
@@ -4103,13 +4103,13 @@ test('on call: the rota is loaded from the spreadsheet, everyone sees who is on 
   }
   const seen = (await t1.get(page)).text.replace(/\s+/g, ' ');
   assert.match(seen, /id="now-h">On call now<[\s\S]*Ann Alpha<\/strong><span class="meta">717-555-0001<\/span><\/span> <a class="btn primary" href="tel:7175550001"[^>]*>Call<\/a>[\s\S]*Bo Bravo[\s\S]*Cy Charlie<\/strong><\/span> <span class="hint">No number listed[\s\S]*<span class="tag ">Backup<\/span><strong>Di Delta[\s\S]*Ed Echo/);
-  assert.match(seen, /Coming up[\s\S]*2027[\s\S]*Jan 4 to Jan 11[\s\S]*J\. Zug[\s\S]*D\. Anderson/);
+  assert.match(seen, /Coming up[\s\S]*2027[\s\S]*Jan 4 to Jan 11[\s\S]*J\. Zane[\s\S]*D\. Archer/);
   assert.doesNotMatch(seen, /Remove from this shift/);
   // The home page shows who is on call now, with a call button.
   assert.match((await t1.get('/')).text.replace(/\s+/g, ' '), /id="oncall-h">On call now<[\s\S]*Ann Alpha<\/strong><\/span><a class="btn small primary" href="tel:7175550001"/);
   // The hand-over day belongs to the next person.
-  assert.deepEqual(oncall.covering([1], '2027-01-04').map((x) => x.name), ['J. Zug', 'D. Anderson']);
-  assert.deepEqual(oncall.covering([1], '2027-01-03').map((x) => x.name), ['D. Mowbray', 'T. Walton']);
+  assert.deepEqual(oncall.covering([1], '2027-01-04').map((x) => x.name), ['J. Zane', 'D. Archer']);
+  assert.deepEqual(oncall.covering([1], '2027-01-03').map((x) => x.name), ['D. Marlow', 'T. Weller']);
   // Swapping one person for another, and taking someone off.
   const cy = db.prepare("SELECT id FROM oncall_shifts WHERE name = 'Cy Charlie'").get().id;
   await owner.post(`/admin/oncall/${cy}`, { name: 'Fay Foxtrot', phone: '717-555-0006' }, { page });
