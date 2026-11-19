@@ -5578,23 +5578,24 @@ test('restore: RESTORE_BACKUP brings a backup back at start-up, sets the databas
   fs.rmSync(garbage); fs.rmSync(empty);
 
   // Stopped dead before each file operation of the restore in turn: the database from before is never lost, and the next start finishes the job, once.
+  // (Each try has a copy of the folder to itself, so they can all run side by side.)
   const copyOf = () => { const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'portal-restore-')); fs.cpSync(L.dir, dir, { recursive: true }); return dir; };
-  let stops = 0;
-  for (let n = 1; n < 40; n++) {
-    const dir = copyOf();
-    const r = L.run(STOP_AT(n, "require('./app/dbfile').open(process.env.DATA_DIR)"), { DATA_DIR: dir, RESTORE_BACKUP: B });
-    const finished = /FINISHED/.test(r.out);
-    if (!finished) { stops += 1; assert.ok(kept(dir), `after a stop at step ${n} the database from before is gone: ${fs.readdirSync(dir).join(' ')}`); }
-    const s = labJson(L.run(QUICK, { DATA_DIR: dir, RESTORE_BACKUP: B }));
+  const { execFile, spawn } = require('child_process');
+  const runIn = (dir, code) => new Promise((resolve) => execFile(process.execPath, ['-e', code], { cwd: L.root, env: L.env({ DATA_DIR: dir, RESTORE_BACKUP: B }), encoding: 'utf8' }, (err, out, errOut) => resolve({ ok: !err, out: String(out || ''), err: String(errOut || '') })));
+  const tries = await Promise.all(Array.from({ length: 18 }, async (unused, i) => {
+    const n = i + 1; const dir = copyOf();
+    const finished = /FINISHED/.test((await runIn(dir, STOP_AT(n, "require('./app/dbfile').open(process.env.DATA_DIR)"))).out);
+    if (!finished) assert.ok(kept(dir), `after a stop at step ${n} the database from before is gone: ${fs.readdirSync(dir).join(' ')}`);
+    const s = labJson(await runIn(dir, QUICK));
     assert.deepEqual([s.era, s.marker, s.users, s.integrity], [null, 'kept', 1, 'ok'], `step ${n}`);
     assert.ok(kept(dir), `step ${n}`); assert.equal(asides(dir).length, 1, `step ${n}`);
     assert.doesNotMatch(fs.readdirSync(dir).join(' '), /restore-plan|restoring/);
     fs.rmSync(dir, { recursive: true, force: true });
-    if (finished) break;
-  }
-  assert.ok(stops >= 8, `only ${stops} stops were tried`);
+    return finished;
+  }));
+  assert.ok(tries.filter((finished) => !finished).length >= 8, 'too few stops were tried');
+  assert.equal(tries[tries.length - 1], true);                                // the last tries ran to the end: every step before that was covered
   // ...and stopped at moments nobody chose.
-  const { spawn } = require('child_process');
   await Promise.all([0, 1, 2].map(async () => {
     const dir = copyOf();
     const child = spawn(process.execPath, ['-e', "require('./app/db')"], { cwd: L.root, env: L.env({ DATA_DIR: dir, RESTORE_BACKUP: B }), stdio: 'ignore' });
