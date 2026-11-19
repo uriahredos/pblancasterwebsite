@@ -13,7 +13,7 @@ const guard = requirePerm('certs.manage');
 
 const people = (viewer) => {
   const ids = access.visibleUserIds(viewer);
-  return db.prepare('SELECT id, display_name FROM users WHERE active = 1 ORDER BY display_name COLLATE NOCASE').all().filter((u) => !ids || ids.includes(u.id));
+  return db.prepare(`SELECT id, display_name FROM users WHERE active = 1 ${ids ? `AND id IN (${ids.map(Number).join(',')})` : ''} ORDER BY display_name COLLATE NOCASE, id`).all();
 };
 
 function rows(viewer, query) {
@@ -23,8 +23,9 @@ function rows(viewer, query) {
   const today = localDate();
   let list = db.prepare(
     `SELECT c.*, u.display_name, u.username FROM certifications c JOIN users u ON u.id = c.user_id
-     ORDER BY c.expires_on IS NULL, c.expires_on, u.display_name COLLATE NOCASE`).all()
-    .filter((c) => (!ids || ids.includes(c.user_id)) && (!person || c.user_id === person))
+     ${ids ? `WHERE c.user_id IN (${ids.map(Number).join(',')})` : ''}
+     ORDER BY c.expires_on IS NULL, c.expires_on, u.display_name COLLATE NOCASE, c.id`).all()
+    .filter((c) => !person || c.user_id === person)
     .map((c) => certs.decorate(c, today));
   const counts = { expired: list.filter((c) => c.status === 'expired').length, soon: list.filter((c) => c.status === 'soon').length };
   if (show === 'attention') list = list.filter((c) => c.status === 'expired' || c.status === 'soon');

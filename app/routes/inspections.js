@@ -6,7 +6,7 @@ const activity = require('../activity');
 const mail = require('../mail');
 const config = require('../config');
 const uploads = require('../uploads');
-const { sendCsv } = require('../csv');
+const { sendCsv, rowsFrom } = require('../csv');
 const { requireLogin, requirePerm, verifyCsrf, forbidden, flash } = require('../auth');
 const { clean, isYmd, localDate, fmtDateTime } = require('../util');
 
@@ -125,14 +125,18 @@ router.get('/admin/inspections', requirePerm('inspections.view'), (req, res) => 
     `SELECT i.*, u.display_name, (SELECT COUNT(*) FROM inspection_photos p WHERE p.inspection_id = i.id) AS photos
      FROM inspections i JOIN users u ON u.id = i.user_id ${sql} ORDER BY i.id DESC LIMIT 500`).all(...params);
   // Who is due: everyone who can send inspections, with the date of their last one.
+  // Only the people this viewer looks after are worked out, never the whole company.
   const today = localDate();
+  const theirs = ids ? `AND u.id IN (${ids.map(Number).join(',')})` : '';
+  const sends = new Map();   // whether a profile may send inspections: asked once per profile
+  const maySend = (u) => { if (!sends.has(u.profile_id)) sends.set(u.profile_id, access.permsOf(u.profile_id).has('inspections.submit')); return sends.get(u.profile_id); };
   const people = db.prepare(
     `SELECT u.id, u.display_name, u.default_truck, u.profile_id, u.is_master,
             (SELECT MAX(created_local_date) FROM inspections i WHERE i.user_id = u.id) AS last
-     FROM users u WHERE u.active = 1 ORDER BY last IS NOT NULL, last, u.display_name COLLATE NOCASE`).all()
-    .filter((u) => (!ids || ids.includes(u.id)) && (u.is_master || access.permsOf(u.profile_id).has('inspections.submit')) && (u.default_truck || u.last))
+     FROM users u WHERE u.active = 1 ${theirs} ORDER BY last IS NOT NULL, last, u.display_name COLLATE NOCASE, u.id`).all()
+    .filter((u) => (u.is_master || maySend(u)) && (u.default_truck || u.last))
     .map((u) => ({ ...u, days: u.last ? Math.round((new Date(today + 'T12:00:00Z') - new Date(u.last + 'T12:00:00Z')) / 86400000) : null }));
-  const users = db.prepare('SELECT id, display_name FROM users ORDER BY display_name COLLATE NOCASE').all().filter((u) => !ids || ids.includes(u.id));
+  const users = db.prepare(`SELECT u.id, u.display_name FROM users u WHERE 1 = 1 ${theirs} ORDER BY u.display_name COLLATE NOCASE, u.id`).all();
   const open = db.prepare(`SELECT COUNT(*) AS n FROM inspections i WHERE i.problems > 0 AND i.resolved_at IS NULL ${ids ? `AND i.user_id IN (${ids.map(Number).join(',')})` : ''}`).get().n;
   res.render('admin_inspections', { title: 'Truck inspections', rows, f, qs: qs(f), users, people, open });
 });
@@ -142,9 +146,9 @@ router.get('/admin/inspections.csv', requirePerm('inspections.view'), (req, res)
   const rows = db.prepare(
     `SELECT i.id, i.created_at, i.truck, i.odometer, i.notes, i.resolved_at, u.display_name, r.label, r.ok, r.note
      FROM inspections i JOIN users u ON u.id = i.user_id JOIN inspection_results r ON r.inspection_id = i.id
-     ${sql} ORDER BY i.id, r.id`).all(...params);
+     ${sql} ORDER BY i.id, r.id`).iterate(...params);
   sendCsv(res, `truck-inspections-${localDate()}.csv`, ['Inspection', 'Date', 'Name', 'Truck', 'Odometer', 'Item', 'Result', 'What is wrong', 'Fixed', 'Notes'],
-    rows.map((r) => [r.id, fmtDateTime(r.created_at), r.display_name, r.truck, r.odometer, r.label, r.ok ? 'OK' : 'Problem', r.note,
+    rowsFrom(rows, (r) => [r.id, fmtDateTime(r.created_at), r.display_name, r.truck, r.odometer, r.label, r.ok ? 'OK' : 'Problem', r.note,
       r.ok ? '' : r.resolved_at ? fmtDateTime(r.resolved_at) : 'Not yet', r.notes]));
 });
 

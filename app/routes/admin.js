@@ -3,7 +3,7 @@ const express = require('express');
 const db = require('../db');
 const auth = require('../auth');
 const config = require('../config');
-const { sendCsv } = require('../csv');
+const { sendCsv, rowsFrom } = require('../csv');
 const { clean, isYmd, labels, fmtDateTime, localDate } = require('../util');
 const { history } = require('../changes');
 
@@ -16,9 +16,8 @@ const { requirePerm, forbidden, flash } = auth;
 
 /** People this viewer may pick in a "Person" filter: everyone, or just their own team. */
 function userList(viewer) {
-  const ids = access.visibleUserIds(viewer);
-  const all = db.prepare('SELECT id, display_name FROM users ORDER BY display_name COLLATE NOCASE').all();
-  return ids ? all.filter((u) => ids.includes(u.id)) : all;
+  const scope = scopeSql(viewer, 'id');
+  return db.prepare(`SELECT id, display_name FROM users ${scope ? 'WHERE ' + scope : ''} ORDER BY display_name COLLATE NOCASE, id`).all();
 }
 
 /** SQL that keeps a team-scoped viewer to their own people. Ids are integers from the database. */
@@ -93,11 +92,11 @@ router.get('/admin/parts.csv', requirePerm('parts.view'), (req, res) => {
     `SELECT s.*, u.display_name, u.username, i.part_name, i.quantity
      FROM parts_submissions s JOIN users u ON u.id = s.user_id
      JOIN parts_items i ON i.submission_id = s.id
-     ${sql} ORDER BY ${order}, i.id`).all(...params);
+     ${sql} ORDER BY ${order}, i.id`).iterate(...params);
   sendCsv(res, `parts-${localDate()}.csv`,
     ['Id', 'Submitted', 'Name', 'Username', 'Action', 'Part', 'Quantity', 'Van stock or job', 'Job number', 'Truck',
       'Needed by', 'Note', 'Status', 'Admin note', 'Photo', 'Edited', 'Canceled', 'Checked'],
-    rows.map((r) => [r.id, fmtDateTime(r.created_at), r.display_name, r.username, labels.action[r.action],
+    rowsFrom(rows, (r) => [r.id, fmtDateTime(r.created_at), r.display_name, r.username, labels.action[r.action],
       r.part_name, r.quantity, labels.source[r.source], r.job_number, r.truck, r.needed_by, r.note,
       r.status ? labels.partsStatus[r.status] : '', r.admin_note,
       r.photo_path ? `${config.baseUrl}/parts/photo/${r.id}` : '', fmtDateTime(r.edited_at), fmtDateTime(r.cancelled_at), fmtDateTime(r.audited_at)]));
@@ -414,14 +413,14 @@ function duplicatesFor(actor) {
 }
 
 function renderUsers(req, res, extra = {}) {
-  const ids = access.visibleUserIds(req.user);
+  // Only the viewer's own people are read: the rest of the company is never loaded just to be left out.
+  const scope = scopeSql(req.user, 'u.id');
   const users = db.prepare(
     `SELECT u.*, p.name AS profile_name, p.scope AS profile_scope, (SELECT name FROM branches b WHERE b.id = u.branch_id) AS branch_name,
             (SELECT group_concat(m.display_name, ', ') FROM user_managers um JOIN users m ON m.id = um.manager_id WHERE um.user_id = u.id) AS managers,
             (SELECT COUNT(*) FROM user_managers um WHERE um.manager_id = u.id) AS team_size
-     FROM users u LEFT JOIN profiles p ON p.id = u.profile_id WHERE u.removed_at IS NULL
-     ORDER BY u.active DESC, u.display_name COLLATE NOCASE`).all()
-    .filter((u) => !ids || ids.includes(u.id))
+     FROM users u LEFT JOIN profiles p ON p.id = u.profile_id WHERE u.removed_at IS NULL ${scope ? 'AND ' + scope : ''}
+     ORDER BY u.active DESC, u.display_name COLLATE NOCASE, u.id`).all()
     .map((u) => ({ ...u, manageable: mayManage(req.user, u), tempExpired: auth.tempExpired(u) }));
   res.status(extra.errors ? 400 : 200).render('admin_users', {
     title: 'Users', errors: [], values: {}, created: null, users,
@@ -439,9 +438,9 @@ router.get('/admin/users', requirePerm('users.manage'), (req, res) => {
 // Remove every disabled account this person manages, in one go.
 router.post('/admin/users/remove-disabled', requirePerm('users.manage'), (req, res) => {
   if (req.user.scope !== 'all') return forbidden(res);
-  const ids = access.visibleUserIds(req.user); let gone = 0;
-  const off = db.prepare('SELECT * FROM users WHERE active = 0 AND removed_at IS NULL AND is_master = 0 AND id <> ?').all(req.user.id)
-    .filter((u) => (!ids || ids.includes(u.id)) && mayManage(req.user, u));
+  const scope = scopeSql(req.user, 'id'); let gone = 0;
+  const off = db.prepare(`SELECT * FROM users WHERE active = 0 AND removed_at IS NULL AND is_master = 0 AND id <> ? ${scope ? 'AND ' + scope : ''}`).all(req.user.id)
+    .filter((u) => mayManage(req.user, u));
   for (const u of off) if (require('../removal').remove(u.id)) gone += 1;
   if (gone) activity.log(req.user, 'Disabled accounts removed', `${gone} ${gone === 1 ? 'account' : 'accounts'}: ${off.map((u) => u.display_name).join(', ')}`.slice(0, 400));
   flash(req, gone ? 'ok' : 'err', gone ? `${gone} disabled ${gone === 1 ? 'account was' : 'accounts were'} removed.` : 'There were no disabled accounts to remove.');
@@ -467,10 +466,10 @@ router.post('/admin/users/duplicates', requirePerm('users.manage'), (req, res) =
 
 /** People `actor` may send sign-in details to: active, still on a temporary password, and theirs to manage. */
 function waitingToSignIn(actor) {
-  const ids = access.visibleUserIds(actor);
+  const scope = scopeSql(actor, 'u.id');
   return db.prepare(`SELECT u.*, (SELECT name FROM branches b WHERE b.id = u.branch_id) AS branch_name FROM users u
-      WHERE u.active = 1 AND u.must_change_password = 1 AND u.id <> ? ORDER BY u.display_name COLLATE NOCASE`).all(actor.id)
-    .filter((u) => (!ids || ids.includes(u.id)) && mayManage(actor, u)).map((u) => ({ ...u, tempExpired: auth.tempExpired(u) }));
+      WHERE u.active = 1 AND u.must_change_password = 1 AND u.id <> ? ${scope ? 'AND ' + scope : ''} ORDER BY u.display_name COLLATE NOCASE, u.id`).all(actor.id)
+    .filter((u) => mayManage(actor, u)).map((u) => ({ ...u, tempExpired: auth.tempExpired(u) }));
 }
 
 function signInMessage(u, password, site) {

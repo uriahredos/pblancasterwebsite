@@ -127,8 +127,9 @@ router.get('/', requireLogin, (req, res) => {
     branch.push({ label: 'Low stock', value: low, sub: low === 1 ? 'part at or below its minimum' : 'parts at or below their minimum', level: low ? 'warn' : '', url: '/admin/stock?low=1' });
   }
   if (can('tasks.assign')) {
-    const given = db.prepare('SELECT assigned_to, assigned_by, due_on FROM tasks WHERE done_at IS NULL').all()
-      .filter((t) => t.assigned_by === me || access.canSee(req.user, t.assigned_to));
+    // Open tasks this person gave, or that belong to the people they look after.
+    const given = db.prepare(`SELECT assigned_to, assigned_by, due_on FROM tasks WHERE done_at IS NULL
+       ${ids ? `AND (assigned_by = ${Number(me)} OR assigned_to IN (${ids.map(Number).join(',')}))` : ''}`).all();
     const late = given.filter((t) => t.due_on && t.due_on < today).length;
     branch.push({ label: 'Overdue tasks', value: late, sub: `${given.length} open in all`, level: late ? 'bad' : '', url: late ? '/admin/tasks?show=overdue' : '/admin/tasks' });
   }
@@ -154,7 +155,8 @@ router.get('/', requireLogin, (req, res) => {
   branch.push({ label: 'People', value: inOffice, sub: office ? `in the ${office.name} office` : 'in your office', level: '', url: office ? `/branches/${office.id}` : '/people' });
   const unread = res.locals.badges.notices;
   branch.push({ label: 'Announcements', value: unread, sub: unread ? 'for you to read' : 'all read', level: unread ? 'warn' : '', url: '/notices' });
-  const mineWeek = social.thisWeek(req.user, today).filter((o) => o.branch_id === req.user.branch_id);
+  const homeWeek = social.thisWeek(req.user, today);   // worked out once, used here and for the panel further down
+  const mineWeek = homeWeek.filter((o) => o.branch_id === req.user.branch_id);
   branch.push({ label: 'This week', value: mineWeek.length, sub: mineWeek.length === 1 ? 'birthday or anniversary here' : 'birthdays and anniversaries here', level: '', url: '/#thisweek' });
   const soon = upcoming.length;
   branch.push({ label: 'Coming up', value: soon, sub: soon === 1 ? 'event or training session' : 'events and training sessions', level: '', url: '/events' });
@@ -174,7 +176,7 @@ router.get('/', requireLogin, (req, res) => {
   onCall.sort((x, y) => (y.branch_id === req.user.branch_id) - (x.branch_id === req.user.branch_id) || (x.role === 'backup') - (y.role === 'backup'));   // your own office first, then the rest of the market
   const feed = require('../feed');
   const around = feed.recent(req.user, 8); const company = feed.company(req.user, today);
-  const homeShouts = social.recentShoutouts(me, 3); const homeWeek = social.thisWeek(req.user, today);
+  const homeShouts = social.recentShoutouts(me, 3);
   res.render('home', {
     onCall, onCallOffices: new Set(onCall.map((p) => p.branch_id)).size, around, company, slides: feed.slides(req.user, { around, shouts: homeShouts, week: homeWeek, spot: company.spot }),
     shouts: homeShouts, thisWeek: homeWeek, wallPhotos: social.recentPhotos(me, 4),

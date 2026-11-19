@@ -88,7 +88,7 @@ function assignable(viewer) {
   const ids = access.visibleUserIds(viewer);
   return db.prepare(
     `SELECT u.id, u.display_name, u.profile_id, p.name AS profile_name FROM users u LEFT JOIN profiles p ON p.id = u.profile_id
-     WHERE u.active = 1 ORDER BY u.display_name COLLATE NOCASE`).all().filter((u) => !ids || ids.includes(u.id));
+     WHERE u.active = 1 ${ids ? `AND u.id IN (${ids.map(Number).join(',')})` : ''} ORDER BY u.display_name COLLATE NOCASE, u.id`).all();
 }
 
 /** The profiles those people are on, with how many of them, for "give it to everyone on this profile". */
@@ -118,9 +118,12 @@ function listPage(req, res, extra = {}) {
   const show = ['overdue', 'done', 'all'].includes(req.query.show) ? req.query.show : 'open';
   const person = /^\d+$/.test(req.query.user || '') ? Number(req.query.user) : null;
   const today = localDate();
+  // Only this person's tasks are read (the ones they gave, and their people's), so the 1,000 kept are theirs and not the whole company's.
+  const ids = access.visibleUserIds(req.user);
   const rows = db.prepare(
     `SELECT t.*, a.display_name AS to_name, b.display_name AS by_name FROM tasks t
      JOIN users a ON a.id = t.assigned_to JOIN users b ON b.id = t.assigned_by
+     ${ids ? `WHERE (t.assigned_by = ${Number(req.user.id)} OR t.assigned_to IN (${ids.map(Number).join(',')}))` : ''}
      ORDER BY t.done_at IS NOT NULL, ${tasks.ORDER} LIMIT 1000`).all()
     .filter((t) => mine(req.user, t) && (!person || t.assigned_to === person))
     .map((t) => tasks.decorate(t, today));

@@ -5376,3 +5376,358 @@ test('the Feed page: the activity feed in full, with shout-outs and past events,
 // .
 // .
 // -- review: speed and small defects --
+
+/** Everything the database is asked while `fn` runs: each statement, and how many rows came back. */
+async function watched(fn) {
+  const proto = Object.getPrototypeOf(db.prepare('SELECT 1')); const seen = []; const orig = { all: proto.all, get: proto.get, run: proto.run };
+  for (const m of Object.keys(orig)) proto[m] = function (...a) { const out = orig[m].apply(this, a); seen.push({ sql: this.source.replace(/\s+/g, ' '), rows: Array.isArray(out) ? out.length : m === 'get' && out ? 1 : 0 }); return out; };
+  try { await fn(); } finally { Object.assign(proto, orig); }
+  return seen;
+}
+/** A small office with its own admin (who sees that office only), a manager above a second manager above a technician, and one more technician. */
+function speedOffice() {
+  const have = db.prepare("SELECT id FROM branches WHERE name = 'Speedville'").get();
+  if (have) return have.id;
+  const office = db.prepare("INSERT INTO branches (name, created_at) VALUES ('Speedville', ?)").run(new Date().toISOString()).lastInsertRowid;
+  access.ensureProfile('Office lead', 'all', access.ALL.filter((p) => p !== 'branches.all'));
+  const mk = (username, name, profile) => { const id = makeUser(username, name); db.prepare('UPDATE users SET profile_id = ?, branch_id = ? WHERE id = ?').run(profileId(profile), office, id); return id; };
+  const boss = mk('sp.admin', 'Sasha Speedville', 'Office lead'); const mgr = mk('sp.mgr', 'Morgan Speedville', 'Manager'); const sub = mk('sp.sub', 'Sidney Speedville', 'Manager');
+  const t1 = mk('sp.tech1', 'Tatum Speedville', 'Technician'); mk('sp.tech2', 'Uri Speedville', 'Technician');
+  db.prepare('INSERT INTO user_managers (manager_id, user_id) VALUES (?, ?), (?, ?)').run(mgr, sub, sub, t1);
+  db.prepare("UPDATE users SET default_truck = 'SPD-1' WHERE id = ?").run(t1);
+  assert.ok(boss);
+  return office;
+}
+
+test('speed: the look-ups made on nearly every page have an index to use', () => {
+  const plan = (sql, ...args) => db.prepare('EXPLAIN QUERY PLAN ' + sql).all(...args).map((r) => r.detail).join(' | ');
+  for (const [sql, index] of [
+    ['SELECT MAX(created_local_date) FROM inspections WHERE user_id = 5', 'inspections_user'],
+    ['SELECT u.id, (SELECT MAX(created_local_date) FROM inspections i WHERE i.user_id = u.id) AS last FROM users u WHERE u.active = 1 AND u.id IN (1,2,3)', 'inspections_user'],
+    ['SELECT COUNT(*) FROM inspections WHERE problems > 0 AND resolved_at IS NULL AND user_id IN (1,2,3)', 'inspections_open'],
+    ['SELECT * FROM inspection_results WHERE inspection_id = 5 ORDER BY id', 'inspection_results_inspection'],
+    ['SELECT id, label FROM inspection_photos WHERE inspection_id = 5 ORDER BY id', 'inspection_photos_inspection'],
+    ['SELECT id FROM users WHERE branch_id = 5', 'users_branch'],
+    ['SELECT b.id, (SELECT COUNT(*) FROM users u WHERE u.branch_id = b.id AND (u.active = 1 OR u.in_directory = 1)) AS people FROM branches b', 'users_branch'],
+    ['SELECT manager_id FROM user_managers WHERE user_id = 5', 'user_managers_user'],
+    ['SELECT COUNT(*) FROM training_requests WHERE user_id = 5 AND unseen = 1', 'training_user'],
+    ["SELECT COUNT(*) FROM parts_submissions WHERE action = 'request' AND cancelled_at IS NULL AND status IN ('new','ordered') AND user_id IN (1,2,3)", 'parts_open'],
+    ['DELETE FROM sessions WHERE expires <= 5', 'sessions_expires'],
+    ['SELECT a.at FROM activity_log a LEFT JOIN users u ON u.id = a.user_id WHERE u.branch_id = 5 ORDER BY a.id DESC LIMIT 500', 'activity_user'],
+  ]) assert.match(plan(sql), new RegExp(`USING (COVERING )?INDEX ${index}\\b`), `${sql} should use ${index}`);
+  // Stock for one office starts from that office's own people and entries, never from every entry for a part number.
+  const stockPlan = (() => { const seen = []; const orig = db.prepare; db.prepare = function (sql) { seen.push(sql); return orig.apply(this, arguments); }; try { require('../app/stock').list(1); } finally { delete db.prepare; } return plan(seen[0], 1, 1).replace(/\(.*?\)/g, ''); })();
+  assert.match(stockPlan, /SEARCH su USING COVERING INDEX users_branch .*SEARCH s USING INDEX parts_user .*SEARCH i USING INDEX items_submission/);
+  assert.doesNotMatch(stockPlan, /items_part_name/);
+});
+
+test('speed: a page for one office reads that office\'s people and tasks, not the whole company\'s, and shows the same thing', async () => {
+  const office = speedOffice(); const boss = await loggedIn('sp.admin');
+  const far = db.prepare("INSERT INTO branches (name, created_at) VALUES ('Speed Farville', ?)").run(new Date().toISOString()).lastInsertRowid;
+  const now = new Date().toISOString(); const today = now.slice(0, 10);
+  // The rest of the company: 40 people in another office, each with an inspection, a certification and a great many open tasks.
+  const addUser = db.prepare("INSERT INTO users (username, display_name, password_hash, must_change_password, active, created_at, profile_id, branch_id, default_truck) VALUES (?, ?, 'x', 0, 1, ?, ?, ?, ?)");
+  const farIds = []; for (let i = 0; i < 40; i++) farIds.push(addUser.run(`spdfar${i}`, `Farley Farville ${i}`, now, profileId('Technician'), far, `FAR-${i}`).lastInsertRowid);
+  const addTask = db.prepare("INSERT INTO tasks (title, assigned_to, assigned_by, due_on, done_at, created_at) VALUES (?, ?, ?, ?, ?, ?)");
+  db.transaction(() => {
+    for (const id of farIds) {
+      db.prepare("INSERT INTO inspections (user_id, truck, problems, created_at, created_local_date) VALUES (?, 'FAR', 1, ?, ?)").run(id, now, today);
+      db.prepare("INSERT INTO certifications (user_id, name, expires_on, created_at) VALUES (?, 'FARCERT', '2020-01-01', ?)").run(id, now);
+      for (let k = 0; k < 27; k++) addTask.run('FARTASK', id, farIds[0], '2020-01-01', null, now);   // 1,080 open and long overdue: ahead of everyone else's in the company-wide order
+    }
+  })();
+  const t1 = userId('sp.tech1'); const me = userId('sp.admin');
+  db.prepare("INSERT INTO inspections (user_id, truck, problems, created_at, created_local_date) VALUES (?, 'SPD-1', 0, ?, ?)").run(t1, now, today);
+  db.prepare("INSERT INTO certifications (user_id, name, expires_on, created_at) VALUES (?, 'SPDCERT', '2031-01-01', ?)").run(t1, now);
+  addTask.run('SPDTASK open', t1, me, '2021-03-03', null, now); addTask.run('SPDTASK done', userId('sp.tech2'), me, today, now, now);
+
+  const pages = ['/', '/admin/users', '/admin/users/invite', '/admin/inspections', '/admin/parts', '/admin/parts/audit', '/admin/parts/summary', '/admin/training', '/admin/training/sessions', '/admin/certs', '/admin/tasks'];
+  const text = {};
+  const seen = await watched(async () => { for (const p of pages) { const r = await boss.get(p); assert.equal(r.status, 200, p); text[p] = r.text.replace(/\s+/g, ' '); } });
+  // Five people work in this office. No list of people, tasks or certifications read for these pages comes anywhere near the
+  // size of the company. (Birthdays this week are looked up across every office on purpose.)
+  const outer = (sql) => { let t = sql; while (/\([^()]*\)/.test(t)) t = t.replace(/\([^()]*\)/g, ''); return t; };   // the statement without anything in brackets: what it lists, not what it counts on the side
+  const tooMany = seen.filter((s) => s.rows > 12 && /\bFROM (users|tasks|certifications)\b/.test(outer(s.sql)) && !/u\.birthday/.test(s.sql)).map((s) => `${s.rows} rows: ${s.sql.slice(0, 140)}`);
+  assert.deepEqual(tooMany, []);
+  // And the pages still say what they said.
+  assert.equal((text['/admin/users'].match(/Speedville<\/(?:strong|a|td)>|Speedville /g) || []).length > 0, true);
+  for (const name of ['Sasha Speedville', 'Morgan Speedville', 'Sidney Speedville', 'Tatum Speedville', 'Uri Speedville']) assert.match(text['/admin/users'], new RegExp(name));
+  assert.doesNotMatch(text['/admin/users'], /Farley Farville/);
+  assert.match(text['/admin/inspections'], /Tatum Speedville/); assert.doesNotMatch(text['/admin/inspections'], /Farley Farville|FAR-\d/);
+  assert.match(text['/admin/certs'], /SPDCERT/); assert.doesNotMatch(text['/admin/certs'], /FARCERT/);
+  // Manage tasks: the office's own tasks are all there, however many the rest of the company has open.
+  assert.match(text['/admin/tasks'], /<strong>1<\/strong> open, <strong>1 overdue<\/strong>, 1 done\./); assert.match(text['/admin/tasks'], /SPDTASK open/); assert.doesNotMatch(text['/admin/tasks'], /FARTASK/);
+  assert.match((await boss.get('/admin/tasks?show=done')).text, /SPDTASK done/);
+  assert.match(text['/'].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' '), /Overdue tasks 1 1 open in all|1 Overdue tasks 1 open in all/);   // the home page counts the same ones
+  // A manager's pages cover their own people only, as before.
+  const mgr = await loggedIn('sp.mgr');
+  const who = (await mgr.get('/admin/inspections')).text;
+  assert.match(who, /Tatum Speedville/); assert.doesNotMatch(who, /Uri Speedville|Farley/);
+  const certPeople = /<select name="user_id"[\s\S]*?<\/select>/.exec((await mgr.get('/admin/certs')).text)[0];
+  assert.match(certPeople, /Sidney Speedville/); assert.match(certPeople, /Tatum Speedville/); assert.doesNotMatch(certPeople, /Uri Speedville|Sasha Speedville|Farley/);
+
+  db.transaction(() => {
+    db.prepare("DELETE FROM tasks WHERE title IN ('FARTASK', 'SPDTASK open', 'SPDTASK done')").run();
+    db.prepare("DELETE FROM certifications WHERE name IN ('FARCERT', 'SPDCERT')").run();
+    db.prepare("DELETE FROM inspections WHERE truck IN ('FAR', 'SPD-1')").run();
+    db.prepare('DELETE FROM users WHERE branch_id = ?').run(far); db.prepare('DELETE FROM branches WHERE id = ?').run(far);
+  })();
+  assert.ok(office);
+});
+
+test('stock: one office\'s figures come from its own entries only, whatever another office does with the same part', () => {
+  const stock = require('../app/stock'); const office = speedOffice();
+  const other = db.prepare("INSERT INTO branches (name, created_at) VALUES ('Speed Stockton', ?)").run(new Date().toISOString()).lastInsertRowid;
+  const away = makeUser('stock.away', 'Avery Away'); db.prepare('UPDATE users SET branch_id = ? WHERE id = ?').run(other, away);
+  const part = db.prepare("INSERT INTO parts_catalog (part_number, description, created_at) VALUES ('SPD-100', 'Speed test strobe', ?)").run(new Date().toISOString()).lastInsertRowid;
+  const count = db.prepare('INSERT INTO branch_stock (branch_id, catalog_id, count_qty, count_at, min_level) VALUES (?, ?, ?, ?, ?)');
+  count.run(office, part, 50, '2026-06-01T12:00:00.000Z', 60); count.run(other, part, 20, '2026-06-01T12:00:00.000Z', null);
+  const entry = (user, action, name, qty, at, cancelled) => {
+    const id = db.prepare("INSERT INTO parts_submissions (user_id, action, source, status, cancelled_at, created_at, created_local_date) VALUES (?, ?, 'van', ?, ?, ?, ?)").run(user, action, action === 'request' ? 'new' : null, cancelled ? at : null, at, at.slice(0, 10)).lastInsertRowid;
+    db.prepare('INSERT INTO parts_items (submission_id, part_name, quantity) VALUES (?, ?, ?)').run(id, name, qty); return id;
+  };
+  const t1 = userId('sp.tech1'); const made = [];
+  made.push(entry(t1, 'take', 'spd-100', 5, '2026-06-02T09:00:00.000Z'));           // counts: typed in small letters
+  made.push(entry(t1, 'return', 'SPD-100', 2, '2026-06-03T09:00:00.000Z'));         // counts
+  made.push(entry(t1, 'take', 'SPD-100', 7, '2026-06-04T09:00:00.000Z', true));     // cancelled: does not count
+  made.push(entry(t1, 'take', 'SPD-100', 9, '2026-05-20T09:00:00.000Z'));           // before the count: does not count
+  made.push(entry(t1, 'request', 'SPD-100', 4, '2026-06-05T09:00:00.000Z'));        // a request moves nothing
+  made.push(entry(away, 'take', 'SPD-100', 11, '2026-06-06T09:00:00.000Z'));        // the other office's shelf, not this one's
+  const adjust = db.prepare("INSERT INTO stock_adjustments (catalog_id, quantity, reason, user_id, created_at, branch_id) VALUES (?, ?, 'Delivery', ?, '2026-06-07T09:00:00.000Z', ?)");
+  adjust.run(part, 10, t1, office); adjust.run(part, 3, away, other);
+  const mine = stock.list(office).find((r) => r.part_number === 'SPD-100'); const theirs = stock.list(other).find((r) => r.part_number === 'SPD-100');
+  assert.equal(mine.on_hand, 50 + 10 - 5 + 2); assert.equal(mine.low, true);
+  assert.equal(theirs.on_hand, 20 + 3 - 11); assert.equal(theirs.low, false);
+  assert.equal(stock.forNames(office, [' spd-100 ', 'NOT-A-PART'])[0].on_hand, 57); assert.equal(stock.forNames(office, ['NOT-A-PART']).length, 0);
+  assert.equal(stock.lowCount(office), 1); assert.equal(stock.list(office, { q: 'strobe' }).length, 1); assert.equal(stock.list(office, { q: 'nothing like it' }).length, 0);
+  db.transaction(() => {
+    db.prepare(`DELETE FROM parts_submissions WHERE id IN (${made.join(',')})`).run(); db.prepare('DELETE FROM stock_adjustments WHERE catalog_id = ?').run(part);
+    db.prepare('DELETE FROM branch_stock WHERE catalog_id = ?').run(part); db.prepare('DELETE FROM parts_catalog WHERE id = ?').run(part);
+  })();
+});
+
+test('alerts: who is told about a parts request or a truck problem is unchanged, and found without going through everyone with alerts on', async () => {
+  const push = require('../app/push'); speedOffice();
+  const far = db.prepare("INSERT INTO branches (name, created_at) VALUES ('Speed Alertville', ?)").run(new Date().toISOString()).lastInsertRowid;
+  const now = new Date().toISOString();
+  const addUser = db.prepare("INSERT INTO users (username, display_name, password_hash, must_change_password, active, created_at, profile_id, branch_id) VALUES (?, ?, 'x', 0, 1, ?, ?, ?)");
+  const farIds = []; for (let i = 0; i < 50; i++) farIds.push(addUser.run(`spdalert${i}`, `Alex Alertville ${i}`, now, profileId(i === 0 ? 'Office lead' : i === 1 ? 'Manager' : 'Technician'), far).lastInsertRowid);
+  const sub = db.prepare("INSERT OR IGNORE INTO push_subscriptions (user_id, endpoint, p256dh, auth, device, created_at) VALUES (?, ?, 'k', 'a', 'Phone', ?)");
+  const mine = ['sp.admin', 'sp.mgr', 'sp.sub', 'sp.tech1', 'sp.tech2'].map(userId);
+  for (const id of [...farIds, ...mine]) sub.run(id, `https://push.invalid/speed/${id}`, now);
+  // An old link from before offices were kept apart: a manager elsewhere with one of this office's people on their team.
+  db.prepare('INSERT INTO user_managers (manager_id, user_id) VALUES (?, ?)').run(farIds[1], userId('sp.tech2'));
+
+  // The rule, spelled out the long way: everyone with alerts on, one by one.
+  const longWay = (perm, ownerId, exceptId) => db.prepare('SELECT DISTINCT u.* FROM users u JOIN push_subscriptions s ON s.user_id = u.id WHERE u.active = 1').all()
+    .map((u) => access.loadAccess(u)).filter((u) => u.id !== exceptId && access.can(u, perm) && (ownerId === undefined || access.canSee(u, ownerId))).map((u) => u.id);
+  const sorted = (a) => [...a].sort((x, y) => x - y);
+  const [boss, mgr, under, t1, t2] = mine;
+  // A technician's request reaches the office's admin and every manager above them, however many levels up; nobody in another office.
+  assert.deepEqual(sorted(push.peopleWith('parts.manage', t1, t1)), sorted([boss, mgr, under]));
+  assert.deepEqual(sorted(push.peopleWith('parts.manage', t2, t2)), sorted([boss, farIds[1]]));
+  assert.deepEqual(sorted(push.peopleWith('parts.manage', boss, boss)), []);          // nobody else in the office holds it for the admin's own request
+  for (const perm of ['parts.manage', 'inspections.view', 'stock.manage', 'tasks.assign', 'no.such.permission']) {
+    for (const owner of [...mine, farIds[0], farIds[5], userId('tech1'), 987654]) {
+      for (const args of [[perm, owner, owner], [perm, owner], [perm, owner, boss]]) assert.deepEqual(sorted(push.peopleWith(...args)), sorted(longWay(...args)), JSON.stringify(args));
+    }
+    assert.deepEqual(sorted(push.peopleWith(perm)), sorted(longWay(perm)));
+  }
+  // With 55 people's phones signed up, finding the three to tell takes a handful of questions, not a few for each phone.
+  const asked = await watched(async () => { push.peopleWith('parts.manage', t1, t1); });
+  assert.ok(asked.length < 40, `asked the database ${asked.length} times`);
+
+  db.transaction(() => {
+    db.prepare("DELETE FROM push_subscriptions WHERE endpoint LIKE 'https://push.invalid/speed/%'").run();
+    db.prepare('DELETE FROM user_managers WHERE manager_id = ?').run(farIds[1]);
+    db.prepare('DELETE FROM users WHERE branch_id = ?').run(far); db.prepare('DELETE FROM branches WHERE id = ?').run(far);
+  })();
+});
+
+test('People: past 500 the page says how many there are and goes on to the next page; long pickers and tables say when they stop', async () => {
+  speedOffice(); const now = new Date().toISOString();
+  const town = db.prepare("INSERT INTO branches (name, created_at) VALUES ('Speed Bulkton', ?)").run(now).lastInsertRowid;
+  const add = db.prepare("INSERT INTO users (username, display_name, password_hash, must_change_password, active, in_directory, created_at, branch_id, job_title) VALUES (?, ?, 'x', 1, 0, 1, ?, ?, 'Bulk Fitter')");
+  db.transaction(() => { for (let i = 1; i <= 1010; i++) add.run(`spdbulk${i}`, `Zz Bulk ${String(i).padStart(4, '0')}`, now, town); })();
+  const total = db.prepare('SELECT COUNT(*) n FROM users WHERE active = 1 OR in_directory = 1').get().n;
+  const pages = Math.ceil(total / 500); const count = (html) => (html.match(/<li><a href="\/people\/\d+">/g) || []).length;
+  const t = await loggedIn('sp.tech1');
+
+  // The first page says there are more, and every page leads to the next: the last person in the alphabet can be reached.
+  const first = (await t.get('/people')).text;
+  assert.match(first, new RegExp(`<p class="meta">Showing 1 to 500 of ${total} people</p>`)); assert.equal(count(first), 500);
+  assert.match(first, /<a class="btn small" href="\/people\?page=2">Next<\/a>/); assert.doesNotMatch(first, />Previous</);
+  const last = (await t.get(`/people?page=${pages}`)).text;
+  assert.match(last, new RegExp(`Showing ${(pages - 1) * 500 + 1} to ${total} of ${total} people`)); assert.match(last, /Zz Bulk 1010/);
+  assert.match(last, new RegExp(`href="/people\\?page=${pages - 1}">Previous</a>`)); assert.doesNotMatch(last, />Next</);
+  assert.equal(count(first) + count(last) + (pages - 2) * 500, total);
+  // Asking for a page that is not there gives the nearest one that is.
+  assert.match((await t.get('/people?page=999')).text, /Zz Bulk 1010/); assert.match((await t.get('/people?page=nonsense')).text, /Showing 1 to 500 of/);
+  // A search with many answers is paged the same way, and keeps the search as it goes.
+  const found = (await t.get('/people?q=Zz+Bulk')).text;
+  assert.match(found, new RegExp(`Showing 1 to 500 of 1010 people found, of ${total}</p>`)); assert.match(found, /href="\/people\?q=Zz\+Bulk&amp;page=2">Next<\/a>/);
+  assert.match((await t.get('/people?q=Zz+Bulk&page=3')).text, /Showing 1001 to 1010 of 1010 people found/);
+  assert.match((await t.get(`/people?branch=${town}&page=2`)).text, new RegExp(`href="/people\\?branch=${town}">Previous</a>[\\s\\S]*href="/people\\?branch=${town}&amp;page=3">Next</a>`));
+  // A short list reads as it always did.
+  assert.match((await t.get('/people?q=Tatum+Speedville')).text, new RegExp(`<p class="meta">1 person found, of ${total}</p>`));
+
+  // Shout-outs: in a company this size the list is the person's own office; anyone else is reached from their own page.
+  const give = (html) => /<select name="to_user"[\s\S]*?<\/label>/.exec(html)[0];
+  const picker = give((await t.get('/shoutouts')).text);
+  assert.match(picker, /Morgan Speedville/); assert.match(picker, /Uri Speedville/); assert.doesNotMatch(picker, /Tatum Speedville|Zz Bulk|Terry Tech|optgroup/);
+  assert.match(picker, /For someone in another office, open their page from <a href="\/people">People<\/a> and choose Give a shout-out there\./);
+  const one = db.prepare("SELECT id FROM users WHERE username = 'spdbulk7'").get().id;
+  assert.match((await t.get(`/people/${one}`)).text, new RegExp(`href="/shoutouts\\?to=${one}#give"`));
+  const chosen = give((await t.get(`/shoutouts?to=${one}`)).text);
+  assert.match(chosen, new RegExp(`<optgroup label="Other offices"><option value="${one}" selected>Zz Bulk 0007 · Speed Bulkton</option></optgroup>`)); assert.equal((chosen.match(/Zz Bulk/g) || []).length, 1);
+  assert.equal((await t.post('/shoutouts', { to_user: String(one), message: 'BULKSHOUT thanks for the loan of the lift' }, { page: '/shoutouts' })).status, 302);
+  assert.equal(db.prepare("SELECT to_user FROM shoutouts WHERE message LIKE 'BULKSHOUT%'").get().to_user, one);
+  // A form sent back with a mistake still shows who was picked.
+  const again = await t.post('/shoutouts', { to_user: String(one), message: '' }, { page: '/shoutouts' });
+  assert.equal(again.status, 400); assert.match(give(again.text), new RegExp(`<option value="${one}" selected>`));
+
+  // Positions for every office at once: the table stops at 1,000 and says so; one office is shown whole, with no notice.
+  const owner = await loggedIn('owner');
+  await owner.post('/branch/view', { branch: 'all', back: '/' }, { page: '/' });
+  const all = (await owner.get('/admin/users/positions')).text;
+  assert.match(all, /Only the first 1000 people are listed here\. To work on everyone in one office, choose that office in the box at the top of the page\./);
+  assert.equal((all.match(/<tr id="p\d+"/g) || []).length, 1000);
+  await owner.post('/branch/view', { branch: String(town), back: '/' }, { page: '/' });
+  const oneOffice = (await owner.get('/admin/users/positions')).text;
+  assert.equal((oneOffice.match(/<tr id="p\d+"/g) || []).length, 1000); assert.match(oneOffice, /Only the first 1000 people are listed here\.<\/p>/);   // this one office is itself over the limit, and there is no other office to send them to
+  await owner.post('/branch/view', { branch: String(speedOffice()), back: '/' }, { page: '/' });
+  const small = (await owner.get('/admin/users/positions')).text;
+  assert.equal((small.match(/<tr id="p\d+"/g) || []).length, 5); assert.doesNotMatch(small, /Only the first/);
+
+  db.transaction(() => {
+    db.prepare("DELETE FROM shoutouts WHERE message LIKE 'BULKSHOUT%'").run();
+    db.prepare('DELETE FROM users WHERE branch_id = ?').run(town); db.prepare('DELETE FROM branches WHERE id = ?').run(town);
+  })();
+  // Back to a company small enough for one list: the person's own office first, then everyone else, as two groups.
+  assert.ok(db.prepare('SELECT COUNT(*) n FROM users WHERE active = 1 OR in_directory = 1').get().n <= 500);
+  const small2 = give((await t.get('/shoutouts')).text);
+  assert.match(small2, /<optgroup label="Your office">[\s\S]*Morgan Speedville · Speedville[\s\S]*<\/optgroup><optgroup label="Other offices">[\s\S]*Terry Tech/);
+  assert.doesNotMatch(small2, /For someone in another office/);
+  assert.match((await t.get('/people')).text, /<p class="meta">\d+ people<\/p>/);
+});
+
+test('task notes: the tidy for double-tapped notes runs once, and a note someone wrote again later is kept', () => {
+  const L = encryptionLab();
+  // A database from before this change: notes already in it, and no record that the tidy has been done.
+  const seed = L.run(`const db = require('./app/db'); const auth = require('./app/auth');
+    const a = auth.createUser({ username: 'note.a', displayName: 'Nora Notes', password: 'correct horse battery' });
+    const b = auth.createUser({ username: 'note.b', displayName: 'Ned Notes', password: 'correct horse battery' });
+    const t = db.prepare("INSERT INTO tasks (title, assigned_to, assigned_by, created_at) VALUES ('Call the customer', ?, ?, '2026-11-02T14:00:00.000Z')").run(a, b).lastInsertRowid;
+    const add = db.prepare('INSERT INTO task_notes (task_id, user_id, status, body, created_at) VALUES (?, ?, NULL, ?, ?)');
+    add.run(t, a, 'Called, no answer', '2026-11-02T14:00:00.000Z'); add.run(t, b, 'Try the site office', '2026-11-02T14:04:00.000Z');
+    add.run(t, a, 'Called, no answer', '2026-11-02T14:08:00.000Z');       // written again on purpose, after someone else's note
+    add.run(t, a, 'On my way', '2026-11-02T15:00:00.000Z'); add.run(t, a, 'On my way', '2026-11-02T15:00:20.000Z'); add.run(t, a, 'On my way', '2026-11-02T15:00:40.000Z');   // one note, tapped three times
+    db.prepare("DELETE FROM meta WHERE key = 'task_notes_tidy_1'").run();
+    console.log(db.prepare('SELECT COUNT(*) n FROM task_notes').get().n);`);
+  assert.ok(seed.ok, seed.err); assert.equal(seed.out.trim().split('\n').pop(), '6');
+  const NOTES = `const db = require('./app/db'); console.log(JSON.stringify(db.prepare("SELECT strftime('%H:%M:%S', created_at) || ' ' || body AS n FROM task_notes ORDER BY id").all().map((r) => r.n)));`;
+  const notes = () => { const r = L.run(NOTES); assert.ok(r.ok, r.err); return JSON.parse(r.out.trim().split('\n').pop()); };
+  // The next start tidies the triple tap and leaves the note that was written twice on purpose.
+  const kept = ['14:00:00 Called, no answer', '14:04:00 Try the site office', '14:08:00 Called, no answer', '15:00:00 On my way'];
+  assert.deepEqual(notes(), kept);
+  // After that it never runs again: nothing a later restart finds is removed.
+  const more = L.run(`const db = require('./app/db'); const n = db.prepare('SELECT task_id, user_id FROM task_notes ORDER BY id LIMIT 1').get();
+    const add = db.prepare("INSERT INTO task_notes (task_id, user_id, status, body, created_at) VALUES (?, ?, NULL, 'Parts are in', ?)");
+    add.run(n.task_id, n.user_id, '2026-11-03T09:00:00.000Z'); add.run(n.task_id, n.user_id, '2026-11-03T09:00:30.000Z');`);
+  assert.ok(more.ok, more.err);
+  assert.deepEqual(notes(), [...kept, '09:00:00 Parts are in', '09:00:30 Parts are in']);
+  assert.deepEqual(notes(), [...kept, '09:00:00 Parts are in', '09:00:30 Parts are in']);
+  fs.rmSync(L.dir, { recursive: true, force: true });
+});
+
+test('certification reminders are ticked off only when the email has really gone', async () => {
+  const certs = require('../app/certs');
+  const recorder = { sendMail: async (m) => { sent.push(m); } };
+  const soon = (days) => { const d = new Date(`${require('../app/util').localDate()}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10); };
+  const cora = makeUser('cert.cora', 'Cora Certwell'); db.prepare("UPDATE users SET email = 'cora@example.com' WHERE id = ?").run(cora);
+  const ned = makeUser('cert.ned', 'Ned Noaddress');
+  const add = (user, name, days) => db.prepare('INSERT INTO certifications (user_id, name, expires_on, created_at) VALUES (?, ?, ?, ?)').run(user, name, soon(days), new Date().toISOString()).lastInsertRowid;
+  const c1 = add(cora, 'REMIND state license', 20); const c2 = add(ned, 'REMIND first aid', 20);
+  const flags = (id) => db.prepare('SELECT reminded_30, reminded_7 FROM certifications WHERE id = ?').get(id);
+  const mine = () => sent.filter((m) => /REMIND/.test(m.subject)).map((m) => [m.to, m.subject]);
+  const untouched = db.prepare("SELECT COUNT(*) n FROM certifications WHERE reminded_30 = 1 OR reminded_7 = 1").get().n;
+  try {
+    // Email not set up, which is how a new site starts out: nothing can be sent, so nothing is used up.
+    mail.setTransport(null); sent.length = 0;
+    assert.equal(await certs.runReminders(), 0);
+    assert.deepEqual(flags(c1), { reminded_30: 0, reminded_7: 0 });
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM certifications WHERE reminded_30 = 1 OR reminded_7 = 1").get().n, untouched);
+    // A mail server that refuses the message: still not ticked off, so it is tried again at the next pass.
+    mail.setTransport({ sendMail: async (m) => { if (/REMIND/.test(m.subject)) throw new Error('mailbox unavailable'); sent.push(m); } });
+    await certs.runReminders();
+    assert.deepEqual(flags(c1), { reminded_30: 0, reminded_7: 0 }); assert.deepEqual(mine(), []);
+  } finally { mail.setTransport(recorder); }
+  // Email working: it goes once, and only then is it ticked off. Someone with no address on their account is not ticked off either.
+  sent.length = 0; await certs.runReminders();
+  assert.deepEqual(mine(), [['cora@example.com', 'REMIND state license expires in 20 days']]);
+  assert.deepEqual(flags(c1), { reminded_30: 1, reminded_7: 0 }); assert.deepEqual(flags(c2), { reminded_30: 0, reminded_7: 0 });
+  sent.length = 0; await certs.runReminders(); assert.deepEqual(mine(), []);
+  // Once Ned has an address, his reminder goes too.
+  db.prepare("UPDATE users SET email = 'ned@example.com' WHERE id = ?").run(ned);
+  await certs.runReminders(); assert.deepEqual(mine(), [['ned@example.com', 'REMIND first aid expires in 20 days']]); assert.deepEqual(flags(c2), { reminded_30: 1, reminded_7: 0 });
+  // The second reminder, inside the last week, works the same way.
+  const later = new Date(Date.now() + 15 * 86400000);
+  mail.setTransport(null);
+  try { assert.equal(await certs.runReminders(later), 0); assert.deepEqual(flags(c1), { reminded_30: 1, reminded_7: 0 }); } finally { mail.setTransport(recorder); }
+  sent.length = 0; await certs.runReminders(later);
+  assert.deepEqual(mine().sort(), [['cora@example.com', 'REMIND state license expires in 5 days'], ['ned@example.com', 'REMIND first aid expires in 5 days']]);
+  assert.deepEqual(flags(c1), { reminded_30: 1, reminded_7: 1 });
+  db.prepare("DELETE FROM certifications WHERE name LIKE 'REMIND %'").run();
+
+  // Reminders ticked off in the days when email was off and nothing went: cleared once, at the first start with this fix,
+  // and only while email is still off. Ones for certifications already run out are left alone.
+  const L = encryptionLab();
+  const SEED = `const db = require('./app/db'); const auth = require('./app/auth');
+    const u = auth.createUser({ username: 'cert.old', displayName: 'Olga Oldflag', password: 'correct horse battery' });
+    const add = db.prepare('INSERT INTO certifications (user_id, name, expires_on, reminded_30, reminded_7, created_at) VALUES (?, ?, ?, ?, ?, ?)');
+    add.run(u, 'due soon', '${soon(10)}', 1, 0, '2026-01-01T00:00:00.000Z'); add.run(u, 'due this week', '${soon(3)}', 1, 1, '2026-01-01T00:00:00.000Z'); add.run(u, 'long gone', '2020-01-01', 1, 1, '2026-01-01T00:00:00.000Z');
+    db.prepare("DELETE FROM meta WHERE key = 'cert_reminders_1'").run();`;
+  const FLAGS = `const db = require('./app/db'); console.log(JSON.stringify(db.prepare('SELECT name, reminded_30 AS a, reminded_7 AS b FROM certifications ORDER BY id').all().map((c) => c.name + ' ' + c.a + c.b)));`;
+  const state = (lab, extra) => { const r = lab.run(FLAGS, extra); assert.ok(r.ok, r.err); return JSON.parse(r.out.trim().split('\n').pop()); };
+  assert.ok(L.run(SEED).ok);
+  assert.deepEqual(state(L), ['due soon 00', 'due this week 00', 'long gone 11']);
+  assert.ok(L.run(`require('./app/db').prepare("UPDATE certifications SET reminded_30 = 1 WHERE name = 'due soon'").run();`).ok);
+  assert.deepEqual(state(L), ['due soon 10', 'due this week 00', 'long gone 11']);       // once only: a reminder sent later is not sent twice
+  // Where email is already set up, the ticks may be real, so they stay.
+  const M = encryptionLab();
+  assert.ok(M.run(SEED).ok);
+  assert.deepEqual(state(M, { SMTP_HOST: 'smtp.example.invalid' }), ['due soon 10', 'due this week 11', 'long gone 11']);
+  assert.deepEqual(state(M), ['due soon 10', 'due this week 11', 'long gone 11']);
+  for (const lab of [L, M]) fs.rmSync(lab.dir, { recursive: true, force: true });
+});
+
+test('spreadsheets: a very large export is the same file as before, put together a piece at a time', async () => {
+  const csv = require('../app/csv');
+  const header = ['Id', 'Name', 'Typed', 'Awkward', 'Empty', 'Accents'];
+  const rows = Array.from({ length: 30000 }, (_, i) => [i, `Name ${i}`, i % 7 ? 'plain' : '=SUM(1,2)', 'has "quotes", a comma\nand a new line', null, 'é ü 漢']);
+  const want = csv.toCsv(header, rows);
+  const reply = () => { const r = { headers: {}, body: [], req: {} }; r.setHeader = (k, v) => { r.headers[k] = v; }; r.send = (b) => { r.sent = true; r.body.push(Buffer.from(b)); }; r.write = (b) => { r.body.push(b); }; r.end = () => { r.ended = true; }; return r; };
+  // From a list, and from rows handed over one at a time (how the big exports now read the database).
+  for (const source of [rows, csv.rowsFrom(rows.values(), (r) => r)]) {
+    const r = reply(); csv.sendCsv(r, 'big.csv', header, source);
+    assert.equal(Buffer.concat(r.body).toString('utf8'), want); assert.ok(r.body.length > 4 && r.ended);
+    assert.equal(r.headers['Content-Length'], Buffer.byteLength(want)); assert.equal(r.headers['Content-Disposition'], 'attachment; filename="big.csv"');
+  }
+  // An ordinary export still goes out in one go.
+  const small = reply(); csv.sendCsv(small, 'small.csv', header, rows.slice(0, 20));
+  assert.equal(small.sent, true); assert.equal(small.body.length, 1); assert.equal(small.body[0].toString('utf8'), csv.toCsv(header, rows.slice(0, 20)));
+  // Over the site: the parts and truck exports carry the same rows as before, and the log still says how many.
+  speedOffice(); const boss = await loggedIn('sp.admin'); const t1 = userId('sp.tech1'); const now = new Date().toISOString();
+  const sid = db.prepare("INSERT INTO parts_submissions (user_id, action, source, job_number, created_at, created_local_date) VALUES (?, 'take', 'job', 'CSVJOB', ?, ?)").run(t1, now, now.slice(0, 10)).lastInsertRowid;
+  db.prepare("INSERT INTO parts_items (submission_id, part_name, quantity) VALUES (?, 'CSV-PART-A', 2), (?, 'CSV-PART-B', 3)").run(sid, sid);
+  const iid = db.prepare("INSERT INTO inspections (user_id, truck, odometer, problems, created_at, created_local_date) VALUES (?, 'CSV-TRUCK', '1200', 1, ?, ?)").run(t1, now, now.slice(0, 10)).lastInsertRowid;
+  db.prepare("INSERT INTO inspection_results (inspection_id, label, ok, note) VALUES (?, 'Brakes', 0, 'soft pedal'), (?, 'Horn', 1, NULL)").run(iid, iid);
+  const parts = await boss.get('/admin/parts.csv');
+  assert.equal(parts.headers.get('content-type'), 'text/csv; charset=utf-8');
+  const lines = (r) => r.text.replace(/^\ufeff/, '').trim().split('\r\n').slice(1).map((l) => l.replace(/^\d+,"[^"]*",/, ''));   // without the id and the time
+  assert.deepEqual(lines(parts).map((l) => l.split(',').slice(0, 7).join(',')), ['Tatum Speedville,sp.tech1,Take parts,CSV-PART-A,2,Job,CSVJOB', 'Tatum Speedville,sp.tech1,Take parts,CSV-PART-B,3,Job,CSVJOB']);
+  assert.deepEqual(lines(await boss.get('/admin/inspections.csv')), ['Tatum Speedville,CSV-TRUCK,1200,Brakes,Problem,soft pedal,Not yet,', 'Tatum Speedville,CSV-TRUCK,1200,Horn,OK,,,']);
+  const logged = db.prepare("SELECT detail FROM activity_log WHERE action = 'Spreadsheet exported' AND user_id = ? ORDER BY id DESC LIMIT 2").all(userId('sp.admin')).map((r) => r.detail.replace(/\d{4}-\d\d-\d\d/, 'DAY'));
+  assert.deepEqual(logged, ['truck-inspections-DAY.csv, 2 rows', 'parts-DAY.csv, 2 rows']);
+  db.prepare('DELETE FROM parts_submissions WHERE id = ?').run(sid); db.prepare('DELETE FROM inspections WHERE id = ?').run(iid);
+});

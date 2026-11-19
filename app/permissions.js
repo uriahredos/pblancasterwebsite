@@ -89,6 +89,8 @@ CREATE TABLE IF NOT EXISTS user_managers (
   user_id INTEGER NOT NULL REFERENCES users(id),
   PRIMARY KEY (manager_id, user_id)
 );
+-- The key above answers "who reports to this manager"; this one answers "who does this person report to".
+CREATE INDEX IF NOT EXISTS user_managers_user ON user_managers(user_id);
 `);
 for (const [col, type] of [['profile_id', 'INTEGER'], ['is_master', 'INTEGER NOT NULL DEFAULT 0']]) {
   if (!db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = ?").get(col)) db.exec(`ALTER TABLE users ADD COLUMN ${col} ${type}`);

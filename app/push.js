@@ -90,7 +90,16 @@ function notify(userIds, kind, { title, body, url }) {
 
 /** Active people who hold a permission and are allowed to see this person's records (and have alerts on). */
 function peopleWith(perm, ownerId, exceptId) {
-  return db.prepare('SELECT DISTINCT u.* FROM users u JOIN push_subscriptions s ON s.user_id = u.id WHERE u.active = 1').all()
+  // The database picks out the few who could qualify: alerts on, the permission on their profile, and either in this
+  // person's office or a manager somewhere above them. The exact rule is then applied to that short list only,
+  // so the cost no longer grows with how many people in the whole company have alerts on.
+  const owner = ownerId === undefined ? null : db.prepare('SELECT branch_id FROM users WHERE id = ?').get(ownerId) || {};
+  const near = !owner ? '' : `AND (u.branch_id IS NULL OR u.branch_id = 0 OR u.branch_id = @branch OR u.id = @owner OR u.id IN (
+      WITH RECURSIVE above(id) AS (SELECT manager_id FROM user_managers WHERE user_id = @owner
+        UNION SELECT um.manager_id FROM user_managers um JOIN above ON um.user_id = above.id) SELECT id FROM above))`;
+  return db.prepare(`SELECT DISTINCT u.* FROM users u JOIN push_subscriptions s ON s.user_id = u.id WHERE u.active = 1
+      AND (u.is_master = 1 OR EXISTS (SELECT 1 FROM profile_permissions pp WHERE pp.profile_id = u.profile_id AND pp.permission = @perm)) ${near}`)
+    .all(owner ? { perm, owner: ownerId, branch: owner.branch_id === undefined ? null : owner.branch_id } : { perm })
     .map((u) => access.loadAccess(u))
     .filter((u) => u.id !== exceptId && access.can(u, perm) && (ownerId === undefined || access.canSee(u, ownerId)))
     .map((u) => u.id);
