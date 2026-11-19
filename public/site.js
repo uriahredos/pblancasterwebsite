@@ -97,6 +97,7 @@
   // page and with nothing shown. If it is this person's own, their alerts carry on under the sign-in they are using now.
   (function () {
     if (!document.documentElement.hasAttribute('data-in') || !window.fetch) return;
+    if (/^\/complaint/i.test(location.pathname)) return;   // a complaint page asks the site for nothing of its own
     if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window) || Notification.permission !== 'granted') return;
     navigator.serviceWorker.ready.then(function (reg) { return reg.pushManager.getSubscription(); }).then(function (sub) {
       if (!sub) return;
@@ -433,7 +434,8 @@
   // counts from when they last did something, not from when the page was opened.
   (function () {
     if (!document.documentElement.hasAttribute('data-in')) return;
-    var last = Date.now();
+    // Opening the complaint form does not restart the idle clock by itself, so there the first key or tap says so at once.
+    var last = /^\/complaint/i.test(location.pathname) ? 0 : Date.now();
     function ping() {
       if (Date.now() - last < 60000) return;
       last = Date.now();

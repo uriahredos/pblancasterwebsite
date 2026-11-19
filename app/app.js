@@ -19,7 +19,8 @@ const VISITOR_MS = 2 * 60 * 60 * 1000;       // a visitor who has not signed in:
 // Capitals make no difference to which page is shown (/Complaint is the same form), so they make none here either.
 const complaintPage = (req) => /^\/complaint/i.test(req.path);
 // What a page does by itself: checking for news, saying "still here", locking when the site is reopened, showing the lock screen.
-const pageItself = (req) => ['/pulse', '/alive', '/lock'].includes(req.path) || (req.path === '/unlock' && req.method === 'GET');
+// A person's own picture is in the header of every page, so it counts as well: on its own in the log it would give away the page around it.
+const pageItself = (req) => ['/pulse', '/alive', '/lock', '/push/attach'].includes(req.path) || (req.path === '/unlock' && req.method === 'GET') || /^\/people\/photo\/\d+$/.test(req.path);
 
 const app = express();
 app.set('view engine', 'ejs');

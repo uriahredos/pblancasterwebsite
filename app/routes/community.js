@@ -96,6 +96,19 @@ function positionPeople(user) {
     FROM users u LEFT JOIN branches b ON b.id = u.branch_id
     WHERE (u.active = 1 OR u.in_directory = 1) ${ids ? `AND u.id IN (${ids.map(Number).join(',') || 0})` : ''} ORDER BY u.display_name COLLATE NOCASE LIMIT ${POSITIONS_MAX + 1}`).all();
 }
+/**
+ * Positions follows the rule of Edit person: the master account is only changed by the master, and nobody changes someone
+ * whose profile can do more than their own. Everyone on the list is already someone the viewer may see.
+ */
+function positionRule(user) {
+  const byProfile = new Map();
+  return (p) => {
+    if (p.is_master) return Boolean(user.is_master);
+    if (!p.profile_id) return true;
+    if (!byProfile.has(p.profile_id)) byProfile.set(p.profile_id, access.canGrant(user, access.permsOf(p.profile_id)));
+    return byProfile.get(p.profile_id);
+  };
+}
 router.get('/admin/positions', requirePerm('users.manage'), (req, res) => res.redirect('/admin/users/positions' + (isId(req.query.who) ? `?who=${req.query.who}` : '')));   // its old address
 router.get('/admin/users/chart', requirePerm('users.manage'), (req, res) => {
   const officeId = req.user.viewBranch || (req.user.allBranches ? null : req.user.branch_id);
@@ -110,6 +123,8 @@ router.get('/admin/users/positions', requirePerm('users.manage'), (req, res) => 
   const everyone = positionPeople(req.user);
   // One more than the table holds is asked for, only to know whether the list had to be cut short.
   const people = everyone.slice(0, POSITIONS_MAX);
+  const mayChange = positionRule(req.user);
+  for (const p of people) p.locked = !mayChange(p);
   // Who each person could report to: the people of their own office.
   const byOffice = new Map();
   for (const p of people) { if (!byOffice.has(p.branch_id)) byOffice.set(p.branch_id, []); byOffice.get(p.branch_id).push(p); }
@@ -120,8 +135,10 @@ router.post('/admin/users/positions', requirePerm('users.manage'), (req, res) =>
   const team = require('../team');
   db.transaction(() => {
     const people = positionPeople(req.user).slice(0, POSITIONS_MAX); const names = new Map(people.map((p) => [p.id, p.display_name]));
+    const mayChange = positionRule(req.user);
     for (const p of people) {
       if (req.body[`job_${p.id}`] === undefined && req.body[`mgr_${p.id}`] === undefined) continue;
+      if (!mayChange(p)) continue;
       let touched = false;
       offices.add(p.branch_id);
       // Job title: one from the list, or none. The title carries its department.
@@ -534,6 +551,9 @@ router.post('/admin/users/:id/welcome', requirePerm('users.manage'), (req, res) 
   const back = `/admin/users/${target.id}/edit`;
   const job = clean(req.body.job_title, 80); const started = clean(req.body.started_on, 10);
   if (started && !isYmd(started)) { flash(req, 'err', 'The start date does not look right.'); return res.redirect(back); }
+  // Announcing someone sets their job title and start date, and taking a welcome down removes what was written for them,
+  // so both are for people who could edit that person anyway.
+  if (!access.mayManage(req.user, target)) return forbidden(res);
   if (req.body.remove === '1') {
     if (req.user.scope !== 'all') return forbidden(res);   // admins and corporate admins only
     // Welcome notes people wrote are kept on the person's page for good: with notes, the welcome only leaves the home page.
@@ -544,8 +564,6 @@ router.post('/admin/users/:id/welcome', requirePerm('users.manage'), (req, res) 
     activity.log(req.user, 'New hire welcome taken down', target.display_name);
     return res.redirect(req.body.back === 'person' ? `/people/${target.id}` : back);
   }
-  // Announcing someone sets their job title and start date, so it is for people who could edit that person anyway.
-  if (!access.mayManage(req.user, target)) return forbidden(res);
   db.transaction(() => {
     db.prepare('UPDATE users SET job_title = COALESCE(?, job_title), started_on = COALESCE(?, started_on) WHERE id = ?').run(job || null, started || null, target.id);
     if (job) require('../team').ensureTitle(job, target.department);

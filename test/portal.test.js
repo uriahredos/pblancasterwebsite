@@ -6725,7 +6725,7 @@ test('Security check: the saved copy of the key can be checked, yes or no; room 
   assert.match(card(html), /Needs attention/); assert.match(card(html), /Never checked\./);
   assert.match(card(html), /<form method="post" action="\/admin\/security\/check-key"[^>]*autocomplete="off">/); assert.match(card(html), /<input name="key" type="text" autocomplete="off"/);
   // A copy with one character wrong: no. Nothing is recorded as checked.
-  assert.equal((await boss.post(`${page}/check-key`, { key: WRONG }, { page })).location, '/admin/security#key-copy');
+  assert.equal((await boss.post(`${page}/check-key`, { key: WRONG }, { page })).location, '/admin/security');   // back at the top of the page, where the answer is shown
   html = (await boss.get(page)).text;
   assert.match(html, /No\. That is not the key the site is using\./); assert.match(card(html), /Never checked\./);
   // The right one, with the stray spaces a paste brings: yes, and the day is remembered.
@@ -7676,4 +7676,64 @@ test('certification reminders: a record given a new date while its email was goi
   assert.deepEqual(sent.filter((m) => /RENEW/.test(m.subject)).map((m) => m.to), ['rena@example.com']);
   assert.equal(db.prepare('SELECT reminded_30 FROM certifications WHERE id = ?').get(id).reminded_30, 1);
   db.prepare('DELETE FROM certifications WHERE id = ?').run(id);
+});
+
+// -- review: where the areas meet --
+test('complaint trail: the page asks the site for nothing of its own, and neither the alerts call nor a profile picture is ever logged', async () => {
+  const t = await loggedIn('tech1');
+  // The header on a complaint page shows initials, so the browser does not fetch the person's own picture from it.
+  db.prepare("UPDATE users SET photo_path = 'somephoto.jpg' WHERE username = 'tech1'").run();
+  try {
+    assert.match((await t.get('/parts')).text, new RegExp(`src="/people/photo/${userId('tech1')}\\?`));
+    for (const page of ['/complaint', '/Complaint', '/complaint/status']) assert.doesNotMatch((await t.get(page)).text, /\/people\/photo\//, page);
+  } finally { db.prepare("UPDATE users SET photo_path = NULL WHERE username = 'tech1'").run(); }
+  // What a page does by itself never reaches the request log, so a lone line cannot point at the page around it.
+  const from = logLines.length;
+  await t.post('/push/attach', { endpoint: 'https://fcm.googleapis.com/fcm/send/nobody' }, { page: '/parts' });
+  await t.get(`/people/photo/${userId('tech1')}`);
+  await new Promise((r) => setTimeout(r, 30));
+  const logged = logLines.slice(from).join('\n');
+  assert.match(logged, /GET \/parts 200/);                                  // the page whose token was used is an ordinary page
+  assert.doesNotMatch(logged, /push\/attach|people\/photo/);
+  // The page's own script leaves the alerts call out on complaint pages, and says "still here" on the first key there.
+  const js = (await t.get('/site.js')).text;
+  assert.match(js, /\/\^\\\/complaint\/i\.test\(location\.pathname\)\) return;/);
+  assert.match(js, /var last = \/\^\\\/complaint\/i\.test\(location\.pathname\) \? 0 : Date\.now\(\);/);
+});
+
+test('Positions and welcomes follow the Edit person rule; forms that answer with a new page are sent the ordinary way', async () => {
+  access.ensureProfile('Office admin (one office)', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'backups'));
+  const boss = makeUser('seam.master', 'Sam Master', { profile: 'Corporate admin', master: false });
+  db.prepare("UPDATE users SET is_master = 0 WHERE id = ?").run(boss);
+  const office = auth.createUser({ username: 'seam.office', displayName: 'Olly Office', password: 'correct horse battery', profile: 'Office admin (one office)' });
+  db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?').run(office);
+  const tech = makeUser('seam.tech', 'Tia Tech');
+  const title = db.prepare('SELECT name FROM job_titles ORDER BY id LIMIT 1').get().name;
+  const admin = await loggedIn('seam.office');
+  const page = (await admin.get('/admin/users/positions')).text;
+  // Someone on a fuller profile is listed but cannot be changed here; a technician can.
+  assert.match(page, new RegExp(`<select name="job_${boss}" disabled `));
+  assert.match(page, new RegExp(`<select name="job_${tech}"  aria-label`));
+  await admin.post('/admin/users/positions', { [`job_${boss}`]: title, [`mgr_${boss}`]: String(tech), [`job_${tech}`]: title }, { page: '/admin/users/positions' });
+  assert.equal(db.prepare('SELECT job_title FROM users WHERE id = ?').get(boss).job_title, null);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM user_managers WHERE user_id = ?').get(boss).n, 0);
+  assert.equal(db.prepare('SELECT job_title FROM users WHERE id = ?').get(tech).job_title, title);
+  // A welcome written for that person cannot be taken down by someone who could not edit them.
+  db.prepare('INSERT INTO welcomes (user_id, intro, created_by, created_at) VALUES (?, ?, ?, ?)').run(boss, 'Welcome Sam', userId('owner'), new Date().toISOString());
+  assert.equal((await admin.post(`/admin/users/${boss}/welcome`, { remove: '1' }, { page: '/admin/users' })).status, 403);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM welcomes WHERE user_id = ?').get(boss).n, 1);
+  // Reset password, Add an admin and Give a shout-out answer with a whole page (the temporary password is on it), so the page's script must not swap in a part of it.
+  const owner = await loggedIn('owner');
+  assert.match((await owner.get('/admin/users')).text, new RegExp(`action="/admin/users/${tech}/reset-password" data-no-live `));
+  assert.match((await owner.get('/admin/branches')).text, /action="\/admin\/branches\/\d+\/admins" class="stack" data-no-live>/);
+  assert.match((await owner.get('/shoutouts')).text, /<form method="post" action="\/shoutouts" class="card stack" id="give" data-no-live>/);
+  // An entry with no person (a restore, a nightly backup) shows to people who see every office whichever office they are looking at, and to nobody else.
+  db.prepare("INSERT INTO activity_log (user_id, action, detail, at) VALUES (NULL, 'Backup restored', 'SEAMCHECK portal-2026-01-01.db', ?)").run(new Date().toISOString());
+  const branch = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id;
+  await owner.post('/branch/view', { branch_id: String(branch) }, { page: '/' });
+  assert.match((await owner.get('/admin/activity?q=SEAMCHECK')).text, /SEAMCHECK portal-2026-01-01\.db/);
+  assert.doesNotMatch((await admin.get('/admin/activity?q=SEAMCHECK')).text, /SEAMCHECK portal/);
+  await owner.post('/branch/view', { branch_id: '' }, { page: '/' });
+  db.prepare("DELETE FROM activity_log WHERE detail LIKE 'SEAMCHECK%'").run();
+  db.prepare('DELETE FROM welcomes WHERE user_id = ?').run(boss);
 });

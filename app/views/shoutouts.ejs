@@ -2,7 +2,7 @@
 <h1>Shout-outs</h1>
 <p class="lede">Thank someone for a job well done. Everyone at the company can see it, and it stays on their profile.</p>
 <%- include('partials/errors') %>
-<form method="post" action="/shoutouts" class="card stack" id="give">
+<form method="post" action="/shoutouts" class="card stack" id="give" data-no-live>
   <input type="hidden" name="_csrf" value="<%= csrf %>">
   <label>Who is it for?
     <select name="to_user" required>

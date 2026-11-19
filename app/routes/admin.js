@@ -745,7 +745,7 @@ router.get('/admin/activity', requirePerm('activity.view'), (req, res) => {
   const like = '%' + q.replace(/[\\%_]/g, '\\$&') + '%';
   const rows = db.prepare(
     `SELECT a.at, a.action, a.detail, u.display_name FROM activity_log a LEFT JOIN users u ON u.id = a.user_id
-     WHERE ${req.user.viewBranch ? 'u.branch_id = ' + Number(req.user.viewBranch) : '1 = 1'}
+     WHERE ${req.user.viewBranch ? '(u.branch_id = ' + Number(req.user.viewBranch) + (maySeeSignIns ? ' OR a.user_id IS NULL' : '') + ')' : '1 = 1'}
      ${!maySeeSignIns ? `AND a.action NOT IN ${PERSONAL}` : signIns ? `AND a.action IN ${SIGN_INS}` : q ? '' : "AND a.action <> 'Signed in'"}
      ${q ? "AND (a.action LIKE ? ESCAPE '\\' OR a.detail LIKE ? ESCAPE '\\' OR u.display_name LIKE ? ESCAPE '\\')" : ''}
      ORDER BY a.id DESC LIMIT 500`).all(...(q ? [like, like, like] : []));

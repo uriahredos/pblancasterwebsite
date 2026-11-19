@@ -49,7 +49,7 @@
     <% if (officeProfiles.length) { %>
     <details class="appoint" <%= values.office === b.id ? 'open' : '' %>>
       <summary class="btn small">Add an admin for <%= b.name %></summary>
-      <form method="post" action="/admin/branches/<%= b.id %>/admins" class="stack">
+      <form method="post" action="/admin/branches/<%= b.id %>/admins" class="stack" data-no-live>
         <input type="hidden" name="_csrf" value="<%= csrf %>">
         <% if (officeProfiles.length > 1) { %><label>Admin profile <select name="profile_id"><% officeProfiles.forEach(function (p) { %><option value="<%= p.id %>"><%= p.name %></option><% }) %></select></label>
         <% } else { %><input type="hidden" name="profile_id" value="<%= officeProfiles[0].id %>"><% } %>

@@ -44,7 +44,7 @@
         <form method="post" action="/logout" class="who-out"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Sign out</button></form>
         <% } else { %>
         <details class="row-menu acct who-name">
-          <summary title="Your account and settings"><%- include('avatar', { who: user, size: 'sm' }) %><span class="acct-name"><%= user.display_name %></span><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <summary title="Your account and settings"><%- include('avatar', { who: /^\/complaint/i.test(path) ? { id: user.id, display_name: user.display_name } : user, size: 'sm' }) %><span class="acct-name"><%= user.display_name %></span><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
           <div class="row-menu-list">
             <a href="/profile">My profile</a>
             <a href="/my">My activity</a>

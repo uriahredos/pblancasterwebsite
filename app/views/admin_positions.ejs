@@ -53,7 +53,7 @@
        var boss = p.manager_id ? (byOffice.get(p.branch_id) || []).find(function (m) { return m.id === p.manager_id; }) : null; %>
     <tr id="p<%= p.id %>" class="<%= focus === p.id ? 'focus' : '' %>">
       <td data-label="Name"><a href="/people/<%= p.id %>"><%= p.display_name %></a><% if (showOffice && p.branch) { %> <span class="pill"><%= p.branch %></span><% } %></td>
-      <td data-label="Role"><select name="job_<%= p.id %>" aria-label="Role for <%= p.display_name %>" <%= focus === p.id ? 'autofocus' : '' %>><option value="">None yet</option><% if (p.job_title && !known) { %><option value="<%= p.job_title %>" selected disabled><%= p.job_title %> (not on the list)</option><% } %><% titles.forEach(function (t) { %><option value="<%= t.name %>" <%= t.name.toLowerCase() === String(p.job_title || '').toLowerCase() ? 'selected' : '' %>><%= t.name %></option><% }) %></select></td>
+      <td data-label="Role"><select name="job_<%= p.id %>" <%= p.locked ? 'disabled' : '' %> aria-label="Role for <%= p.display_name %>" <%= focus === p.id ? 'autofocus' : '' %>><option value="">None yet</option><% if (p.job_title && !known) { %><option value="<%= p.job_title %>" selected disabled><%= p.job_title %> (not on the list)</option><% } %><% titles.forEach(function (t) { %><option value="<%= t.name %>" <%= t.name.toLowerCase() === String(p.job_title || '').toLowerCase() ? 'selected' : '' %>><%= t.name %></option><% }) %></select></td>
       <td data-label="Reports to" class="reports-to"><%= boss ? boss.display_name : 'Nobody' %><% if (boss && boss.job_title) { %> <span class="meta"><%= boss.job_title %></span><% } %></td>
     </tr>
     <% }) %>

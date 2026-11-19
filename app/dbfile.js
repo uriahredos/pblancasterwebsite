@@ -479,7 +479,7 @@ function open(dataDir) {
  * the host says it is running (RENDER_GIT_COMMIT); without one this does nothing. Returns the name of the copy made,
  * or null. A copy that cannot be made is reported, not allowed to stop the site from starting.
  */
-function beforeUpdate(db, dataDir, version, day) {
+function beforeUpdate(db, dataDir, version, day, justRestored) {
   const now = String(version || '').trim();
   if (!now) return null;
   try {
@@ -487,7 +487,8 @@ function beforeUpdate(db, dataDir, version, day) {
     const put = (k, v) => db.prepare('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(k, v);
     if (has('meta') && (db.prepare("SELECT value FROM meta WHERE key = 'code_version'").get() || {}).value === now) return null;
     let made = null; let failed = null;
-    if (has('users') && db.prepare('SELECT 1 FROM users').get()) {        // a site with nobody in it has nothing to keep
+    // A site with nobody in it has nothing to keep. Nor has a backup that was just brought back: copying that would push out the real "before" copies.
+    if (!justRestored && has('users') && db.prepare('SELECT 1 FROM users').get()) {
       const name = `portal-${/^\d{4}-\d{2}-\d{2}$/.test(day || '') ? day : stamp().slice(0, 10)}-${stamp().slice(11)}-before-update.db`;
       try {
         fs.mkdirSync(path.join(dataDir, 'backups'), { recursive: true });

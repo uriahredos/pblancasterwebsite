@@ -168,7 +168,7 @@ const KEY_TRIES = new Map();                                              // per
 const KEY_LIMIT = 5, KEY_WINDOW = 15 * 60 * 1000;
 const digest = (v) => crypto.createHash('sha256').update(String(v), 'utf8').digest();
 router.post('/admin/security/check-key', guard, (req, res) => {
-  const back = () => res.redirect('/admin/security#key-copy');
+  const back = () => res.redirect('/admin/security');   // the answer is shown at the top of the page
   const inUse = require('../dbfile').keyInUse();
   if (!require('./auth').provedRecently(req)) { flash(req, 'err', 'Type your password first.'); return back(); }
   if (!inUse) { flash(req, 'err', 'The database is not encrypted, so there is no key to check.'); return back(); }

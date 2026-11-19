@@ -18,7 +18,7 @@ A small website for the Pye-Barker Lancaster Office: parts sign-out (take / retu
 | `/admin/backups` | Backups (profiles with the backups permission) |
 | `/admin/complaints` | Profiles with the complaints permission |
 
-Someone who opens a link while signed out is sent to the sign-in page and then straight back to that form.
+Someone who opens a link while signed out is sent to the sign-in page and then straight back to that form (a link to the complaint form goes by way of the home page; see Anonymous complaints).
 
 ## Run it on your own computer
 
@@ -203,7 +203,7 @@ On a phone it is one column in that order. On a wider screen announcements, the 
 ## Discussions (`/discussions`)
 
 - Three sections to start: **Tech support**, **General** and **Introductions**. Anyone with **Read and post in Discussions** can start a thread, reply, add up to four photos to a post, and search.
-- **Following**: starting or replying to a thread follows it; anyone can follow or stop from the thread page. When someone else replies to a thread you follow, the Discussions link in the menu shows a count and the reply is listed at the top of your home page until you open the thread. There is no phone notification or email yet.
+- **Following**: starting or replying to a thread follows it; anyone can follow or stop from the thread page. When someone else replies to a thread you follow, the Discussions link in the menu shows a count and the reply is listed at the top of your home page until you open the thread. With alerts switched on, the reply also comes as a phone notification.
 - In Tech support the person who asked (or a moderator) can mark a thread **Solved**.
 - People can remove their own replies, and their own thread while nobody has answered it. **Remove other people's posts and threads; lock, pin and move threads** is the moderator permission; what moderators remove is recorded in the activity log.
 - **Moderating stays inside the office.** Someone who sees every office (a corporate admin) can moderate anything. Everyone else with the permission can only act on what their own office's people wrote (or, for a "sees only their own people" profile, their own team): a thread is theirs to lock, pin, move, rename or remove when one of their people started it, and a reply when one of their people wrote it. The same rule covers shout-outs, photos and comments under announcements; whoever posted an announcement can also clear the comments under it.
@@ -241,7 +241,7 @@ Something one person asks another to do, with an optional due date.
 Alerts that pop up on a phone or computer even when the site is closed. Reached from **Notification settings** at the bottom of the bell, or at the bottom of Alerts or More on a phone.
 
 - **Each person turns alerts on per device** with "Turn on alerts on this device"; the phone or browser asks them to allow notifications. The page lists their devices and can send a test alert.
-- **A device gets alerts only while it is signed in.** Signing out stops them on that device at once. So does anything that signs the person out: a disabled account, an admin resetting the password, being stood down as a corporate admin, "sign out everyone", or 30 days without opening the site. When the same person signs in on that device again, their alerts carry on by themselves, with nothing to press. Someone else who signs in on that device does not get them, and does not get the previous person's either, unless they turn alerts on for themselves there.
+- **A device gets alerts only while it is signed in.** Signing out stops them on that device at once. So does anything that signs the person out: a disabled account, an admin resetting the password, being stood down as a corporate admin, "sign out everyone", or 30 days without opening the site. (A device that had alerts on before this rule came in is quiet until its owner next opens the site on it.) When the same person signs in on that device again, their alerts carry on by themselves, with nothing to press. Someone else who signs in on that device does not get them, and does not get the previous person's either, unless they turn alerts on for themselves there.
 - **iPhone and iPad**: alerts only work once the site has been added to the Home Screen (Safari > Share > Add to Home Screen) and opened from there. Android and computers work from the browser.
 - **What sends an alert**
 
@@ -311,7 +311,7 @@ The import file contains people's names and emails, so it is not kept in the cod
 - **Backups leave out sign-in sessions.** Bringing one back signs everyone out.
 - **These copies are on the same disk as the site.** They protect against mistakes, not against losing the disk. To get copies off the server, either set `BACKUP_EMAIL_TO` (needs the email settings below) so each night's copy is emailed, or download one from the Backups page now and then.
 - The Backups page also has **Download all photos**. Taking it is written to the activity log, like downloading a backup.
-- A backup contains everything, including anonymous complaints, so it has its own permission, and `BACKUP_EMAIL_TO` should only name someone trusted with that. With `DB_KEY` set, backups are encrypted like the database itself.
+- A backup contains everything except sign-in sessions, including anonymous complaints, so it has its own permission, and `BACKUP_EMAIL_TO` should only name someone trusted with that. With `DB_KEY` set, backups are encrypted like the database itself.
 - **Before an update.** The first time a new version of the site starts, it keeps a checked copy of the database as the last version left it, before changing anything. The Backups page marks these "Made before an update" and the newest two are kept. (It goes by the version Render reports; on a host that reports none, no such copy is made.)
 
 ## Bringing a backup back (restore)
@@ -395,7 +395,7 @@ A profile is a set of permissions. Each person has exactly one profile, and what
 - **Managers**: when a person's profile is a "sees only their own people" profile, their Edit page lists everyone with tick-boxes. Tick the people they manage. The Users list shows who manages whom.
 - **Reset password**: a new temporary password, shown once. People can also use "Forgot your password?" if email is set up.
 - **Disable**: signed out at once and cannot sign in; alerts to their phone or computer stop; their past submissions stay.
-- **Remove for good**: their sign-in, contact details, profile photo (the file too) and sign-in history are erased, and they leave every list. What they recorded for the office (parts, inspections, posts, tasks they gave) stays with their name on it. Someone who recorded nothing is deleted outright; having signed in does not count as a record. Backups made before the removal still hold the person: the nightly copies on the server for up to 14 nights, and any copy that was emailed or downloaded for as long as it is kept.
+- **Remove for good**: their sign-in, contact details, profile photo (the file too) and sign-in history are erased, and they leave every list. What they recorded for the office (parts, inspections, posts, tasks they gave) stays with their name on it. Someone who recorded nothing is deleted outright; having signed in does not count as a record. Backups made before the removal still hold the person: the nightly copies on the server for up to 14 nights, the newest five "Back up now" copies and the two copies made before updates until newer ones replace them, and any copy that was emailed or downloaded for as long as it is kept.
 
 ### The master account
 
@@ -415,7 +415,7 @@ What the site does:
 - The complaint is stored with a category, the text, an optional "when/where", and the **date**. It is not stored with a user, an IP address, a device or a time of day. The table has no column for any of those.
 - Complaint ids are random and the table is not kept in arrival order, so a complaint cannot be lined up against the parts log or sign-in times.
 - Complaint pages are left out of the server's request log. So is what every open page does by itself (checking for news in the background, locking, showing the lock screen), so a request that is missing from the log says nothing about what it was.
-- Opening the form, sending a complaint or checking on one leaves the person's sign-in record exactly as it was: no "last seen" time, no new expiry, no page name. Someone who follows a link to the form while signed out, or while the site is locked, lands on the home page after signing in or unlocking, like anyone else, and their own browser takes them on to the form; the site keeps no note of where they were heading.
+- Opening the form, sending a complaint or checking on one leaves the person's sign-in record exactly as it was: the request for the page writes no "last seen" time, no new expiry and no page name. (Like any open page, it checks for news in the background every half minute, which keeps the sign-in from running out; that looks the same from every page.) Someone who follows a link to the form while signed out, or while the site is locked, lands on the home page after signing in or unlocking, like anyone else, and their own browser takes them on to the form; the site keeps no note of where they were heading.
 - The once-a-day notice counts by date and marks nothing on the complaint, so nothing stored shows whether a complaint arrived before or after that day's notice.
 - The tracking code is shown once and only a scrambled (hashed) copy is kept. Nobody, including an admin with the database file, can look up a code. A lost code cannot be recovered.
 - Checking a code does not record who checked.
