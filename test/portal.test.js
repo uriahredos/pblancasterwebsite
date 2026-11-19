@@ -5690,9 +5690,6 @@ test('folding a duplicate account into the one kept: a photo nobody will see aga
   assert.equal((await owner.get(`/people/photo/${bare}`)).status, 200);
 });
 
-// .
-// .
-// .
 // -- review: sign-in, sessions, the lock and alerts --
 
 test('idle lock: only things a person does count as using the site, so a page that moves by itself still locks', async () => {
@@ -6213,9 +6210,6 @@ test('alerts: an account that is switched off or removed gets nothing, even with
   push.setSender(async () => {});
 });
 
-// .
-// .
-// .
 // -- review: backups, restore and the key --
 // A running copy of the site on a lab folder (see encryptionLab), and a client that talks to it.
 const labSites = [];
@@ -6257,8 +6251,11 @@ test('backups: a copy counts only once it has been opened and checked; a failed 
   const bellOf = (html) => (/<details class="bell"[\s\S]*?<\/details>/.exec(html) || [''])[0];
   const checkLine = () => require('../app/routes/security').checks({ headers: {}, ip: '203.0.113.9', socket: {} }).find((c) => /^A recent backup exists/.test(c.title));
   const pushed = []; push.setSender(async (sub, payload) => { if (/\/backup-/.test(sub.endpoint)) pushed.push({ to: sub.user_id, ...JSON.parse(payload) }); });
-  const subscribe = (username) => db.prepare('INSERT OR REPLACE INTO push_subscriptions (user_id, endpoint, p256dh, auth, device, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(userId(username), `https://fcm.googleapis.com/fcm/send/backup-${username}`, 'k', 'a', 'Test phone', new Date().toISOString());
+  // A device only gets alerts while the sign-in it belongs to is alive, so each registration is tied to one of the person's own.
+  const signInOf = (username) => db.prepare("SELECT sid FROM sessions WHERE json_extract(data, '$.userId') = ? AND expires > ? ORDER BY expires DESC").get(userId(username), Date.now()).sid;
+  const subscribe = (username) => db.prepare('INSERT OR REPLACE INTO push_subscriptions (user_id, endpoint, p256dh, auth, device, created_at, sid) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(userId(username), `https://fcm.googleapis.com/fcm/send/backup-${username}`, 'k', 'a', 'Test phone', new Date().toISOString(), signInOf(username));
+  await loggedIn('admin');
   subscribe('owner'); subscribe('tech1'); subscribe('admin');               // admin: runs an office, but has no backups permission
   db.prepare("DELETE FROM meta WHERE key IN ('backup_alert_day')").run();
 
@@ -6828,9 +6825,6 @@ test('backups: a copy that does not pass its check, or does not hold the same ro
   fs.rmSync(L.dir, { recursive: true, force: true });
 });
 
-// .
-// .
-// .
 // -- review: uploaded files --
 // What these checks share: the uploads folder, a sender on a weak signal, and stand-in photos.
 const uplStore = require('../app/uploads'); const uplSeal = require('../app/sealed');
@@ -7274,9 +7268,6 @@ test('uploaded files: a parts photo that is refused after it arrived says why, a
   uplTidy(start);
 });
 
-// .
-// .
-// .
 // -- review: speed and small defects --
 
 /** Everything the database is asked while `fn` runs: each statement, and how many rows came back. */

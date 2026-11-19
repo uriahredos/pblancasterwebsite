@@ -357,7 +357,7 @@ Also worth knowing:
 Set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` and `MAIL_FROM` to an account the site may send from, then:
 
 - `NOTIFY_TO`: who is emailed about each new **parts request**, **training request** and **low stock** crossing. Take and return entries do not send email. A training request marked private sends only "a private request was submitted", without the text or the name.
-- **The complaint notice** is sent **once a day** (at `COMPLAINT_DIGEST_HOUR`, default 5 pm) and says only how many new complaints there are. It is not sent the moment a complaint arrives, because the arrival time could point to who wrote it. For the same reason it counts whole days: a complaint is in the notice of the day after it was written.
+- **The complaint notice** is sent **once a day** (at `COMPLAINT_DIGEST_HOUR`, default 7 in the morning) and says only how many new complaints there are. It is not sent the moment a complaint arrives, because the arrival time could point to who wrote it. For the same reason it counts whole days: a complaint is in the notice of the morning after it was written.
   - Every office is counted. An office's notice goes to the people in that office whose profile lets them read complaints and who have an email address on their account, and to people who read complaints for every office. Each person gets one email with their own total.
   - `COMPLAINT_NOTIFY_TO`: an extra mailbox for the first office's notice.
 

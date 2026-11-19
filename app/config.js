@@ -32,7 +32,7 @@ module.exports = {
   mailFrom: env.MAIL_FROM || 'Pye-Barker Employee Portal <portal@localhost>',
   notifyTo: list(env.NOTIFY_TO),
   complaintNotifyTo: list(env.COMPLAINT_NOTIFY_TO),
-  complaintDigestHour: env.COMPLAINT_DIGEST_HOUR === undefined ? 17 : Number(env.COMPLAINT_DIGEST_HOUR),
+  complaintDigestHour: env.COMPLAINT_DIGEST_HOUR === undefined ? 7 : Number(env.COMPLAINT_DIGEST_HOUR),
   complaintDailyLimit: 5,
   // How long someone may edit or cancel their own submission.
   editWindowHours: env.EDIT_WINDOW_HOURS === undefined ? 24 : Number(env.EDIT_WINDOW_HOURS),
