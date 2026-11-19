@@ -56,10 +56,13 @@
   document.addEventListener('DOMContentLoaded', function () { spellCheck(document); });
 
   // Signing in from a link to a complaint page lands on the home page like any other sign-in (the site keeps no note of
-  // where the person was heading), and this takes them on to the page they asked for.
+  // where the person was heading), and this takes them on to the page they asked for. It waits for the home page to
+  // finish loading first (a few seconds at most), so what the server saw is an ordinary visit to the home page.
   (function () {
     var to = { '#complaint-form': '/complaint', '#complaint-status': '/complaint/status' }[location.hash];
-    if (to && location.pathname === '/' && document.documentElement.hasAttribute('data-in')) location.replace(to);
+    if (!to || location.pathname !== '/' || !document.documentElement.hasAttribute('data-in')) return;
+    var go = function () { location.replace(to); };
+    if (document.readyState === 'complete') go(); else { window.addEventListener('load', go); setTimeout(go, 3000); }
   })();
 
   // A sign-in page can sit open for hours (a shared computer overnight), longer than the site keeps the form token of a
