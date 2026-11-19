@@ -5458,6 +5458,14 @@ test('speed: a page for one office reads that office\'s people and tasks, not th
   // Manage tasks: the office's own tasks are all there, however many the rest of the company has open.
   assert.match(text['/admin/tasks'], /<strong>1<\/strong> open, <strong>1 overdue<\/strong>, 1 done\./); assert.match(text['/admin/tasks'], /SPDTASK open/); assert.doesNotMatch(text['/admin/tasks'], /FARTASK/);
   assert.match((await boss.get('/admin/tasks?show=done')).text, /SPDTASK done/);
+  // Someone looking at every office at once gets the first 1,000 and is told so; picking a person shows all of that person's.
+  const corp = await loggedIn('owner'); await corp.post('/branch/view', { branch: 'all', back: '/' }, { page: '/' });
+  const everything = (await corp.get('/admin/tasks')).text;
+  assert.match(everything, /<strong>1000<\/strong> open, <strong>1000 overdue<\/strong>, 0 done\. These are the first 1000 only: choose a person below to see all of theirs\./);
+  const oneFar = (await corp.get(`/admin/tasks?user=${farIds[3]}`)).text;
+  assert.match(oneFar, /<strong>27<\/strong> open, <strong>27 overdue<\/strong>, 0 done\. A task shows/); assert.doesNotMatch(oneFar, /first 1000 only/);
+  assert.match((await corp.get(`/admin/tasks?user=${t1}`)).text, /<strong>1<\/strong> open, <strong>1 overdue<\/strong>, 0 done\. A task shows/);
+  assert.doesNotMatch(text['/admin/tasks'], /first 1000 only/);
   assert.match(text['/'].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' '), /Overdue tasks 1 1 open in all|1 Overdue tasks 1 open in all/);   // the home page counts the same ones
   // A manager's pages cover their own people only, as before.
   const mgr = await loggedIn('sp.mgr');

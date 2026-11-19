@@ -230,7 +230,7 @@ Something one person asks another to do, with an optional due date.
 
 - **Assigning** (Team > Manage tasks): say what needs doing, add details and a due date if you like, then choose who it is for. Tap a group button to give it to **Everyone** or to everyone on a profile (for example all Technicians), or type a name in the search box to pick particular people; you can mix both. Each person gets their own copy, and the form says how many people that will be before you send it. Needs the **Assign tasks** permission; a manager can assign to their own people only.
 - **For the person**: every open task appears at the top of their home page and in their notification bell (Alerts on a phone) by name with when it is due ("Due tomorrow", "Overdue by 2 days"), overdue first, and counts toward the bell's number. **Tasks** in the menu lists them with the details and a **Mark as done** button with an optional note.
-- **Following up**: the Manage tasks page shows open, overdue and done tasks, who each is for, and any note left when it was done. You can edit, reassign, mark done on someone's behalf, reopen or remove a task.
+- **Following up**: the Manage tasks page shows open, overdue and done tasks, who each is for, and any note left when it was done. You can edit, reassign, mark done on someone's behalf, reopen or remove a task. The page holds 1000 tasks, open ones first; when there are more it says so, and choosing a person shows all of that person's.
 - The person is emailed when a task is assigned if they have an email address and email is set up.
 
 ## Push alerts (`/settings/notifications`)
