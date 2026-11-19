@@ -5522,15 +5522,34 @@ test('sales: the "already on this customer" check answers a part of a name only 
   const js = (await sam.get('/sales.js')).text;
   assert.match(js, /fetch\('\/sales\/check', \{ method: 'POST'/); assert.doesNotMatch(js, /sales\/check\?/);
 
-  // Sixty lookups in fifteen minutes is plenty for adding leads. After that the answer is empty until the time is up, and the log says so once.
+  // The page asks again at every pause in the typing. One lead typed a letter at a time, with a slip rubbed out on the way,
+  // is a hundred requests and still only a customer or two looked up.
   const busy = await loggedIn('lk.busy');
-  for (let i = 0; i < 60; i++) assert.equal((await busy.get('/sales/check?company=Lititz%20Storage%20Barn')).status, 200, `lookup ${i + 1}`);
-  const over = await busy.get('/sales/check?company=Lititz%20Storage%20Barn');
+  const look = async (q) => (await busy.get('/sales/check?' + new URLSearchParams(q))).status;
+  const typing = { company: '', phone: '', email: '', address: '' }; let asked = 0;
+  const type = async (box, text) => { for (const ch of text) { typing[box] += ch; assert.equal(await look(typing), 200, `${box}: ${typing[box]}`); asked += 1; } };
+  await type('company', 'Conestoga Valley Dentl');
+  typing.company = typing.company.slice(0, -1); assert.equal(await look(typing), 200);
+  await type('company', 'al'); await type('phone', '(717) 555-0123 x45'); await type('email', 'office@cvdental.example'); await type('address', '1200 Lititz Pike, Lancaster');
+  assert.ok(asked > 80, String(asked));
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM activity_log WHERE action = 'Customer lookups paused'").get().n, 0);
+  // Sixty different customers in fifteen minutes is plenty for adding leads. After that the answer is empty until the time is up, and the log says so once.
+  // (The lead typed above counted three times: as typed, when the slip was put right, and for the extension on the phone number.)
+  // Rubbing most of a name out and typing a different ending is a different customer too.
+  for (let i = 4; i <= 60; i++) { assert.equal(await look({ company: 'Gue' }), 200); assert.equal(await look({ company: `Guess number ${i}` }), 200, `customer ${i}`); }
+  const over = await busy.get('/sales/check?company=One%20guess%20too%20many');
   assert.equal(over.status, 429); assert.deepEqual(JSON.parse(over.text), { matches: [] });
+  assert.equal(await look({ company: 'One guess too many, carried on' }), 429);
   assert.equal((await busy.post('/sales/check', { company: 'Lititz Storage Barn' }, { page: '/sales' })).status, 429);
   const paused = db.prepare("SELECT detail FROM activity_log WHERE action = 'Customer lookups paused' AND user_id = ?").all(userId('lk.busy'));
-  assert.equal(paused.length, 1); assert.match(paused[0].detail, /60/);
+  assert.equal(paused.length, 1); assert.match(paused[0].detail, /60 different customers/);
   assert.equal((await sam.get('/sales/check?company=Lititz%20Storage%20Barn')).status, 200);                    // each person has their own count
+  // Digits added to a phone number without end are not one number being typed: each one tries a different number, and counts.
+  R.person('lk.dial', 'Dee Dialler', 'Sales', here);
+  const dial = await loggedIn('lk.dial');
+  const dialled = [];
+  for (const digit of '1234') for (let n = 12; n <= 30; n++) dialled.push((await dial.get('/sales/check?' + new URLSearchParams({ company: 'Nobody', phone: digit.repeat(n) }))).status);
+  assert.deepEqual([dialled.slice(0, 60).every((st) => st === 200), dialled.slice(60).every((st) => st === 429), dialled.length], [true, true, 76]);
   // Saving a lead is not held up by it: the check there still runs.
   assert.equal((await busy.post('/sales', { company: 'Lititz Storage Barn' }, { page: '/sales' })).status, 400);
   db.prepare('DELETE FROM lead_notes WHERE lead_id IN (SELECT id FROM leads WHERE branch_id IN (?, ?))').run(here, there);
@@ -5611,6 +5630,32 @@ test('removing a person: their photo file and sign-in history go with them, and 
     for (let i = 0; i < 80 && fs.existsSync(file(p)); i++) await new Promise((r) => setTimeout(r, 25));
     assert.equal(fs.existsSync(file(p)), false, p);
   }
+});
+
+test('folding a duplicate account into the one kept: a photo nobody will see again is deleted, and one the kept account takes over stays', async () => {
+  const R = accessChecks;
+  const office = R.office('Doubleford');
+  const keep = R.person('dbl.keep', 'Dana Double', 'Technician', office); const extra = R.person('dbl.extra', 'Dana Double', 'Technician', office);   // both have a photo
+  const bare = R.person('dbl.bare', 'Pat Pair', 'Technician', office); const twin = R.person('dbl.twin', 'Pat Pair', 'Technician', office);          // only the extra one has
+  for (const u of ['dbl.keep', 'dbl.extra', 'dbl.twin']) {
+    await (await loggedIn(u)).post('/profile', [['about', 'Hello'], ['photo', new File([PNG], 'me.png', { type: 'image/png' })]], { multipart: true, page: '/profile' });
+  }
+  const photo = (id) => db.prepare('SELECT photo_path FROM users WHERE id = ?').get(id).photo_path;
+  const file = (name) => path.join(dataDir, 'uploads', name);
+  const was = { keep: photo(keep), extra: photo(extra), twin: photo(twin) };
+  for (const p of Object.values(was)) assert.ok(p && fs.existsSync(file(p)));
+  const owner = await loggedIn('owner');
+  await owner.post('/branch/view', { branch: String(office), back: '/' }, { page: '/' });
+  await owner.post('/admin/users/duplicates', { keep: String(keep), extra: String(extra) }, { page: '/admin/users' });
+  await owner.post('/admin/users/duplicates', { keep: String(bare), extra: String(twin) }, { page: '/admin/users' });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM users WHERE id IN (?, ?)').get(extra, twin).n, 0);
+  // The kept account already had its own photo: the other one has no account left to show it, so the file goes.
+  assert.equal(photo(keep), was.keep); assert.ok(fs.existsSync(file(was.keep)));
+  for (let i = 0; i < 80 && fs.existsSync(file(was.extra)); i++) await new Promise((r) => setTimeout(r, 25));
+  assert.equal(fs.existsSync(file(was.extra)), false);
+  // The kept account had none: it takes the other one's photo over, file and all.
+  assert.equal(photo(bare), was.twin); assert.ok(fs.existsSync(file(was.twin)));
+  assert.equal((await owner.get(`/people/photo/${bare}`)).status, 200);
 });
 
 // .

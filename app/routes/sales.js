@@ -103,27 +103,37 @@ function board(req, res, extra = {}) {
 router.get('/sales', use, (req, res) => board(req, res));
 
 // The check below answers a name, a phone number or an email address with who has that customer, in any office.
-// Adding a lead takes a handful of lookups, so each person gets 60 in 15 minutes. Past that the answer is empty until
-// the 15 minutes are up, and the activity log says so once.
+// Each person may look up 60 customers in 15 minutes. Past that the answer is empty until the 15 minutes are up, and
+// the activity log says so once.
+// The page asks again at every pause in the typing, so one lead typed slowly is dozens of requests. Those are one
+// lookup: while every box still starts with what was typed before (or is part of it, after a slip is rubbed out), it is
+// the same customer. Only a different name, number or address counts as another.
 const LOOKUP_LIMIT = 60;
 const LOOKUP_MS = 15 * 60 * 1000;
-const LOOKUPS = new Map(); // user id -> { n, until }
-function lookupAllowed(user) {
+const LOOKUPS = new Map(); // user id -> { n, until, typed }
+function lookupAllowed(user, { company, phone, email, address }) {
   const now = Date.now();
   if (LOOKUPS.size > 5000) for (const [k, v] of LOOKUPS) if (v.until <= now) LOOKUPS.delete(k);
   let l = LOOKUPS.get(user.id);
-  if (!l || l.until <= now) { l = { n: 0, until: now + LOOKUP_MS }; LOOKUPS.set(user.id, l); }
-  l.n += 1;
-  if (l.n === LOOKUP_LIMIT + 1) activity.log(user, 'Customer lookups paused', `More than ${LOOKUP_LIMIT} checks for an existing customer in 15 minutes, so no more are answered until the 15 minutes are up`);
+  if (!l || l.until <= now) { l = { n: 0, until: now + LOOKUP_MS, typed: null }; LOOKUPS.set(user.id, l); }
+  // A phone number is compared by its digits. Past 11 of them it is no longer one number being typed: every digit
+  // added would try a different number, so each of those counts.
+  const typed = [company, phone.replace(/\D/g, ''), email, address].map((s) => s.toLowerCase());
+  const goesOn = (s, was, i) => s === was || ((i !== 1 || s.length <= 11) && (s.startsWith(was) || was.startsWith(s)));
+  const same = l.typed && typed.every((s, i) => goesOn(s, l.typed[i], i));
+  if (same) l.typed = typed.map((s, i) => (s.length > l.typed[i].length ? s : l.typed[i]));
+  else { l.typed = typed; l.n += 1; }
+  if (!same && l.n === LOOKUP_LIMIT + 1) activity.log(user, 'Customer lookups paused', `Looked up more than ${LOOKUP_LIMIT} different customers in 15 minutes, so no more lookups are answered until the 15 minutes are up`);
   return l.n <= LOOKUP_LIMIT;
 }
 
 // Asked by the "new lead" form while someone types: is anyone already on this customer?
 // The page sends what was typed in the body of the request, so a customer's details are not left in a web address.
 function check(req, res) {
-  if (!lookupAllowed(req.user)) return res.status(429).json({ matches: [] });
-  const typed = req.method === 'POST' ? req.body : req.query;
-  const matches = sales.similar({ company: clean(typed.company, 120), phone: clean(typed.phone, 30), email: clean(typed.email, 120), address: clean(typed.address, 200) }, 0, officeOf(req.user));
+  const from = req.method === 'POST' ? req.body : req.query;
+  const typed = { company: clean(from.company, 120), phone: clean(from.phone, 30), email: clean(from.email, 120), address: clean(from.address, 200) };
+  if (!lookupAllowed(req.user, typed)) return res.status(429).json({ matches: [] });
+  const matches = sales.similar(typed, 0, officeOf(req.user));
   res.json({ matches: matches.map((m) => (m.elsewhere
     ? { company: null, owner: m.owner || 'nobody yet', office: m.office, stage: null, why: m.why, url: null }      // another office's customer: who to ask, and no more
     : { company: m.company, owner: m.owner || 'nobody yet', office: m.office, stage: m.stageName, why: m.why, url: `/sales/${m.id}` })) });
