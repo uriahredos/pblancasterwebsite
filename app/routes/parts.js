@@ -53,6 +53,12 @@ function looksLikeImage(file) {
 }
 
 const removeFile = (file) => { if (file) uploads.remove(file.filename); };
+// What the form shows about vehicles. Most people just see which vehicle is theirs. Someone who looks after the
+// office's stock also gets a list, to sign parts in and out of anybody's vehicle.
+function vehicleChoice(actor, person) {
+  const mine = inv.vehicleOf(person.id);
+  return { myVehicle: mine, vehicles: access.can(actor, 'inventory.manage') ? inv.vehiclesOf(person.branch_id) : [] };
+}
 const asArray = (v) => (v === undefined ? [] : Array.isArray(v) ? v : [v]);
 
 function readForm(body) {
@@ -93,7 +99,7 @@ function frequentParts(userId) {
 
 router.get('/parts', requirePerm('parts.submit'), (req, res) => {
   const action = ['take', 'return', 'request'].includes(req.query.action) ? req.query.action : '';
-  res.render('parts', { title: 'Parts', values: { action, items: [], truck: req.user.default_truck || '' }, errors: [], editing: null, frequent: frequentParts(req.user.id), places: inv.placesFor(req.user) });
+  res.render('parts', { title: 'Parts', values: { action, items: [], truck: req.user.default_truck || '' }, errors: [], editing: null, frequent: frequentParts(req.user.id), ...vehicleChoice(req.user, req.user) });
 });
 
 router.post('/parts', requirePerm('parts.submit'), parseUpload, verifyCsrf, (req, res) => {
@@ -105,7 +111,7 @@ router.post('/parts', requirePerm('parts.submit'), parseUpload, verifyCsrf, (req
 
   if (errors.length) {
     removeFile(photo);
-    return res.status(400).render('parts', { title: 'Parts', values, errors, editing: null, frequent: frequentParts(req.user.id), places: inv.placesFor(req.user) });
+    return res.status(400).render('parts', { title: 'Parts', values, errors, editing: null, frequent: frequentParts(req.user.id), ...vehicleChoice(req.user, req.user) });
   }
 
   const now = new Date();
@@ -119,7 +125,7 @@ router.post('/parts', requirePerm('parts.submit'), parseUpload, verifyCsrf, (req
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(req.user.id, values.action, values.source, values.source === 'job' ? values.job_number : null,
       values.note || null, isRequest ? values.needed_by : null, photo ? photo.filename : null,
-      isRequest ? 'new' : null, values.truck || null, isRequest ? null : placeFor(req.user, values.place), now.toISOString(), localDate(now));
+      isRequest ? 'new' : null, values.truck || null, isRequest ? null : placeFor(req.user, req.user, values.place), now.toISOString(), localDate(now));
     // Remember the truck so it is filled in next time.
     if (values.truck) db.prepare('UPDATE users SET default_truck = ? WHERE id = ?').run(values.truck, req.user.id);
     const add = db.prepare('INSERT INTO parts_items (submission_id, part_name, quantity) VALUES (?, ?, ?)');
@@ -181,8 +187,8 @@ router.get('/parts/suggest', requirePerm('parts.submit'), (req, res) => {
 const getEntry = (id) => db.prepare('SELECT * FROM parts_submissions WHERE id = ?').get(id);
 const getItems = (id) => db.prepare('SELECT part_name, quantity FROM parts_items WHERE submission_id = ? ORDER BY id').all(id);
 const owner = (row) => db.prepare('SELECT id, branch_id FROM users WHERE id = ?').get(row.user_id);
-// The place chosen on the form, if it is one this person may use; otherwise the usual place.
-const placeFor = (user, id) => (id && inv.placesFor(user).some((l) => l.id === id) ? id : null);
+// A vehicle named on the form counts only from someone who looks after the office's stock; otherwise it is the person's own.
+const placeFor = (actor, person, id) => (id && access.can(actor, 'inventory.manage') && inv.vehiclesOf(person.branch_id).some((l) => l.id === id) ? id : null);
 const backTo = (user, row) => (user.id === row.user_id ? '/my' : `/admin/parts/${row.id}`);
 
 function loadChangeable(req, res) {
@@ -204,7 +210,7 @@ router.get('/parts/:id/edit', requireLogin, (req, res) => {
   const row = loadChangeable(req, res);
   if (!row) return;
   const items = getItems(row.id).map((i) => ({ part_name: i.part_name, quantity: String(i.quantity) }));
-  res.render('parts', { title: 'Edit parts entry', values: { ...row, items, place: row.place_id }, errors: [], editing: row, frequent: [], places: inv.placesFor(owner(row)) });
+  res.render('parts', { title: 'Edit parts entry', values: { ...row, items, place: row.place_id }, errors: [], editing: row, frequent: [], ...vehicleChoice(req.user, owner(row)) });
 });
 
 router.post('/parts/:id/edit', requireLogin, parseUpload, verifyCsrf, (req, res) => {
@@ -218,7 +224,7 @@ router.post('/parts/:id/edit', requireLogin, parseUpload, verifyCsrf, (req, res)
   if (photo && !looksLikeImage(photo.path)) errors.push('The photo must be a JPEG, PNG, WebP or GIF image.');
   if (errors.length) {
     removeFile(photo);
-    return res.status(400).render('parts', { title: 'Edit parts entry', values: { ...values, photo_path: row.photo_path }, errors, editing: row, frequent: [], places: inv.placesFor(owner(row)) });
+    return res.status(400).render('parts', { title: 'Edit parts entry', values: { ...values, photo_path: row.photo_path }, errors, editing: row, frequent: [], ...vehicleChoice(req.user, owner(row)) });
   }
 
   db.transaction(() => {
@@ -234,7 +240,7 @@ router.post('/parts/:id/edit', requireLogin, parseUpload, verifyCsrf, (req, res)
     db.prepare('DELETE FROM parts_items WHERE submission_id = ?').run(row.id);
     const add = db.prepare('INSERT INTO parts_items (submission_id, part_name, quantity) VALUES (?, ?, ?)');
     for (const it of values.items) add.run(row.id, it.part_name, Number(it.quantity));
-    db.prepare('UPDATE parts_submissions SET place_id = ? WHERE id = ?').run(row.action === 'request' ? null : placeFor(owner(row), values.place), row.id);
+    db.prepare('UPDATE parts_submissions SET place_id = ? WHERE id = ?').run(row.action === 'request' ? null : placeFor(req.user, owner(row), values.place), row.id);
     inv.record(row.id);
   })();
   if (photo && row.photo_path) uploads.remove(row.photo_path);

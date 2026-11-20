@@ -135,12 +135,12 @@ function onHand(locationId, catalogId) {
   return sum('to_id') - sum('from_id');
 }
 
-/** The places a person can take parts from or put them back in: their office's warehouse, their own vehicle, and its other locations. */
-function placesFor(user) {
-  ensureOffice(user.branch_id);
+/** The vehicles of an office, for the people who look after its stock and sign parts in and out of other people's vehicles. */
+function vehiclesOf(branchId) {
+  ensureOffice(branchId);
   return db.prepare(
-    `SELECT id, kind, name FROM inv_locations WHERE branch_id = ? AND active = 1 AND (kind <> 'vehicle' OR user_id = ?)
-     ORDER BY CASE kind WHEN 'vehicle' THEN 0 WHEN 'warehouse' THEN 1 ELSE 2 END, name COLLATE NOCASE`).all(user.branch_id, user.id);
+    `SELECT l.id, l.name, l.user_id, u.display_name AS technician FROM inv_locations l LEFT JOIN users u ON u.id = l.user_id
+     WHERE l.branch_id = ? AND l.kind = 'vehicle' AND l.active = 1 ORDER BY l.name COLLATE NOCASE`).all(branchId);
 }
 
 /** One movement, written down. `flagged` is worked out here: the place it left did not have that many on record. */
@@ -155,10 +155,13 @@ function move({ branchId, catalogId, from = null, to = null, quantity, kind, not
  * The movements that go with a parts entry, made afresh from the entry as it now stands (so an edit or a cancel only
  * has to call this again). Parts that are not in the catalog move nothing: there is nothing to count them against.
  *
- *   Take for a job     out of the person's vehicle (or the warehouse if they have none), or the place they chose
- *   Take for van stock from the warehouse (or the place chosen) into their vehicle
- *   Return from a job  back into their vehicle (or the warehouse), or the place they chose
- *   Return van stock   out of their vehicle into the warehouse (or the place chosen)
+ *   Take for van stock   from the warehouse into the vehicle
+ *   Take for a job       out of the vehicle (out of the warehouse for someone with no vehicle)
+ *   Return van stock     out of the vehicle, back into the warehouse
+ *   Return from a job    back into the vehicle (or the warehouse)
+ *
+ * "The vehicle" is the one assigned to whoever made the entry. Someone who looks after the office's stock can name
+ * another vehicle on the form (place_id), and then it is that one.
  */
 function record(submissionId) {
   db.prepare('DELETE FROM inv_moves WHERE submission_id = ?').run(submissionId);
@@ -166,13 +169,16 @@ function record(submissionId) {
   if (!s || s.cancelled_at || !['take', 'return'].includes(s.action) || !s.branch_id) return 0;
   const warehouse = warehouseOf(s.branch_id); const vehicle = vehicleOf(s.user_id);
   let chosen = s.place_id ? location(s.place_id) : null;
-  if (chosen && (chosen.branch_id !== s.branch_id || !chosen.active || (chosen.kind === 'vehicle' && chosen.user_id !== s.user_id))) chosen = null;
-  const own = vehicle && vehicle.branch_id === s.branch_id ? vehicle : null;
+  if (chosen && (chosen.branch_id !== s.branch_id || !chosen.active)) chosen = null;
+  // A vehicle named on the form stands in for the person's own. (Entries from the first days could name the warehouse
+  // or another place instead: those still read as they were written.)
+  const named = chosen && chosen.kind === 'vehicle' ? chosen : null; const place = chosen && chosen.kind !== 'vehicle' ? chosen : null;
+  const own = named || (vehicle && vehicle.branch_id === s.branch_id ? vehicle : null);
   let from = null, to = null, kind;
-  if (s.action === 'take' && s.source === 'job') { from = chosen || own || warehouse; kind = 'use'; }
-  else if (s.action === 'take') { from = chosen && chosen.kind !== 'vehicle' ? chosen : warehouse; to = own; kind = own ? 'transfer' : 'use'; }
-  else if (s.source === 'job') { to = chosen || own || warehouse; kind = 'return'; }
-  else { to = chosen && chosen.kind !== 'vehicle' ? chosen : warehouse; from = own; kind = own ? 'transfer' : 'return'; }
+  if (s.action === 'take' && s.source === 'job') { from = place || own || warehouse; kind = 'use'; }
+  else if (s.action === 'take') { from = place || warehouse; to = own; kind = own ? 'transfer' : 'use'; }
+  else if (s.source === 'job') { to = place || own || warehouse; kind = 'return'; }
+  else { to = place || warehouse; from = own; kind = own ? 'transfer' : 'return'; }
   let made = 0;
   for (const it of db.prepare('SELECT part_name, quantity FROM parts_items WHERE submission_id = ? ORDER BY id').all(submissionId)) {
     const part = db.prepare('SELECT id FROM parts_catalog WHERE part_number = ?').get(String(it.part_name).trim());
@@ -222,4 +228,4 @@ function cents(text) {
 const dollars = (c) => (c === null || c === undefined ? '' : (c / 100).toFixed(2));
 
 module.exports = { KINDS, ensureOffice, locations, location, contents, withoutVehicle, addVehicle, addCustom, cents, dollars,
-  warehouseOf, vehicleOf, onHand, placesFor, move, record, history, holdings };
+  warehouseOf, vehicleOf, onHand, vehiclesOf, move, record, history, holdings };

@@ -133,7 +133,7 @@ Where an office's parts are. It is being built in steps: locations, movements, e
   | Return, from a job | Back into their vehicle (or the warehouse) |
   | Return, van stock | Out of their vehicle, into the warehouse |
 
-  **Where** on the form changes the place for that entry: the warehouse, the person's own vehicle or one of the office's other locations (never someone else's vehicle). A request moves nothing. A part typed in that is not in the catalog moves nothing.
+  The vehicle is the one assigned to the person; the form shows which it is and asks nothing. A request moves nothing: it asks whoever orders parts for something the office does not have. A part typed in that is not in the catalog moves nothing. Someone with **Manage inventory locations** (the warehouse manager) gets a **Vehicle** list on the form instead, to sign parts into or out of anybody's vehicle.
 - **Taking more than a place has on record is allowed, and marked "To check".** Work is never held up by the numbers; the Inventory page shows how many movements each location has to check, and the next count settles them. Vehicles start empty, so until a vehicle has been counted most of what is taken from it will be marked.
 - **Editing an entry** remakes its movements, **cancelling** it takes them away, and so does deleting an entry for good.
 - **Move parts** on the Inventory page moves parts by hand between two of the office's locations, or takes a delivery into one.

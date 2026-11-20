@@ -7884,24 +7884,25 @@ test('inventory: taking and returning parts moves them between the warehouse and
   assert.equal((await vera.post('/admin/inventory/moves', { from: 'delivery', to: String(wh), part_number: 'MOVE-1', quantity: '5' }, { page: '/parts' })).status, 403);
   await owner.post('/admin/inventory/moves', { from: 'delivery', to: String(wh), part_number: 'MOVE-1', quantity: '20', note: 'PO 77' }, { page: '/admin/inventory' });
   assert.deepEqual(at(), [20, 0]);
-  // The form offers the person's own vehicle, the warehouse and the office's other places; never someone else's vehicle.
+  // The form names the person's own vehicle and offers no choice. Only someone who looks after the stock picks a vehicle.
   const form = (await vera.get('/parts?action=take')).text;
-  assert.match(form, /<option value="">The usual place<\/option>/); assert.match(form, new RegExp(`<option value="${truck}" >Truck 71 \\(yours\\)</option>`));
-  assert.doesNotMatch((await finn.get('/parts?action=take')).text, /Truck 71/);
-
+  assert.match(form, /Your vehicle: <strong>Truck 71<\/strong>/); assert.doesNotMatch(form, /name="place"/); assert.doesNotMatch(form, /<label>Truck /);
+  const plain = (await finn.get('/parts?action=take')).text;
+  assert.doesNotMatch(plain, /Truck 71|name="place"/); assert.match(plain, /<label>Truck /);
+  assert.match((await owner.get('/parts?action=take')).text, new RegExp(`<select name="place">[\\s\\S]*?<option value="${truck}" >Truck 71 · Vera Van</option>`));
   // Van stock: out of the warehouse, into the vehicle. For a job: out of the vehicle. Back from a job: into the vehicle. Van stock handed back: to the warehouse.
   await send(vera, { action: 'take', source: 'van', quantity: '6' });                              assert.deepEqual(at(), [14, 6]);
   await send(vera, { action: 'take', source: 'job', job_number: 'J1', quantity: '4' });            assert.deepEqual(at(), [14, 2]);
   await send(vera, { action: 'return', source: 'job', job_number: 'J1', quantity: '1' });          assert.deepEqual(at(), [14, 3]);
   await send(vera, { action: 'return', source: 'van', quantity: '2' });                            assert.deepEqual(at(), [16, 1]);
-  // Choosing a place: this job's parts came straight off the warehouse shelf.
-  await send(vera, { action: 'take', source: 'job', job_number: 'J2', quantity: '3', place: String(wh) }); assert.deepEqual(at(), [13, 1]);
-  // Someone with no vehicle takes from, and returns to, the warehouse. A request moves nothing. Someone else's vehicle is not a place they can name.
-  await send(finn, { action: 'take', source: 'job', job_number: 'J3', quantity: '2' });            assert.deepEqual(at(), [11, 1]);
-  await send(finn, { action: 'take', source: 'van', quantity: '1', place: String(truck) });        assert.deepEqual(at(), [10, 1]);
-  await send(finn, { action: 'request', source: 'van', quantity: '9', needed_by: '2031-01-01' });  assert.deepEqual(at(), [10, 1]);
+  // Whoever looks after the stock can load someone else's vehicle from the form: warehouse to Vera's truck.
+  await send(owner, { action: 'take', source: 'van', quantity: '3', place: String(truck) });       assert.deepEqual(at(), [13, 4]);
+  // Someone with no vehicle takes from, and returns to, the warehouse. A request moves nothing. Naming someone else's vehicle does nothing for a technician.
+  await send(finn, { action: 'take', source: 'job', job_number: 'J3', quantity: '2' });            assert.deepEqual(at(), [11, 4]);
+  await send(finn, { action: 'take', source: 'van', quantity: '1', place: String(truck) });        assert.deepEqual(at(), [10, 4]);
+  await send(finn, { action: 'request', source: 'van', quantity: '9', needed_by: '2031-01-01' });  assert.deepEqual(at(), [10, 4]);
   // More than the vehicle has on record: the work is not held up, and the movement is marked for the next count.
-  await send(vera, { action: 'take', source: 'job', job_number: 'J4', quantity: '5' });            assert.deepEqual(at(), [10, -4]);
+  await send(vera, { action: 'take', source: 'job', job_number: 'J4', quantity: '5' });            assert.deepEqual(at(), [10, -1]);
   const short = last();
   assert.equal(db.prepare('SELECT flagged FROM inv_moves WHERE submission_id = ?').get(short).flagged, 1);
   assert.equal(db.prepare('SELECT COUNT(*) n FROM inv_moves WHERE flagged = 1 AND catalog_id = ?').get(part).n, 1);
@@ -7909,34 +7910,34 @@ test('inventory: taking and returning parts moves them between the warehouse and
   assert.match((await owner.get(`/admin/inventory/locations/${truck}`)).text.replace(/\s+/g, ' '), /<strong>-5<\/strong><\/td> <td>Used[\s\S]*?To check<\/span>/);
   // Editing the entry remakes its movements; cancelling takes them away; so does deleting an entry for good.
   await vera.post(`/parts/${short}/edit`, [['part_name', 'MOVE-1'], ['quantity', '1'], ['source', 'job'], ['job_number', 'J4']], { multipart: true, page: `/parts/${short}/edit` });
-  assert.deepEqual(at(), [10, 0]); assert.equal(db.prepare('SELECT flagged FROM inv_moves WHERE submission_id = ?').get(short).flagged, 0);
-  await vera.post(`/parts/${short}/cancel`, {}, { page: '/my' });                                   assert.deepEqual(at(), [10, 1]);
-  await send(vera, { action: 'take', source: 'van', quantity: '2' });                              assert.deepEqual(at(), [8, 3]);
-  await owner.post(`/admin/parts/${last()}/delete`, {}, { page: `/admin/parts/${last()}` });        assert.deepEqual(at(), [10, 1]);
+  assert.deepEqual(at(), [10, 3]); assert.equal(db.prepare('SELECT flagged FROM inv_moves WHERE submission_id = ?').get(short).flagged, 0);
+  await vera.post(`/parts/${short}/cancel`, {}, { page: '/my' });                                   assert.deepEqual(at(), [10, 4]);
+  await send(vera, { action: 'take', source: 'van', quantity: '2' });                              assert.deepEqual(at(), [8, 6]);
+  await owner.post(`/admin/parts/${last()}/delete`, {}, { page: `/admin/parts/${last()}` });        assert.deepEqual(at(), [10, 4]);
   // A part that is not in the catalog moves nothing, as before.
   await vera.post('/parts', [['part_name', 'Some loose fitting'], ['quantity', '3'], ['action', 'take'], ['source', 'van']], { multipart: true, page: '/parts' });
   assert.equal(db.prepare('SELECT COUNT(*) n FROM inv_moves WHERE submission_id = ?').get(last()).n, 0);
 
   // The Stock page is the warehouse: tracking a part with a count, a delivery and a recount each leave the movements agreeing with it.
   await owner.post('/admin/stock', { part_number: 'MOVE-1', count: '12', min_level: '9' }, { page: '/admin/stock' });
-  assert.deepEqual(at(), [12, 1]); assert.equal(stockLib.forNames(home, ['MOVE-1'])[0].on_hand, 12);
-  await owner.post(`/admin/stock/${part}/adjust`, { quantity: '5', reason: 'Delivery' }, { page: `/admin/stock/${part}` });   assert.deepEqual(at(), [17, 1]);
-  await owner.post(`/admin/stock/${part}/adjust`, { quantity: '-2', reason: 'Damaged' }, { page: `/admin/stock/${part}` });   assert.deepEqual(at(), [15, 1]);
-  await owner.post(`/admin/stock/${part}/count`, { count: '11' }, { page: `/admin/stock/${part}` });                        assert.deepEqual(at(), [11, 1]);
+  assert.deepEqual(at(), [12, 4]); assert.equal(stockLib.forNames(home, ['MOVE-1'])[0].on_hand, 12);
+  await owner.post(`/admin/stock/${part}/adjust`, { quantity: '5', reason: 'Delivery' }, { page: `/admin/stock/${part}` });   assert.deepEqual(at(), [17, 4]);
+  await owner.post(`/admin/stock/${part}/adjust`, { quantity: '-2', reason: 'Damaged' }, { page: `/admin/stock/${part}` });   assert.deepEqual(at(), [15, 4]);
+  await owner.post(`/admin/stock/${part}/count`, { count: '11' }, { page: `/admin/stock/${part}` });                        assert.deepEqual(at(), [11, 4]);
   // Taking for a job out of the vehicle leaves the warehouse, and so the low-stock figure, alone; van stock from the warehouse lowers it.
   await send(vera, { action: 'take', source: 'job', job_number: 'J5', quantity: '1' });            assert.equal(stockLib.forNames(home, ['MOVE-1'])[0].on_hand, 11);
   await send(vera, { action: 'take', source: 'van', quantity: '3' });                              assert.equal(stockLib.list(home, { low: true }).find((r) => r.part_number === 'MOVE-1').on_hand, 8);
   // Moving by hand between two places; not to the same place, not an unknown part, not another office's place.
   const far = db.prepare("SELECT id FROM inv_locations WHERE branch_id <> ? LIMIT 1").get(home);
   const mv = (f) => owner.post('/admin/inventory/moves', f, { page: '/admin/inventory' });
-  await mv({ from: String(wh), to: String(truck), part_number: 'MOVE-1', quantity: '2' });         assert.deepEqual(at(), [6, 5]);
+  await mv({ from: String(wh), to: String(truck), part_number: 'MOVE-1', quantity: '2' });         assert.deepEqual(at(), [6, 8]);
   await mv({ from: String(wh), to: String(wh), part_number: 'MOVE-1', quantity: '2' });
   await mv({ from: String(wh), to: String(truck), part_number: 'NOPE-9', quantity: '2' });
   if (far) await mv({ from: String(wh), to: String(far.id), part_number: 'MOVE-1', quantity: '2' });
-  assert.deepEqual(at(), [6, 5]);
+  assert.deepEqual(at(), [6, 8]);
   // A removed person's vehicle stays, with nobody's name on it, and what it holds stays in it.
   db.prepare('UPDATE users SET active = 0 WHERE id = ?').run(van); require('../app/removal').remove(van);
-  assert.equal(inv.location(truck).user_id, null); assert.equal(inv.onHand(truck, part), 5);
+  assert.equal(inv.location(truck).user_id, null); assert.equal(inv.onHand(truck, part), 8);
   await owner.post('/branch/view', { branch: 'all' }, { page: '/' });
 });
 

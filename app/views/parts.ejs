@@ -53,18 +53,22 @@
     </label>
   </fieldset>
 
-  <% if (typeof places !== 'undefined' && places.length) { %>
-  <label data-show-action="take return">Where <span class="hint">The usual place is your vehicle for a job, and the main warehouse for van stock.</span>
+  <% var theirs = typeof myVehicle !== 'undefined' ? myVehicle : null; var fleet = typeof vehicles !== 'undefined' ? vehicles : []; %>
+  <% if (fleet.length) { %>
+  <label data-show-action="take return">Vehicle <span class="hint">Van stock goes from the warehouse into this vehicle, and comes back out of it on a return.</span>
     <select name="place">
-      <option value="">The usual place</option>
-      <% places.forEach(function (l) { %><option value="<%= l.id %>" <%= String(values.place || '') === String(l.id) ? 'selected' : '' %>><%= l.name %><%= l.kind === 'vehicle' ? ' (yours)' : '' %></option><% }) %>
+      <option value=""><%= theirs ? theirs.name + ' (yours)' : 'No vehicle: the main warehouse only' %></option>
+      <% fleet.forEach(function (l) { if (theirs && l.id === theirs.id) return; %><option value="<%= l.id %>" <%= String(values.place || '') === String(l.id) ? 'selected' : '' %>><%= l.name %><%= l.technician ? ' · ' + l.technician : '' %></option><% }) %>
     </select>
   </label>
+  <% } else if (theirs) { %>
+  <p class="hint" data-show-action="take return">Your vehicle: <strong><%= theirs.name %></strong></p>
   <% } %>
-
+  <% if (theirs && !fleet.length) { %><input type="hidden" name="truck" value="<%= values.truck || '' %>"><% } else { %>
   <label>Truck <span class="hint">Optional. Remembered for next time.</span>
     <input name="truck" value="<%= values.truck || '' %>" maxlength="20" autocomplete="off" placeholder="e.g. 309">
   </label>
+  <% } %>
 
   <label data-show-action="request">Needed by
     <input type="date" name="needed_by" value="<%= values.needed_by || '' %>">
