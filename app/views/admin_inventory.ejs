@@ -2,7 +2,7 @@
 <h1>Inventory</h1>
 <% var inUse = locations.filter(function (l) { return l.active; }); var away = locations.filter(function (l) { return !l.active; }); %>
 <p class="lede">Where the <%= office ? office.name : '' %> office's parts are: the main warehouse, each technician's vehicle, and anything else you add.</p>
-<p><a class="btn small" href="/admin/inventory/count">Monthly count</a></p>
+<p class="filter-actions"><% if (can('inventory.export')) { %><a class="btn small" href="/admin/inventory/export.csv">Export by location</a> <a class="btn small" href="/admin/inventory/export.csv?view=totals">Export totals</a><% if (user.allBranches) { %> <a class="btn small" href="/admin/inventory/export.csv?office=all">Export every office</a><% } %> <% } %><a class="btn small" href="/admin/inventory/count">Inventory count</a></p>
 <div class="table-wrap">
 <table>
   <thead><tr><th>Location</th><th>Kind</th><th>Technician</th><th class="num">Different parts</th><th class="num">Items</th><th>To check</th><th></th></tr></thead>

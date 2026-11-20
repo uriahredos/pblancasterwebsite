@@ -40,7 +40,7 @@
 <% if (showCost && differences.length) { %><p class="count">The differences come to <%= value < 0 ? '-' : '' %>$<%= dollars(Math.abs(value)) %> at today's costs.</p><% } %>
 
 <% if (mayApprove) { %>
-<h2 id="close">Close the month</h2>
+<h2 id="close">Close the count</h2>
 <% if (notStarted.length) { %><p class="flash err">Not counted yet: <%= notStarted.map(function (l) { return l.name; }).join(', ') %>. You can still close; those keep the figures the records have.</p><% } %>
 <p>Closing corrects the records to match what was counted, settles what was marked "to check" in the places counted, and keeps a copy of every location's figures as <%= monthName(audit.month) %>'s inventory. It cannot be undone.</p>
 <% if (proved) { %>
@@ -50,7 +50,7 @@
 <% } else { %>
 <form method="post" action="/account/confirm" class="card stack" data-no-live>
   <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="next" value="/admin/inventory/count/<%= audit.id %>#close">
-  <label>Type your password to close the month <input name="password" type="password" autocomplete="current-password" required></label>
+  <label>Type your password to close the count <input name="password" type="password" autocomplete="current-password" required></label>
   <div class="filter-actions"><button class="btn primary" type="submit">Continue</button></div>
 </form>
 <% } %>

@@ -2,8 +2,9 @@
 
 function cell(v) {
   let s = v === null || v === undefined ? '' : String(v);
-  // Stop spreadsheet programs from treating user-typed text as a formula.
-  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  // Stop spreadsheet programs from treating user-typed text as a formula. A plain number, minus sign and all, is left
+  // as it is: it cannot be a formula, and a quantity below zero has to stay a number the spreadsheet can add up.
+  if (/^[=+\-@\t\r]/.test(s) && !/^-\d+(\.\d+)?$/.test(s)) s = "'" + s;
   return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 

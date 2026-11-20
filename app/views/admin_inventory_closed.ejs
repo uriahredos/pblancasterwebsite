@@ -1,8 +1,9 @@
 <%- include('partials/header', { wide: true }) %>
-<p><a class="back" href="/admin/inventory/count">Monthly count</a></p>
+<p><a class="back" href="/admin/inventory/count">Inventory count</a></p>
 <h1>Inventory, <%= monthName(audit.month) %></h1>
 <% var total = rows.reduce(function (n, r) { return n + (r.cost_cents === null ? 0 : r.cost_cents * r.quantity); }, 0); %>
 <p class="lede">Closed <%= fmtDateTime(audit.closed_at) %><% if (closedBy) { %> by <%= closedBy.display_name %><% } %>. These are the figures as they stood then; nothing done since changes them.<% if (showCost) { %> Value at that day's costs: <strong>$<%= dollars(total) %></strong>.<% } %></p>
+<% if (can('inventory.export')) { %><p><a class="btn small" href="/admin/inventory/count/<%= audit.id %>/export.csv">Export these figures</a></p><% } %>
 <div class="table-wrap">
 <table>
   <thead><tr><th>Location</th><th>Part</th><th>Description</th><th class="num">On hand</th><% if (showCost) { %><th class="num">Cost each</th><th class="num">Value</th><% } %></tr></thead>

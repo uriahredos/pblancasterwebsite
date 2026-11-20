@@ -118,7 +118,7 @@ The banner uses the Pye-Barker logo (`public/logo.png`) and the colors are taken
 
 ## Inventory (`/admin/inventory`)
 
-Where an office's parts are. It is being built in steps: locations, movements and the monthly count are here; the export comes next.
+Where an office's parts are. It is being built in steps: locations, movements, exports and the inventory count are here; a layout made for the accounting system's import comes later.
 
 - **Every office has** one **Main warehouse**, one location for **each technician's vehicle**, and any **other locations** it adds for itself (a trailer, a second stockroom, a job site).
 - **Vehicles**: one technician each. The first time the page is opened, a vehicle is made for everyone in the office who already has a truck number on file ("Truck 14"). Add others by hand. Handing a vehicle to someone else keeps what is in it.
@@ -140,13 +140,24 @@ Where an office's parts are. It is being built in steps: locations, movements an
 - **The Stock page is the main warehouse.** Its "on hand" is what the warehouse's movements add up to. A count, a delivery or a correction made there is written as a movement. When this was switched on, what each office's Stock page showed became that office's opening warehouse stock, so the numbers did not change.
 - When a person is removed, their vehicle stays, with what is in it, and nobody's name on it until it is handed to someone.
 
-**The monthly count (`/admin/inventory/count`, the Monthly count button on the Inventory page)**
+**Exporting the inventory**
 
-- **Starting**: someone with **Start the monthly inventory count...** picks the month and starts it. One count at a time for an office.
+- **Export by location** on the Inventory page downloads a spreadsheet of what the office holds right now: one line per part in each place (the main warehouse, each vehicle, any other location), with how many, what one costs and what the lot is worth.
+- **Export totals** is one line per part for the whole office, split between the warehouse, the vehicles and other locations.
+- **Export this location**, on a location's own page, is that warehouse or vehicle by itself.
+- **Export every office** is offered to people who see every office.
+- Exports show the records as they stand that moment; no count is needed first. A vehicle the records have gone below zero on shows as a minus figure, which is the sign it wants counting.
+- Needs **Export the office's inventory** (given once to profiles that manage inventory locations). Every export is written in the activity log.
+
+**The inventory count (`/admin/inventory/count`, the Inventory count button on the Inventory page)**
+
+For when the office takes inventory, each quarter for example. It is not needed for an export.
+
+- **Starting**: someone with **Start an inventory count...** picks the month it is for and starts it. One count at a time for an office.
 - **Counting**: each location has a count sheet that works on a phone. Type how many of each part are really there; leave a box empty for a part not counted; save and come back as often as needed. A part found that is not on the sheet is added at the bottom by its part number. **Scan barcode** jumps to that part's box. The sheet does not show what the records expect, so the count is not steered by them.
 - **Who counts**: people with **Count inventory**, for any location of the office. Every technician can count **their own vehicle**: while a count is under way and theirs has not been started, their bell says "vehicle to count".
 - **Looking it over**: the count's page shows how far each location has got and every line where the count and the records differ, with the value of the difference for people who see costs.
-- **Closing the month** needs the password typed in the last ten minutes. It corrects the records to what was counted (parts that moved after being counted are left as they moved), settles the "To check" marks in the places counted, and keeps a copy of every location's figures with that day's costs. That copy is the month's inventory: nothing done afterwards changes it. Locations nobody counted keep the figures the records have, and the page says which they are before you close. A closed month cannot be reopened.
+- **Closing the count** needs the password typed in the last ten minutes. It corrects the records to what was counted (parts that moved after being counted are left as they moved), settles the "To check" marks in the places counted, and keeps a copy of every location's figures with that day's costs. That copy is that count's inventory: nothing done afterwards changes it, and it has its own **Export these figures** button. Locations nobody counted keep the figures the records have, and the page says which they are before you close. A closed count cannot be reopened.
 - **Setting a count aside** throws away what was counted and changes nothing else.
 - **Who**: anyone who can see the parts log can look. Moving parts by hand, adding, renaming, handing over and putting away need **Manage inventory locations** (given once to profiles that already manage stock). Costs and values show only to people with that permission or who manage the catalog.
 - An office sees and changes only its own locations. Inventory lives in the site's own encrypted database, so it is covered by the same backups.

@@ -17,6 +17,8 @@
 </table>
 </div>
 
+<% if (can('inventory.export')) { %><p><a class="btn small" href="/admin/inventory/locations/<%= place.id %>/export.csv">Export this location</a></p><% } %>
+
 <h2>Latest movements</h2>
 <% var WHAT = { opening: 'On hand at the start', receive: 'Delivery', transfer: 'Moved', use: 'Used', return: 'Returned', adjust: 'Count or correction' }; %>
 <div class="table-wrap">

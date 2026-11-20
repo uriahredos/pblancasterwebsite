@@ -1,16 +1,16 @@
 <%- include('partials/header', { wide: true }) %>
 <p><a class="back" href="/admin/inventory">Inventory</a></p>
-<h1>Monthly count</h1>
-<p class="lede">Once a month the office counts what is really in the warehouse and each vehicle. The site sets that against its records, you look over the differences, and the month is closed.</p>
+<h1>Inventory count</h1>
+<p class="lede">When the office takes inventory (each quarter, say), it counts what is really in the warehouse and each vehicle. The site sets that against its records, you look over the differences, and the count is closed.</p>
 <% if (mayApprove) { %>
 <form method="post" action="/admin/inventory/count" class="filters card" data-no-live>
   <input type="hidden" name="_csrf" value="<%= csrf %>">
-  <label>Month to count <input type="month" name="month" value="<%= month %>" required></label>
+  <label>Month the count is for <input type="month" name="month" value="<%= month %>" required></label>
   <div class="filter-actions"><button class="btn primary small" type="submit">Start the count</button></div>
 </form>
-<% } else { %><p class="hint">No count is under way. Someone who can close the month starts one.</p><% } %>
+<% } else { %><p class="hint">No count is under way. Someone who can close a count starts one.</p><% } %>
 
-<h2>Closed months</h2>
+<h2>Closed counts</h2>
 <div class="table-wrap">
 <table>
   <thead><tr><th>Month</th><th>Closed</th><th>By</th><th></th></tr></thead>
@@ -18,7 +18,7 @@
   <% past.forEach(function (a) { %>
   <tr><td><strong><%= monthName(a.month) %></strong></td><td class="nowrap"><%= fmtDateTime(a.closed_at) %></td><td><%= a.closed_name || '' %></td><td><a href="/admin/inventory/count/<%= a.id %>">Open</a></td></tr>
   <% }) %>
-  <% if (!past.length) { %><tr><td colspan="4" class="empty">No month has been closed yet.</td></tr><% } %>
+  <% if (!past.length) { %><tr><td colspan="4" class="empty">No count has been closed yet.</td></tr><% } %>
   </tbody>
 </table>
 </div>

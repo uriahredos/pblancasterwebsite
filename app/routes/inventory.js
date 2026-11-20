@@ -127,7 +127,40 @@ router.post('/admin/inventory/locations/:id/:op', manage, (req, res) => {
   res.redirect('/admin/inventory');
 });
 
-// ---- The monthly count ----
+// ---- Exports: what the office holds right now, as a spreadsheet ----
+const { sendCsv } = require('../csv');
+const exporter = requirePerm('inventory.export');
+const money = (cents) => (cents === null || cents === undefined ? '' : (cents / 100).toFixed(2));
+const today = () => require('../util').localDate();
+const slug = (name) => String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'office';
+const BY_PLACE = ['Office', 'Location', 'Kind', 'Technician', 'Part number', 'Description', 'On hand', 'Cost each', 'Value'];
+const placeRow = (r) => [r.office, r.location, inv.KINDS[r.kind], r.technician || '', r.part_number, r.description, r.on_hand, money(r.cost_cents), r.cost_cents === null ? '' : money(r.cost_cents * r.on_hand)];
+
+// One office (the one being looked at), or every office for someone who sees them all.
+router.get('/admin/inventory/export.csv', exporter, (req, res) => {
+  const every = req.query.office === 'all' && req.user.allBranches;
+  const rows = inv.holdings({ branchId: every ? null : req.user.workBranch });
+  const office = every ? 'all-offices' : slug((db.prepare('SELECT name FROM branches WHERE id = ?').get(req.user.workBranch) || {}).name);
+  if (req.query.view !== 'totals') return sendCsv(res, `inventory-${office}-by-location-${today()}.csv`, BY_PLACE, rows.map(placeRow));
+  // Totals: one line per part per office, with how it splits between the warehouse, the vehicles and anywhere else.
+  const parts = new Map();
+  for (const r of rows) {
+    const key = `${r.office}\u0000${r.part_number}`;
+    const t = parts.get(key) || { office: r.office, part_number: r.part_number, description: r.description, cost_cents: r.cost_cents, warehouse: 0, vehicle: 0, custom: 0 };
+    t[r.kind] += r.on_hand; parts.set(key, t);
+  }
+  sendCsv(res, `inventory-${office}-totals-${today()}.csv`, ['Office', 'Part number', 'Description', 'On hand in all', 'Main warehouse', 'Vehicles', 'Other locations', 'Cost each', 'Value'],
+    [...parts.values()].map((t) => { const all = t.warehouse + t.vehicle + t.custom; return [t.office, t.part_number, t.description, all, t.warehouse, t.vehicle, t.custom, money(t.cost_cents), t.cost_cents === null ? '' : money(t.cost_cents * all)]; }));
+});
+
+// One location by itself: the warehouse, or a single vehicle.
+router.get('/admin/inventory/locations/:id/export.csv', exporter, (req, res) => {
+  const place = mine(req);
+  if (!place) return forbidden(res);
+  sendCsv(res, `inventory-${slug(place.name)}-${today()}.csv`, BY_PLACE, inv.holdings({ branchId: place.branch_id, locationId: place.id }).map(placeRow));
+});
+
+// ---- The inventory count ----
 const mayApprove = (user) => access.can(user, 'inventory.approve');
 const mayCountAll = (user) => access.can(user, 'inventory.count') || mayApprove(user);
 // A count of the office being looked at; or, for someone counting their own vehicle, of their own office.
@@ -139,7 +172,7 @@ router.get('/admin/inventory/count', requireLogin, (req, res) => {
   if (!maySee(req.user) && !mayCountAll(req.user)) return forbidden(res);
   const current = counts.open(req.user.workBranch);
   if (current) return res.redirect(`/admin/inventory/count/${current.id}`);
-  res.render('admin_inventory_count', { title: 'Monthly count', past: counts.past(req.user.workBranch), monthName: counts.monthName, month: thisMonth(), mayApprove: mayApprove(req.user) });
+  res.render('admin_inventory_count', { title: 'Inventory count', past: counts.past(req.user.workBranch), monthName: counts.monthName, month: thisMonth(), mayApprove: mayApprove(req.user) });
 });
 
 router.post('/admin/inventory/count', requirePerm('inventory.approve'), (req, res) => {
@@ -147,6 +180,15 @@ router.post('/admin/inventory/count', requirePerm('inventory.approve'), (req, re
   if (typeof made === 'string') { flash(req, 'err', made); return res.redirect('/admin/inventory/count'); }
   activity.log(req.user, 'Inventory count started', counts.monthName(req.body.month));
   res.redirect(`/admin/inventory/count/${made}`);
+});
+
+// A closed count's figures, as they stood when it was closed.
+router.get('/admin/inventory/count/:id/export.csv', exporter, (req, res) => {
+  const audit = auditOf(req);
+  if (!audit || audit.branch_id !== req.user.workBranch || audit.status !== 'closed') return forbidden(res);
+  const office = (db.prepare('SELECT name FROM branches WHERE id = ?').get(audit.branch_id) || {}).name;
+  sendCsv(res, `inventory-${slug(office)}-count-${audit.month}.csv`, ['Office', 'Location', 'Kind', 'Part number', 'Description', 'On hand', 'Cost each', 'Value'],
+    counts.closedFigures(audit.id).map((r) => [office, r.location, inv.KINDS[r.kind], r.part_number, r.description, r.quantity, money(r.cost_cents), r.cost_cents === null ? '' : money(r.cost_cents * r.quantity)]));
 });
 
 router.get('/admin/inventory/count/:id', requireLogin, (req, res) => {
@@ -166,7 +208,7 @@ router.post('/admin/inventory/count/:id/close', requirePerm('inventory.approve')
   const audit = auditOf(req);
   if (!audit || audit.branch_id !== req.user.workBranch) return forbidden(res);
   if (audit.status !== 'open') return res.redirect(`/admin/inventory/count/${audit.id}`);
-  if (!require('./auth').provedRecently(req)) { flash(req, 'err', 'Type your password to close the month.'); return res.redirect(`/admin/inventory/count/${audit.id}#close`); }
+  if (!require('./auth').provedRecently(req)) { flash(req, 'err', 'Type your password to close the count.'); return res.redirect(`/admin/inventory/count/${audit.id}#close`); }
   const done = counts.close(audit, req.user.id);
   activity.log(req.user, 'Inventory count closed', `${counts.monthName(audit.month)}: ${done.lines} counted, ${done.changed} corrected`);
   flash(req, 'ok', `${counts.monthName(audit.month)} is closed. ${done.changed} ${done.changed === 1 ? 'figure was' : 'figures were'} corrected to match the count.`);

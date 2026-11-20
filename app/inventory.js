@@ -93,6 +93,24 @@ function contents(locationId) {
      JOIN parts_catalog c ON c.id = m.catalog_id GROUP BY c.id HAVING SUM(m.q) <> 0 ORDER BY c.part_number`).all(locationId, locationId);
 }
 
+/**
+ * Everything held in an office's locations (or in every office's, with no office given), one row per part per location.
+ * A location given by id narrows it to that one. Nothing that nets to zero is listed.
+ */
+function holdings({ branchId = null, locationId = null } = {}) {
+  return db.prepare(
+    `SELECT b.name AS office, l.id AS location_id, l.name AS location, l.kind, u.display_name AS technician,
+            c.part_number, c.description, c.cost_cents, SUM(m.q) AS on_hand
+     FROM (SELECT to_id AS loc, catalog_id, quantity AS q FROM inv_moves WHERE to_id IS NOT NULL
+           UNION ALL SELECT from_id, catalog_id, -quantity FROM inv_moves WHERE from_id IS NOT NULL) m
+     JOIN inv_locations l ON l.id = m.loc JOIN branches b ON b.id = l.branch_id JOIN parts_catalog c ON c.id = m.catalog_id
+     LEFT JOIN users u ON u.id = l.user_id
+     WHERE (? IS NULL OR l.branch_id = ?) AND (? IS NULL OR l.id = ?)
+     GROUP BY l.id, c.id HAVING SUM(m.q) <> 0
+     ORDER BY b.name COLLATE NOCASE, CASE l.kind WHEN 'warehouse' THEN 0 WHEN 'vehicle' THEN 1 ELSE 2 END, l.name COLLATE NOCASE, c.part_number`)
+    .all(branchId, branchId, locationId, locationId);
+}
+
 /** People of an office who could be given a vehicle: active, and without one already. */
 function withoutVehicle(branchId) {
   return db.prepare(
@@ -204,4 +222,4 @@ function cents(text) {
 const dollars = (c) => (c === null || c === undefined ? '' : (c / 100).toFixed(2));
 
 module.exports = { KINDS, ensureOffice, locations, location, contents, withoutVehicle, addVehicle, addCustom, cents, dollars,
-  warehouseOf, vehicleOf, onHand, placesFor, move, record, history };
+  warehouseOf, vehicleOf, onHand, placesFor, move, record, history, holdings };

@@ -7966,7 +7966,7 @@ test('inventory: what the Stock page showed on the shelf becomes each office\'s 
   } finally { fs.rmSync(L.dir, { recursive: true, force: true }); }
 });
 
-test('inventory: the monthly count sets what was counted against the records, closing corrects the records and keeps the month as it stood', async () => {
+test('inventory: a count sets what was counted against the records, closing corrects the records and keeps the month as it stood', async () => {
   const inv = require('../app/inventory'); const counts = require('../app/invcount');
   const home = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id;
   db.prepare("DELETE FROM inv_audits WHERE branch_id = ?").run(home);
@@ -8055,4 +8055,49 @@ test('inventory: the monthly count sets what was counted against the records, cl
   const log = db.prepare("SELECT action, detail FROM activity_log WHERE action LIKE 'Inventory count%' ORDER BY id").all().map((r) => `${r.action}: ${r.detail}`);
   assert.ok(log.includes('Inventory count closed: February 2031: 3 counted, 3 corrected'));
   await owner.post('/branch/view', { branch: 'all' }, { page: '/' });
+});
+
+test('inventory: the office\'s inventory can be exported as it stands: by location, as totals, one location by itself, and every office for corporate', async () => {
+  const inv = require('../app/inventory');
+  const home = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id;
+  const other = db.prepare("SELECT id FROM branches WHERE name = 'Invtown'").get().id;
+  const t = new Date().toISOString();
+  const part = db.prepare("INSERT INTO parts_catalog (part_number, description, cost_cents, created_at) VALUES ('EXP-1', 'Export test, \"quoted\"', 1250, ?)").run(t).lastInsertRowid;
+  const bare = db.prepare("INSERT INTO parts_catalog (part_number, description, created_at) VALUES ('EXP-2', 'No cost on file', ?)").run(t).lastInsertRowid;
+  const driver = makeUser('exp.driver', 'Ed Export'); db.prepare("UPDATE users SET default_truck = '55' WHERE id = ?").run(driver);
+  const wh = inv.warehouseOf(home).id; const truck = inv.vehicleOf(driver).id; const trailer = inv.addCustom(home, 'Export trailer'); const far = inv.warehouseOf(other).id;
+  const put = (branchId, to, catalogId, quantity) => inv.move({ branchId, catalogId, to, quantity, kind: 'receive' });
+  put(home, wh, part, 10); put(home, truck, part, 3); put(home, trailer, part, 2); put(home, wh, bare, 4); put(other, far, part, 7);
+  inv.move({ branchId: home, catalogId: bare, from: truck, quantity: 1, kind: 'use' });          // a vehicle the records have gone below zero on
+  const owner = await loggedIn('owner'); const tech = await loggedIn('exp.driver'); const outsider = await loggedIn('inv.away');
+  await owner.post('/branch/view', { branch: String(home) }, { page: '/' });
+  const lines = async (c, url) => { const r = await c.get(url); assert.equal(r.status, 200, url); return r.text.replace(/^﻿/, '').trim().split('\r\n'); };
+  const mine = (rows) => rows.filter((l) => /EXP-/.test(l));
+
+  // By location: one line per part in each place, with what one costs and what the lot is worth.
+  const byPlace = await lines(owner, '/admin/inventory/export.csv');
+  assert.equal(byPlace[0], 'Office,Location,Kind,Technician,Part number,Description,On hand,Cost each,Value');
+  const office = db.prepare('SELECT name FROM branches WHERE id = ?').get(home).name;
+  assert.deepEqual(mine(byPlace), [
+    `${office},Main warehouse,Main warehouse,,EXP-1,"Export test, ""quoted""",10,12.50,125.00`,
+    `${office},Main warehouse,Main warehouse,,EXP-2,No cost on file,4,,`,
+    `${office},Truck 55,Vehicle,Ed Export,EXP-1,"Export test, ""quoted""",3,12.50,37.50`,
+    `${office},Truck 55,Vehicle,Ed Export,EXP-2,No cost on file,-1,,`,
+    `${office},Export trailer,Other,,EXP-1,"Export test, ""quoted""",2,12.50,25.00`]);
+  // Totals: one line per part, split between the warehouse, the vehicles and anywhere else.
+  const totals = await lines(owner, '/admin/inventory/export.csv?view=totals');
+  assert.equal(totals[0], 'Office,Part number,Description,On hand in all,Main warehouse,Vehicles,Other locations,Cost each,Value');
+  assert.deepEqual(mine(totals), [`${office},EXP-1,"Export test, ""quoted""",15,10,3,2,12.50,187.50`, `${office},EXP-2,No cost on file,3,4,-1,0,,`]);
+  // One location by itself.
+  assert.deepEqual(mine(await lines(owner, `/admin/inventory/locations/${truck}/export.csv`)).map((l) => l.split(',')[1]), ['Truck 55', 'Truck 55']);
+  // Every office, for someone who sees them all; another office's admin gets only their own, and never this office's location.
+  assert.ok(mine(await lines(owner, '/admin/inventory/export.csv?office=all')).some((l) => l.startsWith('Invtown,Main warehouse')));
+  assert.deepEqual(mine(await lines(outsider, '/admin/inventory/export.csv?office=all')), ['Invtown,Main warehouse,Main warehouse,,EXP-1,"Export test, ""quoted""",7,12.50,87.50']);
+  assert.equal((await outsider.get(`/admin/inventory/locations/${truck}/export.csv`)).status, 403);
+  // A technician cannot export, and has no buttons for it; every export is written in the activity log.
+  for (const url of ['/admin/inventory/export.csv', `/admin/inventory/locations/${truck}/export.csv`]) assert.equal((await tech.get(url)).status, 403, url);
+  assert.match((await owner.get('/admin/inventory')).text, /href="\/admin\/inventory\/export\.csv">Export by location<\/a>/);
+  assert.ok(db.prepare("SELECT 1 FROM activity_log WHERE action = 'Spreadsheet exported' AND detail LIKE 'inventory-%-totals-%'").get());
+  await owner.post('/branch/view', { branch: 'all' }, { page: '/' });
+  db.prepare('DELETE FROM inv_moves WHERE catalog_id IN (?, ?)').run(part, bare);
 });
