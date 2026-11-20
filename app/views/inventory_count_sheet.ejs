@@ -1,0 +1,40 @@
+<%- include('partials/header') %>
+<% if (backToCount) { %><p><a class="back" href="/admin/inventory/count/<%= audit.id %>">Count for <%= monthName(audit.month) %></a></p><% } %>
+<h1>Count: <%= place.name %></h1>
+<p class="lede">Type how many of each part are really there. Leave a box empty if you have not counted that part. You can save and come back.</p>
+<%- include('partials/errors') %>
+<form method="post" action="/admin/inventory/count/<%= audit.id %>/<%= place.id %>" class="stack" data-no-live id="count-form">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <p><button type="button" class="btn small" id="scan-btn" hidden>Scan barcode</button></p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Part</th><th class="num">How many</th></tr></thead>
+    <tbody>
+    <% rows.forEach(function (p) { %>
+    <tr data-part="<%= p.part_number.toUpperCase() %>">
+      <td><label for="q<%= p.id %>"><strong><%= p.part_number %></strong><br><span class="hint"><%= p.description %></span></label></td>
+      <td class="num"><input class="count-box" id="q<%= p.id %>" name="qty_<%= p.id %>" value="<%= p.counted === null ? '' : p.counted %>" inputmode="numeric" maxlength="6" autocomplete="off"></td>
+    </tr>
+    <% }) %>
+    <% if (!rows.length) { %><tr><td colspan="2" class="empty">The records show nothing here. Add what you find below.</td></tr><% } %>
+    </tbody>
+  </table>
+  </div>
+  <fieldset>
+    <legend>Something here that is not on the list?</legend>
+    <label>Part number <input name="add_part" id="add-part" value="<%= added %>" maxlength="100" autocomplete="off"></label>
+    <label>How many <input name="add_qty" id="add-qty" inputmode="numeric" maxlength="6" autocomplete="off"></label>
+  </fieldset>
+  <button class="btn primary" type="submit">Save the count</button>
+</form>
+<div class="scan-overlay" id="scan-overlay" hidden>
+  <div class="scan-box card">
+    <p><strong>Point the camera at the barcode</strong></p>
+    <div id="scan-view"></div>
+    <p class="hint" id="scan-msg">Starting the camera…</p>
+    <button type="button" class="btn" id="scan-close">Close</button>
+  </div>
+</div>
+<script src="/count.js?v=<%= assetV %>" defer></script>
+<script src="/scan.js?v=<%= assetV %>" defer></script>
+<%- include('partials/footer') %>

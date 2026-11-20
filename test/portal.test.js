@@ -7965,3 +7965,94 @@ test('inventory: what the Stock page showed on the shelf becomes each office\'s 
     assert.deepEqual(JSON.parse(L.run(LOOK).out.trim().split('\n').pop()), first);   // a second start adds nothing
   } finally { fs.rmSync(L.dir, { recursive: true, force: true }); }
 });
+
+test('inventory: the monthly count sets what was counted against the records, closing corrects the records and keeps the month as it stood', async () => {
+  const inv = require('../app/inventory'); const counts = require('../app/invcount');
+  const home = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id;
+  db.prepare("DELETE FROM inv_audits WHERE branch_id = ?").run(home);
+  const driver = makeUser('cnt.driver', 'Cam Counter'); const walker = makeUser('cnt.walker', 'Wyn Walker');
+  db.prepare("UPDATE users SET default_truck = '88' WHERE id = ?").run(driver);
+  const t = new Date().toISOString();
+  const p1 = db.prepare("INSERT INTO parts_catalog (part_number, description, cost_cents, created_at) VALUES ('CNT-1', 'Count test part', 250, ?)").run(t).lastInsertRowid;
+  const p2 = db.prepare("INSERT INTO parts_catalog (part_number, description, cost_cents, created_at) VALUES ('CNT-2', 'Found on the shelf', 1000, ?)").run(t).lastInsertRowid;
+  const wh = inv.warehouseOf(home).id; const truck = inv.vehicleOf(driver).id;
+  const owner = await loggedIn('owner'); const cam = await loggedIn('cnt.driver'); const wyn = await loggedIn('cnt.walker'); const outsider = await loggedIn('inv.away');
+  await owner.post('/branch/view', { branch: String(home) }, { page: '/' });
+  const send = (c, fields) => c.post('/parts', [['part_name', 'CNT-1'], ...Object.entries(fields)], { multipart: true, page: '/parts' });
+  await owner.post('/admin/inventory/moves', { from: 'delivery', to: String(wh), part_number: 'CNT-1', quantity: '20' }, { page: '/admin/inventory' });
+  await send(cam, { action: 'take', source: 'van', quantity: '6' }); await send(cam, { action: 'take', source: 'job', job_number: 'C1', quantity: '9' });
+  assert.deepEqual([inv.onHand(wh, p1), inv.onHand(truck, p1)], [14, -3]);
+  const bell = (html) => (/<details class="bell"[\s\S]*?<\/details>/.exec(html) || [''])[0];
+
+  // Only someone who can close the month starts a count; one at a time.
+  const page = '/admin/inventory/count'; const P = { page: '/admin/inventory' };
+  assert.equal((await cam.get(page)).status, 403);
+  assert.equal((await cam.post(page, { month: '2031-02' }, { page: '/parts' })).status, 403);
+  assert.doesNotMatch(bell((await cam.get('/')).text), /vehicle to count/);
+  const started = await owner.post(page, { month: '2031-02' }, P);
+  const audit = db.prepare("SELECT * FROM inv_audits WHERE branch_id = ? AND status = 'open'").get(home);
+  assert.equal(started.location, `${page}/${audit.id}`);
+  await owner.post(page, { month: '2031-03' }, P);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM inv_audits WHERE branch_id = ?').get(home).n, 1);
+
+  // A technician is asked, on the bell, to count their own vehicle, and can count that and nothing else. Another office cannot look in.
+  assert.match(bell((await cam.get('/')).text), new RegExp(`href="${page}/${audit.id}/${truck}"[^>]*>[\\s\\S]*?vehicle to count`));
+  assert.doesNotMatch(bell((await wyn.get('/')).text), /vehicle to count/);
+  const sheet = (await cam.get(`${page}/${audit.id}/${truck}`)).text;
+  assert.match(sheet, /<h1>Count: Truck 88<\/h1>/); assert.match(sheet, new RegExp(`name="qty_${p1}" value=""`));
+  assert.doesNotMatch(sheet, />-3</);                                       // the sheet does not say what the records expect
+  assert.equal((await cam.get(`${page}/${audit.id}/${wh}`)).status, 403);
+  assert.equal((await wyn.get(`${page}/${audit.id}/${truck}`)).status, 403);
+  assert.equal((await wyn.post(`${page}/${audit.id}/${truck}`, { [`qty_${p1}`]: '99' }, { page: '/parts' })).status, 403);
+  for (const url of [`${page}/${audit.id}`, `${page}/${audit.id}/${truck}`]) assert.equal((await outsider.get(url)).status, 403, url);
+  await cam.post(`${page}/${audit.id}/${truck}`, { [`qty_${p1}`]: '2' }, { page: `${page}/${audit.id}/${truck}` });
+  assert.deepEqual({ ...db.prepare('SELECT expected, counted, counted_by FROM inv_counts WHERE audit_id = ? AND location_id = ?').get(audit.id, truck) }, { expected: -3, counted: 2, counted_by: driver });
+  assert.doesNotMatch(bell((await cam.get('/')).text), /vehicle to count/);
+
+  // The warehouse: a count, a part found that the records did not have there, and the mistakes a person makes.
+  const whSheet = `${page}/${audit.id}/${wh}`;
+  assert.equal((await owner.post(whSheet, { [`qty_${p1}`]: 'lots' }, { page: whSheet })).status, 400);
+  assert.match((await owner.post(whSheet, { [`qty_${p1}`]: '13', add_part: 'NOT-REAL', add_qty: '4' }, { page: whSheet })).text, /NOT-REAL is not in the catalog/);
+  await owner.post(whSheet, { [`qty_${p1}`]: '13', add_part: 'cnt-2', add_qty: '4' }, { page: whSheet });
+  assert.match((await owner.get(whSheet)).text, new RegExp(`name="qty_${p2}" value="4"`));
+  const view = (await owner.get(`${page}/${audit.id}`)).text.replace(/\s+/g, ' ');
+  assert.match(view, /3 parts counted so far, <strong>3 different from the records<\/strong>/);
+  assert.match(view, /<td>Truck 88<\/td><td><strong>CNT-1<\/strong>[\s\S]*?<td class="num">-3<\/td><td class="num">2<\/td><td class="num"><strong>\+5<\/strong><\/td> <td class="num">\$12\.50<\/td>/);
+  assert.match(view, /The differences come to \$50\.00 at today's costs\./);          // +5 and -1 at $2.50, +4 at $10.00
+  assert.doesNotMatch((await wyn.get('/admin/inventory')).text || '', /Monthly count/);
+
+  // Parts keep moving while the count is open. Closing corrects each place by what the count found, on top of that.
+  await send(cam, { action: 'take', source: 'van', quantity: '1' });
+  assert.deepEqual([inv.onHand(wh, p1), inv.onHand(truck, p1)], [13, -2]);
+  assert.equal((await cam.post(`${page}/${audit.id}/close`, {}, { page: '/parts' })).status, 403);
+  db.prepare("UPDATE sessions SET data = json_remove(data, '$.pwAt') WHERE json_extract(data, '$.userId') = ?").run(userId('owner'));
+  await owner.post(`${page}/${audit.id}/close`, {}, { page: `${page}/${audit.id}` });                  // the password has to have been typed lately
+  assert.equal(counts.get(audit.id).status, 'open');
+  await owner.post('/account/confirm', { password: 'correct horse battery', next: `${page}/${audit.id}` }, { page: `${page}/${audit.id}` });
+  await owner.post(`${page}/${audit.id}/close`, {}, { page: `${page}/${audit.id}` });
+  assert.equal(counts.get(audit.id).status, 'closed');
+  assert.deepEqual([inv.onHand(wh, p1), inv.onHand(truck, p1), inv.onHand(wh, p2)], [12, 3, 4]);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM inv_moves WHERE from_id = ? AND flagged = 1').get(truck).n, 0);   // what was "to check" is settled
+  const figures = () => counts.closedFigures(audit.id).filter((r) => /^CNT-/.test(r.part_number)).map((r) => [r.location, r.part_number, r.quantity, r.cost_cents]);
+  assert.deepEqual(figures(), [['Main warehouse', 'CNT-1', 12, 250], ['Main warehouse', 'CNT-2', 4, 1000], ['Truck 88', 'CNT-1', 3, 250]]);
+
+  // A closed month stays as it was: later movements, a new cost and another try at counting change nothing in it.
+  await send(cam, { action: 'take', source: 'job', job_number: 'C2', quantity: '2' });
+  db.prepare('UPDATE parts_catalog SET cost_cents = 999 WHERE id = ?').run(p1);
+  await cam.post(`${page}/${audit.id}/${truck}`, { [`qty_${p1}`]: '50' }, { page: '/parts' });
+  assert.equal(inv.onHand(truck, p1), 1); assert.deepEqual(figures()[2], ['Truck 88', 'CNT-1', 3, 250]);
+  const closed = (await owner.get(`${page}/${audit.id}`)).text.replace(/\s+/g, ' ');
+  assert.match(closed, /<h1>Inventory, February 2031<\/h1>/); assert.match(closed, /<td>Truck 88<\/td><td><strong>CNT-1<\/strong><\/td><td>Count test part<\/td><td class="num">3<\/td> <td class="num">\$2\.50<\/td><td class="num">\$7\.50<\/td>/);
+  assert.match((await owner.get(page)).text, /<strong>February 2031<\/strong>/);
+  await owner.post(page, { month: '2031-02' }, P);                                             // that month is done
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM inv_audits WHERE branch_id = ?').get(home).n, 1);
+  // Setting a count aside throws away what was counted and changes nothing else.
+  await owner.post(page, { month: '2031-03' }, P);
+  const next = counts.open(home);
+  await owner.post(`${page}/${next.id}/${wh}`, { [`qty_${p1}`]: '0' }, { page: `${page}/${next.id}/${wh}` });
+  await owner.post(`${page}/${next.id}/discard`, {}, { page: `${page}/${next.id}` });
+  assert.equal(counts.open(home), null); assert.equal(inv.onHand(wh, p1), 12);
+  const log = db.prepare("SELECT action, detail FROM activity_log WHERE action LIKE 'Inventory count%' ORDER BY id").all().map((r) => `${r.action}: ${r.detail}`);
+  assert.ok(log.includes('Inventory count closed: February 2031: 3 counted, 3 corrected'));
+  await owner.post('/branch/view', { branch: 'all' }, { page: '/' });
+});

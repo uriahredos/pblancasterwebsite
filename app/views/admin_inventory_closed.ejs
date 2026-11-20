@@ -1,0 +1,20 @@
+<%- include('partials/header', { wide: true }) %>
+<p><a class="back" href="/admin/inventory/count">Monthly count</a></p>
+<h1>Inventory, <%= monthName(audit.month) %></h1>
+<% var total = rows.reduce(function (n, r) { return n + (r.cost_cents === null ? 0 : r.cost_cents * r.quantity); }, 0); %>
+<p class="lede">Closed <%= fmtDateTime(audit.closed_at) %><% if (closedBy) { %> by <%= closedBy.display_name %><% } %>. These are the figures as they stood then; nothing done since changes them.<% if (showCost) { %> Value at that day's costs: <strong>$<%= dollars(total) %></strong>.<% } %></p>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Location</th><th>Part</th><th>Description</th><th class="num">On hand</th><% if (showCost) { %><th class="num">Cost each</th><th class="num">Value</th><% } %></tr></thead>
+  <tbody>
+  <% rows.forEach(function (r) { %>
+  <tr>
+    <td><%= r.location %></td><td><strong><%= r.part_number %></strong></td><td><%= r.description %></td><td class="num"><%= r.quantity %></td>
+    <% if (showCost) { %><td class="num"><%= r.cost_cents === null ? '' : '$' + dollars(r.cost_cents) %></td><td class="num"><%= r.cost_cents === null ? '' : (r.quantity < 0 ? '-' : '') + '$' + dollars(Math.abs(r.cost_cents * r.quantity)) %></td><% } %>
+  </tr>
+  <% }) %>
+  <% if (!rows.length) { %><tr><td colspan="<%= showCost ? 6 : 4 %>" class="empty">No location held anything when this month was closed.</td></tr><% } %>
+  </tbody>
+</table>
+</div>
+<%- include('partials/footer') %>

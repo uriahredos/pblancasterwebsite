@@ -143,6 +143,8 @@ function loadUser(req, res, next) {
       [b.requests, '/admin/requests', 'open parts request', 'open parts requests'],
       [b.inspections, '/admin/inspections?show=open', 'truck problem not fixed', 'truck problems not fixed'],
       [b.certs, '/admin/certs?show=attention', 'certification expired or expiring', 'certifications expired or expiring'],
+      // The monthly count is under way and this person's own vehicle has not been counted.
+      [(b.vehicleCount = require('./invcount').vehicleToCount(req.user)) ? 1 : 0, b.vehicleCount, 'vehicle to count', 'vehicles to count'],
       // For the people who look after backups: the last one did not work, and none has since.
       [req.user.allBranches && access.can(req.user, 'backups') && require('./backup').failing() ? 1 : 0, '/admin/backups', 'backup did not work', 'backups did not work'],
     ].filter((a) => a[0] > 0);

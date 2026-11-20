@@ -1478,3 +1478,6 @@ td.reports-to .meta { display: block; }
 
 /* Security check: a key to copy. Smaller than a temporary password, and it selects in one tap. */
 .sec-key { font-size: 1rem; letter-spacing: 0; margin: .6rem 0 .4rem; padding: .6rem .75rem; background: var(--bg); border: 1px dashed var(--line); border-radius: 8px; }
+
+/* The count sheet: a box wide enough for a number, easy to hit with a thumb. */
+.count-box { width: 5.5rem; text-align: right; font-size: 1.1rem; }

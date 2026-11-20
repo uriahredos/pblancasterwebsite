@@ -23,6 +23,8 @@ const GROUPS = [
     ['catalog.manage', 'Manage the parts catalog'],
     ['stock.manage', 'Manage stock: counts, deliveries, minimum levels'],
     ['inventory.manage', 'Manage inventory locations: vehicles and other places parts are kept'],
+    ['inventory.count', 'Count inventory during the monthly count (people can always count their own vehicle)'],
+    ['inventory.approve', 'Start the monthly inventory count, look over the differences and close the month'],
   ] },
   { title: 'Trucks', items: [
     ['inspections.view', 'See truck inspections and exports'],
@@ -66,7 +68,7 @@ const SUBMIT = ['parts.submit', 'training.submit', 'complaints.submit', 'inspect
 // Starting profiles. After the first start they are ordinary profiles: change them on the Profiles page.
 const DEFAULTS = [
   { name: 'Technician', scope: 'all', perms: [...SUBMIT, 'forum.use'] },
-  { name: 'Warehouse', scope: 'all', perms: [...SUBMIT, 'forum.use', 'parts.view', 'parts.manage', 'parts.audit', 'catalog.manage', 'stock.manage', 'inventory.manage', 'inspections.view', 'inspections.manage'] },
+  { name: 'Warehouse', scope: 'all', perms: [...SUBMIT, 'forum.use', 'parts.view', 'parts.manage', 'parts.audit', 'catalog.manage', 'stock.manage', 'inventory.manage', 'inventory.count', 'inspections.view', 'inspections.manage'] },
   { name: 'Manager', scope: 'team', perms: [...SUBMIT, 'forum.use', 'parts.view', 'parts.manage', 'parts.audit', 'training.view', 'training.manage', 'digest.weekly', 'inspections.view', 'inspections.manage', 'certs.manage', 'announcements.post', 'tasks.assign'] },
   { name: 'Admin', scope: 'all', perms: ALL.filter((p) => p !== 'branches.all') },   // an admin runs one branch
 ];
@@ -141,7 +143,7 @@ function migrate() {
     // Permissions added in a later release: give each one, once, to the profiles that already
     // hold the closest existing permission, so nobody has to re-tick boxes after an update.
     const INHERIT = {
-      'stock.manage': 'catalog.manage', 'inventory.manage': 'stock.manage', 'activity.view': 'profiles.manage',
+      'stock.manage': 'catalog.manage', 'inventory.manage': 'stock.manage', 'inventory.count': 'stock.manage', 'inventory.approve': 'users.manage', 'activity.view': 'profiles.manage',
       'inspections.submit': 'parts.submit', 'inspections.view': 'parts.view', 'inspections.manage': 'parts.manage',
       'certs.manage': 'training.manage', 'announcements.post': 'training.manage', 'records.delete': 'profiles.manage',
       'tasks.assign': 'announcements.post',

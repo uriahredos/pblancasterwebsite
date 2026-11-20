@@ -1,0 +1,61 @@
+<%- include('partials/header', { wide: true }) %>
+<p><a class="back" href="/admin/inventory">Inventory</a></p>
+<h1>Count for <%= monthName(audit.month) %></h1>
+<p class="lede"><%= lines %> <%= lines === 1 ? 'part' : 'parts' %> counted so far<% if (differences.length) { %>, <strong><%= differences.length %> different from the records</strong><% } %>. Each person with a vehicle can count their own from the bell.</p>
+
+<h2>Locations</h2>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Location</th><th>Technician</th><th class="num">Counted</th><th></th><th></th></tr></thead>
+  <tbody>
+  <% places.forEach(function (l) { %>
+  <tr>
+    <td><strong><%= l.name %></strong></td><td><%= l.technician || '' %></td>
+    <td class="num"><%= l.done %> of <%= l.due %></td>
+    <td><% if (!l.due) { %><span class="hint">Nothing on record</span><% } else if (l.done >= l.due) { %><span class="tag return">Done</span><% } else if (l.done) { %><span class="tag request">Part done</span><% } else { %><span class="tag overdue">Not started</span><% } %></td>
+    <td><% if (mayCount) { %><a href="/admin/inventory/count/<%= audit.id %>/<%= l.id %>">Count</a><% } %></td>
+  </tr>
+  <% }) %>
+  </tbody>
+</table>
+</div>
+
+<h2>Differences</h2>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Location</th><th>Part</th><th class="num">Records said</th><th class="num">Counted</th><th class="num">Difference</th><% if (showCost) { %><th class="num">Value</th><% } %><th>Counted by</th></tr></thead>
+  <tbody>
+  <% differences.forEach(function (d) { var diff = d.counted - d.expected; %>
+  <tr>
+    <td><%= d.location %></td><td><strong><%= d.part_number %></strong> <span class="hint"><%= d.description %></span></td>
+    <td class="num"><%= d.expected %></td><td class="num"><%= d.counted %></td><td class="num"><strong><%= diff > 0 ? '+' : '' %><%= diff %></strong></td>
+    <% if (showCost) { %><td class="num"><%= d.cost_cents === null ? '' : (diff < 0 ? '-' : '') + '$' + dollars(Math.abs(diff * d.cost_cents)) %></td><% } %>
+    <td><%= d.counted_name || '' %></td>
+  </tr>
+  <% }) %>
+  <% if (!differences.length) { %><tr><td colspan="<%= showCost ? 7 : 6 %>" class="empty"><%= lines ? 'Everything counted so far matches the records.' : 'Nothing has been counted yet.' %></td></tr><% } %>
+  </tbody>
+</table>
+</div>
+<% if (showCost && differences.length) { %><p class="count">The differences come to <%= value < 0 ? '-' : '' %>$<%= dollars(Math.abs(value)) %> at today's costs.</p><% } %>
+
+<% if (mayApprove) { %>
+<h2 id="close">Close the month</h2>
+<% if (notStarted.length) { %><p class="flash err">Not counted yet: <%= notStarted.map(function (l) { return l.name; }).join(', ') %>. You can still close; those keep the figures the records have.</p><% } %>
+<p>Closing corrects the records to match what was counted, settles what was marked "to check" in the places counted, and keeps a copy of every location's figures as <%= monthName(audit.month) %>'s inventory. It cannot be undone.</p>
+<% if (proved) { %>
+<form method="post" action="/admin/inventory/count/<%= audit.id %>/close" data-no-live data-confirm="Close <%= monthName(audit.month) %>? This cannot be undone.">
+  <input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn primary" type="submit">Close <%= monthName(audit.month) %></button>
+</form>
+<% } else { %>
+<form method="post" action="/account/confirm" class="card stack" data-no-live>
+  <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="next" value="/admin/inventory/count/<%= audit.id %>#close">
+  <label>Type your password to close the month <input name="password" type="password" autocomplete="current-password" required></label>
+  <div class="filter-actions"><button class="btn primary" type="submit">Continue</button></div>
+</form>
+<% } %>
+<form method="post" action="/admin/inventory/count/<%= audit.id %>/discard" data-no-live data-confirm="Set this count aside? What has been counted is thrown away. Nothing else changes.">
+  <input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Set this count aside without closing</button>
+</form>
+<% } %>
+<%- include('partials/footer') %>

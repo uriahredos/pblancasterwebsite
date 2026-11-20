@@ -2,6 +2,7 @@
 const express = require('express');
 const db = require('../db');
 const inv = require('../inventory');
+const counts = require('../invcount');
 const access = require('../permissions');
 const activity = require('../activity');
 const { requireLogin, requirePerm, forbidden, flash } = require('../auth');
@@ -124,6 +125,99 @@ router.post('/admin/inventory/locations/:id/:op', manage, (req, res) => {
     flash(req, 'ok', `${place.name} is in use again.`);
   }
   res.redirect('/admin/inventory');
+});
+
+// ---- The monthly count ----
+const mayApprove = (user) => access.can(user, 'inventory.approve');
+const mayCountAll = (user) => access.can(user, 'inventory.count') || mayApprove(user);
+// A count of the office being looked at; or, for someone counting their own vehicle, of their own office.
+const auditOf = (req) => { const a = counts.get(req.params.id); return a && (a.branch_id === req.user.workBranch || a.branch_id === req.user.branch_id) ? a : null; };
+const mayCount = (user, audit, place) => (mayCountAll(user) && audit.branch_id === user.workBranch) || (place.kind === 'vehicle' && place.user_id === user.id);
+const thisMonth = () => require('../util').localDate().slice(0, 7);
+
+router.get('/admin/inventory/count', requireLogin, (req, res) => {
+  if (!maySee(req.user) && !mayCountAll(req.user)) return forbidden(res);
+  const current = counts.open(req.user.workBranch);
+  if (current) return res.redirect(`/admin/inventory/count/${current.id}`);
+  res.render('admin_inventory_count', { title: 'Monthly count', past: counts.past(req.user.workBranch), monthName: counts.monthName, month: thisMonth(), mayApprove: mayApprove(req.user) });
+});
+
+router.post('/admin/inventory/count', requirePerm('inventory.approve'), (req, res) => {
+  const made = counts.start(req.user.workBranch, clean(req.body.month, 7), req.user.id);
+  if (typeof made === 'string') { flash(req, 'err', made); return res.redirect('/admin/inventory/count'); }
+  activity.log(req.user, 'Inventory count started', counts.monthName(req.body.month));
+  res.redirect(`/admin/inventory/count/${made}`);
+});
+
+router.get('/admin/inventory/count/:id', requireLogin, (req, res) => {
+  const audit = auditOf(req);
+  if (!audit || audit.branch_id !== req.user.workBranch || (!maySee(req.user) && !mayCountAll(req.user))) return forbidden(res);
+  const showCost = mayApprove(req.user) || access.can(req.user, 'inventory.manage') || access.can(req.user, 'catalog.manage');
+  if (audit.status === 'closed') {
+    return res.render('admin_inventory_closed', { title: `Inventory, ${counts.monthName(audit.month)}`, audit, rows: counts.closedFigures(audit.id), monthName: counts.monthName, dollars: inv.dollars, showCost,
+      closedBy: audit.closed_by ? db.prepare('SELECT display_name FROM users WHERE id = ?').get(audit.closed_by) : null });
+  }
+  res.render('admin_inventory_count_one', { title: `Count for ${counts.monthName(audit.month)}`, audit, ...counts.progress(audit), monthName: counts.monthName, dollars: inv.dollars, showCost,
+    mayApprove: mayApprove(req.user), mayCount: mayCountAll(req.user), proved: require('./auth').provedRecently(req) });
+});
+
+// These two come before the count sheet's address, which would otherwise take "close" for a location.
+router.post('/admin/inventory/count/:id/close', requirePerm('inventory.approve'), (req, res) => {
+  const audit = auditOf(req);
+  if (!audit || audit.branch_id !== req.user.workBranch) return forbidden(res);
+  if (audit.status !== 'open') return res.redirect(`/admin/inventory/count/${audit.id}`);
+  if (!require('./auth').provedRecently(req)) { flash(req, 'err', 'Type your password to close the month.'); return res.redirect(`/admin/inventory/count/${audit.id}#close`); }
+  const done = counts.close(audit, req.user.id);
+  activity.log(req.user, 'Inventory count closed', `${counts.monthName(audit.month)}: ${done.lines} counted, ${done.changed} corrected`);
+  flash(req, 'ok', `${counts.monthName(audit.month)} is closed. ${done.changed} ${done.changed === 1 ? 'figure was' : 'figures were'} corrected to match the count.`);
+  res.redirect(`/admin/inventory/count/${audit.id}`);
+});
+
+router.post('/admin/inventory/count/:id/discard', requirePerm('inventory.approve'), (req, res) => {
+  const audit = auditOf(req);
+  if (!audit || audit.branch_id !== req.user.workBranch || audit.status !== 'open') return forbidden(res);
+  counts.discard(audit);
+  activity.log(req.user, 'Inventory count set aside', counts.monthName(audit.month));
+  flash(req, 'ok', 'The count was set aside. Nothing was changed.');
+  res.redirect('/admin/inventory/count');
+});
+
+function sheetPage(req, res, extra = {}) {
+  const audit = auditOf(req); const place = audit ? inv.location(req.params.loc) : null;
+  if (!audit || !place || place.branch_id !== audit.branch_id || !mayCount(req.user, audit, place)) { forbidden(res); return null; }
+  if (audit.status !== 'open') { res.redirect(mayCountAll(req.user) ? `/admin/inventory/count/${audit.id}` : '/'); return null; }
+  if (extra.justLoad) return { audit, place };
+  res.status(extra.errors ? 400 : 200).render('inventory_count_sheet', { title: `Count: ${place.name}`, audit, place, rows: counts.sheet(audit, place), monthName: counts.monthName,
+    backToCount: mayCountAll(req.user) && audit.branch_id === req.user.workBranch, errors: [], added: '', ...extra });
+  return null;
+}
+router.get('/admin/inventory/count/:id/:loc', requireLogin, (req, res) => { sheetPage(req, res); });
+
+router.post('/admin/inventory/count/:id/:loc', requireLogin, (req, res) => {
+  const found = sheetPage(req, res, { justLoad: true });
+  if (!found) return;
+  const { audit, place } = found; const errors = []; let saved = 0;
+  const number = (v) => (/^\d{1,6}$/.test(String(v).trim()) ? Number(String(v).trim()) : null);
+  db.transaction(() => {
+    for (const [field, raw] of Object.entries(req.body)) {
+      const m = /^qty_(\d+)$/.exec(field); if (!m) continue;
+      const part = db.prepare('SELECT id, part_number FROM parts_catalog WHERE id = ?').get(m[1]); if (!part) continue;
+      if (String(raw).trim() === '') { counts.count(audit, place, part.id, null); continue; }
+      const n = number(raw);
+      if (n === null) { errors.push(`${part.part_number}: enter a whole number, or leave it empty if it has not been counted.`); continue; }
+      counts.count(audit, place, part.id, n, req.user.id); saved += 1;
+    }
+    const added = clean(req.body.add_part, 100);
+    if (added) {
+      const part = db.prepare('SELECT id FROM parts_catalog WHERE part_number = ?').get(added); const n = number(req.body.add_qty ?? '');
+      if (!part) errors.push(`${added} is not in the catalog, so it cannot be counted. Ask whoever keeps the catalog to add it.`);
+      else if (n === null) errors.push(`Enter how many of ${added} there are.`);
+      else { counts.count(audit, place, part.id, n, req.user.id); saved += 1; }
+    }
+  })();
+  if (errors.length) return sheetPage(req, res, { errors, added: errors.some((e) => /not in the catalog|how many of/.test(e)) ? clean(req.body.add_part, 100) : '' });
+  flash(req, 'ok', `Saved. ${saved} ${saved === 1 ? 'part' : 'parts'} counted in ${place.name}.`);
+  res.redirect(`/admin/inventory/count/${audit.id}/${place.id}`);
 });
 
 module.exports = router;
