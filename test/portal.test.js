@@ -8118,4 +8118,7 @@ test('alerts: someone signed in is offered alerts on any page, with what the dev
   assert.match(js, /Notification\.requestPermission\(\)/); assert.match(js, /\/push\/subscribe/);
   assert.match(js, /\^\\\/\(complaint\|settings\\\/notifications\|unlock\)/);       // never on a complaint page
   assert.match((await t.get('/sw.js')).text, /'\/alerts-prompt\.js'/);
+  // The mark in a phone's status bar is the flame by itself on a see-through background; a full-colour icon there shows as a white square.
+  assert.match((await t.get('/sw.js')).text, /badge: '\/icons\/badge-96\.png'/);
+  const badge = await fetch(base + '/icons/badge-96.png'); assert.equal(badge.status, 200); assert.equal(badge.headers.get('content-type'), 'image/png');
 });

@@ -1,7 +1,7 @@
 // Service worker: lets the site be installed on a phone's home screen and shows a
 // friendly page when there is no signal. Pages themselves are never stored, so
 // nothing private is kept on the phone by this file.
-var CACHE = 'portal-static-v86';
+var CACHE = 'portal-static-v87';
 var ASSETS = ['/offline.html', '/offline.js', '/styles.css', '/site.js', '/alerts-prompt.js', '/passkey.js', '/theme.js', '/logo.png', '/logo-p.png', '/logo-b.png', '/logo-flame.png', '/parts-form.js', '/scan.js', '/inspection-form.js', '/icons/icon-192.png'];
 
 self.addEventListener('install', function (event) {
@@ -19,7 +19,7 @@ self.addEventListener('push', function (event) {
   var data = {};
   try { data = event.data ? event.data.json() : {}; } catch (e) { data = { title: 'PB Portal', body: event.data ? event.data.text() : '' }; }
   event.waitUntil(self.registration.showNotification(data.title || 'PB Portal', {
-    body: data.body || '', icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', tag: data.tag || undefined, renotify: Boolean(data.tag),
+    body: data.body || '', icon: '/icons/icon-192.png', badge: '/icons/badge-96.png', tag: data.tag || undefined, renotify: Boolean(data.tag),
     data: { url: data.url || '/' }
   }));
 });
