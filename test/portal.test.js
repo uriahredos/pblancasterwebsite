@@ -7319,10 +7319,10 @@ test('speed: the look-ups made on nearly every page have an index to use', () =>
     ['DELETE FROM sessions WHERE expires <= 5', 'sessions_expires'],
     ['SELECT a.at FROM activity_log a LEFT JOIN users u ON u.id = a.user_id WHERE u.branch_id = 5 ORDER BY a.id DESC LIMIT 500', 'activity_user'],
   ]) assert.match(plan(sql), new RegExp(`USING (COVERING )?INDEX ${index}\\b`), `${sql} should use ${index}`);
-  // Stock for one office starts from that office's own people and entries, never from every entry for a part number.
-  const stockPlan = (() => { const seen = []; const orig = db.prepare; db.prepare = function (sql) { seen.push(sql); return orig.apply(this, arguments); }; try { require('../app/stock').list(1); } finally { delete db.prepare; } return plan(seen[0], 1, 1).replace(/\(.*?\)/g, ''); })();
-  assert.match(stockPlan, /SEARCH su USING COVERING INDEX users_branch .*SEARCH s USING INDEX parts_user .*SEARCH i USING INDEX items_submission/);
-  assert.doesNotMatch(stockPlan, /items_part_name/);
+  // Stock for one office is its own warehouse's movements, found by index: never a pass over every movement.
+  const stockPlan = (() => { const seen = []; const orig = db.prepare; db.prepare = function (sql) { seen.push(sql); return orig.apply(this, arguments); }; try { require('../app/stock').list(1); } finally { delete db.prepare; } return plan(seen.find((q) => /FROM branch_stock bs/.test(q)), 1); })();
+  assert.match(stockPlan, /USING (COVERING )?INDEX inv_moves_to\b/); assert.match(stockPlan, /USING (COVERING )?INDEX inv_moves_from\b/);
+  assert.doesNotMatch(stockPlan, /SCAN m\b/);
 });
 
 test('speed: a page for one office reads that office\'s people and tasks, not the whole company\'s, and shows the same thing', async () => {
@@ -7396,23 +7396,27 @@ test('stock: one office\'s figures come from its own entries only, whatever anot
   count.run(office, part, 50, '2026-06-01T12:00:00.000Z', 60); count.run(other, part, 20, '2026-06-01T12:00:00.000Z', null);
   const entry = (user, action, name, qty, at, cancelled) => {
     const id = db.prepare("INSERT INTO parts_submissions (user_id, action, source, status, cancelled_at, created_at, created_local_date) VALUES (?, ?, 'van', ?, ?, ?, ?)").run(user, action, action === 'request' ? 'new' : null, cancelled ? at : null, at, at.slice(0, 10)).lastInsertRowid;
-    db.prepare('INSERT INTO parts_items (submission_id, part_name, quantity) VALUES (?, ?, ?)').run(id, name, qty); return id;
+    db.prepare('INSERT INTO parts_items (submission_id, part_name, quantity) VALUES (?, ?, ?)').run(id, name, qty); inv.record(id); return id;
   };
+  const inv = require('../app/inventory');
+  // Each office's shelf begins with what was counted: one opening movement into its own warehouse.
+  for (const [o, n] of [[office, 50], [other, 20]]) inv.move({ branchId: o, catalogId: part, to: inv.warehouseOf(o).id, quantity: n, kind: 'opening' });
   const t1 = userId('sp.tech1'); const made = [];
   made.push(entry(t1, 'take', 'spd-100', 5, '2026-06-02T09:00:00.000Z'));           // counts: typed in small letters
   made.push(entry(t1, 'return', 'SPD-100', 2, '2026-06-03T09:00:00.000Z'));         // counts
   made.push(entry(t1, 'take', 'SPD-100', 7, '2026-06-04T09:00:00.000Z', true));     // cancelled: does not count
-  made.push(entry(t1, 'take', 'SPD-100', 9, '2026-05-20T09:00:00.000Z'));           // before the count: does not count
   made.push(entry(t1, 'request', 'SPD-100', 4, '2026-06-05T09:00:00.000Z'));        // a request moves nothing
   made.push(entry(away, 'take', 'SPD-100', 11, '2026-06-06T09:00:00.000Z'));        // the other office's shelf, not this one's
   const adjust = db.prepare("INSERT INTO stock_adjustments (catalog_id, quantity, reason, user_id, created_at, branch_id) VALUES (?, ?, 'Delivery', ?, '2026-06-07T09:00:00.000Z', ?)");
   adjust.run(part, 10, t1, office); adjust.run(part, 3, away, other);
+  inv.move({ branchId: office, catalogId: part, to: inv.warehouseOf(office).id, quantity: 10, kind: 'receive' }); inv.move({ branchId: other, catalogId: part, to: inv.warehouseOf(other).id, quantity: 3, kind: 'receive' });
   const mine = stock.list(office).find((r) => r.part_number === 'SPD-100'); const theirs = stock.list(other).find((r) => r.part_number === 'SPD-100');
   assert.equal(mine.on_hand, 50 + 10 - 5 + 2); assert.equal(mine.low, true);
   assert.equal(theirs.on_hand, 20 + 3 - 11); assert.equal(theirs.low, false);
   assert.equal(stock.forNames(office, [' spd-100 ', 'NOT-A-PART'])[0].on_hand, 57); assert.equal(stock.forNames(office, ['NOT-A-PART']).length, 0);
   assert.equal(stock.lowCount(office), 1); assert.equal(stock.list(office, { q: 'strobe' }).length, 1); assert.equal(stock.list(office, { q: 'nothing like it' }).length, 0);
   db.transaction(() => {
+    db.prepare('DELETE FROM inv_moves WHERE catalog_id = ?').run(part);
     db.prepare(`DELETE FROM parts_submissions WHERE id IN (${made.join(',')})`).run(); db.prepare('DELETE FROM stock_adjustments WHERE catalog_id = ?').run(part);
     db.prepare('DELETE FROM branch_stock WHERE catalog_id = ?').run(part); db.prepare('DELETE FROM parts_catalog WHERE id = ?').run(part);
   })();
@@ -7513,6 +7517,7 @@ test('People: past 500 the page says how many there are and goes on to the next 
 
   db.transaction(() => {
     db.prepare("DELETE FROM shoutouts WHERE message LIKE 'BULKSHOUT%'").run();
+    db.prepare('DELETE FROM inv_locations WHERE branch_id = ?').run(town);
     db.prepare('DELETE FROM users WHERE branch_id = ?').run(town); db.prepare('DELETE FROM branches WHERE id = ?').run(town);
   })();
   // Back to a company small enough for one list: the person's own office first, then everyone else, as two groups.
@@ -7860,4 +7865,103 @@ test('inventory: each office has a main warehouse, a vehicle per technician and 
   assert.ok(log.includes('Inventory location added: Truck 22 (vehicle, Wes Walker)')); assert.ok(log.includes('Vehicle handed over: Truck 14: now Hal Heir'));
   await owner.post('/branch/view', { branch: 'all' }, { page: '/' });
   db.prepare('DELETE FROM inv_moves WHERE catalog_id = ?').run(part); db.prepare('DELETE FROM parts_catalog WHERE id = ?').run(part);
+});
+
+test('inventory: taking and returning parts moves them between the warehouse and the technician\'s vehicle; a shortfall is allowed and flagged; edits, cancels and deletions follow', async () => {
+  const inv = require('../app/inventory'); const stockLib = require('../app/stock');
+  const home = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id;
+  const van = makeUser('inv.van', 'Vera Van'); const foot = makeUser('inv.foot', 'Finn Foot');
+  db.prepare("UPDATE users SET default_truck = '71' WHERE id = ?").run(van);
+  const part = db.prepare("INSERT INTO parts_catalog (part_number, description, created_at) VALUES ('MOVE-1', 'Movement test part', ?)").run(new Date().toISOString()).lastInsertRowid;
+  const wh = inv.warehouseOf(home).id; const truck = inv.vehicleOf(van).id;
+  const owner = await loggedIn('owner'); const vera = await loggedIn('inv.van'); const finn = await loggedIn('inv.foot');
+  await owner.post('/branch/view', { branch: String(home) }, { page: '/' });
+  const at = () => [inv.onHand(wh, part), inv.onHand(truck, part)];
+  const send = (c, fields) => c.post('/parts', [['part_name', 'move-1'], ...Object.entries(fields)], { multipart: true, page: '/parts' });
+  const last = () => db.prepare('SELECT id FROM parts_submissions ORDER BY id DESC').get().id;
+
+  // A delivery into the warehouse, by hand, from the Inventory page. A technician cannot.
+  assert.equal((await vera.post('/admin/inventory/moves', { from: 'delivery', to: String(wh), part_number: 'MOVE-1', quantity: '5' }, { page: '/parts' })).status, 403);
+  await owner.post('/admin/inventory/moves', { from: 'delivery', to: String(wh), part_number: 'MOVE-1', quantity: '20', note: 'PO 77' }, { page: '/admin/inventory' });
+  assert.deepEqual(at(), [20, 0]);
+  // The form offers the person's own vehicle, the warehouse and the office's other places; never someone else's vehicle.
+  const form = (await vera.get('/parts?action=take')).text;
+  assert.match(form, /<option value="">The usual place<\/option>/); assert.match(form, new RegExp(`<option value="${truck}" >Truck 71 \\(yours\\)</option>`));
+  assert.doesNotMatch((await finn.get('/parts?action=take')).text, /Truck 71/);
+
+  // Van stock: out of the warehouse, into the vehicle. For a job: out of the vehicle. Back from a job: into the vehicle. Van stock handed back: to the warehouse.
+  await send(vera, { action: 'take', source: 'van', quantity: '6' });                              assert.deepEqual(at(), [14, 6]);
+  await send(vera, { action: 'take', source: 'job', job_number: 'J1', quantity: '4' });            assert.deepEqual(at(), [14, 2]);
+  await send(vera, { action: 'return', source: 'job', job_number: 'J1', quantity: '1' });          assert.deepEqual(at(), [14, 3]);
+  await send(vera, { action: 'return', source: 'van', quantity: '2' });                            assert.deepEqual(at(), [16, 1]);
+  // Choosing a place: this job's parts came straight off the warehouse shelf.
+  await send(vera, { action: 'take', source: 'job', job_number: 'J2', quantity: '3', place: String(wh) }); assert.deepEqual(at(), [13, 1]);
+  // Someone with no vehicle takes from, and returns to, the warehouse. A request moves nothing. Someone else's vehicle is not a place they can name.
+  await send(finn, { action: 'take', source: 'job', job_number: 'J3', quantity: '2' });            assert.deepEqual(at(), [11, 1]);
+  await send(finn, { action: 'take', source: 'van', quantity: '1', place: String(truck) });        assert.deepEqual(at(), [10, 1]);
+  await send(finn, { action: 'request', source: 'van', quantity: '9', needed_by: '2031-01-01' });  assert.deepEqual(at(), [10, 1]);
+  // More than the vehicle has on record: the work is not held up, and the movement is marked for the next count.
+  await send(vera, { action: 'take', source: 'job', job_number: 'J4', quantity: '5' });            assert.deepEqual(at(), [10, -4]);
+  const short = last();
+  assert.equal(db.prepare('SELECT flagged FROM inv_moves WHERE submission_id = ?').get(short).flagged, 1);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM inv_moves WHERE flagged = 1 AND catalog_id = ?').get(part).n, 1);
+  assert.match((await owner.get('/admin/inventory')).text.replace(/\s+/g, ' '), /Truck 71<\/strong>[\s\S]*?1 to check<\/span>/);
+  assert.match((await owner.get(`/admin/inventory/locations/${truck}`)).text.replace(/\s+/g, ' '), /<strong>-5<\/strong><\/td> <td>Used[\s\S]*?To check<\/span>/);
+  // Editing the entry remakes its movements; cancelling takes them away; so does deleting an entry for good.
+  await vera.post(`/parts/${short}/edit`, [['part_name', 'MOVE-1'], ['quantity', '1'], ['source', 'job'], ['job_number', 'J4']], { multipart: true, page: `/parts/${short}/edit` });
+  assert.deepEqual(at(), [10, 0]); assert.equal(db.prepare('SELECT flagged FROM inv_moves WHERE submission_id = ?').get(short).flagged, 0);
+  await vera.post(`/parts/${short}/cancel`, {}, { page: '/my' });                                   assert.deepEqual(at(), [10, 1]);
+  await send(vera, { action: 'take', source: 'van', quantity: '2' });                              assert.deepEqual(at(), [8, 3]);
+  await owner.post(`/admin/parts/${last()}/delete`, {}, { page: `/admin/parts/${last()}` });        assert.deepEqual(at(), [10, 1]);
+  // A part that is not in the catalog moves nothing, as before.
+  await vera.post('/parts', [['part_name', 'Some loose fitting'], ['quantity', '3'], ['action', 'take'], ['source', 'van']], { multipart: true, page: '/parts' });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM inv_moves WHERE submission_id = ?').get(last()).n, 0);
+
+  // The Stock page is the warehouse: tracking a part with a count, a delivery and a recount each leave the movements agreeing with it.
+  await owner.post('/admin/stock', { part_number: 'MOVE-1', count: '12', min_level: '9' }, { page: '/admin/stock' });
+  assert.deepEqual(at(), [12, 1]); assert.equal(stockLib.forNames(home, ['MOVE-1'])[0].on_hand, 12);
+  await owner.post(`/admin/stock/${part}/adjust`, { quantity: '5', reason: 'Delivery' }, { page: `/admin/stock/${part}` });   assert.deepEqual(at(), [17, 1]);
+  await owner.post(`/admin/stock/${part}/adjust`, { quantity: '-2', reason: 'Damaged' }, { page: `/admin/stock/${part}` });   assert.deepEqual(at(), [15, 1]);
+  await owner.post(`/admin/stock/${part}/count`, { count: '11' }, { page: `/admin/stock/${part}` });                        assert.deepEqual(at(), [11, 1]);
+  // Taking for a job out of the vehicle leaves the warehouse, and so the low-stock figure, alone; van stock from the warehouse lowers it.
+  await send(vera, { action: 'take', source: 'job', job_number: 'J5', quantity: '1' });            assert.equal(stockLib.forNames(home, ['MOVE-1'])[0].on_hand, 11);
+  await send(vera, { action: 'take', source: 'van', quantity: '3' });                              assert.equal(stockLib.list(home, { low: true }).find((r) => r.part_number === 'MOVE-1').on_hand, 8);
+  // Moving by hand between two places; not to the same place, not an unknown part, not another office's place.
+  const far = db.prepare("SELECT id FROM inv_locations WHERE branch_id <> ? LIMIT 1").get(home);
+  const mv = (f) => owner.post('/admin/inventory/moves', f, { page: '/admin/inventory' });
+  await mv({ from: String(wh), to: String(truck), part_number: 'MOVE-1', quantity: '2' });         assert.deepEqual(at(), [6, 5]);
+  await mv({ from: String(wh), to: String(wh), part_number: 'MOVE-1', quantity: '2' });
+  await mv({ from: String(wh), to: String(truck), part_number: 'NOPE-9', quantity: '2' });
+  if (far) await mv({ from: String(wh), to: String(far.id), part_number: 'MOVE-1', quantity: '2' });
+  assert.deepEqual(at(), [6, 5]);
+  // A removed person's vehicle stays, with nobody's name on it, and what it holds stays in it.
+  db.prepare('UPDATE users SET active = 0 WHERE id = ?').run(van); require('../app/removal').remove(van);
+  assert.equal(inv.location(truck).user_id, null); assert.equal(inv.onHand(truck, part), 5);
+  await owner.post('/branch/view', { branch: 'all' }, { page: '/' });
+});
+
+test('inventory: what the Stock page showed on the shelf becomes each office\'s opening warehouse stock, once', () => {
+  const L = encryptionLab();
+  try {
+    // An office as it stood before movements: a count, a delivery, a take and a return since, and a part that had run out.
+    const SEEDED = `const db = require('./app/db'); const auth = require('./app/auth'); require('./app/app');
+      const u = auth.createUser({ username: 'old.tech', displayName: 'Olga Old', password: 'correct horse battery', profile: 'Technician' });
+      const b = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(u).branch_id; const t = '2026-06-01T12:00:00.000Z';
+      const part = (n) => db.prepare("INSERT INTO parts_catalog (part_number, created_at) VALUES (?, ?)").run(n, t).lastInsertRowid;
+      const a = part('OLD-A'), z = part('OLD-Z');
+      db.prepare('INSERT INTO branch_stock (branch_id, catalog_id, count_qty, count_at) VALUES (?, ?, 30, ?)').run(b, a, t);
+      db.prepare('INSERT INTO branch_stock (branch_id, catalog_id, count_qty, count_at) VALUES (?, ?, 0, ?)').run(b, z, t);
+      db.prepare("INSERT INTO stock_adjustments (catalog_id, quantity, user_id, created_at, branch_id) VALUES (?, 10, ?, '2026-06-02T12:00:00.000Z', ?)").run(a, u, b);
+      const entry = (action, qty) => { const id = db.prepare("INSERT INTO parts_submissions (user_id, action, source, created_at, created_local_date) VALUES (?, ?, 'van', '2026-06-03T12:00:00.000Z', '2026-06-03')").run(u, action).lastInsertRowid;
+        db.prepare('INSERT INTO parts_items (submission_id, part_name, quantity) VALUES (?, ?, ?)').run(id, 'old-a', qty); };
+      entry('take', 7); entry('return', 2);
+      db.prepare("DELETE FROM inv_moves").run(); db.prepare("DELETE FROM meta WHERE key = 'inv_opening_1'").run(); console.log('seeded');`;
+    assert.match(L.run(SEEDED).out, /seeded/);
+    const LOOK = `const db = require('./app/db'); require('./app/app'); const stock = require('./app/stock'); const b = db.prepare("SELECT branch_id FROM users WHERE username = 'old.tech'").get().branch_id;
+      console.log(JSON.stringify({ shelf: stock.list(b).map((r) => [r.part_number, r.on_hand]), moves: db.prepare('SELECT kind, quantity FROM inv_moves ORDER BY id').all() }));`;
+    const first = JSON.parse(L.run(LOOK).out.trim().split('\n').pop());
+    assert.deepEqual(first.shelf, [['OLD-A', 35], ['OLD-Z', 0]]);           // 30 counted + 10 delivered - 7 taken + 2 returned
+    assert.deepEqual(first.moves, [{ kind: 'opening', quantity: 35 }]);
+    assert.deepEqual(JSON.parse(L.run(LOOK).out.trim().split('\n').pop()), first);   // a second start adds nothing
+  } finally { fs.rmSync(L.dir, { recursive: true, force: true }); }
 });

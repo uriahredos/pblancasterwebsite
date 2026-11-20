@@ -4,7 +4,7 @@
 <p class="lede">Where the <%= office ? office.name : '' %> office's parts are: the main warehouse, each technician's vehicle, and anything else you add.</p>
 <div class="table-wrap">
 <table>
-  <thead><tr><th>Location</th><th>Kind</th><th>Technician</th><th class="num">Different parts</th><th class="num">Items</th><th></th></tr></thead>
+  <thead><tr><th>Location</th><th>Kind</th><th>Technician</th><th class="num">Different parts</th><th class="num">Items</th><th>To check</th><th></th></tr></thead>
   <tbody>
   <% inUse.forEach(function (l) { %>
   <tr>
@@ -13,6 +13,7 @@
     <td><%= l.technician || '' %></td>
     <td class="num"><%= l.parts %></td>
     <td class="num"><%= l.units %></td>
+    <td><% if (l.flagged) { %><span class="tag request" title="Parts were taken that this place did not have on record. The next count settles it."><%= l.flagged %> to check</span><% } %></td>
     <td><a href="/admin/inventory/locations/<%= l.id %>">Open</a></td>
   </tr>
   <% }) %>
@@ -21,6 +22,17 @@
 </div>
 
 <% if (mayManage) { %>
+<h2>Move parts</h2>
+<form method="post" action="/admin/inventory/moves" class="filters card">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>From <select name="from" required><option value="delivery">A delivery (new stock)</option><% inUse.forEach(function (l) { %><option value="<%= l.id %>"><%= l.name %></option><% }) %></select></label>
+  <label>To <select name="to" required><% inUse.forEach(function (l) { %><option value="<%= l.id %>"><%= l.name %></option><% }) %></select></label>
+  <label>Part number <input name="part_number" required maxlength="100" autocomplete="off"></label>
+  <label>How many <input name="quantity" required inputmode="numeric" maxlength="5" autocomplete="off"></label>
+  <label class="grow">Note <span class="hint">Optional</span> <input name="note" maxlength="200" autocomplete="off"></label>
+  <div class="filter-actions"><button class="btn primary small" type="submit">Move</button></div>
+</form>
+
 <h2>Add a vehicle</h2>
 <% if (free.length) { %>
 <form method="post" action="/admin/inventory/locations" class="filters card">

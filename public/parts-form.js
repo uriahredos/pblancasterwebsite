@@ -13,7 +13,7 @@
 
   function toggle(attr, value) {
     form.querySelectorAll('[' + attr + ']').forEach(function (el) {
-      var show = el.getAttribute(attr) === value;
+      var show = el.getAttribute(attr).split(' ').indexOf(value) !== -1;   // a field can belong to more than one choice
       el.hidden = !show;
       el.querySelectorAll('input, textarea, select').forEach(function (input) { input.disabled = !show; });
     });

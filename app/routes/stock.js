@@ -3,6 +3,7 @@ const express = require('express');
 const multer = require('multer');
 const db = require('../db');
 const stock = require('../stock');
+const inv = require('../inventory');
 const access = require('../permissions');
 const activity = require('../activity');
 const { requireLogin, requirePerm, verifyCsrf, forbidden, flash } = require('../auth');
@@ -19,7 +20,11 @@ const wholeNumber = (v, { signed = false } = {}) => {
 const getPart = (id) => (/^\d+$/.test(String(id)) ? db.prepare('SELECT * FROM parts_catalog WHERE id = ?').get(id) : null);
 
 /** Start (or restart) tracking a part from a physical count. */
-function setCount(branchId, part, qty, minLevel) {
+function setCount(branchId, part, qty, minLevel, userId) {
+  // The count is the truth: whatever the warehouse's movements said, one more movement makes them agree with it.
+  const w = inv.warehouseOf(branchId); const had = inv.onHand(w.id, part.id);
+  if (qty > had) inv.move({ branchId, catalogId: part.id, to: w.id, quantity: qty - had, kind: 'adjust', note: 'Counted', userId });
+  if (qty < had) inv.move({ branchId, catalogId: part.id, from: w.id, quantity: had - qty, kind: 'adjust', note: 'Counted', userId });
   db.prepare(`INSERT INTO branch_stock (branch_id, catalog_id, count_qty, count_at, min_level) VALUES (?, ?, ?, ?, ?)
               ON CONFLICT(branch_id, catalog_id) DO UPDATE SET count_qty = excluded.count_qty, count_at = excluded.count_at, min_level = COALESCE(excluded.min_level, min_level)`)
     .run(branchId, part.id, qty, new Date().toISOString(), minLevel);
@@ -55,7 +60,7 @@ router.post('/admin/stock', manage, (req, res) => {
     const info = db.prepare("INSERT INTO parts_catalog (part_number, description, created_at) VALUES (?, '', ?)").run(number, new Date().toISOString());
     part = getPart(info.lastInsertRowid);
   }
-  setCount(req.user.workBranch, part, count, min);
+  db.transaction(() => setCount(req.user.workBranch, part, count, min, req.user.id))();
   activity.log(req.user, 'Stock count', `${part.part_number}: counted ${count}${min !== null ? ', minimum ' + min : ''}`);
   flash(req, 'ok', `${part.part_number} is now tracked with ${count} on hand.`);
   res.redirect('/admin/stock');
@@ -87,7 +92,7 @@ router.post('/admin/stock/import', manage, (req, res, next) => upload(req, res, 
         const info = db.prepare("INSERT INTO parts_catalog (part_number, description, created_at) VALUES (?, '', ?)").run(number, new Date().toISOString());
         part = getPart(info.lastInsertRowid); result.added++;
       }
-      setCount(req.user.workBranch, part, qty, cMin >= 0 ? wholeNumber(r[cMin]) : null);
+      setCount(req.user.workBranch, part, qty, cMin >= 0 ? wholeNumber(r[cMin]) : null, req.user.id);
       result.set++;
     }
   })();
@@ -121,8 +126,13 @@ router.post('/admin/stock/:id/:op', manage, (req, res) => {
       const qty = wholeNumber(req.body.quantity, { signed: true });
       if (!qty) { flash(req, 'err', 'Enter a whole number: positive for a delivery, negative to take stock off.'); break; }
       const reason = clean(req.body.reason, 200);
-      db.prepare('INSERT INTO stock_adjustments (catalog_id, quantity, reason, user_id, created_at, branch_id) VALUES (?, ?, ?, ?, ?, ?)')
-        .run(part.id, qty, reason || null, req.user.id, new Date().toISOString(), branchId);
+      db.transaction(() => {
+        db.prepare('INSERT INTO stock_adjustments (catalog_id, quantity, reason, user_id, created_at, branch_id) VALUES (?, ?, ?, ?, ?, ?)')
+          .run(part.id, qty, reason || null, req.user.id, new Date().toISOString(), branchId);
+        const w = inv.warehouseOf(branchId);
+        if (qty > 0) inv.move({ branchId, catalogId: part.id, to: w.id, quantity: qty, kind: 'receive', note: reason || null, userId: req.user.id });
+        else inv.move({ branchId, catalogId: part.id, from: w.id, quantity: -qty, kind: 'adjust', note: reason || null, userId: req.user.id });
+      })();
       activity.log(req.user, 'Stock adjusted', `${part.part_number}: ${qty > 0 ? '+' : ''}${qty}${reason ? ' (' + reason + ')' : ''}`);
       flash(req, 'ok', `${qty > 0 ? 'Added ' + qty : 'Removed ' + -qty}.`);
       break;
@@ -130,7 +140,7 @@ router.post('/admin/stock/:id/:op', manage, (req, res) => {
     case 'count': {
       const qty = wholeNumber(req.body.count);
       if (qty === null) { flash(req, 'err', 'Enter how many are on the shelf (a whole number).'); break; }
-      setCount(branchId, part, qty, null);
+      db.transaction(() => setCount(branchId, part, qty, null, req.user.id))();
       activity.log(req.user, 'Stock count', `${part.part_number}: counted ${qty}`);
       flash(req, 'ok', `Count set to ${qty}.`);
       break;

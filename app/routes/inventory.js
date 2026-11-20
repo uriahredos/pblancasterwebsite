@@ -30,7 +30,7 @@ router.get('/admin/inventory/locations/:id', requireLogin, (req, res) => {
   if (!place) return res.status(404).render('error', { title: 'Not found', message: 'That location is not in this office.' });
   const mayManage = access.can(req.user, 'inventory.manage');
   res.render('admin_inventory_location', {
-    title: place.name, place, kinds: inv.KINDS, rows: inv.contents(place.id), mayManage, dollars: inv.dollars,
+    title: place.name, place, kinds: inv.KINDS, rows: inv.contents(place.id), mayManage, dollars: inv.dollars, history: inv.history(place.id),
     showCost: mayManage || access.can(req.user, 'catalog.manage'),
     technician: place.user_id ? db.prepare('SELECT display_name FROM users WHERE id = ?').get(place.user_id) : null,
     free: place.kind === 'vehicle' ? inv.withoutVehicle(req.user.workBranch) : [],
@@ -58,6 +58,25 @@ router.post('/admin/inventory/locations', manage, (req, res) => {
   }
   flash(req, 'ok', `${name} added.`);
   res.redirect('/admin/inventory');
+});
+
+// Move parts by hand: from one of the office's locations to another, or a delivery straight into one.
+router.post('/admin/inventory/moves', manage, (req, res) => {
+  const back = '/admin/inventory';
+  const own = (id) => { const l = inv.location(id); return l && l.branch_id === req.user.workBranch && l.active ? l : null; };
+  const to = own(req.body.to); const from = req.body.from === 'delivery' ? null : own(req.body.from);
+  const qty = /^\d{1,5}$/.test(String(req.body.quantity || '').trim()) ? Number(req.body.quantity) : 0;
+  const part = db.prepare('SELECT id, part_number FROM parts_catalog WHERE part_number = ?').get(clean(req.body.part_number, 100));
+  const fail = (msg) => { flash(req, 'err', msg); res.redirect(back); };
+  if (!to || (req.body.from !== 'delivery' && !from)) return fail('Choose where the parts are coming from and going to.');
+  if (from && from.id === to.id) return fail('Choose two different places.');
+  if (!part) return fail('That part number is not in the catalog.');
+  if (qty < 1) return fail('Enter how many, as a whole number.');
+  const note = clean(req.body.note, 200) || null;
+  inv.move({ branchId: req.user.workBranch, catalogId: part.id, from: from && from.id, to: to.id, quantity: qty, kind: from ? 'transfer' : 'receive', note, userId: req.user.id });
+  activity.log(req.user, from ? 'Parts moved' : 'Delivery received', `${qty} × ${part.part_number}: ${from ? from.name + ' to ' : 'into '}${to.name}`);
+  flash(req, 'ok', `${qty} × ${part.part_number} ${from ? 'moved to' : 'received into'} ${to.name}.`);
+  res.redirect(back);
 });
 
 // Rename a location, or hand a vehicle to someone else. What is in it stays in it.

@@ -17,6 +17,26 @@
 </table>
 </div>
 
+<h2>Latest movements</h2>
+<% var WHAT = { opening: 'On hand at the start', receive: 'Delivery', transfer: 'Moved', use: 'Used', return: 'Returned', adjust: 'Count or correction' }; %>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>When</th><th>Part</th><th class="num">In or out</th><th>What</th><th>Who</th><th></th></tr></thead>
+  <tbody>
+  <% history.forEach(function (m) { var incoming = m.to_id === place.id; %>
+  <tr>
+    <td class="nowrap"><%= fmtDateTime(m.created_at) %></td><td><%= m.part_number %></td>
+    <td class="num"><strong><%= incoming ? '+' : '-' %><%= m.quantity %></strong></td>
+    <td><%= WHAT[m.kind] %><% if (m.kind === 'transfer') { %> <%= incoming ? 'from ' + (m.from_name || '') : 'to ' + (m.to_name || '') %><% } %><% if (m.note) { %> <span class="hint"><%= m.note %></span><% } %><% if (m.submission_id) { %> <a href="/admin/parts/<%= m.submission_id %>">entry</a><% } %></td>
+    <td><%= m.display_name || '' %></td>
+    <td><% if (m.flagged && !incoming) { %><span class="tag request" title="This place did not have that many on record when they were taken.">To check</span><% } %></td>
+  </tr>
+  <% }) %>
+  <% if (!history.length) { %><tr><td colspan="6" class="empty">Nothing has moved in or out yet.</td></tr><% } %>
+  </tbody>
+</table>
+</div>
+
 <% if (mayManage && place.active) { %>
 <h2>Change this location</h2>
 <form method="post" action="/admin/inventory/locations/<%= place.id %>" class="filters card">

@@ -118,13 +118,28 @@ The banner uses the Pye-Barker logo (`public/logo.png`) and the colors are taken
 
 ## Inventory (`/admin/inventory`)
 
-Where an office's parts are. It is being built in steps; this is the first.
+Where an office's parts are. It is being built in steps: locations and movements are here; the monthly count and the export come next.
 
 - **Every office has** one **Main warehouse**, one location for **each technician's vehicle**, and any **other locations** it adds for itself (a trailer, a second stockroom, a job site).
 - **Vehicles**: one technician each. The first time the page is opened, a vehicle is made for everyone in the office who already has a truck number on file ("Truck 14"). Add others by hand. Handing a vehicle to someone else keeps what is in it.
 - **Putting a location away**: a location that is no longer used is put away, not deleted, and only once it is empty. Its history stays, and it can be used again. The main warehouse cannot be put away.
-- **What a location holds** is never typed over. It is worked out from the movements in and out of it, so there is always a record of who moved what, and when. Until movements are switched on (the next step), locations show as empty and the **Stock** page stays the record of what is on the warehouse shelf.
-- **Who**: anyone who can see the parts log can look. Adding, renaming, handing over and putting away need **Manage inventory locations** (given once to profiles that already manage stock). Costs and values show only to people with that permission or who manage the catalog.
+- **What a location holds** is never typed over. It is worked out from the movements in and out of it, so there is always a record of who moved what, and when. Each location's page lists what it holds and its latest movements.
+- **The parts form moves the parts.** Each line of a Take or Return whose part number is in the catalog becomes a movement, saved together with the entry:
+
+  | On the form | What moves |
+  |---|---|
+  | Take, for a job | Out of the person's own vehicle (the main warehouse if they have no vehicle) |
+  | Take, van stock | From the main warehouse into their vehicle. This is how a vehicle is restocked |
+  | Return, from a job | Back into their vehicle (or the warehouse) |
+  | Return, van stock | Out of their vehicle, into the warehouse |
+
+  **Where** on the form changes the place for that entry: the warehouse, the person's own vehicle or one of the office's other locations (never someone else's vehicle). A request moves nothing. A part typed in that is not in the catalog moves nothing.
+- **Taking more than a place has on record is allowed, and marked "To check".** Work is never held up by the numbers; the Inventory page shows how many movements each location has to check, and the next count settles them. Vehicles start empty, so until a vehicle has been counted most of what is taken from it will be marked.
+- **Editing an entry** remakes its movements, **cancelling** it takes them away, and so does deleting an entry for good.
+- **Move parts** on the Inventory page moves parts by hand between two of the office's locations, or takes a delivery into one.
+- **The Stock page is the main warehouse.** Its "on hand" is what the warehouse's movements add up to. A count, a delivery or a correction made there is written as a movement. When this was switched on, what each office's Stock page showed became that office's opening warehouse stock, so the numbers did not change.
+- When a person is removed, their vehicle stays, with what is in it, and nobody's name on it until it is handed to someone.
+- **Who**: anyone who can see the parts log can look. Moving parts by hand, adding, renaming, handing over and putting away need **Manage inventory locations** (given once to profiles that already manage stock). Costs and values show only to people with that permission or who manage the catalog.
 - An office sees and changes only its own locations. Inventory lives in the site's own encrypted database, so it is covered by the same backups.
 
 ## Stock (`/admin/stock`)

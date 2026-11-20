@@ -196,6 +196,7 @@ addColumn('parts_catalog', 'count_at', 'TEXT');
 addColumn('parts_catalog', 'min_level', 'INTEGER');
 addColumn('parts_submissions', 'truck', 'TEXT');
 addColumn('users', 'default_truck', 'TEXT');
+addColumn('parts_submissions', 'place_id', 'INTEGER');    // where the parts came from or went back to, when it is not the usual place
 addColumn('parts_catalog', 'cost_cents', 'INTEGER');     // what one costs the company, in cents; shown only to people who manage parts
 // Entries brought in from the old Microsoft Forms carry a reference, so the same file is never imported twice.
 addColumn('parts_submissions', 'import_ref', 'TEXT');

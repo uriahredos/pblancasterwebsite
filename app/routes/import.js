@@ -123,6 +123,7 @@ router.post('/admin/import/undo', requirePerm('records.delete'), (req, res) => {
     db.prepare("DELETE FROM change_log WHERE kind = 'parts' AND record_id IN (SELECT id FROM parts_submissions WHERE import_ref IS NOT NULL)").run();
     db.prepare("DELETE FROM change_log WHERE kind = 'training' AND record_id IN (SELECT id FROM training_requests WHERE import_ref IS NOT NULL)").run();
     db.prepare('UPDATE training_sessions SET request_id = NULL WHERE request_id IN (SELECT id FROM training_requests WHERE import_ref IS NOT NULL)').run();
+    db.prepare('DELETE FROM inv_moves WHERE submission_id IN (SELECT id FROM parts_submissions WHERE import_ref IS NOT NULL)').run();
     db.prepare('DELETE FROM parts_submissions WHERE import_ref IS NOT NULL').run();
     db.prepare('DELETE FROM training_requests WHERE import_ref IS NOT NULL').run();
   })();

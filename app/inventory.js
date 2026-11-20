@@ -3,8 +3,9 @@
 // vehicle, and any others it adds for itself (a trailer, a second stockroom). What is in a location is never typed
 // over: it is worked out from the movements in and out of it, so there is always a record of who moved what, and when.
 const db = require('./db');
+require('./removal');   // people's records carry a "removed" mark this file reads; that file adds the column
 
-db.exec(`
+const SCHEMA = `
 CREATE TABLE IF NOT EXISTS inv_locations (
   id INTEGER PRIMARY KEY,
   branch_id INTEGER NOT NULL REFERENCES branches(id),
@@ -29,7 +30,7 @@ CREATE TABLE IF NOT EXISTS inv_moves (
   to_id INTEGER REFERENCES inv_locations(id),
   quantity INTEGER NOT NULL CHECK (quantity > 0),
   kind TEXT NOT NULL CHECK (kind IN ('opening','receive','transfer','use','return','adjust')),
-  submission_id INTEGER REFERENCES parts_submissions(id),
+  submission_id INTEGER REFERENCES parts_submissions(id) ON DELETE CASCADE,   -- an entry deleted for good takes its movements with it
   flagged INTEGER NOT NULL DEFAULT 0,            -- the place it came from did not have that many on record
   note TEXT,
   user_id INTEGER REFERENCES users(id),
@@ -39,7 +40,13 @@ CREATE TABLE IF NOT EXISTS inv_moves (
 CREATE INDEX IF NOT EXISTS inv_moves_from ON inv_moves(from_id, catalog_id);
 CREATE INDEX IF NOT EXISTS inv_moves_to ON inv_moves(to_id, catalog_id);
 CREATE INDEX IF NOT EXISTS inv_moves_submission ON inv_moves(submission_id);
-`);
+`;
+db.exec(SCHEMA);
+
+// The first release made the movements table without "ON DELETE CASCADE". Nothing had been written to it then, so it is made again.
+if (!/ON DELETE CASCADE/.test(db.prepare("SELECT sql FROM sqlite_master WHERE name = 'inv_moves'").get().sql) && !db.prepare('SELECT 1 FROM inv_moves').get()) {
+  db.exec('DROP TABLE inv_moves'); db.exec(SCHEMA);
+}
 
 const now = () => new Date().toISOString();
 const KINDS = { warehouse: 'Main warehouse', vehicle: 'Vehicle', custom: 'Other' };
@@ -69,7 +76,8 @@ function locations(branchId, { withRetired = false } = {}) {
        (SELECT COUNT(*) FROM (SELECT catalog_id FROM (
           SELECT catalog_id, quantity AS q FROM inv_moves WHERE to_id = l.id UNION ALL SELECT catalog_id, -quantity FROM inv_moves WHERE from_id = l.id)
           GROUP BY catalog_id HAVING SUM(q) <> 0)) AS parts,
-       COALESCE((SELECT SUM(quantity) FROM inv_moves WHERE to_id = l.id), 0) - COALESCE((SELECT SUM(quantity) FROM inv_moves WHERE from_id = l.id), 0) AS units
+       COALESCE((SELECT SUM(quantity) FROM inv_moves WHERE to_id = l.id), 0) - COALESCE((SELECT SUM(quantity) FROM inv_moves WHERE from_id = l.id), 0) AS units,
+       (SELECT COUNT(*) FROM inv_moves WHERE from_id = l.id AND flagged = 1) AS flagged
      FROM inv_locations l LEFT JOIN users u ON u.id = l.user_id
      WHERE l.branch_id = ? ${withRetired ? '' : 'AND l.active = 1'}
      ORDER BY CASE l.kind WHEN 'warehouse' THEN 0 WHEN 'vehicle' THEN 1 ELSE 2 END, l.active DESC, l.name COLLATE NOCASE`).all(branchId);
@@ -100,6 +108,93 @@ function addCustom(branchId, name) {
   return db.prepare("INSERT INTO inv_locations (branch_id, kind, name, created_at) VALUES (?, 'custom', ?, ?)").run(branchId, name, now()).lastInsertRowid;
 }
 
+const warehouseOf = (branchId) => { ensureOffice(branchId); return db.prepare("SELECT * FROM inv_locations WHERE branch_id = ? AND kind = 'warehouse'").get(branchId); };
+const vehicleOf = (userId) => db.prepare("SELECT * FROM inv_locations WHERE kind = 'vehicle' AND active = 1 AND user_id = ?").get(userId) || null;
+
+/** How many of a part a location holds, going by its movements. */
+function onHand(locationId, catalogId) {
+  const sum = (col) => db.prepare(`SELECT COALESCE(SUM(quantity), 0) AS n FROM inv_moves WHERE ${col} = ? AND catalog_id = ?`).get(locationId, catalogId).n;
+  return sum('to_id') - sum('from_id');
+}
+
+/** The places a person can take parts from or put them back in: their office's warehouse, their own vehicle, and its other locations. */
+function placesFor(user) {
+  ensureOffice(user.branch_id);
+  return db.prepare(
+    `SELECT id, kind, name FROM inv_locations WHERE branch_id = ? AND active = 1 AND (kind <> 'vehicle' OR user_id = ?)
+     ORDER BY CASE kind WHEN 'vehicle' THEN 0 WHEN 'warehouse' THEN 1 ELSE 2 END, name COLLATE NOCASE`).all(user.branch_id, user.id);
+}
+
+/** One movement, written down. `flagged` is worked out here: the place it left did not have that many on record. */
+function move({ branchId, catalogId, from = null, to = null, quantity, kind, note = null, userId = null, submissionId = null, at = null }) {
+  const short = from ? onHand(from, catalogId) < quantity : false;
+  return db.prepare(
+    `INSERT INTO inv_moves (branch_id, catalog_id, from_id, to_id, quantity, kind, submission_id, flagged, note, user_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(branchId, catalogId, from, to, quantity, kind, submissionId, short ? 1 : 0, note, userId, at || now()).lastInsertRowid;
+}
+
+/**
+ * The movements that go with a parts entry, made afresh from the entry as it now stands (so an edit or a cancel only
+ * has to call this again). Parts that are not in the catalog move nothing: there is nothing to count them against.
+ *
+ *   Take for a job     out of the person's vehicle (or the warehouse if they have none), or the place they chose
+ *   Take for van stock from the warehouse (or the place chosen) into their vehicle
+ *   Return from a job  back into their vehicle (or the warehouse), or the place they chose
+ *   Return van stock   out of their vehicle into the warehouse (or the place chosen)
+ */
+function record(submissionId) {
+  db.prepare('DELETE FROM inv_moves WHERE submission_id = ?').run(submissionId);
+  const s = db.prepare('SELECT s.*, u.branch_id FROM parts_submissions s JOIN users u ON u.id = s.user_id WHERE s.id = ?').get(submissionId);
+  if (!s || s.cancelled_at || !['take', 'return'].includes(s.action) || !s.branch_id) return 0;
+  const warehouse = warehouseOf(s.branch_id); const vehicle = vehicleOf(s.user_id);
+  let chosen = s.place_id ? location(s.place_id) : null;
+  if (chosen && (chosen.branch_id !== s.branch_id || !chosen.active || (chosen.kind === 'vehicle' && chosen.user_id !== s.user_id))) chosen = null;
+  const own = vehicle && vehicle.branch_id === s.branch_id ? vehicle : null;
+  let from = null, to = null, kind;
+  if (s.action === 'take' && s.source === 'job') { from = chosen || own || warehouse; kind = 'use'; }
+  else if (s.action === 'take') { from = chosen && chosen.kind !== 'vehicle' ? chosen : warehouse; to = own; kind = own ? 'transfer' : 'use'; }
+  else if (s.source === 'job') { to = chosen || own || warehouse; kind = 'return'; }
+  else { to = chosen && chosen.kind !== 'vehicle' ? chosen : warehouse; from = own; kind = own ? 'transfer' : 'return'; }
+  let made = 0;
+  for (const it of db.prepare('SELECT part_name, quantity FROM parts_items WHERE submission_id = ? ORDER BY id').all(submissionId)) {
+    const part = db.prepare('SELECT id FROM parts_catalog WHERE part_number = ?').get(String(it.part_name).trim());
+    if (!part) continue;
+    move({ branchId: s.branch_id, catalogId: part.id, from: from && from.id, to: to && to.id, quantity: it.quantity, kind, userId: s.user_id, submissionId, at: s.created_at });
+    made += 1;
+  }
+  return made;
+}
+
+/** The latest movements in or out of a location, newest first. */
+function history(locationId, limit = 60) {
+  return db.prepare(
+    `SELECT m.*, c.part_number, u.display_name, f.name AS from_name, t.name AS to_name FROM inv_moves m
+     JOIN parts_catalog c ON c.id = m.catalog_id LEFT JOIN users u ON u.id = m.user_id
+     LEFT JOIN inv_locations f ON f.id = m.from_id LEFT JOIN inv_locations t ON t.id = m.to_id
+     WHERE m.from_id = ? OR m.to_id = ? ORDER BY m.created_at DESC, m.id DESC LIMIT ?`).all(locationId, locationId, limit);
+}
+
+// ---- Once: what the Stock page said was on each office's shelf becomes that office's opening warehouse stock ----
+// Until now "on hand" was the last count, plus deliveries, less what people took since. From here on it is the sum of
+// the warehouse's movements, so this writes one opening movement per tracked part and nothing is counted twice.
+if (!db.prepare("SELECT 1 FROM meta WHERE key = 'inv_opening_1'").get()) {
+  db.transaction(() => {
+    const rows = db.prepare(
+      `SELECT bs.branch_id, bs.catalog_id, bs.count_qty
+         + COALESCE((SELECT SUM(a.quantity) FROM stock_adjustments a WHERE a.catalog_id = bs.catalog_id AND a.branch_id = bs.branch_id AND a.created_at > bs.count_at), 0)
+         + COALESCE((SELECT SUM(CASE WHEN s.action = 'take' THEN -i.quantity ELSE i.quantity END)
+             FROM parts_items i JOIN parts_submissions s ON s.id = i.submission_id JOIN users su ON su.id = s.user_id JOIN parts_catalog kc ON kc.id = bs.catalog_id
+             WHERE su.branch_id = bs.branch_id AND i.part_name = kc.part_number COLLATE NOCASE AND s.action IN ('take', 'return') AND s.cancelled_at IS NULL AND s.created_at > bs.count_at), 0) AS on_hand
+       FROM branch_stock bs`).all();
+    for (const r of rows) {
+      if (r.on_hand <= 0) continue;
+      const w = warehouseOf(r.branch_id);
+      move({ branchId: r.branch_id, catalogId: r.catalog_id, to: w.id, quantity: r.on_hand, kind: 'opening', note: 'On hand when inventory began' });
+    }
+    db.prepare("INSERT INTO meta (key, value) VALUES ('inv_opening_1', ?)").run(now());
+  })();
+}
+
 /** "12.50", "$1,204.5" or "7" as cents; null for anything that is not an amount of money. */
 function cents(text) {
   const t = String(text ?? '').replace(/[$,\s]/g, '');
@@ -108,4 +203,5 @@ function cents(text) {
 }
 const dollars = (c) => (c === null || c === undefined ? '' : (c / 100).toFixed(2));
 
-module.exports = { KINDS, ensureOffice, locations, location, contents, withoutVehicle, addVehicle, addCustom, cents, dollars };
+module.exports = { KINDS, ensureOffice, locations, location, contents, withoutVehicle, addVehicle, addCustom, cents, dollars,
+  warehouseOf, vehicleOf, onHand, placesFor, move, record, history };

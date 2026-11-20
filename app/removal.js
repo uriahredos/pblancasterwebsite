@@ -43,6 +43,7 @@ function remove(userId) {
     db.prepare('DELETE FROM tasks WHERE assigned_to = ? AND done_at IS NULL AND id NOT IN (SELECT task_id FROM task_notes)').run(u.id);   // open tasks nobody wrote on
     db.prepare('UPDATE leads SET owner_id = NULL WHERE owner_id = ?').run(u.id);                                                           // their leads go back to the office
     db.prepare('UPDATE daily_questions SET suggested_by = NULL WHERE suggested_by = ?').run(u.id);
+    if (db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'inv_locations'").get()) db.prepare('UPDATE inv_locations SET user_id = NULL WHERE user_id = ?').run(u.id);   // their vehicle stays, with nobody's name on it
     const left = userColumns().some(({ table, column }) => db.prepare(`SELECT 1 FROM "${table}" WHERE "${column}" = ? LIMIT 1`).get(u.id));
     if (!left) { db.prepare('DELETE FROM users WHERE id = ?').run(u.id); return; }
     outcome = 'kept-records';

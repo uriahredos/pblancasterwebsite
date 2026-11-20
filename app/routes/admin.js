@@ -304,6 +304,7 @@ router.post('/admin/parts/:id/delete', requirePerm('records.delete'), (req, res)
   const items = db.prepare('SELECT part_name, quantity FROM parts_items WHERE submission_id = ? ORDER BY id').all(s.id);
   db.transaction(() => {
     db.prepare("DELETE FROM change_log WHERE kind = 'parts' AND record_id = ?").run(s.id);
+    db.prepare('DELETE FROM inv_moves WHERE submission_id = ?').run(s.id);
     db.prepare('DELETE FROM parts_submissions WHERE id = ?').run(s.id); // its part lines go with it
   })();
   if (s.photo_path) require('../uploads').remove(s.photo_path);

@@ -53,6 +53,15 @@
     </label>
   </fieldset>
 
+  <% if (typeof places !== 'undefined' && places.length) { %>
+  <label data-show-action="take return">Where <span class="hint">The usual place is your vehicle for a job, and the main warehouse for van stock.</span>
+    <select name="place">
+      <option value="">The usual place</option>
+      <% places.forEach(function (l) { %><option value="<%= l.id %>" <%= String(values.place || '') === String(l.id) ? 'selected' : '' %>><%= l.name %><%= l.kind === 'vehicle' ? ' (yours)' : '' %></option><% }) %>
+    </select>
+  </label>
+  <% } %>
+
   <label>Truck <span class="hint">Optional. Remembered for next time.</span>
     <input name="truck" value="<%= values.truck || '' %>" maxlength="20" autocomplete="off" placeholder="e.g. 309">
   </label>
