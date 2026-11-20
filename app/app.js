@@ -154,6 +154,7 @@ app.use(require('./routes/parts'));
 app.use(require('./routes/complaints'));
 app.use(require('./routes/catalog'));
 app.use(require('./routes/stock'));
+app.use(require('./routes/inventory'));
 app.use(require('./routes/sessions'));
 app.use(require('./routes/certs'));
 app.use(require('./routes/inspections'));

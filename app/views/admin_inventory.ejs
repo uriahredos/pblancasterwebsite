@@ -1,0 +1,58 @@
+<%- include('partials/header', { wide: true }) %>
+<h1>Inventory</h1>
+<% var inUse = locations.filter(function (l) { return l.active; }); var away = locations.filter(function (l) { return !l.active; }); %>
+<p class="lede">Where the <%= office ? office.name : '' %> office's parts are: the main warehouse, each technician's vehicle, and anything else you add.</p>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Location</th><th>Kind</th><th>Technician</th><th class="num">Different parts</th><th class="num">Items</th><th></th></tr></thead>
+  <tbody>
+  <% inUse.forEach(function (l) { %>
+  <tr>
+    <td><a href="/admin/inventory/locations/<%= l.id %>"><strong><%= l.name %></strong></a></td>
+    <td><%= kinds[l.kind] %></td>
+    <td><%= l.technician || '' %></td>
+    <td class="num"><%= l.parts %></td>
+    <td class="num"><%= l.units %></td>
+    <td><a href="/admin/inventory/locations/<%= l.id %>">Open</a></td>
+  </tr>
+  <% }) %>
+  </tbody>
+</table>
+</div>
+
+<% if (mayManage) { %>
+<h2>Add a vehicle</h2>
+<% if (free.length) { %>
+<form method="post" action="/admin/inventory/locations" class="filters card">
+  <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="kind" value="vehicle">
+  <label>Name <span class="hint">For example Truck 14</span> <input name="name" required maxlength="60" autocomplete="off"></label>
+  <label class="grow">Whose it is <select name="user_id" required><option value="">Choose a person</option><% free.forEach(function (p) { %><option value="<%= p.id %>"><%= p.display_name %></option><% }) %></select></label>
+  <div class="filter-actions"><button class="btn primary small" type="submit">Add vehicle</button></div>
+</form>
+<% } else { %><p class="hint">Everyone in this office already has a vehicle.</p><% } %>
+
+<h2>Add another location</h2>
+<form method="post" action="/admin/inventory/locations" class="filters card">
+  <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="kind" value="custom">
+  <label class="grow">Name <span class="hint">A trailer, a second stockroom, a job site: anywhere parts are kept apart from the warehouse and the vehicles.</span> <input name="name" required maxlength="60" autocomplete="off"></label>
+  <div class="filter-actions"><button class="btn primary small" type="submit">Add location</button></div>
+</form>
+<% } %>
+
+<% if (away.length) { %>
+<h2>Put away</h2>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Location</th><th>Kind</th><th>Technician</th><th></th></tr></thead>
+  <tbody>
+  <% away.forEach(function (l) { %>
+  <tr class="off">
+    <td><a href="/admin/inventory/locations/<%= l.id %>"><%= l.name %></a></td><td><%= kinds[l.kind] %></td><td><%= l.technician || '' %></td>
+    <td><% if (mayManage) { %><form method="post" action="/admin/inventory/locations/<%= l.id %>/restore"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Use again</button></form><% } %></td>
+  </tr>
+  <% }) %>
+  </tbody>
+</table>
+</div>
+<% } %>
+<%- include('partials/footer') %>

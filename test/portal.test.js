@@ -559,7 +559,7 @@ test('usage summary adds up takes and returns and leaves cancelled entries out',
   assert.equal((await tech.get('/admin/parts/summary.csv')).status, 403);
 });
 
-test('parts catalog: import ignores prices, re-import updates, suggestions work', async () => {
+test('parts catalog: import keeps the cost and ignores a selling price, re-import updates, suggestions work', async () => {
   const admin = await loggedIn('admin');
   const page = '/admin/catalog';
   const csv = 'Category,Part Code,Description,Manufacturer,Cost/Price\r\nAlarm,SIGA-CT2,"Dual input module, Class B",Edwards,41.17\r\nAlarm,SIGA-UM,Universal module,Edwards,55.25\r\nAlarm,,No part number,,1\r\nBATTERY,BAT-12V7,12V 7Ah SLA battery,Duracell,9.99\r\n';
@@ -568,16 +568,27 @@ test('parts catalog: import ignores prices, re-import updates, suggestions work'
   assert.match((await admin.get(page)).text, /3 added, 0 updated, 0 unchanged, 1 rows skipped/);
 
   const cols = db.prepare("SELECT name FROM pragma_table_info('parts_catalog')").all().map((c) => c.name).sort();
-  assert.deepEqual(cols, ['active', 'category', 'count_at', 'count_qty', 'created_at', 'description', 'id', 'manufacturer', 'min_level', 'part_number', 'stocked']);
-  assert.ok(!cols.some((c) => /price|cost/i.test(c)));
-  const stored = JSON.stringify(db.prepare('SELECT * FROM parts_catalog').all());
-  for (const price of ['41.17', '55.25', '9.99']) assert.ok(!stored.includes(price), price);
+  assert.deepEqual(cols, ['active', 'category', 'cost_cents', 'count_at', 'count_qty', 'created_at', 'description', 'id', 'manufacturer', 'min_level', 'part_number', 'stocked']);
+  assert.ok(!cols.some((c) => /price/i.test(c)));
+  // The cost is kept, in cents. Only people who manage the catalog see it.
+  const costOf = (pn) => db.prepare('SELECT cost_cents FROM parts_catalog WHERE part_number = ?').get(pn).cost_cents;
+  assert.deepEqual([costOf('SIGA-CT2'), costOf('SIGA-UM')], [4117, 5525]);
+  assert.match((await admin.get(page)).text, /<td class="num">\$41\.17<\/td>/);
   assert.equal(db.prepare("SELECT description FROM parts_catalog WHERE part_number = 'siga-ct2'").get().description, 'Dual input module, Class B');
   assert.equal(db.prepare("SELECT category FROM parts_catalog WHERE part_number = 'BAT-12V7'").get().category, 'BATTERY');
 
   await up('part number\tdescription\nSIGA-UM\tUniversal class A/B module\nNEW-1\tNew thing\n');
   assert.match((await admin.get(page)).text, /1 added, 1 updated/);
   assert.equal(db.prepare('SELECT COUNT(*) n FROM parts_catalog').get().n, 4); // nothing removed
+  assert.equal(costOf('SIGA-UM'), 5525);                                    // a file with no cost column leaves the cost as it was
+  // A selling price is not a cost and is not kept; a cost that is not money changes nothing; "$1,204.50" is read.
+  await up('Part Number,Description,Sell Price,Unit Cost\nSIGA-UM,Universal class A/B module,99.99,n/a\nNEW-1,New thing,12.00,"$1,204.50"\n');
+  assert.deepEqual([costOf('SIGA-UM'), costOf('NEW-1')], [5525, 120450]);
+  assert.ok(!JSON.stringify(db.prepare('SELECT * FROM parts_catalog').all()).includes('9999'));
+  assert.equal((await admin.post(page, { part_number: 'COST-BAD', cost: 'twelve' }, { page })).status, 400);
+  assert.equal((await admin.post(page, { part_number: 'COST-1', cost: '7.5' }, { page })).status, 302);
+  assert.equal(costOf('COST-1'), 750);
+  db.prepare("DELETE FROM parts_catalog WHERE part_number = 'COST-1'").run();
 
   assert.equal((await up('PK\u0003\u0004 pretend excel', 'parts.xlsx')).status, 400);
   assert.equal((await admin.post(page, { part_number: 'siga-ct2', description: 'dup' }, { page })).status, 400);
@@ -860,9 +871,9 @@ test('starting profiles: Technician, Warehouse, Manager and Admin each see only 
   const owner = await loggedIn('owner');
 
   assert.deepEqual(navLinks((await tech.get('/')).text), []); // a technician has no admin menu at all
-  assert.deepEqual(navLinks((await wh.get('/')).text), ['/admin/parts', '/admin/requests', '/admin/parts/audit', '/admin/stock', '/admin/parts/summary', '/admin/catalog', '/admin/inspections', '/admin/inspections/checklist']);
+  assert.deepEqual(navLinks((await wh.get('/')).text), ['/admin/parts', '/admin/requests', '/admin/parts/audit', '/admin/stock', '/admin/inventory', '/admin/parts/summary', '/admin/catalog', '/admin/inspections', '/admin/inspections/checklist']);
   assert.deepEqual(navLinks((await owner.get('/')).text),
-    ['/admin/parts', '/admin/requests', '/admin/parts/audit', '/admin/stock', '/admin/parts/summary', '/admin/catalog', '/admin/inspections', '/admin/inspections/checklist',
+    ['/admin/parts', '/admin/requests', '/admin/parts/audit', '/admin/stock', '/admin/inventory', '/admin/parts/summary', '/admin/catalog', '/admin/inspections', '/admin/inspections/checklist',
       '/admin/training', '/admin/training/sessions', '/admin/certs', '/admin/users', '/admin/tasks', '/admin/announcements', '/admin/newsletters', '/admin/complaints', '/admin/activity', '/admin/import', '/admin/branches', '/admin/profiles', '/admin/backups', '/admin/security']);
 
   for (const url of ['/admin/parts', '/admin/parts/audit', '/admin/parts/summary', '/admin/catalog']) assert.equal((await wh.get(url)).status, 200, url);
@@ -7776,4 +7787,77 @@ test('reset addresses and keys: a duplicate entry never supplies an admin\'s ema
     assert.match(said, /STOPPED [\s\S]*RESTORE_BACKUP is not the name of one of the site's backups/);
     assert.doesNotMatch(said, new RegExp(typed));
   } finally { fs.rmSync(L.dir, { recursive: true, force: true }); }
+});
+
+// -- inventory --
+test('inventory: each office has a main warehouse, a vehicle per technician and its own other locations; another office\'s are out of reach', async () => {
+  const inv = require('../app/inventory');
+  const home = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id;
+  const other = db.prepare("INSERT INTO branches (name, created_at) VALUES ('Invtown', ?)").run(new Date().toISOString()).lastInsertRowid;
+  access.ensureProfile('Office admin (one office)', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'backups'));
+  const away = auth.createUser({ username: 'inv.away', displayName: 'Avery Away', password: 'correct horse battery', profile: 'Office admin (one office)' });
+  db.prepare('UPDATE users SET must_change_password = 0, branch_id = ? WHERE id = ?').run(other, away);
+  const driver = makeUser('inv.driver', 'Dee Driver'); const walker = makeUser('inv.walker', 'Wes Walker');
+  db.prepare("UPDATE users SET default_truck = '14' WHERE id = ?").run(driver);
+  const owner = await loggedIn('owner'); const tech = await loggedIn('inv.driver'); const outsider = await loggedIn('inv.away');
+  await owner.post('/branch/view', { branch: String(home) }, { page: '/' });
+  const page = '/admin/inventory';
+
+  // The first look makes the warehouse, and a vehicle for everyone with a truck number on file. Looking again adds nothing.
+  const first = (await owner.get(page)).text.replace(/\s+/g, ' ');
+  assert.match(first, /<strong>Main warehouse<\/strong><\/a><\/td> <td>Main warehouse<\/td>/);
+  assert.match(first, /<strong>Truck 14<\/strong><\/a><\/td> <td>Vehicle<\/td> <td>Dee Driver<\/td> <td class="num">0<\/td>/);
+  await owner.get(page);
+  const mine = () => db.prepare('SELECT kind, name, user_id, active FROM inv_locations WHERE branch_id = ? ORDER BY id').all(home);
+  assert.equal(mine().filter((l) => l.kind === 'warehouse').length, 1);
+  assert.equal(mine().filter((l) => l.user_id === driver).length, 1);
+
+  // A technician sees no Inventory page; an admin of another office sees their own office's, never this one's.
+  assert.equal((await tech.get(page)).status, 403);
+  const truck = db.prepare("SELECT id FROM inv_locations WHERE user_id = ? AND kind = 'vehicle'").get(driver).id;
+  assert.doesNotMatch((await outsider.get(page)).text, /<strong>Truck 14<|Dee Driver/);
+  assert.equal((await outsider.get(`${page}/locations/${truck}`)).status, 404);
+  assert.equal((await outsider.post(`${page}/locations/${truck}`, { name: 'Taken' }, { page })).status, 403);
+  assert.equal((await outsider.post(`${page}/locations/${truck}/retire`, {}, { page })).status, 403);
+  assert.equal(inv.location(truck).name, 'Truck 14');
+
+  // Adding: a vehicle needs a person of this office who has none yet; names are not repeated; anything else is an "other" location.
+  const add = (fields) => owner.post(`${page}/locations`, fields, { page });
+  await add({ kind: 'vehicle', name: 'Truck 22', user_id: String(walker) });
+  await add({ kind: 'vehicle', name: 'Truck 23', user_id: String(walker) });      // one vehicle a technician
+  await add({ kind: 'vehicle', name: 'Truck 24', user_id: String(away) });        // someone from another office
+  await add({ kind: 'custom', name: 'truck 22' });                                // that name is taken
+  await add({ kind: 'custom', name: 'Job trailer' });
+  assert.deepEqual(mine().map((l) => l.name).filter((n) => /^(Job trailer|Truck (14|22|23|24))$/i.test(n)).sort(), ['Job trailer', 'Truck 14', 'Truck 22']);
+  assert.doesNotMatch((await outsider.get(page)).text, /Job trailer/);
+
+  // Handing a vehicle over keeps what is in it. A location that holds parts cannot be put away; an empty one can, and comes back.
+  const part = db.prepare("INSERT INTO parts_catalog (part_number, description, cost_cents, created_at) VALUES ('INV-1', 'Inventory test part', 250, ?)").run(new Date().toISOString()).lastInsertRowid;
+  db.prepare("INSERT INTO inv_moves (branch_id, catalog_id, to_id, quantity, kind, user_id, created_at) VALUES (?, ?, ?, 6, 'opening', ?, ?)").run(home, part, truck, userId('owner'), new Date().toISOString());
+  db.prepare("INSERT INTO inv_moves (branch_id, catalog_id, from_id, quantity, kind, user_id, created_at) VALUES (?, ?, ?, 2, 'use', ?, ?)").run(home, part, truck, driver, new Date().toISOString());
+  const inside = (await owner.get(`${page}/locations/${truck}`)).text.replace(/\s+/g, ' ');
+  assert.match(inside, /<strong>INV-1<\/strong><\/td><td>Inventory test part<\/td><td class="num"><strong>4<\/strong><\/td> <td class="num">\$2\.50<\/td><td class="num">\$10\.00<\/td>/);
+  assert.match((await owner.get(page)).text.replace(/\s+/g, ' '), /Truck 14<\/strong><\/a><\/td> <td>Vehicle<\/td> <td>Dee Driver<\/td> <td class="num">1<\/td> <td class="num">4<\/td>/);
+  await owner.post(`${page}/locations/${truck}/retire`, {}, { page });
+  assert.equal(inv.location(truck).active, 1);
+  db.prepare('UPDATE users SET active = 0 WHERE id = ?').run(walker);            // Wes has left; his empty truck is put away, then Dee's goes to nobody new
+  const t22 = db.prepare("SELECT id FROM inv_locations WHERE name = 'Truck 22'").get().id;
+  await owner.post(`${page}/locations/${t22}/retire`, {}, { page });
+  assert.equal(inv.location(t22).active, 0);
+  await owner.post(`${page}/locations/${t22}/restore`, {}, { page });
+  assert.equal(inv.location(t22).active, 1);
+  const heir = makeUser('inv.heir', 'Hal Heir');
+  await owner.post(`${page}/locations/${truck}`, { name: 'Truck 14', user_id: String(heir) }, { page });
+  assert.equal(inv.location(truck).user_id, heir);
+  assert.equal(inv.contents(truck)[0].on_hand, 4);
+  await owner.post(`${page}/locations/${truck}`, { name: 'Truck 14', user_id: String(away) }, { page });   // not to another office
+  assert.equal(inv.location(truck).user_id, heir);
+  const wh = db.prepare("SELECT id FROM inv_locations WHERE branch_id = ? AND kind = 'warehouse'").get(home).id;
+  await owner.post(`${page}/locations/${wh}/retire`, {}, { page });
+  assert.equal(inv.location(wh).active, 1);
+  // The activity log says what was added, renamed and handed over.
+  const log = db.prepare("SELECT action, detail FROM activity_log WHERE action LIKE 'Inventory location%' OR action = 'Vehicle handed over' ORDER BY id").all().map((r) => `${r.action}: ${r.detail}`);
+  assert.ok(log.includes('Inventory location added: Truck 22 (vehicle, Wes Walker)')); assert.ok(log.includes('Vehicle handed over: Truck 14: now Hal Heir'));
+  await owner.post('/branch/view', { branch: 'all' }, { page: '/' });
+  db.prepare('DELETE FROM inv_moves WHERE catalog_id = ?').run(part); db.prepare('DELETE FROM parts_catalog WHERE id = ?').run(part);
 });

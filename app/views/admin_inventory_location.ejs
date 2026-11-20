@@ -1,0 +1,37 @@
+<%- include('partials/header', { wide: true }) %>
+<p><a class="back" href="/admin/inventory">Inventory</a></p>
+<h1><%= place.name %></h1>
+<p class="lede"><%= kinds[place.kind] %><% if (technician) { %> · <%= technician.display_name %><% } %><% if (!place.active) { %> · put away<% } %></p>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Part</th><th>Description</th><th class="num">On hand</th><% if (showCost) { %><th class="num">Cost each</th><th class="num">Value</th><% } %></tr></thead>
+  <tbody>
+  <% rows.forEach(function (p) { %>
+  <tr>
+    <td><strong><%= p.part_number %></strong></td><td><%= p.description %></td><td class="num"><strong><%= p.on_hand %></strong></td>
+    <% if (showCost) { %><td class="num"><%= p.cost_cents === null ? '' : '$' + dollars(p.cost_cents) %></td><td class="num"><%= p.cost_cents === null ? '' : '$' + dollars(p.cost_cents * p.on_hand) %></td><% } %>
+  </tr>
+  <% }) %>
+  <% if (!rows.length) { %><tr><td colspan="<%= showCost ? 5 : 3 %>" class="empty">Nothing is recorded here yet.</td></tr><% } %>
+  </tbody>
+</table>
+</div>
+
+<% if (mayManage && place.active) { %>
+<h2>Change this location</h2>
+<form method="post" action="/admin/inventory/locations/<%= place.id %>" class="filters card">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Name <input name="name" value="<%= place.name %>" required maxlength="60" autocomplete="off"></label>
+  <% if (place.kind === 'vehicle') { %>
+  <label class="grow">Whose it is <span class="hint">Handing the vehicle to someone else keeps what is in it.</span>
+    <select name="user_id"><% if (technician) { %><option value="<%= place.user_id %>" selected><%= technician.display_name %></option><% } %><% free.forEach(function (p) { %><option value="<%= p.id %>"><%= p.display_name %></option><% }) %></select></label>
+  <% } %>
+  <div class="filter-actions"><button class="btn primary small" type="submit">Save</button></div>
+</form>
+<% if (place.kind !== 'warehouse') { %>
+<form method="post" action="/admin/inventory/locations/<%= place.id %>/retire" data-confirm="Put <%= place.name %> away? Its history is kept.">
+  <input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn small" type="submit">Put this location away</button>
+</form>
+<% } %>
+<% } %>
+<%- include('partials/footer') %>

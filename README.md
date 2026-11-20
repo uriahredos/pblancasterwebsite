@@ -81,7 +81,7 @@ What it does with no signal:
 
 A list of part numbers and descriptions. When someone types on the parts form, matching catalog parts are suggested; they can still type a part that is not listed. Parts that are not in the catalog but have been typed before are suggested too.
 
-- **Import**: upload a CSV file. It needs a part number column (for example "Part Code", "Part Number" or "Item"); "Description", "Category" and "Manufacturer" are used if present. **Prices, costs and every other column are ignored and not stored.** There is no price field in the database.
+- **Import**: upload a CSV file. It needs a part number column (for example "Part Code", "Part Number" or "Item"); "Description", "Category", "Manufacturer" and the cost ("Cost", "Unit Cost" or the accounting list's "Cost/Price") are used if present. The cost is what one costs the company; it is shown only on the catalog and inventory pages, to people who manage them, never on the parts form. **A selling price and every other column are ignored and not stored.** A file with no cost column leaves the costs as they were.
 - From Excel: File > Save As > CSV, then upload that.
 - Importing again adds new parts and updates descriptions. It never removes parts.
 - **Hide** stops a part being suggested without deleting it.
@@ -115,6 +115,17 @@ Reached from the **Usage summary** button on the parts log. For a date range (an
 ## Look and feel
 
 The banner uses the Pye-Barker logo (`public/logo.png`) and the colors are taken from it; they are set at the top of `public/styles.css`. The button at the top right switches between light and dark. The choice is remembered on that device; until someone uses the button, the site follows the device's own light/dark setting.
+
+## Inventory (`/admin/inventory`)
+
+Where an office's parts are. It is being built in steps; this is the first.
+
+- **Every office has** one **Main warehouse**, one location for **each technician's vehicle**, and any **other locations** it adds for itself (a trailer, a second stockroom, a job site).
+- **Vehicles**: one technician each. The first time the page is opened, a vehicle is made for everyone in the office who already has a truck number on file ("Truck 14"). Add others by hand. Handing a vehicle to someone else keeps what is in it.
+- **Putting a location away**: a location that is no longer used is put away, not deleted, and only once it is empty. Its history stays, and it can be used again. The main warehouse cannot be put away.
+- **What a location holds** is never typed over. It is worked out from the movements in and out of it, so there is always a record of who moved what, and when. Until movements are switched on (the next step), locations show as empty and the **Stock** page stays the record of what is on the warehouse shelf.
+- **Who**: anyone who can see the parts log can look. Adding, renaming, handing over and putting away need **Manage inventory locations** (given once to profiles that already manage stock). Costs and values show only to people with that permission or who manage the catalog.
+- An office sees and changes only its own locations. Inventory lives in the site's own encrypted database, so it is covered by the same backups.
 
 ## Stock (`/admin/stock`)
 

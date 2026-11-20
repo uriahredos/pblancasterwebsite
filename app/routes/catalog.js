@@ -48,8 +48,10 @@ function pickColumns(header) {
   const description = find(/^(description|desc|part description|item description|name)$/, /desc/);
   const manufacturer = find(/^(manufacturer|mfg|mfr|vendor|brand)$/, /manufact|mfg|mfr/);
   const category = find(/^(category|group|type|product line|class)$/, /categ/);
+  // Only a column that says cost (the accounting system's list calls it Cost/Price): a selling price is something else and is not kept.
+  const cost = find(/^(unit[\s_]*)?cost$/, /^cost\s*\/\s*price$/, /^(cost[\s_]*(each|per[\s_]*unit)|average[\s_]*cost|avg[\s_]*cost|std[\s_]*cost|standard[\s_]*cost)$/);
   if (number < 0) return null;
-  return { number, description, manufacturer, category };
+  return { number, description, manufacturer, category, cost };
 }
 
 function importRows(rows) {
@@ -57,12 +59,13 @@ function importRows(rows) {
   let cols = pickColumns(rows[0]);
   let body = rows.slice(1);
   if (!cols) { // no recognisable header: first column is the part number, second the description
-    cols = { number: 0, description: rows[0].length > 1 ? 1 : -1, manufacturer: -1, category: -1 };
+    cols = { number: 0, description: rows[0].length > 1 ? 1 : -1, manufacturer: -1, category: -1, cost: -1 };
     body = rows;
   }
-  const find = db.prepare('SELECT id, description, manufacturer, category FROM parts_catalog WHERE part_number = ?');
-  const insert = db.prepare('INSERT INTO parts_catalog (part_number, description, manufacturer, category, created_at) VALUES (?, ?, ?, ?, ?)');
-  const update = db.prepare('UPDATE parts_catalog SET description = ?, manufacturer = ?, category = ? WHERE id = ?');
+  const find = db.prepare('SELECT id, description, manufacturer, category, cost_cents FROM parts_catalog WHERE part_number = ?');
+  const insert = db.prepare('INSERT INTO parts_catalog (part_number, description, manufacturer, category, cost_cents, created_at) VALUES (?, ?, ?, ?, ?, ?)');
+  const update = db.prepare('UPDATE parts_catalog SET description = ?, manufacturer = ?, category = ?, cost_cents = ? WHERE id = ?');
+  const { cents } = require('../inventory');
   const result = { added: 0, updated: 0, unchanged: 0, skipped: 0 };
   const now = new Date().toISOString();
   db.transaction(() => {
@@ -74,9 +77,12 @@ function importRows(rows) {
       // A column the file does not have leaves that detail as it was.
       const manufacturer = cols.manufacturer >= 0 ? clean(r[cols.manufacturer], 100) || null : (existing ? existing.manufacturer || null : null);
       const category = cols.category >= 0 ? clean(r[cols.category], 100) || null : (existing ? existing.category || null : null);
-      if (!existing) { insert.run(number, description, manufacturer, category, now); result.added++; }
-      else if (existing.description !== description || (existing.manufacturer || null) !== manufacturer || (existing.category || null) !== category) {
-        update.run(description, manufacturer, category, existing.id); result.updated++;
+      // A cost that cannot be read as money leaves the cost as it was, like a file with no cost column.
+      const read = cols.cost >= 0 ? cents(r[cols.cost]) : null;
+      const cost = read !== null ? read : (existing ? existing.cost_cents : null);
+      if (!existing) { insert.run(number, description, manufacturer, category, cost, now); result.added++; }
+      else if (existing.description !== description || (existing.manufacturer || null) !== manufacturer || (existing.category || null) !== category || existing.cost_cents !== cost) {
+        update.run(description, manufacturer, category, cost, existing.id); result.updated++;
       } else result.unchanged++;
     }
   })();
@@ -91,19 +97,21 @@ function render(req, res, extra = {}) {
   const rows = db.prepare(`SELECT * FROM parts_catalog ${where} ORDER BY active DESC, part_number LIMIT 300`).all(...params);
   const { n: total } = db.prepare('SELECT COUNT(*) AS n FROM parts_catalog').get();
   const { n: matching } = db.prepare(`SELECT COUNT(*) AS n FROM parts_catalog ${where}`).get(...params);
-  res.status(extra.errors ? 400 : 200).render('admin_catalog', { title: 'Parts catalog', rows, total, matching, q, errors: [], values: {}, ...extra });
+  res.status(extra.errors ? 400 : 200).render('admin_catalog', { title: 'Parts catalog', rows, total, matching, q, errors: [], values: {}, dollars: require('../inventory').dollars, ...extra });
 }
 
 router.get('/admin/catalog', requireAdmin, (req, res) => render(req, res));
 
 router.post('/admin/catalog', requireAdmin, (req, res) => {
-  const values = { part_number: clean(req.body.part_number, 100), description: clean(req.body.description, 300), manufacturer: clean(req.body.manufacturer, 100), category: clean(req.body.category, 100) };
+  const values = { part_number: clean(req.body.part_number, 100), description: clean(req.body.description, 300), manufacturer: clean(req.body.manufacturer, 100), category: clean(req.body.category, 100), cost: clean(req.body.cost, 20) };
   const errors = [];
+  const cost = values.cost ? require('../inventory').cents(values.cost) : null;
+  if (values.cost && cost === null) errors.push('The cost does not look like an amount of money.');
   if (!values.part_number) errors.push('Enter the part number.');
   else if (db.prepare('SELECT 1 FROM parts_catalog WHERE part_number = ?').get(values.part_number)) errors.push('That part number is already in the catalog.');
   if (errors.length) return render(req, res, { errors, values });
-  db.prepare('INSERT INTO parts_catalog (part_number, description, manufacturer, category, created_at) VALUES (?, ?, ?, ?, ?)')
-    .run(values.part_number, values.description, values.manufacturer || null, values.category || null, new Date().toISOString());
+  db.prepare('INSERT INTO parts_catalog (part_number, description, manufacturer, category, cost_cents, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(values.part_number, values.description, values.manufacturer || null, values.category || null, cost, new Date().toISOString());
   activity.log(req.user, 'Catalog part added', values.part_number);
   flash(req, 'ok', `${values.part_number} added.`);
   res.redirect('/admin/catalog');
