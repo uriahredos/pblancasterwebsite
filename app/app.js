@@ -115,6 +115,8 @@ app.use((req, res, next) => {
   res.locals.path = req.path;
   // How long this device may sit unused: the page needs it too, to check when it comes back from the background.
   res.locals.lockAfterMs = device.lockAfterMs(req);
+  // The key a device needs to register for alerts, for the bar that offers them (only to someone signed in).
+  res.locals.pushKey = req.session && req.session.userId ? require('./push').vapid().publicKey : '';
   res.setHeader('Cache-Control', 'no-store');
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
   // These forms carry a file; their routes check the token after the upload is parsed.

@@ -25,5 +25,17 @@
     <button type="button" class="link" id="install-later">Not now</button>
   </div>
 </aside>
+<aside class="install-bar no-print" id="alerts-bar" hidden aria-label="Turn on alerts">
+  <img src="/icons/icon-192.png" alt="" width="44" height="44">
+  <div class="install-text">
+    <strong>Turn on alerts</strong>
+    <span id="alerts-how">Get a notification on this device for new tasks, replies and announcements.</span>
+  </div>
+  <div class="install-actions">
+    <button type="button" class="btn primary small" id="alerts-go">Turn on</button>
+    <button type="button" class="link" id="alerts-later">Not now</button>
+  </div>
+</aside>
+<script src="/alerts-prompt.js?v=<%= assetV %>" defer></script>
 </body>
 </html>

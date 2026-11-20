@@ -8105,3 +8105,17 @@ test('inventory: the office\'s inventory can be exported as it stands: by locati
   await owner.post('/branch/view', { branch: 'all' }, { page: '/' });
   db.prepare('DELETE FROM inv_moves WHERE catalog_id IN (?, ?)').run(part, bare);
 });
+
+test('alerts: someone signed in is offered alerts on any page, with what the device needs to register; nobody signed out is', async () => {
+  const t = await loggedIn('tech1');
+  const home = (await t.get('/')).text;
+  assert.match(home, /<meta name="push-key" content="[A-Za-z0-9_-]{60,}">/);
+  assert.match(home, /<aside class="install-bar no-print" id="alerts-bar" hidden aria-label="Turn on alerts">[\s\S]*?id="alerts-go">Turn on<\/button>/);
+  assert.match(home, /<script src="\/alerts-prompt\.js\?v=[^"]+" defer><\/script>/);
+  const out = (await new Client().get('/login')).text;
+  assert.doesNotMatch(out, /name="push-key"/);
+  const js = (await t.get('/alerts-prompt.js')).text;
+  assert.match(js, /Notification\.requestPermission\(\)/); assert.match(js, /\/push\/subscribe/);
+  assert.match(js, /\^\\\/\(complaint\|settings\\\/notifications\|unlock\)/);       // never on a complaint page
+  assert.match((await t.get('/sw.js')).text, /'\/alerts-prompt\.js'/);
+});

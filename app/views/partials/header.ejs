@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
 <meta name="csrf" content="<%= typeof csrf !== 'undefined' ? csrf : '' %>">
+<% if (typeof pushKey !== 'undefined' && pushKey) { %><meta name="push-key" content="<%= pushKey %>"><% } %>
 <title><%= title %> · Pye-Barker<%= officeLabel ? ' ' + officeLabel : user ? '' : ' Employee Portal' %></title>
 <meta name="theme-color" content="#00314f">
 <script src="/theme.js?v=<%= assetV %>"></script>
