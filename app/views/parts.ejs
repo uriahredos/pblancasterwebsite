@@ -64,7 +64,7 @@
   <% } else if (theirs) { %>
   <p class="hint" data-show-action="take return">Your vehicle: <strong><%= theirs.name %></strong></p>
   <% } %>
-  <% if (theirs && !fleet.length) { %><input type="hidden" name="truck" value="<%= values.truck || '' %>"><% } else { %>
+  <% if (theirs) { %><input type="hidden" name="truck" value="<%= values.truck || '' %>"><% } else { %>
   <label>Truck <span class="hint">Optional. Remembered for next time.</span>
     <input name="truck" value="<%= values.truck || '' %>" maxlength="20" autocomplete="off" placeholder="e.g. 309">
   </label>

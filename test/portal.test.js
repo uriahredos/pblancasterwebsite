@@ -7889,6 +7889,9 @@ test('inventory: taking and returning parts moves them between the warehouse and
   assert.match(form, /Your vehicle: <strong>Truck 71<\/strong>/); assert.doesNotMatch(form, /name="place"/); assert.doesNotMatch(form, /<label>Truck /);
   const plain = (await finn.get('/parts?action=take')).text;
   assert.doesNotMatch(plain, /Truck 71|name="place"/); assert.match(plain, /<label>Truck /);
+  db.prepare("UPDATE users SET default_truck = '72' WHERE id = ?").run(userId('seam.keeper')); inv.ensureOffice(home);
+  const keeper = (await (await loggedIn('seam.keeper')).get('/parts?action=take')).text;   // a manager with a vehicle of their own: the list, and no truck box
+  assert.match(keeper, /<option value="">Truck 72 \(yours\)<\/option>/); assert.doesNotMatch(keeper, /<label>Truck /);
   assert.match((await owner.get('/parts?action=take')).text, new RegExp(`<select name="place">[\\s\\S]*?<option value="${truck}" >Truck 71 · Vera Van</option>`));
   // Van stock: out of the warehouse, into the vehicle. For a job: out of the vehicle. Back from a job: into the vehicle. Van stock handed back: to the warehouse.
   await send(vera, { action: 'take', source: 'van', quantity: '6' });                              assert.deepEqual(at(), [14, 6]);
