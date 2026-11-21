@@ -31,7 +31,7 @@ router.get('/admin/inventory/locations/:id', requireLogin, (req, res) => {
   if (!place) return res.status(404).render('error', { title: 'Not found', message: 'That location is not in this office.' });
   const mayManage = access.can(req.user, 'inventory.manage');
   res.render('admin_inventory_location', {
-    title: place.name, place, kinds: inv.KINDS, rows: inv.contents(place.id), mayManage, dollars: inv.dollars, history: inv.history(place.id),
+    title: place.name, place, kinds: inv.KINDS, rows: inv.contents(place.id), mayManage, dollars: inv.dollars, history: inv.history(place.id), stats: inv.stats(place.id),
     showCost: mayManage || access.can(req.user, 'catalog.manage'),
     technician: place.user_id ? db.prepare('SELECT display_name FROM users WHERE id = ?').get(place.user_id) : null,
     free: place.kind === 'vehicle' ? inv.withoutVehicle(req.user.workBranch) : [],

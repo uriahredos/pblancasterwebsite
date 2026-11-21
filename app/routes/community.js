@@ -395,6 +395,15 @@ router.post('/branch/view', everyBranch, (req, res) => {
   res.redirect(/^\/(?![/\\])/.test(back) ? require('./auth').landing(back) : '/');
 });
 
+// Look at the site the way a profile sees it, or go back to one's own view. Only for the master account and people who
+// see every office; what they do while looking is still done by them, with only that profile's permissions.
+router.post('/view-as', requireLogin, (req, res) => {
+  if (!req.user.canViewAs) return forbidden(res);
+  const as = isId(req.body.profile) ? access.viewAsChoices(req.user).find((p) => p.id === Number(req.body.profile)) : null;
+  if (as) { req.session.viewProfile = as.id; activity.log(req.user, 'Viewed the site as a profile', as.name); } else delete req.session.viewProfile;
+  res.redirect('/');
+});
+
 // Profiles that make someone an office's admin (they manage that office's people, and nothing outside it),
 // and profiles that make someone a corporate admin (every office).
 const profilePerms = () => db.prepare('SELECT p.id, p.name, p.scope FROM profiles p ORDER BY p.name COLLATE NOCASE').all().map((p) => ({ ...p, perms: access.permsOf(p.id) }));

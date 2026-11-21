@@ -136,6 +136,7 @@ Where an office's parts are. It is being built in steps: locations, movements, e
   The vehicle is the one assigned to the person; the form shows which it is and asks nothing. A request moves nothing: it asks whoever orders parts for something the office does not have. A part typed in that is not in the catalog moves nothing. Someone with **Manage inventory locations** (the warehouse manager) gets a **Vehicle** list on the form instead, to sign parts into or out of anybody's vehicle.
 - **Taking more than a place has on record is allowed, and marked "To check".** Work is never held up by the numbers; the Inventory page shows how many movements each location has to check, and the next count settles them. Vehicles start empty, so until a vehicle has been counted most of what is taken from it will be marked.
 - **Editing an entry** remakes its movements, **cancelling** it takes them away, and so does deleting an entry for good.
+- **Each location opens with its figures**: how many items it holds across how many parts, what they are worth (for people who see costs), how many came in and went out in the last 30 days and how many of those were used on jobs, how many movements are to check and how many parts the records have below zero, and the parts most used from it.
 - **Move parts** on the Inventory page moves parts by hand between two of the office's locations, or takes a delivery into one.
 - **The Stock page is the main warehouse.** Its "on hand" is what the warehouse's movements add up to. A count, a delivery or a correction made there is written as a movement. When this was switched on, what each office's Stock page showed became that office's opening warehouse stock, so the numbers did not change.
 - When a person is removed, their vehicle stays, with what is in it, and nobody's name on it until it is handed to someone.
@@ -444,6 +445,15 @@ A profile is a set of permissions. Each person has exactly one profile, and what
 - **Reset password**: a new temporary password, shown once. People can also use "Forgot your password?" if email is set up.
 - **Disable**: signed out at once and cannot sign in; alerts to their phone or computer stop; their past submissions stay.
 - **Remove for good**: their sign-in, contact details, profile photo (the file too) and sign-in history are erased, and they leave every list. What they recorded for the office (parts, inspections, posts, tasks they gave) stays with their name on it. Someone who recorded nothing is deleted outright; having signed in does not count as a record. Backups made before the removal still hold the person: the nightly copies on the server for up to 14 nights, the newest five "Back up now" copies and the two copies made before updates until newer ones replace them, and any copy that was emailed or downloaded for as long as it is kept.
+
+### Looking at the site as another profile
+
+The master account and anyone who sees every office have **View the site as** in their account menu (under their name; in More on a phone). Choosing a profile shows the site exactly as that profile sees it: its menu, its pages, its forms. A bar across the top says so, with **Back to my own view** on every page.
+
+- It only ever takes things away. Someone who is not the master is offered only profiles that can do no more than their own.
+- Nothing about the account changes, and it lasts until they go back or sign out. What they do while looking is still done by them and recorded under their name.
+- A "sees only their own people" profile shows only the people assigned to the person looking, which for most admins is nobody but themselves.
+- Each time is written in the activity log.
 
 ### The master account
 

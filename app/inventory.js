@@ -189,6 +189,28 @@ function record(submissionId) {
   return made;
 }
 
+/**
+ * A location at a glance: what it holds now, and what has gone in and out of it over the last so-many days.
+ * "Used" is parts that left for a job; "most used" ranks parts by that.
+ */
+function stats(locationId, days = 30) {
+  const held = contents(locationId);
+  const since = new Date(Date.now() - days * 86400000).toISOString();
+  const sum = (where, ...args) => db.prepare(`SELECT COALESCE(SUM(quantity), 0) AS n FROM inv_moves WHERE ${where} AND created_at >= ?`).get(...args, since).n;
+  const priced = held.filter((p) => p.cost_cents !== null && p.on_hand > 0);
+  return {
+    days, parts: held.length, items: held.reduce((n, p) => n + Math.max(0, p.on_hand), 0),
+    value: priced.reduce((n, p) => n + p.cost_cents * p.on_hand, 0), unpriced: held.filter((p) => p.cost_cents === null && p.on_hand > 0).length,
+    belowZero: held.filter((p) => p.on_hand < 0).length,
+    toCheck: db.prepare('SELECT COUNT(*) AS n FROM inv_moves WHERE from_id = ? AND flagged = 1').get(locationId).n,
+    cameIn: sum("to_id = ? AND kind <> 'opening'", locationId), wentOut: sum('from_id = ?', locationId), used: sum("from_id = ? AND kind = 'use'", locationId),
+    last: (db.prepare('SELECT MAX(created_at) AS at FROM inv_moves WHERE from_id = ? OR to_id = ?').get(locationId, locationId) || {}).at || null,
+    mostUsed: db.prepare(
+      `SELECT c.part_number, c.description, SUM(m.quantity) AS used FROM inv_moves m JOIN parts_catalog c ON c.id = m.catalog_id
+       WHERE m.from_id = ? AND m.kind = 'use' AND m.created_at >= ? GROUP BY c.id ORDER BY used DESC, c.part_number LIMIT 5`).all(locationId, since),
+  };
+}
+
 /** The latest movements in or out of a location, newest first. */
 function history(locationId, limit = 60) {
   return db.prepare(
@@ -228,4 +250,4 @@ function cents(text) {
 const dollars = (c) => (c === null || c === undefined ? '' : (c / 100).toFixed(2));
 
 module.exports = { KINDS, ensureOffice, locations, location, contents, withoutVehicle, addVehicle, addCustom, cents, dollars,
-  warehouseOf, vehicleOf, onHand, vehiclesOf, move, record, history, holdings };
+  warehouseOf, vehicleOf, onHand, vehiclesOf, move, record, history, holdings, stats };

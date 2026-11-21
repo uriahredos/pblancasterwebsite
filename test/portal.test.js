@@ -8122,3 +8122,80 @@ test('alerts: someone signed in is offered alerts on any page, with what the dev
   assert.match((await t.get('/sw.js')).text, /badge: '\/icons\/badge-96\.png'/);
   const badge = await fetch(base + '/icons/badge-96.png'); assert.equal(badge.status, 200); assert.equal(badge.headers.get('content-type'), 'image/png');
 });
+
+test('view as: the master account and corporate admins can look at the site as another profile sees it, and get back; nobody else can, and it never adds anything', async () => {
+  const tech = profileId('Technician'); const corp = access.profileByName('Corporate admin');
+  const master = makeUser('va.master', 'Mia Master', { master: true });
+  const m = await loggedIn('va.master');
+  const menu = (html) => [...(/<nav class="nav"[\s\S]*?<\/nav>/.exec(html) || [''])[0].matchAll(/<a href="(\/admin\/[a-z/]+)"/g)].map((x) => x[1]);
+  const before = (await m.get('/')).text;
+  assert.ok(menu(before).includes('/admin/users')); assert.match(before, /<select name="profile" data-autosubmit>/);
+  assert.doesNotMatch(before, /You are looking at the site as/);
+  // As a technician: the banner says so, the admin menu and admin pages are gone, and the way back is on every page.
+  assert.equal((await m.post('/view-as', { profile: String(tech) }, { page: '/' })).status, 302);
+  const as = (await m.get('/')).text;
+  assert.match(as, /You are looking at the site as <strong>Technician<\/strong> sees it\.[\s\S]*?Back to my own view/);
+  assert.deepEqual(menu(as), []);
+  for (const url of ['/admin/users', '/admin/security', '/admin/backups', '/admin/inventory', '/admin/profiles']) assert.equal((await m.get(url)).status, 403, url);
+  assert.equal((await m.get('/parts?action=take')).status, 200);
+  assert.doesNotMatch((await m.get('/parts?action=take')).text, /<select name="place">/);      // the technician's form, not the manager's
+  assert.equal(db.prepare('SELECT is_master FROM users WHERE id = ?').get(master).is_master, 1);   // nothing about the account is changed
+  assert.ok(db.prepare("SELECT 1 FROM activity_log WHERE action = 'Viewed the site as a profile' AND user_id = ? AND detail = 'Technician'").get(master));
+  // Back to their own view.
+  await m.post('/view-as', { profile: '' }, { page: '/' });
+  const after = (await m.get('/')).text;
+  assert.ok(menu(after).includes('/admin/users')); assert.doesNotMatch(after, /You are looking at the site as/);
+  assert.equal((await m.get('/admin/security')).status, 200);
+  // A technician has no such choice, and asking for it does nothing.
+  const t = await loggedIn('tech1');
+  assert.doesNotMatch((await t.get('/')).text, /name="profile" data-autosubmit|action="\/view-as"/);
+  assert.equal((await t.post('/view-as', { profile: String(corp ? corp.id : tech) }, { page: '/' })).status, 403);
+  assert.equal((await t.get('/admin/users')).status, 403);
+  // Someone who sees every office is offered only profiles that can do no more than their own.
+  access.ensureProfile('Corporate without backups', 'all', access.ALL.filter((p) => p !== 'backups'));
+  const cid = auth.createUser({ username: 'va.corp', displayName: 'Cory Corp', password: 'correct horse battery', profile: 'Corporate without backups' });
+  db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?').run(cid);
+  const c = await loggedIn('va.corp');
+  const full = access.ensureProfile('Everything there is', 'all', access.ALL);
+  const offered = /<form method="post" action="\/view-as" class="view-as-pick"[\s\S]*?<\/form>/.exec((await c.get('/')).text)[0];   // the list in the account menu
+  assert.match(offered, new RegExp(`<option value="${tech}" >Technician</option>`)); assert.doesNotMatch(offered, new RegExp(`<option value="${full}" `));
+  await c.post('/view-as', { profile: String(full) }, { page: '/' });
+  assert.doesNotMatch((await c.get('/')).text, /You are looking at the site as/);
+  assert.equal((await c.get('/admin/backups')).status, 403);
+  await c.post('/view-as', { profile: String(tech) }, { page: '/' });
+  assert.equal((await c.get('/admin/users')).status, 403);
+  await c.post('/view-as', { profile: '' }, { page: '/' });
+  assert.equal((await c.get('/admin/users')).status, 200);
+  db.prepare('UPDATE users SET is_master = 0, active = 0 WHERE id = ?').run(master);
+});
+
+test('inventory: each location opens with its figures at a glance, and every way back is the site\'s own back button', async () => {
+  const inv = require('../app/inventory');
+  const home = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id;
+  const t = new Date().toISOString();
+  const a = db.prepare("INSERT INTO parts_catalog (part_number, description, cost_cents, created_at) VALUES ('GLC-1', 'Glance part', 400, ?)").run(t).lastInsertRowid;
+  const b = db.prepare("INSERT INTO parts_catalog (part_number, description, created_at) VALUES ('GLC-2', 'No cost', ?)").run(t).lastInsertRowid;
+  const place = inv.addCustom(home, 'Glance shelf');
+  const mv = (o) => inv.move({ branchId: home, userId: userId('owner'), ...o });
+  mv({ catalogId: a, to: place, quantity: 10, kind: 'receive' }); mv({ catalogId: b, to: place, quantity: 2, kind: 'receive' });
+  mv({ catalogId: a, from: place, quantity: 3, kind: 'use' }); mv({ catalogId: b, from: place, quantity: 5, kind: 'use' });   // the second takes more than is there
+  db.prepare("INSERT INTO inv_moves (branch_id, catalog_id, from_id, quantity, kind, created_at) VALUES (?, ?, ?, 4, 'use', '2020-01-01T00:00:00.000Z')").run(home, a, place);   // long ago: not in the last 30 days
+  const s = inv.stats(place);
+  assert.deepEqual([s.parts, s.items, s.value, s.unpriced, s.belowZero, s.toCheck, s.cameIn, s.wentOut, s.used], [2, 3, 1200, 0, 1, 1, 12, 8, 8]);
+  assert.deepEqual(s.mostUsed.map((p) => [p.part_number, p.used]), [['GLC-2', 5], ['GLC-1', 3]]);
+  const owner = await loggedIn('owner'); await owner.post('/branch/view', { branch: String(home) }, { page: '/' });
+  const page = (await owner.get(`/admin/inventory/locations/${place}`)).text.replace(/\s+/g, ' ');
+  assert.match(page, /<span class="stat-label">On hand<\/span><span class="stat-num">3<\/span><span class="stat-sub">items across 2 parts<\/span>/);
+  assert.match(page, /<span class="stat-label">Value<\/span><span class="stat-num">\$12\.00<\/span>/);
+  assert.match(page, /<span class="stat-label">Went out<\/span><span class="stat-num">8<\/span><span class="stat-sub">8 of them used on jobs<\/span>/);
+  assert.match(page, /<span class="stat-label">To check<\/span><span class="stat-num">1<\/span><span class="stat-sub">1 part is below zero<\/span>/);
+  assert.match(page, /Most used in the last 30 days:<\/strong> GLC-2 \(5\), GLC-1 \(3\)/);
+  assert.ok(page.indexOf('class="stats"') < page.indexOf('<table>'));                       // the figures come first
+  // Back buttons: the site's own, on every page of the inventory (and nowhere a bare link dressed as one).
+  assert.match(page, /<p class="back"><a class="back-link" href="\/admin\/inventory">Inventory<\/a><\/p>/);
+  assert.match((await owner.get('/admin/inventory/count')).text, /<p class="back"><a class="back-link" href="\/admin\/inventory">Inventory<\/a><\/p>/);
+  const views = path.join(__dirname, '..', 'app', 'views');
+  for (const f of fs.readdirSync(views).filter((n) => n.endsWith('.ejs'))) assert.doesNotMatch(fs.readFileSync(path.join(views, f), 'utf8'), /<a class="back"/, f);
+  await owner.post('/branch/view', { branch: 'all' }, { page: '/' });
+  db.prepare('DELETE FROM inv_moves WHERE catalog_id IN (?, ?)').run(a, b);
+});

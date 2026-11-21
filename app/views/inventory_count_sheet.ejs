@@ -1,5 +1,5 @@
 <%- include('partials/header') %>
-<% if (backToCount) { %><p><a class="back" href="/admin/inventory/count/<%= audit.id %>">Count for <%= monthName(audit.month) %></a></p><% } %>
+<% if (backToCount) { %><p class="back"><a class="back-link" href="/admin/inventory/count/<%= audit.id %>">Count for <%= monthName(audit.month) %></a></p><% } %>
 <h1>Count: <%= place.name %></h1>
 <p class="lede">Type how many of each part are really there. Leave a box empty if you have not counted that part. You can save and come back.</p>
 <%- include('partials/errors') %>

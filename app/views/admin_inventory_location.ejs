@@ -1,7 +1,18 @@
 <%- include('partials/header', { wide: true }) %>
-<p><a class="back" href="/admin/inventory">Inventory</a></p>
+<p class="back"><a class="back-link" href="/admin/inventory">Inventory</a></p>
 <h1><%= place.name %></h1>
 <p class="lede"><%= kinds[place.kind] %><% if (technician) { %> · <%= technician.display_name %><% } %><% if (!place.active) { %> · put away<% } %></p>
+<div class="stats">
+  <div class="stat"><span class="stat-label">On hand</span><span class="stat-num"><%= stats.items %></span><span class="stat-sub"><%= stats.items === 1 ? 'item' : 'items' %> across <%= stats.parts %> <%= stats.parts === 1 ? 'part' : 'parts' %></span></div>
+  <% if (showCost) { %><div class="stat"><span class="stat-label">Value</span><span class="stat-num">$<%= dollars(stats.value) %></span><span class="stat-sub"><%= stats.unpriced ? stats.unpriced + (stats.unpriced === 1 ? ' part has' : ' parts have') + ' no cost on file' : 'at today\'s costs' %></span></div><% } %>
+  <div class="stat return"><span class="stat-label">Came in</span><span class="stat-num"><%= stats.cameIn %></span><span class="stat-sub">in the last <%= stats.days %> days</span></div>
+  <div class="stat"><span class="stat-label">Went out</span><span class="stat-num"><%= stats.wentOut %></span><span class="stat-sub"><%= stats.used %> of them used on jobs</span></div>
+  <div class="stat <%= stats.toCheck || stats.belowZero ? 'request' : 'return' %>"><span class="stat-label">To check</span><span class="stat-num"><%= stats.toCheck %></span><span class="stat-sub"><%= stats.belowZero ? stats.belowZero + (stats.belowZero === 1 ? ' part is' : ' parts are') + ' below zero' : 'nothing below zero' %></span></div>
+</div>
+<% if (stats.mostUsed.length) { %>
+<p class="count"><strong>Most used in the last <%= stats.days %> days:</strong> <%= stats.mostUsed.map(function (p) { return p.part_number + ' (' + p.used + ')'; }).join(', ') %></p>
+<% } %>
+<% if (stats.last) { %><p class="hint">Last movement <%= fmtDateTime(stats.last) %>.</p><% } %>
 <div class="table-wrap">
 <table>
   <thead><tr><th>Part</th><th>Description</th><th class="num">On hand</th><% if (showCost) { %><th class="num">Cost each</th><th class="num">Value</th><% } %></tr></thead>

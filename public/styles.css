@@ -1481,3 +1481,8 @@ td.reports-to .meta { display: block; }
 
 /* The count sheet: a box wide enough for a number, easy to hit with a thumb. */
 .count-box { width: 5.5rem; text-align: right; font-size: 1.1rem; }
+
+/* Looking at the site as another profile: a bar that says so, with the way back. */
+.flash.view-as { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; background: var(--warn-bg); color: var(--warn); border: 1px solid currentColor; }
+.view-as-pick { padding: .35rem .9rem .6rem; }
+.view-as-pick select { width: 100%; margin-top: .25rem; }

@@ -201,7 +201,7 @@ const permsOf = (profileId) => new Set(
  * viewBranch: for someone who can see every branch, the branch they have chosen to look at
  * (a branch id, or 'all'). Everyone else always looks at their own.
  */
-function loadAccess(user, viewBranch) {
+function loadAccess(user, viewBranch, viewProfile) {
   const profile = user.profile_id ? db.prepare('SELECT * FROM profiles WHERE id = ?').get(user.profile_id) : null;
   user.profile_name = user.is_master ? 'Master' : profile ? profile.name : 'No profile';
   user.perms = user.is_master ? new Set(ALL) : profile ? permsOf(profile.id) : new Set();
@@ -213,6 +213,22 @@ function loadAccess(user, viewBranch) {
   // Fail closed: an account with no office (which should not happen) sees no office's records rather than every office's.
   if (!user.allBranches && !user.viewBranch) user.viewBranch = -1;
   user.workBranch = user.viewBranch || user.branch_id;
+  // The master account and people who see every office can look at the site the way another profile sees it.
+  user.canViewAs = user.allBranches;
+  user.own = { master: Boolean(user.is_master), perms: user.perms };     // what the account itself may do, whatever view is on
+  if (viewProfile && user.canViewAs) {
+    const as = db.prepare('SELECT * FROM profiles WHERE id = ?').get(viewProfile);
+    // Never a profile that can do more than their own: this only ever takes things away.
+    if (as && (user.is_master || canGrant(user, permsOf(as.id)))) {
+      user.viewingAs = { id: as.id, name: as.name };
+      user.is_master = 0;                                     // for this request only: nothing here is saved
+      user.perms = permsOf(as.id); user.scope = as.scope; user.profile_name = as.name;
+      user.allBranches = user.perms.has('branches.all');
+      // Without "every office" they stay in the office they were looking at (their own, if that was all of them).
+      if (!user.allBranches && !user.viewBranch) user.viewBranch = user.branch_id || -1;
+      user.workBranch = user.viewBranch || user.branch_id;
+    }
+  }
   return user;
 }
 
@@ -262,7 +278,13 @@ function mayManage(actor, target) {
   return !target.profile_id || canGrant(actor, permsOf(target.profile_id));
 }
 
+/** The profiles this person may look at the site as: for the master account all of them, otherwise none that can do more than their own. */
+function viewAsChoices(user) {
+  if (!user || !user.canViewAs) return [];
+  return db.prepare('SELECT id, name FROM profiles ORDER BY name COLLATE NOCASE').all().filter((p) => user.own.master || canGrant({ perms: user.own.perms }, permsOf(p.id)));
+}
+
 module.exports = {
-  GROUPS, ALL, SUBMIT, DEFAULTS, profileByName, permsOf, setPermissions, createProfile, ensureProfile,
+  viewAsChoices, GROUPS, ALL, SUBMIT, DEFAULTS, profileByName, permsOf, setPermissions, createProfile, ensureProfile,
   loadAccess, can, visibleUserIds, canSee, canGrant, mayManage, moderates, migrate,
 };

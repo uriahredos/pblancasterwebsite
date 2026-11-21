@@ -1,5 +1,5 @@
 <%- include('partials/header', { wide: true }) %>
-<p><a class="back" href="/admin/inventory">Inventory</a></p>
+<p class="back"><a class="back-link" href="/admin/inventory">Inventory</a></p>
 <h1>Count for <%= monthName(audit.month) %></h1>
 <p class="lede"><%= lines %> <%= lines === 1 ? 'part' : 'parts' %> counted so far<% if (differences.length) { %>, <strong><%= differences.length %> different from the records</strong><% } %>. Each person with a vehicle can count their own from the bell.</p>
 

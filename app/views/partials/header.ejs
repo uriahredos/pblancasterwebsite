@@ -52,6 +52,17 @@
             <p class="bell-title">Settings</p>
             <a href="/settings/notifications">Notifications</a>
             <a href="/account/password">Password and Face ID</a>
+            <% if (typeof viewAsChoices !== 'undefined' && viewAsChoices.length) { %>
+            <form method="post" action="/view-as" class="view-as-pick" data-no-live>
+              <input type="hidden" name="_csrf" value="<%= csrf %>">
+              <label><span class="bell-title">View the site as</span>
+                <select name="profile" data-autosubmit>
+                  <option value=""><%= user.viewingAs ? 'My own view' : 'Choose a profile' %></option>
+                  <% viewAsChoices.forEach(function (p) { %><option value="<%= p.id %>" <%= user.viewingAs && user.viewingAs.id === p.id ? 'selected' : '' %>><%= p.name %></option><% }) %>
+                </select></label>
+              <noscript><button type="submit">Go</button></noscript>
+            </form>
+            <% } %>
             <hr>
             <form method="post" action="/logout"><input type="hidden" name="_csrf" value="<%= csrf %>"><button type="submit">Sign out</button></form>
           </div>
@@ -200,6 +211,16 @@
         <a href="/my" <%- path === '/my' ? 'aria-current="page"' : '' %>>My activity<% if (badges.updates) { %> <span class="badge" title="Updates you have not seen"><%= badges.updates %></span><% } %></a>
         <a href="/settings/notifications">Notification settings</a>
         <a href="/account/password">Password and Face ID<span class="hint-light"><%= user.display_name %></span></a>
+        <% if (typeof viewAsChoices !== 'undefined' && viewAsChoices.length) { %>
+        <form method="post" action="/view-as" class="view-as-pick in-menu" data-no-live>
+          <input type="hidden" name="_csrf" value="<%= csrf %>">
+          <label><span class="sr">View the site as</span>
+            <select name="profile" data-autosubmit>
+              <option value=""><%= user.viewingAs ? 'My own view' : 'View the site as...' %></option>
+              <% viewAsChoices.forEach(function (p) { %><option value="<%= p.id %>" <%= user.viewingAs && user.viewingAs.id === p.id ? 'selected' : '' %>><%= p.name %></option><% }) %>
+            </select></label>
+        </form>
+        <% } %>
         <button type="button" id="install-open" hidden>Get the app<span class="hint-light">Add it to your home screen</span></button>
         <form method="post" action="/logout"><input type="hidden" name="_csrf" value="<%= csrf %>"><button type="submit">Sign out</button></form>
       </div>
@@ -208,4 +229,11 @@
   <% } %>
 </header>
 <main class="<%= typeof wide !== 'undefined' && wide ? 'wide' : '' %>">
+<% if (user && user.viewingAs) { %>
+<form method="post" action="/view-as" class="flash view-as no-print" data-no-live>
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <span>You are looking at the site as <strong><%= user.viewingAs.name %></strong> sees it.</span>
+  <button class="btn small" type="submit">Back to my own view</button>
+</form>
+<% } %>
 <% if (flash) { %><p class="flash <%= flash.type %>" role="status"><%= flash.text %></p><% } %>

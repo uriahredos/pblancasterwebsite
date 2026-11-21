@@ -64,7 +64,7 @@ function loadUser(req, res, next) {
   if (req.session.userId) {
     const user = userById.get(req.session.userId);
     // A sign-in made with a temporary password ends when that password expires, so it cannot be finished off weeks later.
-    if (user && user.active && !tempExpired(user)) req.user = access.loadAccess(user, req.session.viewBranch);
+    if (user && user.active && !tempExpired(user)) req.user = access.loadAccess(user, req.session.viewBranch, req.session.viewProfile);
     else delete req.session.userId;
   }
   res.locals.user = req.user;
@@ -74,6 +74,8 @@ function loadUser(req, res, next) {
   res.locals.newThreads = [];
   res.locals.alerts = [];
   res.locals.branchName = null; res.locals.branchChoices = [];
+  // Profiles this person can look at the site as (see loadAccess). Listed for their own account menu only.
+  res.locals.viewAsChoices = access.viewAsChoices(req.user);
   if (req.user) {
     const all = db.prepare('SELECT id, name FROM branches ORDER BY name COLLATE NOCASE').all();
     res.locals.branchName = (all.find((b) => b.id === req.user.branch_id) || {}).name || null;
