@@ -33,6 +33,7 @@ CREATE INDEX IF NOT EXISTS social_comments_post ON social_comments(post_id);
 `);
 if (!db.prepare("SELECT 1 FROM pragma_table_info('wall_photos') WHERE name = 'post_id'").get()) db.exec('ALTER TABLE wall_photos ADD COLUMN post_id INTEGER');
 db.exec('CREATE INDEX IF NOT EXISTS wall_photos_post ON wall_photos(post_id)');
+if (!db.prepare("SELECT 1 FROM pragma_table_info('social_posts') WHERE name = 'edited_at'").get()) db.exec('ALTER TABLE social_posts ADD COLUMN edited_at TEXT');
 
 // Once: every picture on the old photo wall becomes a post here. Pictures put up together (same person, same caption,
 // same moment) become one post, and the likes they had are carried over.
@@ -126,6 +127,36 @@ router.post('/social/:id/comment', mayPost, (req, res) => {
   db.prepare('INSERT INTO social_comments (post_id, user_id, body, created_at) VALUES (?, ?, ?, ?)').run(p.id, req.user.id, body, new Date().toISOString());
   if (p.user_id !== req.user.id) push.notify([p.user_id], 'social_comment', { title: `${req.user.display_name} commented on your post`, body: body.slice(0, 140), url: `/social/p/${p.id}` });
   res.redirect(`${back}#s${p.id}`);
+});
+
+// Changing a post: only the person who wrote it. (A moderator can remove someone's post, but never reword it.)
+const ownPost = (req) => {
+  const p = isId(req.params.id) ? db.prepare('SELECT * FROM social_posts WHERE id = ?').get(req.params.id) : null;
+  if (p) p.photos = db.prepare('SELECT id, path FROM wall_photos WHERE post_id = ? ORDER BY id').all(p.id);
+  return p;
+};
+const editPage = (res, p, extra = {}) => res.status(extra.errors ? 400 : 200).render('social_edit', { title: 'Edit post', post: p, errors: [], values: { body: p.body || '' }, ...extra });
+router.get('/social/p/:id/edit', mayPost, (req, res) => {
+  const p = ownPost(req);
+  if (!p) return notFound(res);
+  if (p.user_id !== req.user.id) return forbidden(res);
+  editPage(res, p);
+});
+router.post('/social/:id/edit', mayPost, (req, res) => {
+  const p = ownPost(req);
+  if (!p) return notFound(res);
+  if (p.user_id !== req.user.id) return forbidden(res);
+  const body = clean(req.body.body, 2000);
+  const drop = new Set([].concat(req.body.drop || []).map(String));
+  const going = p.photos.filter((ph) => drop.has(String(ph.id)));
+  if (!body && going.length === p.photos.length) return editPage(res, p, { errors: ['A post needs some words or a photo. To take it down altogether, use Delete.'], values: { body } });
+  db.transaction(() => {
+    for (const ph of going) db.prepare('DELETE FROM wall_photos WHERE id = ? AND post_id = ?').run(ph.id, p.id);
+    db.prepare('UPDATE social_posts SET body = ?, edited_at = ? WHERE id = ?').run(body || null, new Date().toISOString(), p.id);
+  })();
+  going.forEach((ph) => uploads.remove(ph.path));
+  flash(req, 'ok', 'Post updated.');
+  res.redirect(`/social/p/${p.id}`);
 });
 
 // Removing: your own post or comment; a comment under your own post; or, for a moderator, their own people's.

@@ -1525,3 +1525,11 @@ td.reports-to .meta { display: block; }
 .social-day { margin: 1.5rem 0 0; font-size: .9rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: .75rem; }
 .social-day::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .social-end { margin: 1.5rem 0; text-align: center; color: var(--muted); }
+.social-head .post-menu { flex: none; align-self: flex-start; }
+.social-head .post-menu > summary { border-color: transparent; color: var(--muted); }
+.social-head .post-menu .row-menu-list { left: auto; right: 0; min-width: 9rem; }
+.edit-photos { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: .75rem; }
+.edit-photos legend { font-weight: 600; margin-bottom: .5rem; padding: 0; }
+.edit-photo { display: grid; gap: .35rem; font-weight: 600; }
+.edit-photo img { width: 7.5rem; height: 7.5rem; object-fit: cover; border-radius: 10px; background: var(--accent-soft); display: block; }
+.edit-photo span { display: flex; align-items: center; gap: .4rem; }

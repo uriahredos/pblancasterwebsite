@@ -29,8 +29,16 @@
   <header class="social-head">
     <a href="/people/<%= p.user_id %>"><%- include('partials/avatar', { who: { id: p.user_id, display_name: p.display_name, photo_path: p.photo_path } }) %></a>
     <div class="social-who"><a href="/people/<%= p.user_id %>"><strong><%= p.display_name %></strong></a>
-      <span class="meta"><%= [p.branch, one ? fmtDateTime(p.created_at) : timeOnly(p.created_at)].filter(Boolean).join(' · ') %></span></div>
-    <% if (p.mayRemove) { %><form method="post" action="/social/<%= p.id %>/delete" data-no-live data-confirm="Remove this post?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Remove</button></form><% } %>
+      <span class="meta"><%= [p.branch, one ? fmtDateTime(p.created_at) : timeOnly(p.created_at), p.edited_at ? 'Edited' : ''].filter(Boolean).join(' · ') %></span></div>
+    <% if (p.mayRemove) { %>
+    <details class="row-menu post-menu">
+      <summary aria-label="Post options"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></summary>
+      <div class="row-menu-list">
+        <% if (p.mine && canPost) { %><a href="/social/p/<%= p.id %>/edit">Edit</a><% } %>
+        <form method="post" action="/social/<%= p.id %>/delete" data-no-live data-confirm="Delete this post?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="danger-text" type="submit">Delete</button></form>
+      </div>
+    </details>
+    <% } %>
   </header>
   <% if (p.body) { %><p class="social-body"><%= p.body %></p><% } %>
   <% if (p.photos.length) { %>

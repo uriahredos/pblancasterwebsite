@@ -8317,6 +8317,47 @@ test('photos: the browser saves each picture in the smallest form it can write (
   await t.post(`/social/${post.id}/delete`, {}, { page: '/social' });
 });
 
+test('Social: the three dots on a post hold Edit and Delete; only the poster can edit, the poster and moderators can delete', async () => {
+  const t = await loggedIn('tech1'); const other = await loggedIn('tech2'); const boss = await loggedIn('admin');
+  await t.post('/social', [['body', 'DOTS first words']], { multipart: true, page: '/social' });
+  const post = db.prepare("SELECT * FROM social_posts WHERE body = 'DOTS first words'").get();
+  const card = (html) => (new RegExp(`<article class="card social-post" id="s${post.id}">[\\s\\S]*?</article>`).exec(html) || [''])[0];
+  // The poster: three dots holding Edit and Delete, and no loose Remove button.
+  const mine = card((await t.get('/social')).text);
+  assert.match(mine, /<details class="row-menu post-menu">\s*<summary aria-label="Post options">/);
+  assert.match(mine, new RegExp(`<a href="/social/p/${post.id}/edit">Edit</a>`)); assert.match(mine, />Delete<\/button>/);
+  assert.doesNotMatch(mine.split('social-comments')[0], />Remove</);
+  // Someone else sees no dots at all; a moderator sees Delete but not Edit.
+  assert.doesNotMatch(card((await other.get('/social')).text), /post-menu/);
+  const theirs = card((await boss.get('/social')).text);
+  assert.match(theirs, /post-menu/); assert.match(theirs, />Delete<\/button>/); assert.doesNotMatch(theirs, />Edit<\/a>/);
+  // Editing: only the poster reaches the page or can save; the post is then marked Edited.
+  assert.equal((await other.get(`/social/p/${post.id}/edit`)).status, 403);
+  assert.equal((await boss.get(`/social/p/${post.id}/edit`)).status, 403);
+  assert.equal((await boss.post(`/social/${post.id}/edit`, { body: 'words put in their mouth' }, { page: '/social' })).status, 403);
+  const page = await t.get(`/social/p/${post.id}/edit`);
+  assert.equal(page.status, 200); assert.match(page.text, /<a class="back-link" href="\/social\/p\/\d+">/); assert.match(page.text, />DOTS first words<\/textarea>/);
+  assert.equal((await t.post(`/social/${post.id}/edit`, { body: '' }, { page: `/social/p/${post.id}/edit` })).status, 400);       // nothing left: use Delete
+  await t.post(`/social/${post.id}/edit`, { body: 'DOTS better words' }, { page: `/social/p/${post.id}/edit` });
+  const now = db.prepare('SELECT * FROM social_posts WHERE id = ?').get(post.id);
+  assert.equal(now.body, 'DOTS better words'); assert.ok(now.edited_at); assert.equal(now.created_at, post.created_at);
+  assert.match(card((await other.get('/social')).text), /DOTS better words/); assert.match(card((await other.get('/social')).text), /· Edited<\/span>/);
+  // A photo can be taken off while editing; one belonging to another post cannot be named.
+  const add = db.prepare('INSERT INTO wall_photos (user_id, path, caption, created_at, post_id) VALUES (?, ?, NULL, ?, ?)');
+  const a = add.run(userId('tech1'), 'dots-a.jpg', post.created_at, post.id).lastInsertRowid;
+  const elsewhere = db.prepare('INSERT INTO social_posts (user_id, body, created_at) VALUES (?, ?, ?)').run(userId('tech2'), 'DOTS other post', post.created_at).lastInsertRowid;
+  const b = add.run(userId('tech2'), 'dots-b.jpg', post.created_at, elsewhere).lastInsertRowid;
+  assert.match((await t.get(`/social/p/${post.id}/edit`)).text, new RegExp(`name="drop" value="${a}"`));
+  await t.post(`/social/${post.id}/edit`, [['body', 'DOTS better words'], ['drop', String(a)], ['drop', String(b)]], { page: `/social/p/${post.id}/edit` });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM wall_photos WHERE id = ?').get(a).n, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM wall_photos WHERE id = ?').get(b).n, 1);
+  // Deleting still works for a moderator, and not for a bystander.
+  assert.equal((await other.post(`/social/${post.id}/delete`, {}, { page: '/social' })).status, 403);
+  await boss.post(`/social/${post.id}/delete`, {}, { page: '/social' });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM social_posts WHERE id = ?').get(post.id).n, 0);
+  db.prepare('DELETE FROM wall_photos WHERE id = ?').run(b); db.prepare("DELETE FROM social_posts WHERE body LIKE 'DOTS %'").run();
+});
+
 test('Social page: a prompt to post beside your picture opens into the full form, posts sit under day headings with their time, and the feed says where it ends', async () => {
   const t = await loggedIn('tech1');
   db.prepare("DELETE FROM social_posts").run();

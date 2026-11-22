@@ -1,0 +1,18 @@
+<%- include('partials/header') %>
+<p class="back"><a class="back-link" href="/social/p/<%= post.id %>">Back to the post</a></p>
+<h1>Edit post</h1>
+<%- include('partials/errors') %>
+<form method="post" action="/social/<%= post.id %>/edit" class="card stack social-new" data-no-live data-once>
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label><span class="sr">Your post</span>
+    <textarea name="body" rows="6" maxlength="2000" placeholder="What's on your mind?"><%= values.body || '' %></textarea></label>
+  <% if (post.photos.length) { %>
+  <fieldset class="edit-photos"><legend>Photos <span class="hint">Tick any you want taken off.</span></legend>
+    <% post.photos.forEach(function (ph) { %>
+    <label class="edit-photo"><img src="/wall/photo/<%= ph.id %>" alt="Photo on this post"><span><input type="checkbox" name="drop" value="<%= ph.id %>"> Remove</span></label>
+    <% }) %>
+  </fieldset>
+  <% } %>
+  <button class="btn primary" type="submit">Save</button>
+</form>
+<%- include('partials/footer') %>
