@@ -34,6 +34,7 @@ CREATE INDEX IF NOT EXISTS social_comments_post ON social_comments(post_id);
 if (!db.prepare("SELECT 1 FROM pragma_table_info('wall_photos') WHERE name = 'post_id'").get()) db.exec('ALTER TABLE wall_photos ADD COLUMN post_id INTEGER');
 db.exec('CREATE INDEX IF NOT EXISTS wall_photos_post ON wall_photos(post_id)');
 if (!db.prepare("SELECT 1 FROM pragma_table_info('social_posts') WHERE name = 'edited_at'").get()) db.exec('ALTER TABLE social_posts ADD COLUMN edited_at TEXT');
+if (!db.prepare("SELECT 1 FROM pragma_table_info('social_comments') WHERE name = 'edited_at'").get()) db.exec('ALTER TABLE social_comments ADD COLUMN edited_at TEXT');
 
 // Once: every picture on the old photo wall becomes a post here. Pictures put up together (same person, same caption,
 // same moment) become one post, and the likes they had are carried over.
@@ -67,6 +68,7 @@ function dress(posts, user, everyComment) {
     p.comments = everyComment ? all : all.slice(-3);
     p.hidden = all.length - p.comments.length;
     p.mine = p.user_id === user.id; p.mayRemove = p.mine || access.moderates(user, 'forum.moderate', p.user_id);
+    for (const c of p.comments) c.mine = c.user_id === user.id;
     for (const c of p.comments) c.mayRemove = c.user_id === user.id || p.mine || access.moderates(user, 'forum.moderate', c.user_id);
   }
   // Which day each post belongs under, in the site's own time: Today, Yesterday, or the date.
@@ -135,7 +137,7 @@ const ownPost = (req) => {
   if (p) p.photos = db.prepare('SELECT id, path FROM wall_photos WHERE post_id = ? ORDER BY id').all(p.id);
   return p;
 };
-const editPage = (res, p, extra = {}) => res.status(extra.errors ? 400 : 200).render('social_edit', { title: 'Edit post', post: p, errors: [], values: { body: p.body || '' }, ...extra });
+const editPage = (res, p, extra = {}) => res.status(extra.errors ? 400 : 200).render('social_edit', { title: 'Edit post', post: p, comment: null, errors: [], values: { body: p.body || '' }, ...extra });
 router.get('/social/p/:id/edit', mayPost, (req, res) => {
   const p = ownPost(req);
   if (!p) return notFound(res);
@@ -157,6 +159,25 @@ router.post('/social/:id/edit', mayPost, (req, res) => {
   going.forEach((ph) => uploads.remove(ph.path));
   flash(req, 'ok', 'Post updated.');
   res.redirect(`/social/p/${p.id}`);
+});
+
+// Changing a comment: only the person who wrote it.
+const ownComment = (req) => (isId(req.params.id) ? db.prepare('SELECT * FROM social_comments WHERE id = ?').get(req.params.id) : null);
+const commentPage = (res, c, extra = {}) => res.status(extra.errors ? 400 : 200).render('social_edit', { title: 'Edit comment', post: null, comment: c, errors: [], values: { body: c.body }, ...extra });
+router.get('/social/comment/:id/edit', mayPost, (req, res) => {
+  const c = ownComment(req);
+  if (!c) return notFound(res);
+  if (c.user_id !== req.user.id) return forbidden(res);
+  commentPage(res, c);
+});
+router.post('/social/comment/:id/edit', mayPost, (req, res) => {
+  const c = ownComment(req);
+  if (!c) return notFound(res);
+  if (c.user_id !== req.user.id) return forbidden(res);
+  const body = clean(req.body.body, 1000);
+  if (!body) return commentPage(res, c, { errors: ['A comment needs some words. To take it down, use Delete.'], values: { body } });
+  db.prepare('UPDATE social_comments SET body = ?, edited_at = ? WHERE id = ?').run(body, new Date().toISOString(), c.id);
+  res.redirect(`/social/p/${c.post_id}#c${c.id}`);
 });
 
 // Removing: your own post or comment; a comment under your own post; or, for a moderator, their own people's.

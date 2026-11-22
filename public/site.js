@@ -119,6 +119,33 @@
     });
   })();
 
+  // Reactions on a phone: holding a finger on one shows who gave it (most recent first) instead of giving it.
+  (function () {
+    var timer = null, held = false, startX = 0, startY = 0;
+    function hide() { Array.prototype.forEach.call(document.querySelectorAll('.react-who'), function (n) { n.parentNode.removeChild(n); }); }
+    function stop() { if (timer) { clearTimeout(timer); timer = null; } }
+    function target(e) { return e.target.closest && e.target.closest('.reactions button.react[data-who]'); }
+    document.addEventListener('pointerdown', function (e) {
+      var btn = target(e); held = false; stop();
+      if (!btn) { if (!(e.target.closest && e.target.closest('.react-who'))) hide(); return; }
+      if (e.pointerType === 'mouse') return;                 // a mouse already gets the names by hovering
+      startX = e.clientX; startY = e.clientY;
+      timer = setTimeout(function () {
+        timer = null; held = true; hide();
+        var note = document.createElement('p'); note.className = 'react-who'; note.setAttribute('role', 'status');
+        note.textContent = btn.getAttribute('data-who');
+        btn.form.appendChild(note);
+        if (navigator.vibrate) { try { navigator.vibrate(10); } catch (err) {} }
+      }, 450);
+    }, true);
+    document.addEventListener('pointermove', function (e) { if (timer && (Math.abs(e.clientX - startX) > 10 || Math.abs(e.clientY - startY) > 10)) stop(); }, true);
+    document.addEventListener('pointerup', stop, true); document.addEventListener('pointercancel', stop, true);
+    window.addEventListener('scroll', stop, true);   // a finger that starts scrolling is not holding
+    // The tap that ends a long press must not give or take back the reaction.
+    document.addEventListener('click', function (e) { if (held && target(e)) { held = false; e.preventDefault(); e.stopImmediatePropagation(); } }, true);
+    document.addEventListener('contextmenu', function (e) { if (target(e)) e.preventDefault(); });
+  })();
+
   // "Are you sure?" questions. Asked here, for the whole page, so they still work on parts of a page
   // that were swapped in without a reload.
   document.addEventListener('submit', function (e) {

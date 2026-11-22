@@ -3877,8 +3877,8 @@ test('reactions: on discussion messages and announcements, one of each per perso
   await react(t2, 'post', post, 'nonsense', tp); await react(t2, 'post', 999999, 'like', tp);
   assert.equal(db.prepare("SELECT COUNT(*) n FROM reactions WHERE kind = 'post' AND target_id = ?").get(post).n, 3);
   const page = (await t2.get(tp)).text.replace(/\s+/g, ' ');
-  assert.match(page, /<button class="react on" type="submit" name="emoji" value="like" aria-pressed="true" title="Like: Uma Tech, Olive Owner"><span aria-hidden="true">👍<\/span><span>2<\/span>/);
-  assert.match(page, /<button class="react " type="submit" name="emoji" value="thanks" aria-pressed="false" title="Thanks: Olive Owner">/);
+  assert.match(page, /<button class="react on" type="submit" name="emoji" value="like" aria-pressed="true" title="Like: Uma Tech, Olive Owner" data-who="👍 Like: Olive Owner, Uma Tech"><span aria-hidden="true">👍<\/span><span>2<\/span>/);
+  assert.match(page, /<button class="react " type="submit" name="emoji" value="thanks" aria-pressed="false" title="Thanks: Olive Owner" data-who="🙏 Thanks: Olive Owner">/);
   // Reactions nobody has given are not laid out under the message: they sit behind one "React" button.
   const shown = /<form method="post" action="\/react" class="reactions">[\s\S]*?<details class="react-more">/.exec(page)[0];
   assert.doesNotMatch(shown, /value="laugh"|value="love"|value="party"/);
@@ -8356,6 +8356,40 @@ test('Social: the three dots on a post hold Edit and Delete; only the poster can
   await boss.post(`/social/${post.id}/delete`, {}, { page: '/social' });
   assert.equal(db.prepare('SELECT COUNT(*) n FROM social_posts WHERE id = ?').get(post.id).n, 0);
   db.prepare('DELETE FROM wall_photos WHERE id = ?').run(b); db.prepare("DELETE FROM social_posts WHERE body LIKE 'DOTS %'").run();
+});
+
+test('Social: a comment has three dots with Edit and Delete for its writer; holding a reaction lists who gave it, newest first', async () => {
+  const t = await loggedIn('tech1'); const other = await loggedIn('tech2'); const boss = await loggedIn('admin');
+  const post = db.prepare('INSERT INTO social_posts (user_id, body, created_at) VALUES (?, ?, ?)').run(userId('tech1'), 'CDOTS post', new Date().toISOString()).lastInsertRowid;
+  await other.post(`/social/${post}/comment`, { body: 'CDOTS frist comment' }, { page: '/social' });
+  const c = db.prepare("SELECT * FROM social_comments WHERE body = 'CDOTS frist comment'").get();
+  const row = (html) => (new RegExp(`<div class="social-comment" id="c${c.id}">[\\s\\S]*?(?=<div class="social-comment"|<form method="post" action="/social/${post}/comment"|</section>)`).exec(html) || [''])[0];
+  const writer = row((await other.get('/social')).text);
+  assert.match(writer, /<details class="row-menu comment-menu">\s*<summary aria-label="Comment options">/);
+  assert.match(writer, new RegExp(`<a href="/social/comment/${c.id}/edit">Edit</a>`)); assert.match(writer, />Delete<\/button>/);
+  assert.doesNotMatch(writer, />Remove</);
+  // The owner of the post and a moderator can delete it, not edit it.
+  for (const who of [t, boss]) { const seen = row((await who.get('/social')).text); assert.match(seen, />Delete<\/button>/); assert.doesNotMatch(seen, />Edit<\/a>/); }
+  for (const who of [t, boss]) {
+    assert.equal((await who.get(`/social/comment/${c.id}/edit`)).status, 403);
+    assert.equal((await who.post(`/social/comment/${c.id}/edit`, { body: 'not mine' }, { page: '/social' })).status, 403);
+  }
+  const page = await other.get(`/social/comment/${c.id}/edit`);
+  assert.equal(page.status, 200); assert.match(page.text, /<a class="back-link" href="\/social\/p\/\d+#c\d+">/); assert.match(page.text, />CDOTS frist comment<\/textarea>/);
+  assert.equal((await other.post(`/social/comment/${c.id}/edit`, { body: '  ' }, { page: `/social/comment/${c.id}/edit` })).status, 400);
+  await other.post(`/social/comment/${c.id}/edit`, { body: 'CDOTS first comment' }, { page: `/social/comment/${c.id}/edit` });
+  const now = db.prepare('SELECT * FROM social_comments WHERE id = ?').get(c.id);
+  assert.equal(now.body, 'CDOTS first comment'); assert.ok(now.edited_at);
+  assert.match(row((await t.get('/social')).text), /· Edited<\/span>\s*<p>CDOTS first comment<\/p>/);
+  await other.post(`/social/comment/${c.id}/delete`, {}, { page: '/social' });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM social_comments WHERE id = ?').get(c.id).n, 0);
+  // Reactions carry the list a long press shows: the reaction, then names with the most recent first.
+  const give = db.prepare("INSERT INTO reactions (kind, target_id, user_id, emoji, created_at) VALUES ('social', ?, ?, 'like', ?)");
+  give.run(post, userId('tech1'), '2026-01-01T10:00:00.000Z'); give.run(post, userId('tech2'), '2026-01-02T10:00:00.000Z');
+  const feed = (await t.get('/social')).text;
+  assert.match(feed, /data-who="👍 Like: Uma Tech, Terry Tech"/);
+  const js = (await t.get('/site.js')).text; assert.match(js, /react-who/); assert.match(js, /data-who/);
+  db.prepare("DELETE FROM reactions WHERE kind = 'social' AND target_id = ?").run(post); db.prepare('DELETE FROM social_posts WHERE id = ?').run(post);
 });
 
 test('Social page: a prompt to post beside your picture opens into the full form, posts sit under day headings with their time, and the feed says where it ends', async () => {

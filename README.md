@@ -257,6 +257,8 @@ The company's own feed, in the bar beside Tasks. Everyone in every office sees e
 - **Removing**: people remove their own posts and comments, and comments under their own posts. Moderators remove their own office's people's, as in Discussions; what they remove is written in the activity log. A removed post takes its photos, reactions and comments with it.
 - Posting and commenting need **Read and post in Discussions**; everyone signed in can read and react.
 - **Edit and delete** sit behind the three dots at the top right of a post. The dots show only to the person who posted it and to moderators. **Edit** (the poster only) changes the words and can take photos off; the post is then marked "Edited". **Delete** takes the whole post down; a moderator can delete someone else's post, which is noted in the activity log, but can never reword it.
+- **Comments** have the same three dots: the person who wrote a comment can **Edit** or **Delete** it (an edited comment is marked "Edited"); the owner of the post and moderators can delete it but not reword it.
+- **Who reacted.** On a phone, holding a finger on a reaction shows who gave it, most recent first, without giving it yourself. On a computer, resting the mouse on it shows the names.
 - **Laid out by day.** Posts sit under **Today**, **Yesterday** or the date, newest first, each with its time. The last page ends with "That's the end of the feed. Say something!" (or "The feed is empty.") and a link that opens the box.
 - **The photo wall is now part of this.** Its pictures became posts when Social was switched on (pictures put up together became one post) and kept their likes; `/photos` goes to Social.
 

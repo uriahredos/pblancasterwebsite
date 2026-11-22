@@ -1528,6 +1528,11 @@ td.reports-to .meta { display: block; }
 .social-head .post-menu { flex: none; align-self: flex-start; }
 .social-head .post-menu > summary { border-color: transparent; color: var(--muted); }
 .social-head .post-menu .row-menu-list { left: auto; right: 0; min-width: 9rem; }
+.social-comment .comment-menu { flex: none; }
+.social-comment .comment-menu > summary { width: 32px; height: 32px; border-color: transparent; color: var(--muted); }
+.social-comment .comment-menu .row-menu-list { left: auto; right: 0; min-width: 9rem; }
+.reactions button.react { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
+.react-who { flex-basis: 100%; margin: .15rem 0 0; padding: .5rem .75rem; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: 0 6px 18px rgba(0, 0, 0, .14); font-size: .95rem; overflow-wrap: anywhere; }
 .edit-photos { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: .75rem; }
 .edit-photos legend { font-weight: 600; margin-bottom: .5rem; padding: 0; }
 .edit-photo { display: grid; gap: .35rem; font-weight: 600; }

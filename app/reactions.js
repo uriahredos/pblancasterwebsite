@@ -28,7 +28,8 @@ function attach(kind, items, userId) {
     const mine = rows.filter((r) => r.target_id === item.id);
     item.reactions = CHOICES.map(([key, emoji, label]) => {
       const who = mine.filter((r) => r.emoji === key);
-      return { key, emoji, label, n: who.length, mine: who.some((r) => r.user_id === userId), names: who.slice(0, 12).map((r) => r.display_name).join(', ') + (who.length > 12 ? ` and ${who.length - 12} more` : '') };
+      const latest = who.slice(-8).reverse();   // the most recent first, for the list a long press shows on a phone
+      return { key, emoji, label, n: who.length, recent: latest.map((r) => r.display_name).join(', ') + (who.length > 8 ? ` and ${who.length - 8} more` : ''), mine: who.some((r) => r.user_id === userId), names: who.slice(0, 12).map((r) => r.display_name).join(', ') + (who.length > 12 ? ` and ${who.length - 12} more` : '') };
     });
   }
   return items;
