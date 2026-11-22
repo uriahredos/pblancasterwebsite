@@ -274,6 +274,23 @@ router.get('/branches/photo/:id', requireLogin, (req, res) => {
 
 // The people who keep a branch's page: anyone who can see every branch, or whoever manages people in that branch.
 const mayEditBranch = (user, b) => user.allBranches || (user.branch_id === b.id && user.scope === 'all' && access.can(user, 'users.manage'));
+// Office info: notes an office keeps for its own people (service rates, on-call rates, the alarm code for the gate...).
+// Shown to that office's people and to those who see every office; never to another office.
+db.exec(`
+CREATE TABLE IF NOT EXISTS branch_info (
+  id INTEGER PRIMARY KEY,
+  branch_id INTEGER NOT NULL REFERENCES branches(id),
+  title TEXT NOT NULL,
+  body TEXT NOT NULL DEFAULT '',
+  position INTEGER NOT NULL DEFAULT 0,
+  updated_by INTEGER REFERENCES users(id),
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS branch_info_branch ON branch_info(branch_id);
+`);
+const maySeeInfo = (user, b) => user.allBranches || user.branch_id === b.id;
+const officeInfo = (b) => db.prepare(
+  `SELECT i.*, u.display_name AS updated_name FROM branch_info i LEFT JOIN users u ON u.id = i.updated_by WHERE i.branch_id = ? ORDER BY i.position, i.id`).all(b.id);
 const getBranch = (id) => (isId(id) ? db.prepare('SELECT * FROM branches WHERE id = ?').get(id) : null);
 
 function branchPage(req, res, b, extra = {}) {
@@ -285,6 +302,7 @@ function branchPage(req, res, b, extra = {}) {
   const order = [...groups.keys()].sort((x, y) => (x === 'Management' ? -1 : y === 'Management' ? 1 : x === 'Team' ? 1 : y === 'Team' ? -1 : x.localeCompare(y)));
   res.status(extra.errors ? 400 : 200).render('branch', {
     title: `${b.name} office`, wide: true, b, people, teamChart, groups: order.map((k) => ({ name: k, people: groups.get(k) })), canEdit: mayEditBranch(req.user, b), errors: [], editing: false,
+    info: maySeeInfo(req.user, b) ? officeInfo(b) : null,
     services: require('./company').servicesOf(b.id), allServices: require('./company').allServices(), stateNames: require('./company').STATES,
     many: db.prepare('SELECT COUNT(*) AS n FROM branches').get().n > 1,
     shouts: db.prepare(`${SHOUT} WHERE t.branch_id = @b ORDER BY s.id DESC LIMIT 4`).all({ me: req.user.id, b: b.id }),
@@ -309,6 +327,33 @@ router.get('/branches/:id', requireLogin, (req, res) => {
   const b = getBranch(req.params.id);
   if (!b) return notFound(res);
   branchPage(req, res, b, { editing: req.query.edit === '1' && mayEditBranch(req.user, b) });
+});
+
+// Add, change or remove a piece of office info. For whoever may edit the office's page.
+router.post('/branches/:id/info', requireLogin, (req, res) => {
+  const b = getBranch(req.params.id);
+  if (!b || !mayEditBranch(req.user, b)) return forbidden(res);
+  const back = `/branches/${b.id}#info`;
+  const title = clean(req.body.title, 80); const body = clean(req.body.body, 4000);
+  const item = isId(req.body.item) ? db.prepare('SELECT * FROM branch_info WHERE id = ? AND branch_id = ?').get(req.body.item, b.id) : null;
+  if (req.body.item && !item) return forbidden(res);
+  if (item && req.body.remove === '1') {
+    db.prepare('DELETE FROM branch_info WHERE id = ?').run(item.id);
+    activity.log(req.user, 'Office info removed', `${b.name}: ${item.title}`);
+    flash(req, 'ok', `"${item.title}" was removed.`); return res.redirect(back);
+  }
+  if (!title) { flash(req, 'err', 'Give it a heading, for example "Service rates".'); return res.redirect(back); }
+  const now = new Date().toISOString();
+  if (item) {
+    db.prepare('UPDATE branch_info SET title = ?, body = ?, updated_by = ?, updated_at = ? WHERE id = ?').run(title, body, req.user.id, now, item.id);
+    activity.log(req.user, 'Office info changed', `${b.name}: ${title}`);
+  } else {
+    const last = db.prepare('SELECT COALESCE(MAX(position), 0) AS n FROM branch_info WHERE branch_id = ?').get(b.id).n;
+    db.prepare('INSERT INTO branch_info (branch_id, title, body, position, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run(b.id, title, body, last + 1, req.user.id, now);
+    activity.log(req.user, 'Office info added', `${b.name}: ${title}`);
+  }
+  flash(req, 'ok', 'Saved.');
+  res.redirect(back);
 });
 
 router.post('/branches/:id', requireLogin, uploads.photos('photo', 1), verifyCsrf, (req, res) => {

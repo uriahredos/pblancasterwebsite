@@ -52,6 +52,46 @@
 <script src="/shrink.js?v=<%= assetV %>" defer></script>
 <% } %>
 
+<% if (info && (info.length || canEdit)) { %>
+<section class="panel office-info" id="info" aria-labelledby="info-h">
+  <div class="panel-head"><h2 id="info-h">Office info</h2></div>
+  <p class="hint">Only people in this office see this.</p>
+  <% if (!info.length) { %><p class="empty">Nothing here yet. Add what your people need to hand: service rates, on-call rates, who to call.</p><% } %>
+  <div class="info-grid">
+  <% info.forEach(function (i) { %>
+  <article class="card info-card">
+    <h3><%= i.title %></h3>
+    <p class="info-body"><%= i.body %></p>
+    <p class="hint">Updated <%= dateOnly(i.updated_at) %><% if (i.updated_name) { %> by <%= i.updated_name %><% } %></p>
+    <% if (canEdit) { %>
+    <details class="info-edit">
+      <summary>Change</summary>
+      <form method="post" action="/branches/<%= b.id %>/info" class="stack" data-no-live>
+        <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="item" value="<%= i.id %>">
+        <label>Heading <input name="title" value="<%= i.title %>" required maxlength="80" autocomplete="off"></label>
+        <label>Details <textarea name="body" rows="5" maxlength="4000"><%= i.body %></textarea></label>
+        <div class="filter-actions"><button class="btn primary small" type="submit">Save</button>
+          <button class="link" type="submit" name="remove" value="1" data-confirm="Remove &quot;<%= i.title %>&quot;?">Remove</button></div>
+      </form>
+    </details>
+    <% } %>
+  </article>
+  <% }) %>
+  </div>
+  <% if (canEdit) { %>
+  <details class="info-edit" <%= info.length ? '' : 'open' %>>
+    <summary>Add office info</summary>
+    <form method="post" action="/branches/<%= b.id %>/info" class="stack" data-no-live>
+      <input type="hidden" name="_csrf" value="<%= csrf %>">
+      <label>Heading <span class="hint">For example Service rates, or On-call rates</span> <input name="title" required maxlength="80" autocomplete="off"></label>
+      <label>Details <textarea name="body" rows="5" maxlength="4000"></textarea></label>
+      <div class="filter-actions"><button class="btn primary small" type="submit">Add</button></div>
+    </form>
+  </details>
+  <% } %>
+</section>
+<% } %>
+
 <div class="dash">
   <div class="dash-main">
     <section class="panel" aria-labelledby="who-h">

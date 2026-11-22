@@ -8199,3 +8199,34 @@ test('inventory: each location opens with its figures at a glance, and every way
   await owner.post('/branch/view', { branch: 'all' }, { page: '/' });
   db.prepare('DELETE FROM inv_moves WHERE catalog_id IN (?, ?)').run(a, b);
 });
+
+test('office info: an office\'s admins keep notes such as rates on its page; its own people see them and no other office does', async () => {
+  const home = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id;
+  const page = `/branches/${home}`;
+  const owner = await loggedIn('owner'); const tech = await loggedIn('tech1'); const outsider = await loggedIn('inv.away');
+  // Whoever may edit the office's page adds a piece of info; a technician cannot, nor can another office's admin.
+  assert.equal((await tech.post(`${page}/info`, { title: 'Sneaky', body: 'x' }, { page })).status, 403);
+  assert.equal((await outsider.post(`${page}/info`, { title: 'Sneaky', body: 'x' }, { page })).status, 403);
+  await owner.post(`${page}/info`, { title: 'Service rates', body: 'Standard: $145 an hour\nAfter hours: $217.50 <b>an hour</b>' }, { page });
+  await owner.post(`${page}/info`, { title: '', body: 'no heading' }, { page });
+  const rows = () => db.prepare('SELECT id, title, body FROM branch_info WHERE branch_id = ? ORDER BY position').all(home);
+  assert.deepEqual(rows().map((r) => r.title), ['Service rates']);
+  // The office's own people see it, as written (line breaks kept, nothing run as code). Another office's people do not.
+  const seen = (await tech.get(page)).text;
+  assert.match(seen, /<h2 id="info-h">Office info<\/h2>[\s\S]*?<h3>Service rates<\/h3>\s*<p class="info-body">Standard: \$145 an hour\nAfter hours: \$217\.50 &lt;b&gt;an hour&lt;\/b&gt;<\/p>/);
+  assert.doesNotMatch(seen, /Add office info|action="\/branches\/\d+\/info"/);
+  const away = (await outsider.get(page)).text;
+  assert.equal((await outsider.get(page)).status, 200); assert.doesNotMatch(away, /Office info|Service rates|\$145/);
+  // Changing and removing; an item of another office cannot be reached through this office's address.
+  const id = rows()[0].id;
+  await owner.post(`${page}/info`, { item: String(id), title: 'On-call rates', body: 'Weeknight: $50' }, { page });
+  assert.deepEqual(rows().map((r) => [r.title, r.body]), [['On-call rates', 'Weeknight: $50']]);
+  const theirs = db.prepare('SELECT branch_id FROM users WHERE username = ?').get('inv.away').branch_id;
+  assert.equal((await owner.post(`/branches/${theirs}/info`, { item: String(id), title: 'Moved', body: '' }, { page })).status, 403);
+  assert.equal(rows()[0].title, 'On-call rates');
+  assert.match((await owner.get(page)).text, /<summary>Add office info<\/summary>/);
+  await owner.post(`${page}/info`, { item: String(id), remove: '1' }, { page });
+  assert.deepEqual(rows(), []);
+  const log = db.prepare("SELECT action FROM activity_log WHERE action LIKE 'Office info%' ORDER BY id").all().map((r) => r.action);
+  assert.deepEqual(log.slice(-3), ['Office info added', 'Office info changed', 'Office info removed']);
+});
