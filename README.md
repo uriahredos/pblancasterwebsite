@@ -326,6 +326,8 @@ Tapping a photo (in a discussion, a truck inspection or a parts return) opens it
 
 ## What happens to a photo when it is uploaded
 
+- **Saved small.** Before a photo leaves the phone or computer it is redrawn no larger than the form needs (1600 pixels on the long side for Social) and saved as WebP, which makes the same picture roughly a quarter to a third smaller than JPEG. A browser that cannot write WebP (Safari on an iPhone) sends a JPEG instead. Either way the picture that is stored is a fraction of what the camera took, so the disk goes much further.
+
 - **It is redrawn on the phone first.** Every photo box (parts, truck inspections, discussions, the photo wall, office pages, profiles) redraws the picture before sending it, the right way up. That makes it small enough to send on a weak signal, and leaves behind what a phone hides inside a photo: where and when it was taken, and on which phone.
 - **The site takes those hidden details out as well.** When a JPEG photo arrives the site removes them itself (the position, the time, the phone, comments, the editing history, and anything attached after the picture), so nothing depends on the phone having done it. The picture is not changed or compressed again, and it stays the right way up. If a file is not laid out the way a JPEG should be, it is stored exactly as it came. PNG, WebP and GIF pictures are stored as they arrive. Photos that were on the site before this was added are not changed.
 - **A form that is refused keeps nothing.** If a form with photos or a file is not accepted (it expired, something in it was wrong, the connection dropped part-way), what came with it is deleted straight away.

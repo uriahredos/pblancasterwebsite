@@ -8297,3 +8297,19 @@ test('Social: it sits in the bar where Discussions was, Discussions moves under 
     assert.deepEqual(JSON.parse(L.run(LOOK).out.trim().split('\n').pop()), first);        // a second start changes nothing
   } finally { fs.rmSync(L.dir, { recursive: true, force: true }); }
 });
+
+test('photos: the browser saves each picture in the smallest form it can write (WebP, or JPEG where it cannot), and the site takes and serves both', async () => {
+  const js = fs.readFileSync(path.join(__dirname, '..', 'public', 'shrink.js'), 'utf8');
+  assert.match(js, /'image\/webp', 0\.8\)/); assert.match(js, /blob\.type === 'image\/webp'/); assert.match(js, /else asJpeg\(\)/);   // tried first, with the way back
+  assert.match(js, /'image\/jpeg', 0\.8\)/);
+  const t = await loggedIn('tech1');
+  // The smallest real WebP there is: one pixel.
+  const WEBP = Buffer.from('UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==', 'base64');
+  await t.post('/social', [['body', 'WEBPTEST'], ['photos', new File([WEBP], 'p.webp', { type: 'image/webp' })]], { multipart: true, page: '/social' });
+  const post = db.prepare("SELECT id FROM social_posts WHERE body = 'WEBPTEST'").get();
+  assert.ok(post, 'a WebP photo is accepted');
+  const photo = db.prepare('SELECT id FROM wall_photos WHERE post_id = ?').get(post.id).id;
+  const got = await t.get(`/wall/photo/${photo}`);
+  assert.equal(got.status, 200); assert.equal(got.headers.get('content-type'), 'image/webp'); assert.equal(got.headers.get('x-content-type-options'), 'nosniff');
+  await t.post(`/social/${post.id}/delete`, {}, { page: '/social' });
+});
