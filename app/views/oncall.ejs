@@ -24,6 +24,45 @@
   <% } %>
 </section>
 
+<% if (rates.length || canManage) { %>
+<h2 id="rates">On-call rates</h2>
+<p class="hint">For the <%= rateOffice %> office. Only its own people see these.</p>
+<% if (rates.length) { %>
+<div class="table-wrap">
+<table class="rates-table">
+  <thead><tr><th>For</th><th class="num">Rate</th><% if (canManage) { %><th></th><% } %></tr></thead>
+  <tbody>
+  <% rates.forEach(function (r) { %>
+  <tr>
+    <td><strong><%= r.label %></strong></td><td class="num"><%= r.rate %></td>
+    <% if (canManage) { %><td>
+      <details class="mod-tools">
+        <summary>Change</summary>
+        <form method="post" action="/admin/oncall/rates" class="stack thread-tools" data-no-live>
+          <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="id" value="<%= r.id %>">
+          <label>For <input name="label" value="<%= r.label %>" required maxlength="80" autocomplete="off"></label>
+          <label>Rate <input name="rate" value="<%= r.rate %>" required maxlength="80" autocomplete="off"></label>
+          <div class="filter-actions"><button class="btn primary small" type="submit">Save</button>
+            <button class="link" type="submit" name="remove" value="1" data-confirm="Remove the rate for &quot;<%= r.label %>&quot;?">Remove</button></div>
+        </form>
+      </details>
+    </td><% } %>
+  </tr>
+  <% }) %>
+  </tbody>
+</table>
+</div>
+<% } else { %><p class="card empty">No rates have been added for this office yet.</p><% } %>
+<% if (canManage) { %>
+<form method="post" action="/admin/oncall/rates" class="filters card" data-no-live>
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label class="grow">For <span class="hint">For example Weeknight, Weekend day, Holiday</span> <input name="label" required maxlength="80" autocomplete="off"></label>
+  <label>Rate <span class="hint">For example $50, or $25 an hour</span> <input name="rate" required maxlength="80" autocomplete="off"></label>
+  <div class="filter-actions"><button class="btn primary small" type="submit">Add rate</button></div>
+</form>
+<% } %>
+<% } %>
+
 <h2 id="schedule">Coming up</h2>
 <%- include('partials/errors') %>
 <% if (problems.length) { %><ul class="card hint"><% problems.forEach(function (p) { %><li><%= p %></li><% }) %></ul><% } %>

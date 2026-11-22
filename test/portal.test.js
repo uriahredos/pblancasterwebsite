@@ -8199,3 +8199,37 @@ test('inventory: each location opens with its figures at a glance, and every way
   await owner.post('/branch/view', { branch: 'all' }, { page: '/' });
   db.prepare('DELETE FROM inv_moves WHERE catalog_id IN (?, ?)').run(a, b);
 });
+
+test('on call: each office keeps its own on-call rates on the On call page; whoever keeps the schedule edits them, and another office never sees them', async () => {
+  const home = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id;
+  const owner = await loggedIn('owner'); const tech = await loggedIn('tech1'); const outsider = await loggedIn('inv.away');
+  await owner.post('/branch/view', { branch: String(home) }, { page: '/' });
+  const P = { page: '/oncall' }; const url = '/admin/oncall/rates';
+  const rows = (b) => db.prepare('SELECT id, label, rate FROM oncall_rates WHERE branch_id = ? ORDER BY position, id').all(b).map((r) => ({ ...r }));
+  // Nothing yet: a technician sees no rates section; whoever keeps the schedule sees where to add them.
+  assert.doesNotMatch((await tech.get('/oncall')).text, /On-call rates/);
+  assert.match((await owner.get('/oncall')).text, /<h2 id="rates">On-call rates<\/h2>[\s\S]*?No rates have been added for this office yet/);
+  assert.equal((await tech.post(url, { label: 'Sneaky', rate: '$1' }, P)).status, 403);
+  await owner.post(url, { label: 'Weeknight', rate: '$50' }, P);
+  await owner.post(url, { label: 'Holiday <b>', rate: '$200 a day' }, P);
+  await owner.post(url, { label: 'No rate given', rate: '' }, P);
+  assert.deepEqual(rows(home).map((r) => [r.label, r.rate]), [['Weeknight', '$50'], ['Holiday <b>', '$200 a day']]);
+  // The office's own people read them, with nothing to change them. They are shown as typed, never run as code.
+  const seen = (await tech.get('/oncall')).text.replace(/\s+/g, ' ');
+  assert.match(seen, /<td><strong>Weeknight<\/strong><\/td><td class="num">\$50<\/td>/); assert.match(seen, /<strong>Holiday &lt;b&gt;<\/strong>/);
+  assert.doesNotMatch(seen, /action="\/admin\/oncall\/rates"/);
+  // Another office has its own list: it sees none of these, adds its own, and cannot reach this office's lines.
+  const theirs = db.prepare('SELECT branch_id FROM users WHERE username = ?').get('inv.away').branch_id;
+  assert.doesNotMatch((await outsider.get('/oncall')).text, /<strong>Weeknight<|\$200 a day/);
+  await outsider.post(url, { label: 'Weekend', rate: '$125' }, P);
+  assert.deepEqual(rows(theirs).map((r) => r.label), ['Weekend']);
+  const id = rows(home)[0].id;
+  assert.equal((await outsider.post(url, { id: String(id), label: 'Taken over', rate: '$0' }, P)).status, 403);
+  assert.equal((await outsider.post(url, { id: String(id), remove: '1' }, P)).status, 403);
+  // Changing and removing.
+  await owner.post(url, { id: String(id), label: 'Weeknight', rate: '$60' }, P);
+  await owner.post(url, { id: String(rows(home)[1].id), remove: '1' }, P);
+  assert.deepEqual(rows(home).map((r) => [r.label, r.rate]), [['Weeknight', '$60']]);
+  assert.ok(db.prepare("SELECT 1 FROM activity_log WHERE action = 'On-call rate changed' AND detail = 'Weeknight: $60'").get());
+  await owner.post('/branch/view', { branch: 'all' }, { page: '/' });
+});

@@ -5,7 +5,7 @@ const db = require('../db');
 const access = require('../permissions');
 const activity = require('../activity');
 const oncall = require('../oncall');
-const { requireLogin, requirePerm, verifyCsrf, flash } = require('../auth');
+const { requireLogin, requirePerm, verifyCsrf, flash, forbidden } = require('../auth');
 const { clean, isYmd, localDate } = require('../util');
 
 const router = express.Router();
@@ -45,10 +45,52 @@ function page(req, res, extra = {}) {
   const upcoming = list.filter((g) => g.start_on > today).map((g, i) => ({ ...g, later: i >= 4 && g.start_on > soonUntil }));
   res.status(extra.errors ? 400 : 200).render('oncall', {
     title: 'On call', wide: true, current, upcoming, laterCount: upcoming.filter((g) => g.later).length, many: offices.length > 1, market: offices[0] && offices[0].market, missing, officeCount: offices.length,
-    canManage: access.can(req.user, 'oncall.manage'), roles: oncall.ROLES, mine: req.user.workBranch, errors: [], values: {}, problems: [], ...extra,
+    canManage: access.can(req.user, 'oncall.manage'), roles: oncall.ROLES,
+    rates: ratesOf(req.user.workBranch),
+    rateOffice: (db.prepare('SELECT name FROM branches WHERE id = ?').get(req.user.workBranch) || {}).name, mine: req.user.workBranch, errors: [], values: {}, problems: [], ...extra,
   });
 }
 router.get('/oncall', requireLogin, (req, res) => page(req, res));
+
+// ---- On-call rates: what the office pays or charges for on-call work, a line each. Kept by whoever keeps the schedule. ----
+db.exec(`
+CREATE TABLE IF NOT EXISTS oncall_rates (
+  id INTEGER PRIMARY KEY,
+  branch_id INTEGER NOT NULL REFERENCES branches(id),
+  label TEXT NOT NULL,
+  rate TEXT NOT NULL,
+  position INTEGER NOT NULL DEFAULT 0,
+  updated_by INTEGER REFERENCES users(id),
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS oncall_rates_branch ON oncall_rates(branch_id);
+`);
+const ratesOf = (branchId) => db.prepare('SELECT * FROM oncall_rates WHERE branch_id = ? ORDER BY position, id').all(branchId);
+
+// Add a rate, change one, or remove one. Always for the office being looked at; another office's line cannot be reached.
+router.post('/admin/oncall/rates', manage, (req, res) => {
+  const office = req.user.workBranch; const back = '/oncall#rates';
+  const line = /^\d+$/.test(String(req.body.id || '')) ? db.prepare('SELECT * FROM oncall_rates WHERE id = ? AND branch_id = ?').get(req.body.id, office) : null;
+  if (req.body.id && !line) return forbidden(res);
+  if (line && req.body.remove === '1') {
+    db.prepare('DELETE FROM oncall_rates WHERE id = ?').run(line.id);
+    activity.log(req.user, 'On-call rate removed', line.label);
+    flash(req, 'ok', `"${line.label}" was removed.`); return res.redirect(back);
+  }
+  const label = clean(req.body.label, 80); const rate = clean(req.body.rate, 80);
+  if (!label || !rate) { flash(req, 'err', 'Say what the rate is for, and the rate. For example "Weeknight" and "$50".'); return res.redirect(back); }
+  const now = new Date().toISOString();
+  if (line) {
+    db.prepare('UPDATE oncall_rates SET label = ?, rate = ?, updated_by = ?, updated_at = ? WHERE id = ?').run(label, rate, req.user.id, now, line.id);
+    activity.log(req.user, 'On-call rate changed', `${label}: ${rate}`);
+  } else {
+    const last = db.prepare('SELECT COALESCE(MAX(position), 0) AS n FROM oncall_rates WHERE branch_id = ?').get(office).n;
+    db.prepare('INSERT INTO oncall_rates (branch_id, label, rate, position, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run(office, label, rate, last + 1, req.user.id, now);
+    activity.log(req.user, 'On-call rate added', `${label}: ${rate}`);
+  }
+  flash(req, 'ok', 'Saved.');
+  res.redirect(back);
+});
 
 // ---- Keeping the schedule: one shift at a time, or the whole year from the spreadsheet ----
 
