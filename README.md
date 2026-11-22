@@ -604,8 +604,6 @@ On **Corporate > Offices and admins** a corporate admin can:
 
 ## Offices
 
-**Office info** (on each office's own page): notes the office keeps for its people, such as service rates, on-call rates or who to call. Each has a heading and free text. Whoever may edit the office's page (its admins, and people who see every office) adds, changes and removes them; changes are written in the activity log. Only that office's own people, and people who see every office, are shown them: someone from another office opening the page does not see the section at all.
-
 One site for every office. Each person belongs to one office; everything that existed before offices belongs to Lancaster.
 
 **Shared by everyone:** People and profiles, Discussions, the daily question, new-hire welcomes, newsletters, and the parts catalog (the list of part numbers).

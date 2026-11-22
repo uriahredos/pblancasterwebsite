@@ -1486,12 +1486,3 @@ td.reports-to .meta { display: block; }
 .flash.view-as { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; background: var(--warn-bg); color: var(--warn); border: 1px solid currentColor; }
 .view-as-pick { padding: .35rem .9rem .6rem; }
 .view-as-pick select { width: 100%; margin-top: .25rem; }
-
-/* Office info: an office's own notes for its people, a card each. */
-.office-info { margin-bottom: 1rem; }
-.info-grid { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }
-.info-card h3 { margin: 0 0 .35rem; }
-.info-body { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 .5rem; }
-.info-edit { margin-top: .6rem; }
-.info-edit summary { cursor: pointer; color: var(--accent); font-weight: 700; }
-.info-edit form { margin-top: .6rem; }
