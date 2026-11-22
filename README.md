@@ -104,8 +104,8 @@ Reached from the **Usage summary** button on the parts log. For a date range (an
 
 ## The menu
 
-- **Always in the bar:** Home, Tasks, Discussions. Announcements sits in the Community menu (and on the home page and the bell); My activity is reached from the home page, the bell and the account links on a phone.
-- **Drop-downs:** Community (Company, Offices, Who to contact, Activity feed, People, Shout-outs, Events, Photos, Discussions, Daily question, Newsletters), Parts, Trucks, Training, Team and Setup. Each holds the forms first, then the pages for managing that area. **Team** is people and what goes out to them (Anonymous complaint, Users, Profiles, Manage tasks, Post announcements, Newsletters, Complaints); **Setup** is the site itself (QR code sign, Activity log, Backups, Import old data). People only see the items their profile allows; a group with a single item shows as a plain link, so a technician sees "Truck inspection" and "Anonymous complaint" as links.
+- **Always in the bar:** Home, Tasks, Social. Discussions is in the Community menu. Announcements sits in the Community menu (and on the home page and the bell); My activity is reached from the home page, the bell and the account links on a phone.
+- **Drop-downs:** Community (Company, Offices, Who to contact, Activity feed, Discussions, People, Shout-outs, Events, Daily question, Newsletters), Parts, Trucks, Training, Team and Setup. Each holds the forms first, then the pages for managing that area. **Team** is people and what goes out to them (Anonymous complaint, Users, Profiles, Manage tasks, Post announcements, Newsletters, Complaints); **Setup** is the site itself (QR code sign, Activity log, Backups, Import old data). People only see the items their profile allows; a group with a single item shows as a plain link, so a technician sees "Truck inspection" and "Anonymous complaint" as links.
 - **One name for each thing:** Announcements (posting them is "Post announcements"), Tasks (giving them out is "Manage tasks"), Truck inspection, Anonymous complaint (reviewing them is "Complaints"), Certifications, Parts requests, and My activity for a person's own entries and requests.
 - **Notification bell** at the top right on a computer: a red number for everything waiting on you, and a list when you press it: your open tasks by name with their due dates, then unread announcements, discussions with new replies, updates on your requests and, for people who manage them, open parts requests, truck problems, expiring certifications and a backup that did not work. **Notification settings** is at the bottom of the list.
 - **Light / dark** is in the menu: the moon or sun at the right end of the bar on a computer, near the bottom of More on a phone. On the sign-in page, where there is no menu, it stays at the top right.
@@ -246,6 +246,17 @@ The home page, from the top:
 - **Your tasks**, then the form buttons (**What do you need to do?**), today's question, **Coming up** (birthdays, anniversaries, events and training in one list) and **Activity feed** (new hires, latest photos and discussions in one section). A person's own open requests, last truck inspection and certifications sit under **Yours** inside Office at a glance. The newsletter shows its cover only while an issue is new (about three weeks), then shrinks to one line with a Read button. A section with nothing in it shrinks to one line or is left out.
 
 On a phone it is one column in that order. On a wider screen announcements, the newsletter, shout-outs, new hires, photos and discussions are on the left; office at a glance, tasks, the buttons and the rest are on the right.
+
+## Social (`/social`)
+
+The company's own feed, in the bar beside Tasks. Everyone in every office sees every post.
+
+- **Posting**: a few words, up to six photos, or both. Photos are shrunk on the phone first and lose their hidden details, like every photo on the site. Videos are not taken yet (the disk is small); they can be added once it is larger.
+- **Reactions**: the same five as elsewhere (like, love, funny, congratulations, thanks). Giving one again takes it back.
+- **Comments**: the newest three show under a post; **See all** opens the post by itself with every comment. With alerts on, the person who posted gets a notification when someone else comments (it can be switched off under Notification settings).
+- **Removing**: people remove their own posts and comments, and comments under their own posts. Moderators remove their own office's people's, as in Discussions; what they remove is written in the activity log. A removed post takes its photos, reactions and comments with it.
+- Posting and commenting need **Read and post in Discussions**; everyone signed in can read and react.
+- **The photo wall is now part of this.** Its pictures became posts when Social was switched on (pictures put up together became one post) and kept their likes; `/photos` goes to Social.
 
 ## Discussions (`/discussions`)
 

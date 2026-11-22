@@ -99,10 +99,10 @@
         ['', '/contacts', 'Who to contact', is('/contacts')],
         'divider',
         ['', '/feed', 'Activity feed', is('/feed')],
+        ['forum.use', '/discussions', 'Discussions', is('/discussions'), badges.forum],
         ['', '/people', 'People', is('/people') || path === '/profile'],
         ['', '/shoutouts', 'Shout-outs', is('/shoutouts')],
         ['', '/events', 'Events', is('/events')],
-        ['', '/photos', 'Photos', is('/photos')],
         'divider',
         ['', '/notices', 'Announcements', is('/notices'), badges.notices],
         ['', '/daily', 'Daily question', is('/daily')],
@@ -175,7 +175,7 @@
     <nav class="nav" aria-label="Main">
       <a href="/" <%- path === '/' ? 'aria-current="page"' : '' %>>Home</a>
       <a href="/tasks" <%- path === '/tasks' ? 'aria-current="page"' : '' %>>Tasks<% if (badges.tasks) { %> <span class="badge" title="Tasks to do"><%= badges.tasks %></span><% } %></a>
-      <% if (can('forum.use')) { %><a href="/discussions" <%- path === '/discussions' || path.indexOf('/discussions/') === 0 ? 'aria-current="page"' : '' %>>Discussions<% if (badges.forum) { %> <span class="badge" title="New replies"><%= badges.forum %></span><% } %></a><% } %>
+      <a href="/social" <%- path === '/social' || path.indexOf('/social/') === 0 ? 'aria-current="page"' : '' %>>Social</a>
       <span class="nav-sep" aria-hidden="true"></span>
       <% groups.forEach(function (g) { %>
       <% if (g.links.length === 1) { var only = g.links[0]; %>

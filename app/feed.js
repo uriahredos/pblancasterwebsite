@@ -41,9 +41,9 @@ function recent(user, limit = 8, { full = false } = {}) {
       action: w.user_id === user.id || w.waved ? null : { url: `/welcome/${w.id}/wave`, label: '👋 Say welcome' }, done: w.waved ? 'You said welcome ✓' : '',
       extra: w.waves ? `${w.waves} ${w.waves === 1 ? 'welcome' : 'welcomes'}` : 'Be the first to say welcome', link: w.user_id === user.id ? { url: `/people/${w.user_id}#welcome`, label: 'See your messages' } : null });
   }
-  for (const p of db.prepare(`SELECT x.id, x.caption, x.created_at, ${person} FROM wall_photos x ${from.replace('USER', 'user_id')}
+  for (const p of db.prepare(`SELECT x.id, x.caption, x.created_at, x.post_id, ${person} FROM wall_photos x ${from.replace('USER', 'user_id')}
       WHERE x.created_at >= @since ORDER BY x.created_at DESC LIMIT ${each}`).all({ since })) {
-    items.push({ kind: 'photo', at: p.created_at, who: p, title: `${p.display_name} added a photo`, text: p.caption || '', url: '/photos', photo: p.id });
+    items.push({ kind: 'photo', at: p.created_at, who: p, title: `${p.display_name} added a photo`, text: p.caption || '', url: p.post_id ? `/social/p/${p.post_id}` : '/social', photo: p.id });
   }
   if (user.perms && user.perms.has('forum.use')) {
     for (const t of db.prepare(`SELECT x.id, x.title, x.created_at, x.reply_count, ${person} FROM forum_threads x ${from.replace('USER', 'user_id')}

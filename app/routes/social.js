@@ -201,54 +201,10 @@ const recentPhotos = (me, limit = 4) => db.prepare(`${WALL} ORDER BY p.id DESC L
 const post = requirePerm('forum.use');
 const PER_PAGE = 30;
 
-function wallPage(req, res, extra = {}) {
-  const page = Math.min(100000, Math.max(1, Math.floor(Number(req.query.page)) || 1));
-  const rows = db.prepare(`${WALL} ORDER BY p.id DESC LIMIT @n OFFSET @o`).all({ me: req.user.id, n: PER_PAGE + 1, o: (page - 1) * PER_PAGE });
-  res.status(extra.errors ? 400 : 200).render('wall', {
-    title: 'Photos', wide: true, rows: rows.slice(0, PER_PAGE), page, more: rows.length > PER_PAGE, errors: [], values: {},
-    canPost: access.can(req.user, 'forum.use'), modOf: (authorId) => access.moderates(req.user, 'forum.moderate', authorId), ...extra,
-  });
-}
-router.get('/photos', requireLogin, (req, res) => wallPage(req, res));
-
-router.post('/photos', post, uploads.photos('photos', 6), verifyCsrf, (req, res) => {
-  const drop = () => req.files.forEach((f) => uploads.remove(f.filename));
-  const caption = clean(req.body.caption, 200);
-  const errors = [];
-  if (req.photoError) errors.push(req.photoError);
-  else if (!req.files.length) errors.push('Choose at least one photo.');
-  else if (req.files.some((f) => !uploads.looksLikeImage(f.path))) errors.push('Photos must be JPEG, PNG, WebP or GIF images.');
-  if (errors.length) { drop(); return wallPage(req, res, { errors, values: { caption } }); }
-  const add = db.prepare('INSERT INTO wall_photos (user_id, path, caption, created_at) VALUES (?, ?, ?, ?)');
-  db.transaction(() => { for (const f of req.files) add.run(req.user.id, f.filename, caption || null, new Date().toISOString()); })();
-  flash(req, 'ok', req.files.length === 1 ? 'Photo posted.' : `${req.files.length} photos posted.`);
-  res.redirect('/photos');
-});
-
 router.get('/wall/photo/:id', requireLogin, (req, res) => {
   const row = isId(req.params.id) ? db.prepare('SELECT path FROM wall_photos WHERE id = ?').get(req.params.id) : null;
   if (!row) return notFound(res);
   uploads.send(res, row.path, { 'Cache-Control': 'private, max-age=86400' }, () => notFound(res));
-});
-
-router.post('/photos/:id/like', requireLogin, (req, res) => {
-  const p = isId(req.params.id) ? db.prepare('SELECT id FROM wall_photos WHERE id = ?').get(req.params.id) : null;
-  if (p) {
-    const had = db.prepare('DELETE FROM wall_likes WHERE photo_id = ? AND user_id = ?').run(p.id, req.user.id).changes;
-    if (!had) db.prepare('INSERT INTO wall_likes (photo_id, user_id) VALUES (?, ?)').run(p.id, req.user.id);
-  }
-  res.redirect(`/photos${isId(req.body.page) && Number(req.body.page) > 1 ? '?page=' + Number(req.body.page) : ''}#w${req.params.id}`);
-});
-
-router.post('/photos/:id/delete', requireLogin, (req, res) => {
-  const p = isId(req.params.id) ? db.prepare('SELECT p.*, u.display_name FROM wall_photos p JOIN users u ON u.id = p.user_id WHERE p.id = ?').get(req.params.id) : null;
-  if (!p) return res.redirect('/photos');
-  if (p.user_id !== req.user.id && !access.moderates(req.user, 'forum.moderate', p.user_id)) return forbidden(res);
-  db.prepare('DELETE FROM wall_photos WHERE id = ?').run(p.id);
-  uploads.remove(p.path);
-  if (p.user_id !== req.user.id) activity.log(req.user, 'Photo removed', `one posted by ${p.display_name}`);
-  flash(req, 'ok', 'Photo removed.');
-  res.redirect('/photos');
 });
 
 // ---- Branch pages ------------------------------------------------------------------------

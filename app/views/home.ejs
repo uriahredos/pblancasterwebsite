@@ -165,14 +165,14 @@
     <section class="panel p-around" aria-labelledby="around-h">
       <div class="panel-head"><h2 id="around-h">Activity feed</h2><a href="/feed">Feed</a></div>
       <% if (!around.length) { %>
-      <div class="one-line"><p class="empty">Quiet so far. Be the first: add a photo or start a discussion.</p><span class="filter-actions"><a class="btn small" href="/photos">Add a photo</a><% if (can('forum.use')) { %><a class="btn small" href="/discussions/new">Start a discussion</a><% } %></span></div>
+      <div class="one-line"><p class="empty">Quiet so far. Be the first: add a photo or start a discussion.</p><span class="filter-actions"><a class="btn small" href="/social">Post to Social</a><% if (can('forum.use')) { %><a class="btn small" href="/discussions/new">Start a discussion</a><% } %></span></div>
       <% } else { %>
       <ul class="feed">
         <% var firstHire = true; around.forEach(function (i) { %>
         <%- include('partials/feed_item', { i: i, anchor: i.kind === 'hire' && firstHire }) %><% if (i.kind === 'hire') firstHire = false; %>
         <% }) %>
       </ul>
-      <p class="panel-foot filter-actions"><a class="btn small" href="/photos">Add a photo</a><% if (can('forum.use')) { %><a class="btn small" href="/discussions/new">Start a discussion</a><% } %><a class="btn small" href="/events">Events</a></p>
+      <p class="panel-foot filter-actions"><a class="btn small" href="/social">Post to Social</a><% if (can('forum.use')) { %><a class="btn small" href="/discussions/new">Start a discussion</a><% } %><a class="btn small" href="/events">Events</a></p>
       <% } %>
     </section>
   </div>

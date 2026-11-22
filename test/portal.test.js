@@ -1730,7 +1730,7 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
 
   const owner = (await (await loggedIn('owner')).get('/admin/users')).text;
   assert.deepEqual(groupsOf(owner), ['Community', 'Parts', 'Trucks', 'Training', 'Team', 'Setup', 'Corporate']);
-  assert.deepEqual(barLinks(owner), ['/', '/tasks', '/discussions', '/oncall', '/sales']);   // the master account also sees the sales side
+  assert.deepEqual(barLinks(owner), ['/', '/tasks', '/social', '/oncall', '/sales']);   // the master account also sees the sales side
   // What used to be one long Admin list is two: Team (people and what goes out to them) and Setup (the site itself).
   const team = /<summary[^>]*>Team[\s\S]*?<\/details>/.exec(owner)[0];
   const setup = /<summary[^>]*>Setup[\s\S]*?<\/details>/.exec(owner)[0];
@@ -1752,7 +1752,7 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
   // A technician: no Team or Setup; Trucks has one thing, so it is a plain "Truck inspection" link.
   const tech = (await (await loggedIn('tech1')).get('/')).text;
   assert.deepEqual(groupsOf(tech), ['Community', 'Parts', 'Training']);
-  assert.deepEqual(barLinks(tech), ['/', '/tasks', '/discussions', '/inspection', '/oncall', '/complaint']); // one-item groups show as plain links
+  assert.deepEqual(barLinks(tech), ['/', '/tasks', '/social', '/inspection', '/oncall', '/complaint']); // one-item groups show as plain links
   assert.doesNotMatch(tech, /href="\/admin\//);
   assert.match(tech, /<a href="\/inspection"[^>]*>Truck inspection<\/a>/);
   assert.doesNotMatch(/<summary[^>]*>Parts[\s\S]*?<\/details>/.exec(tech)[0], /<hr>/); // no stray divider
@@ -1760,7 +1760,7 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
   // A manager's Team group holds only what their profile allows, and they have no Setup group.
   const mgr = (await (await loggedIn('mgr1')).get('/')).text;
   assert.deepEqual(groupsOf(mgr), ['Community', 'Parts', 'Trucks', 'Training', 'Team']);           // Manage tasks and Post announcements
-  assert.deepEqual(barLinks(mgr), ['/', '/tasks', '/discussions', '/oncall']);
+  assert.deepEqual(barLinks(mgr), ['/', '/tasks', '/social', '/oncall']);
   assert.doesNotMatch(mgr, /admin\/(users|profiles|complaints|backups|activity)"/);
 
   // Styles and scripts carry a version so a new release is not shown with old files.
@@ -3478,20 +3478,41 @@ test('events: posted by those allowed, everyone signs up, potlucks collect what 
 test('photo wall and branch pages: photos posted and liked, a branch page with its people and news', async () => {
   const t1 = await loggedIn('tech1'); const t2 = await loggedIn('tech2'); const owner = await loggedIn('owner');
   const png = () => new File([PNG], 'site.png', { type: 'image/png' });
-  assert.match((await t1.post('/photos', [['caption', 'none']], { multipart: true, page: '/photos' })).text, /at least one photo/);
-  assert.match((await t1.post('/photos', [['photos', new File(['nope'], 'x.png', { type: 'image/png' })]], { multipart: true, page: '/photos' })).text, /must be JPEG, PNG, WebP or GIF/);
-  await t1.post('/photos', [['photos', png()], ['photos', png()], ['caption', 'New <panel> at the school']], { multipart: true, page: '/photos' });
+  assert.match((await t1.post('/social', [['body', '']], { multipart: true, page: '/social' })).text, /Write something, add a photo, or both/);
+  assert.match((await t1.post('/social', [['photos', new File(['nope'], 'x.png', { type: 'image/png' })]], { multipart: true, page: '/social' })).text, /must be JPEG, PNG, WebP or GIF/);
+  await t1.post('/social', [['photos', png()], ['photos', png()], ['body', 'New <panel> at the school']], { multipart: true, page: '/social' });
   const ids = db.prepare('SELECT id FROM wall_photos ORDER BY id').all().map((r) => r.id);
   assert.equal(ids.length, 2);
-  const wall = (await t2.get('/photos')).text;
-  assert.match(wall, new RegExp(`<a class="wall-img" href="/wall/photo/${ids[1]}">`)); assert.match(wall, /New &lt;panel&gt; at the school/);
+  const post = db.prepare('SELECT id FROM social_posts ORDER BY id DESC').get().id;
+  assert.deepEqual(db.prepare('SELECT post_id FROM wall_photos ORDER BY id').all().map((r) => r.post_id), [post, post]);   // one post, both pictures
+  assert.equal((await t2.get('/photos')).location, '/social');                           // where the photo wall used to be
+  const wall = (await t2.get('/social')).text;
+  assert.match(wall, new RegExp(`<a href="/wall/photo/${ids[1]}"><img src="/wall/photo/${ids[1]}"`)); assert.match(wall, /New &lt;panel&gt; at the school/);
   assert.doesNotMatch(wall, /target=/);
   assert.equal((await t2.get(`/wall/photo/${ids[0]}`)).headers.get('content-type'), 'image/png');
   assert.equal((await new Client().get(`/wall/photo/${ids[0]}`)).status, 302);
-  await t2.post(`/photos/${ids[0]}/like`, {}, { page: '/photos' }); await owner.post(`/photos/${ids[0]}/like`, {}, { page: '/photos' }); await t2.post(`/photos/${ids[0]}/like`, {}, { page: '/photos' });
-  assert.equal(db.prepare('SELECT COUNT(*) n FROM wall_likes WHERE photo_id = ?').get(ids[0]).n, 1);
+  // Reactions: given once each, and taken back by giving the same one again.
+  const react = (c, emoji) => c.post('/react', { kind: 'social', id: String(post), emoji }, { page: '/social' });
+  await react(t2, 'like'); await react(owner, 'love'); await react(t2, 'like'); await react(t2, 'party');
+  assert.deepEqual(db.prepare("SELECT emoji FROM reactions WHERE kind = 'social' AND target_id = ? ORDER BY emoji").all(post).map((r) => r.emoji), ['love', 'party']);
+  // Comments: anyone who can post can comment; the newest three show under the post and the rest are a tap away.
+  for (const [c, text] of [[t2, 'Nice work'], [owner, 'Looks <b>great</b>'], [t2, 'Third'], [t1, 'Thanks all']]) await c.post(`/social/${post}/comment`, { body: text }, { page: '/social' });
+  await t2.post(`/social/${post}/comment`, { body: '   ' }, { page: '/social' });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM social_comments WHERE post_id = ?').get(post).n, 4);
+  const feed = (await t1.get('/social')).text;
+  assert.match(feed, new RegExp(`<a href="/social/p/${post}">See all 4 comments</a>`)); assert.doesNotMatch(feed, /Nice work/); assert.match(feed, /Looks &lt;b&gt;great&lt;\/b&gt;/);
+  assert.match((await t1.get(`/social/p/${post}`)).text, /Nice work[\s\S]*Thanks all/);
+  // Removing: a comment by whoever wrote it or whoever owns the post; the post by its owner only (or a moderator).
+  const cid = (text) => db.prepare('SELECT id FROM social_comments WHERE body = ?').get(text).id;
+  assert.equal((await t2.post(`/social/comment/${cid('Thanks all')}/delete`, {}, { page: '/social' })).status, 403);
+  assert.equal((await t1.post(`/social/comment/${cid('Third')}/delete`, {}, { page: '/social' })).status, 302);     // under their own post
+  assert.equal((await t2.post(`/social/comment/${cid('Nice work')}/delete`, {}, { page: '/social' })).status, 302); // their own
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM social_comments WHERE post_id = ?').get(post).n, 2);
   assert.match((await t2.get('/')).text, /added a photo[\s\S]*\/wall\/photo\//);
-  assert.equal((await t2.post(`/photos/${ids[0]}/delete`, {}, { page: '/photos' })).status, 403);
+  assert.equal((await t2.post(`/social/${post}/delete`, {}, { page: '/social' })).status, 403);
+  // Words alone make a post too.
+  await t2.post('/social', [['body', 'No picture, just good news']], { multipart: true, page: '/social' });
+  assert.match((await t1.get('/social')).text, /No picture, just good news/);
 
   // The branch page: who's who by department, its shout-outs and photos; only people who manage the branch edit it.
   db.prepare("UPDATE users SET department = 'Service', job_title = 'Lead Tech' WHERE username = 'tech1'").run();
@@ -3510,11 +3531,12 @@ test('photo wall and branch pages: photos posted and liked, a branch page with i
   assert.match((await t1.get(`/people/${userId('tech1')}`)).text, /<a href="\/branches\/1">Lancaster office<\/a>/);
   assert.equal((await t1.get('/branches/999')).status, 404);
 
-  // The owner removes someone else's photo (moderator); the poster removes their own. The files go too.
+  // The owner removes someone else's post (moderator). Its pictures' files go too.
   const fs3 = require('fs'); const p3 = require('path');
   const file = p3.join(dataDir, 'uploads', db.prepare('SELECT path FROM wall_photos WHERE id = ?').get(ids[0]).path);
   assert.ok(fs3.existsSync(file));
-  await owner.post(`/photos/${ids[0]}/delete`, {}, { page: '/photos' }); await t1.post(`/photos/${ids[1]}/delete`, {}, { page: '/photos' });
+  await owner.post(`/social/${post}/delete`, {}, { page: '/social' });           // the post goes, and both its pictures with it
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM reactions WHERE kind = 'social' AND target_id = ?").get(post).n + db.prepare('SELECT COUNT(*) n FROM social_comments WHERE post_id = ?').get(post).n, 0);
   assert.equal(db.prepare('SELECT COUNT(*) n FROM wall_photos').get().n, 0);
   await new Promise((r) => setTimeout(r, 50)); assert.ok(!fs3.existsSync(file));
   db.prepare('DELETE FROM shoutouts').run(); db.prepare("UPDATE users SET department = NULL, job_title = NULL WHERE username = 'tech1'").run();
@@ -3699,7 +3721,7 @@ test('your office name sits beside the logo on every page once you are signed in
   const t1 = await loggedIn('tech1');
   const label = async (url) => { const m = /<span class="branch">([^<]*)<\/span>/.exec((await t1.get(url)).text); return m ? m[1] : null; };
   for (const url of ['/', '/parts', '/tasks', '/my', '/notices', '/training', '/inspection', '/alerts']) assert.equal(await label(url), 'Lancaster Office', url);
-  for (const url of ['/company', '/branches', '/branches/1', '/contacts', '/people', `/people/${userId('tech1')}`, '/profile', '/shoutouts', '/events', '/photos', '/discussions', '/daily', '/newsletters']) assert.equal(await label(url), 'Lancaster Office', url);
+  for (const url of ['/company', '/branches', '/branches/1', '/contacts', '/people', `/people/${userId('tech1')}`, '/profile', '/shoutouts', '/events', '/social', '/discussions', '/daily', '/newsletters']) assert.equal(await label(url), 'Lancaster Office', url);
   assert.match((await t1.get('/company')).text, /<title>Company · Pye-Barker Lancaster Office<\/title>/);
   assert.match((await t1.get('/parts')).text, /<title>Parts · Pye-Barker Lancaster Office<\/title>/);
   const owner = await loggedIn('owner');
@@ -4702,7 +4724,7 @@ test('security: hostile input cannot crash a page, and the security check page i
   assert.equal(big.status, 413);
   const broken = await fetch(base + '/passkey/auth/options', { method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/json' }, body: '{not json' });
   assert.equal(broken.status, 400);
-  assert.equal((await t1.get('/photos?page=99999999999999999999')).status, 200);
+  assert.equal((await t1.get('/social?page=99999999999999999999')).status, 200);
   // Every response says which device features the site may use.
   assert.match((await t1.get('/')).headers.get('permissions-policy'), /camera=\(self\), microphone=\(\)/);
   // An account with no office sees no office's records (never everyone's).
@@ -4788,10 +4810,10 @@ test('moderation stays inside the office: an office admin removes only what thei
   assert.match(shouts, new RegExp(`action="/shoutouts/${nearShout}/delete"`)); assert.doesNotMatch(shouts, new RegExp(`action="/shoutouts/${farShout}/delete"`));
   assert.equal((await mod.post(`/shoutouts/${farShout}/delete`, {}, { page: '/shoutouts' })).status, 403);
   assert.equal((await mod.post(`/shoutouts/${nearShout}/delete`, {}, { page: '/shoutouts' })).status, 302);
-  await t1.post('/photos', [['caption', 'Far photo'], ['photos', new File([PNG], 'a.png', { type: 'image/png' })]], { multipart: true, page: '/photos' });
-  const farPhoto = db.prepare("SELECT id FROM wall_photos WHERE caption = 'Far photo'").get().id;
-  assert.doesNotMatch((await mod.get('/photos')).text, new RegExp(`action="/photos/${farPhoto}/delete"`));
-  assert.equal((await mod.post(`/photos/${farPhoto}/delete`, {}, { page: '/photos' })).status, 403);
+  await t1.post('/photos', [['caption', 'Far photo'], ['photos', new File([PNG], 'a.png', { type: 'image/png' })]], { multipart: true, page: '/social' });
+  const farPhoto = db.prepare("SELECT post_id FROM wall_photos WHERE caption = 'Far photo'").get().post_id;
+  assert.doesNotMatch((await mod.get('/social')).text, new RegExp(`action="/social/${farPhoto}/delete"`));
+  assert.equal((await mod.post(`/social/${farPhoto}/delete`, {}, { page: '/social' })).status, 403);
   // Comments under a company-wide announcement: only her own people's.
   await owner.post('/branch/view', { branch: 'all', back: '/' }, { page: '/' });
   await owner.post('/admin/announcements', { title: 'Company-wide moderation notice', body: 'For everyone', audience: 'all' }, { page: '/admin/announcements' });
@@ -4803,7 +4825,7 @@ test('moderation stays inside the office: an office admin removes only what thei
   assert.equal((await mod.post(`/notices/comment/${nearC}/delete`, {}, { page: '/notices' })).status, 302);
   // The corporate admin can remove anything, anywhere; whoever posted the announcement can clear comments under it.
   assert.equal((await owner.post(`/notices/comment/${farC}/delete`, {}, { page: '/notices' })).status, 302);
-  assert.equal((await owner.post(`/photos/${farPhoto}/delete`, {}, { page: '/photos' })).status, 302);
+  assert.equal((await owner.post(`/social/${farPhoto}/delete`, {}, { page: '/social' })).status, 302);
   assert.equal((await owner.post(`/shoutouts/${farShout}/delete`, {}, { page: '/shoutouts' })).status, 302);
   assert.equal((await owner.post(`/discussions/p/${nearReplyByTech}/delete`, {}, { page: `/discussions/t/${near}` })).status, 302);
   assert.equal((await owner.post(`/discussions/t/${far}/delete`, {}, { page: `/discussions/t/${far}` })).status, 302);
@@ -7172,7 +7194,7 @@ test('uploaded files: a JPEG photo loses its hidden details as it arrives and st
   // Other kinds of picture, and a JPEG that cannot be read with certainty, are stored exactly as they arrive.
   for (const [data, type] of [[PNG, 'image/png'], [cutDetails, 'image/jpeg']]) {
     const before = uplList();
-    assert.equal((await c.post('/photos', [['caption', 'as it came'], ['photos', new File([data], 'x', { type })]], { multipart: true, page: '/photos' })).status, 302);
+    assert.equal((await c.post('/photos', [['caption', 'as it came'], ['photos', new File([data], 'x', { type })]], { multipart: true, page: '/social' })).status, 302);
     const mine = uplList().filter((n) => !before.includes(n));
     assert.ok(fs.readFileSync(path.join(uplDir, mine[0])).equals(data));
   }
@@ -7180,7 +7202,7 @@ test('uploaded files: a JPEG photo loses its hidden details as it arrives and st
 
   // In the browser: the parts form and both discussion forms now redraw their photos too, like the others, and a small photo is no longer sent as it is.
   const thread = /\/discussions\/t\/(\d+)\/reply/.exec(forms.find((f) => f.what === 'discussion reply').url)[1];
-  for (const page of ['/parts', '/discussions/new', `/discussions/t/${thread}`, '/photos', '/inspection']) {
+  for (const page of ['/parts', '/discussions/new', `/discussions/t/${thread}`, '/social', '/inspection']) {
     const html = (await c.get(page)).text;
     assert.match(html, /<script src="\/shrink\.js\?v=[^"]+" defer><\/script>/, page);
     for (const box of html.match(/<input type="file"[^>]*>/g)) assert.match(box, /data-shrink="\d+"/, `${page}: ${box}`);
@@ -7204,7 +7226,7 @@ test('uploaded files: when the data disk is nearly full new photos and files are
     // If the disk cannot be asked, or answers nonsense, nothing is refused.
     uplStore.useDisk(() => { throw new Error('not available here'); }); assert.equal(uplStore.hasRoom(), true);
     uplStore.useDisk(() => ({})); assert.equal(uplStore.hasRoom(), true);
-    assert.equal((await c.post('/photos', [['caption', 'room unknown'], ['photos', new File([PNG], 'p.png', { type: 'image/png' })]], { multipart: true, page: '/photos' })).status, 302);
+    assert.equal((await c.post('/photos', [['caption', 'room unknown'], ['photos', new File([PNG], 'p.png', { type: 'image/png' })]], { multipart: true, page: '/social' })).status, 302);
 
     uplStore.useDisk(diskWith(GB, 20 * MB));
     const SENTENCE = 'The site is almost out of storage space, so photos and files cannot be added right now; please tell your admin.';
@@ -7233,7 +7255,7 @@ test('uploaded files: when the data disk is nearly full new photos and files are
     assert.equal((await other.post('/training', { description: 'still works', wants_contact: 'no', is_private: 'no' }, { page: '/training' })).status, 302);
   } finally { uplStore.useDisk(null); }
   assert.equal(uplStore.hasRoom(), true, 'the machine running these checks is itself nearly out of disk space');
-  assert.equal((await c.post('/photos', [['caption', 'room again'], ['photos', new File([PNG], 'p.png', { type: 'image/png' })]], { multipart: true, page: '/photos' })).status, 302);
+  assert.equal((await c.post('/photos', [['caption', 'room again'], ['photos', new File([PNG], 'p.png', { type: 'image/png' })]], { multipart: true, page: '/social' })).status, 302);
   uplTidy(start);
 });
 
@@ -8232,4 +8254,46 @@ test('on call: each office keeps its own on-call rates on the On call page; whoe
   assert.deepEqual(rows(home).map((r) => [r.label, r.rate]), [['Weeknight', '$60']]);
   assert.ok(db.prepare("SELECT 1 FROM activity_log WHERE action = 'On-call rate changed' AND detail = 'Weeknight: $60'").get());
   await owner.post('/branch/view', { branch: 'all' }, { page: '/' });
+});
+
+test('Social: it sits in the bar where Discussions was, Discussions moves under Community, and the old photo wall\'s pictures arrive as posts with their likes', async () => {
+  const t = await loggedIn('tech1'); const home = (await t.get('/')).text;
+  const bar = /<nav class="nav"[\s\S]*?<span class="nav-sep"/.exec(home)[0];
+  assert.match(bar, /<a href="\/social"[^>]*>Social<\/a>/); assert.doesNotMatch(bar, /href="\/discussions"/);
+  const community = /<summary[^>]*>Community[\s\S]*?<\/details>/.exec(home)[0];
+  assert.match(community, /<a href="\/discussions"[^>]*>Discussions/); assert.doesNotMatch(community, /href="\/photos"/);
+  assert.match((await t.get('/settings/notifications')).text, /Someone comments on my post in Social/);
+  // A comment tells the post's owner on their phone (never the person who wrote it).
+  const push = require('../app/push'); const told = []; push.setSender(async (sub, payload) => { told.push({ to: sub.user_id, ...JSON.parse(payload) }); });
+  const o = await loggedIn('owner');
+  const sid = db.prepare("SELECT sid FROM sessions WHERE json_extract(data, '$.userId') = ? AND expires > ? ORDER BY expires DESC").get(userId('tech1'), Date.now()).sid;
+  db.prepare("INSERT OR REPLACE INTO push_subscriptions (user_id, endpoint, p256dh, auth, device, created_at, sid) VALUES (?, 'https://fcm.googleapis.com/fcm/send/social-t1', 'k', 'a', 'Phone', ?, ?)").run(userId('tech1'), new Date().toISOString(), sid);
+  await t.post('/social', [['body', 'SOCIALTEST first day in the new truck']], { multipart: true, page: '/social' });
+  const post = db.prepare("SELECT id FROM social_posts WHERE body LIKE 'SOCIALTEST%'").get().id;
+  await t.post(`/social/${post}/comment`, { body: 'my own note' }, { page: '/social' });
+  await o.post(`/social/${post}/comment`, { body: 'Looking sharp' }, { page: '/social' });
+  await new Promise((r) => setTimeout(r, 30));
+  assert.deepEqual(told.map((x) => [x.to, x.title, x.url]), [[userId('tech1'), 'Olive Owner commented on your post', `/social/p/${post}`]]);
+  db.prepare("DELETE FROM push_subscriptions WHERE endpoint LIKE '%/social-t1'").run(); db.prepare('DELETE FROM social_posts WHERE id = ?').run(post);
+
+  // The carry-over, on a site as it was before: two pictures put up together and one alone, with likes.
+  const L = encryptionLab();
+  try {
+    const SEEDED = `const db = require('./app/db'); const auth = require('./app/auth'); require('./app/app');
+      const a = auth.createUser({ username: 'wall.a', displayName: 'Wally A', password: 'correct horse battery', profile: 'Technician' });
+      const b = auth.createUser({ username: 'wall.b', displayName: 'Wendy B', password: 'correct horse battery', profile: 'Technician' });
+      db.prepare('DELETE FROM social_posts').run(); db.prepare("DELETE FROM reactions WHERE kind = 'social'").run(); db.prepare("DELETE FROM meta WHERE key = 'social_from_wall_1'").run();
+      const put = db.prepare('INSERT INTO wall_photos (user_id, path, caption, created_at) VALUES (?, ?, ?, ?)');
+      const p1 = put.run(a, 'one.jpg', 'Job done', '2026-10-01T15:00:00.100Z').lastInsertRowid; put.run(a, 'two.jpg', 'Job done', '2026-10-01T15:00:00.180Z');
+      const p3 = put.run(b, 'three.jpg', null, '2026-10-02T09:00:00.000Z').lastInsertRowid;
+      const like = db.prepare('INSERT INTO wall_likes (photo_id, user_id) VALUES (?, ?)'); like.run(p1, b); like.run(p3, a); like.run(p3, b);
+      console.log('seeded');`;
+    assert.match(L.run(SEEDED).out, /seeded/);
+    const LOOK = `const db = require('./app/db'); require('./app/app');
+      console.log(JSON.stringify({ posts: db.prepare('SELECT p.body, u.username, (SELECT COUNT(*) FROM wall_photos w WHERE w.post_id = p.id) AS photos, (SELECT COUNT(*) FROM reactions r WHERE r.kind = \\'social\\' AND r.target_id = p.id AND r.emoji = \\'like\\') AS likes FROM social_posts p JOIN users u ON u.id = p.user_id ORDER BY p.id').all(),
+        loose: db.prepare('SELECT COUNT(*) n FROM wall_photos WHERE post_id IS NULL').get().n }));`;
+    const first = JSON.parse(L.run(LOOK).out.trim().split('\n').pop());
+    assert.deepEqual(first, { posts: [{ body: 'Job done', username: 'wall.a', photos: 2, likes: 1 }, { body: null, username: 'wall.b', photos: 1, likes: 2 }], loose: 0 });
+    assert.deepEqual(JSON.parse(L.run(LOOK).out.trim().split('\n').pop()), first);        // a second start changes nothing
+  } finally { fs.rmSync(L.dir, { recursive: true, force: true }); }
 });

@@ -85,7 +85,7 @@
     </section>
     <% if (photos.length) { %>
     <section class="panel" aria-labelledby="bph-h">
-      <div class="panel-head"><h2 id="bph-h">Photos</h2><a href="/photos">All</a></div>
+      <div class="panel-head"><h2 id="bph-h">Photos</h2><a href="/social">All</a></div>
       <div class="thumbs photo-grid"><% photos.forEach(function (p) { %><a href="/wall/photo/<%= p.id %>"><img src="/wall/photo/<%= p.id %>" alt="<%= p.caption || 'Photo from ' + p.display_name %>" loading="lazy"></a><% }) %></div>
     </section>
     <% } %>

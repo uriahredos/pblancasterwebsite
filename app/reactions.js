@@ -16,7 +16,7 @@ CREATE INDEX IF NOT EXISTS reactions_target ON reactions(kind, target_id);
 `);
 
 const CHOICES = [['like', '👍', 'Like'], ['love', '❤️', 'Love'], ['laugh', '😂', 'Funny'], ['party', '🎉', 'Congratulations'], ['thanks', '🙏', 'Thanks']];
-const KINDS = ['post', 'notice'];
+const KINDS = ['post', 'notice', 'social'];
 
 /** Adds .reactions to each item: every choice with how many people gave it, whether this person did, and who. */
 function attach(kind, items, userId) {

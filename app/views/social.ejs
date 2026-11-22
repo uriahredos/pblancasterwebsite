@@ -1,0 +1,57 @@
+<%- include('partials/header') %>
+<% if (one) { %><p class="back"><a class="back-link" href="/social">Social</a></p><% } else { %>
+<h1>Social</h1>
+<p class="lede">Share what is going on: a job well done, a new truck, a new baby, a fish you caught. Everyone in the company sees it. Keep customers' private details out of the picture.</p>
+<% } %>
+<%- include('partials/errors') %>
+<% if (canPost && !one) { %>
+<form method="post" action="/social" enctype="multipart/form-data" class="card stack social-new" data-once>
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label><span class="sr">What would you like to share?</span>
+    <textarea name="body" rows="3" maxlength="2000" placeholder="What would you like to share?"><%= values.body || '' %></textarea></label>
+  <label>Photos <span class="hint">Optional. Up to 6.</span>
+    <input type="file" name="photos" accept="image/jpeg,image/png,image/webp" multiple data-shrink="1600">
+  </label>
+  <button class="btn primary" type="submit">Post</button>
+</form>
+<script src="/shrink.js?v=<%= assetV %>" defer></script>
+<% } %>
+<% if (!posts.length) { %><p class="card empty">Nothing here yet. Be the first to post.</p><% } %>
+<% posts.forEach(function (p) { %>
+<article class="card social-post" id="s<%= p.id %>">
+  <header class="social-head">
+    <a href="/people/<%= p.user_id %>"><%- include('partials/avatar', { who: { id: p.user_id, display_name: p.display_name, photo_path: p.photo_path } }) %></a>
+    <div class="social-who"><a href="/people/<%= p.user_id %>"><strong><%= p.display_name %></strong></a>
+      <span class="meta"><%= [p.branch, fmtDateTime(p.created_at)].filter(Boolean).join(' · ') %></span></div>
+    <% if (p.mayRemove) { %><form method="post" action="/social/<%= p.id %>/delete" data-no-live data-confirm="Remove this post?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Remove</button></form><% } %>
+  </header>
+  <% if (p.body) { %><p class="social-body"><%= p.body %></p><% } %>
+  <% if (p.photos.length) { %>
+  <div class="social-photos n<%= Math.min(p.photos.length, 4) %>">
+    <% p.photos.forEach(function (ph) { %><a href="/wall/photo/<%= ph.id %>"><img src="/wall/photo/<%= ph.id %>" alt="Photo from <%= p.display_name %>" loading="lazy"></a><% }) %>
+  </div>
+  <% } %>
+  <%- include('partials/reactions', { kind: 'social', item: p, back: one ? 'post' : '' }) %>
+  <section class="social-comments" aria-label="Comments">
+    <% if (p.hidden) { %><p><a href="/social/p/<%= p.id %>">See all <%= p.comment_count %> comments</a></p><% } %>
+    <% p.comments.forEach(function (c) { %>
+    <div class="social-comment" id="c<%= c.id %>">
+      <%- include('partials/avatar', { who: { id: c.user_id, display_name: c.display_name, photo_path: c.photo_path }, size: 'sm' }) %>
+      <div class="social-bubble"><a href="/people/<%= c.user_id %>"><strong><%= c.display_name %></strong></a> <span class="meta"><%= fmtDateTime(c.created_at) %></span>
+        <p><%= c.body %></p>
+        <% if (c.mayRemove) { %><form method="post" action="/social/comment/<%= c.id %>/delete" data-no-live data-confirm="Remove this comment?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Remove</button></form><% } %>
+      </div>
+    </div>
+    <% }) %>
+    <% if (canPost) { %>
+    <form method="post" action="/social/<%= p.id %>/comment" class="social-reply" data-no-live>
+      <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="page" value="<%= page %>"><% if (one) { %><input type="hidden" name="back" value="post"><% } %>
+      <label class="grow"><span class="sr">Write a comment</span><input name="body" maxlength="1000" placeholder="Write a comment" autocomplete="off" required></label>
+      <button class="btn small" type="submit">Send</button>
+    </form>
+    <% } %>
+  </section>
+</article>
+<% }) %>
+<% if (!one && (page > 1 || more)) { %><p class="pager"><% if (page > 1) { %><a class="btn small" href="/social?page=<%= page - 1 %>">Newer</a><% } else { %><span></span><% } %><% if (more) { %><a class="btn small" href="/social?page=<%= page + 1 %>">Older</a><% } %></p><% } %>
+<%- include('partials/footer') %>
