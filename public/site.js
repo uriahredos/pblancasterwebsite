@@ -107,6 +107,18 @@
     }).catch(function () {});
   })();
 
+  // Social: opening the prompt to post puts the cursor in the box; "Write a post" at the end of the feed opens it.
+  (function () {
+    var box = document.getElementById('composer');
+    if (!box) return;
+    box.addEventListener('toggle', function () { if (box.open) { var t = box.querySelector('textarea'); if (t) t.focus(); } });
+    document.addEventListener('click', function (e) {
+      var a = e.target.closest && e.target.closest('[data-open-composer]');
+      if (!a) return;
+      e.preventDefault(); box.open = true; box.scrollIntoView({ block: 'start' });
+    });
+  })();
+
   // "Are you sure?" questions. Asked here, for the whole page, so they still work on parts of a page
   // that were swapped in without a reload.
   document.addEventListener('submit', function (e) {

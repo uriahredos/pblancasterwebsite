@@ -5,24 +5,31 @@
 <% } %>
 <%- include('partials/errors') %>
 <% if (canPost && !one) { %>
-<form method="post" action="/social" enctype="multipart/form-data" class="card stack social-new" data-once>
-  <input type="hidden" name="_csrf" value="<%= csrf %>">
-  <label><span class="sr">What would you like to share?</span>
-    <textarea name="body" rows="3" maxlength="2000" placeholder="What would you like to share?"><%= values.body || '' %></textarea></label>
-  <label>Photos <span class="hint">Optional. Up to 6.</span>
-    <input type="file" name="photos" accept="image/jpeg,image/png,image/webp" multiple data-shrink="1600">
-  </label>
-  <button class="btn primary" type="submit">Post</button>
-</form>
+<details class="card composer" id="composer" <%= errors.length || values.body ? 'open' : '' %>>
+  <summary aria-label="Write a post">
+    <%- include('partials/avatar', { who: user }) %>
+    <span class="composer-prompt">What's on your mind, <%= String(user.display_name).split(' ')[0] %>?</span>
+    <span class="composer-name"><%= user.display_name %></span>
+  </summary>
+  <form method="post" action="/social" enctype="multipart/form-data" class="stack social-new" data-once>
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <label><span class="sr">What would you like to share?</span>
+      <textarea name="body" rows="5" maxlength="2000" placeholder="What's on your mind?"><%= values.body || '' %></textarea></label>
+    <label>Add photos <span class="hint">Optional. Up to 6.</span>
+      <input type="file" name="photos" accept="image/jpeg,image/png,image/webp" multiple data-shrink="1600">
+    </label>
+    <button class="btn primary" type="submit">Post</button>
+  </form>
+</details>
 <script src="/shrink.js?v=<%= assetV %>" defer></script>
 <% } %>
-<% if (!posts.length) { %><p class="card empty">Nothing here yet. Be the first to post.</p><% } %>
-<% posts.forEach(function (p) { %>
+<% var lastDay = null; posts.forEach(function (p) { %>
+<% if (!one && p.day !== lastDay) { lastDay = p.day; %><h2 class="social-day"><%= p.day %></h2><% } %>
 <article class="card social-post" id="s<%= p.id %>">
   <header class="social-head">
     <a href="/people/<%= p.user_id %>"><%- include('partials/avatar', { who: { id: p.user_id, display_name: p.display_name, photo_path: p.photo_path } }) %></a>
     <div class="social-who"><a href="/people/<%= p.user_id %>"><strong><%= p.display_name %></strong></a>
-      <span class="meta"><%= [p.branch, fmtDateTime(p.created_at)].filter(Boolean).join(' · ') %></span></div>
+      <span class="meta"><%= [p.branch, one ? fmtDateTime(p.created_at) : timeOnly(p.created_at)].filter(Boolean).join(' · ') %></span></div>
     <% if (p.mayRemove) { %><form method="post" action="/social/<%= p.id %>/delete" data-no-live data-confirm="Remove this post?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Remove</button></form><% } %>
   </header>
   <% if (p.body) { %><p class="social-body"><%= p.body %></p><% } %>
@@ -53,5 +60,6 @@
   </section>
 </article>
 <% }) %>
+<% if (!one && !more) { %><p class="social-end"><%= posts.length ? "That's the end of the feed." : 'The feed is empty.' %> <%= canPost ? 'Say something!' : '' %><% if (canPost) { %> <a href="#composer" data-open-composer>Write a post</a><% } %></p><% } %>
 <% if (!one && (page > 1 || more)) { %><p class="pager"><% if (page > 1) { %><a class="btn small" href="/social?page=<%= page - 1 %>">Newer</a><% } else { %><span></span><% } %><% if (more) { %><a class="btn small" href="/social?page=<%= page + 1 %>">Older</a><% } %></p><% } %>
 <%- include('partials/footer') %>

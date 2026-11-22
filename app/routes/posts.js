@@ -68,6 +68,10 @@ function dress(posts, user, everyComment) {
     p.mine = p.user_id === user.id; p.mayRemove = p.mine || access.moderates(user, 'forum.moderate', p.user_id);
     for (const c of p.comments) c.mayRemove = c.user_id === user.id || p.mine || access.moderates(user, 'forum.moderate', c.user_id);
   }
+  // Which day each post belongs under, in the site's own time: Today, Yesterday, or the date.
+  const { localDate, fmtDate } = require('../util'); const today = localDate();
+  const before = new Date(`${today}T12:00:00Z`); before.setUTCDate(before.getUTCDate() - 1); const yesterday = before.toISOString().slice(0, 10);
+  for (const p of posts) { const d = localDate(new Date(p.created_at)); p.day = d === today ? 'Today' : d === yesterday ? 'Yesterday' : fmtDate(d); }
   return reactions.attach('social', posts, user.id);
 }
 

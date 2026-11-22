@@ -122,8 +122,6 @@ p { margin: 0 0 .75rem; }
   .js .navbar.open { display: block; position: fixed; z-index: 55; left: 0; right: 0; bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px)); max-height: calc(100vh - var(--tabbar-h) - env(safe-area-inset-bottom, 0px) - 4rem); max-height: calc(100dvh - var(--tabbar-h) - env(safe-area-inset-bottom, 0px) - 4rem); overflow-y: auto; overscroll-behavior: contain; background: var(--brand); border-radius: 16px 16px 0 0; box-shadow: 0 0 0 100vmax rgba(0,0,0,.5); padding-top: .9rem; }
   .js .navbar.open::before { content: ""; display: block; width: 2.6rem; height: 4px; margin: 0 auto .5rem; border-radius: 4px; background: rgba(255,255,255,.35); }
   .sheet-open, .sheet-open body { overflow: hidden; }
-  /* The bell's list is the Alerts button in the bottom bar on a phone. */
-  .has-tabbar .bell { display: none; }
   body.has-tabbar { padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px)); }
   .tabbar { display: flex; position: fixed; z-index: 60; left: 0; right: 0; bottom: 0; height: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px)); padding: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); background: var(--brand); border-top: 1px solid rgba(255,255,255,.14); box-shadow: 0 -4px 14px rgba(0,0,0,.18); }
   .tabbar a { position: relative; flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .15rem; color: #b9cbdc; text-decoration: none; font-size: .72rem; font-weight: 600; letter-spacing: .01em; -webkit-tap-highlight-color: transparent; }
@@ -1512,3 +1510,18 @@ td.reports-to .meta { display: block; }
 .social-bubble p { margin: .15rem 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .social-reply { display: flex; gap: .5rem; align-items: center; }
 .social-reply input { width: 100%; }
+
+/* Social: the prompt to post (your picture, and a box that opens into the full form), day headings, and the end of the feed. */
+.composer { padding: .75rem 1rem; }
+.composer > summary { list-style: none; display: flex; align-items: center; gap: .75rem; cursor: pointer; }
+.composer > summary::-webkit-details-marker { display: none; }
+.composer-prompt { flex: 1; min-width: 0; padding: .7rem 1rem; border: 1px solid var(--line); border-radius: 999px; background: var(--accent-soft); color: var(--muted); }
+.composer > summary:hover .composer-prompt { border-color: var(--accent); }
+.composer[open] > summary .composer-prompt { display: none; }
+.composer[open] > summary { margin-bottom: .75rem; }
+.composer-name { display: none; font-weight: 700; }
+.composer[open] > summary .composer-name { display: block; }
+.composer textarea { width: 100%; min-height: 9rem; font-size: 1.05rem; }
+.social-day { margin: 1.5rem 0 0; font-size: .9rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: .75rem; }
+.social-day::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.social-end { margin: 1.5rem 0; text-align: center; color: var(--muted); }

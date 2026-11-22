@@ -2647,7 +2647,7 @@ test('photos open in the page viewer: no link sends the app to a bare image in a
   assert.match(js, /photo-viewer/); assert.match(js, /popstate/);        // the viewer, and Back closing it
 });
 
-test('phone bottom bar: Home, Parts, Tasks, Alerts and More, with the bell list as a page of its own', async () => {
+test('phone bottom bar: Home, Social, Parts, Tasks and More; alerts are the bell at the top, with its list as a page of its own', async () => {
   const barOf = (html) => { const m = /<nav class="tabbar[\s\S]*?<\/nav>/.exec(html); return m ? m[0] : null; };
   const tabs = (html) => [...barOf(html).matchAll(/<a href="([^"]+)"[^>]*>(?:<svg[\s\S]*?<\/svg>)<span>([^<]+)<\/span>/g)].map((m) => `${m[2]} ${m[1]}`);
 
@@ -2657,7 +2657,7 @@ test('phone bottom bar: Home, Parts, Tasks, Alerts and More, with the bell list 
   makeUser('bar1', 'Barry Bar');
   const c = await loggedIn('bar1');
   let home = (await c.get('/')).text;
-  assert.deepEqual(tabs(home), ['Home /', 'Parts /parts', 'Tasks /tasks', 'Alerts /alerts', 'More #navbar']);
+  assert.deepEqual(tabs(home), ['Home /', 'Social /social', 'Parts /parts', 'Tasks /tasks', 'More #navbar']);
   assert.match(barOf(home), /<a href="\/" aria-current="page"/);                       // the tab you are on is marked
   assert.match(barOf((await c.get('/parts')).text), /<a href="\/parts" aria-current="page"/);
   assert.match(home, /<body class="has-tabbar">/);
@@ -2665,29 +2665,32 @@ test('phone bottom bar: Home, Parts, Tasks, Alerts and More, with the bell list 
 
   // Tasks and everything else are counted separately on the bar.
   const count = (html, label) => { const m = new RegExp(`<span>${label}</span><b class="tab-count">(\\d+)`).exec(barOf(html)); return m ? Number(m[1]) : 0; };
-  const alertsBefore = count(home, 'Alerts');
+  // Alerts are the bell in the top right corner, on a phone as on a computer: its red number counts what is waiting.
+  const bellCount = (html) => { const m = /<details class="bell"[\s\S]*?<span class="bell-count"[^>]*>(\d+)/.exec(html); return m ? Number(m[1]) : 0; };
+  const alertsBefore = bellCount(home);
+  assert.match(home, /<details class="bell" id="bell">/); assert.doesNotMatch(barOf(home), /\/alerts/);
+  assert.doesNotMatch(fs.readFileSync(path.join(__dirname, '..', 'public', 'styles.css'), 'utf8'), /\.has-tabbar \.bell \{ display: none/);   // no longer hidden on a phone
   assert.equal(count(home, 'Tasks'), 0);
   const owner = await loggedIn('owner');
   await owner.post('/admin/tasks', [['title', 'Bar task'], ['due_on', ymdFromNow(-1)], ['to', String(userId('bar1'))]], { page: '/admin/tasks' });
   await owner.post('/admin/announcements', { title: 'Bar announcement', body: 'Read me.' }, { page: '/admin/announcements' });
   home = (await c.get('/')).text;
   assert.equal(count(home, 'Tasks'), 1);
-  assert.equal(count(home, 'Alerts'), alertsBefore + 1);
+  assert.ok(bellCount(home) > alertsBefore);
 
   // The Alerts page holds the same list as the bell.
   const alerts = (await c.get('/alerts')).text;
   assert.match(alerts, /<h1>Alerts<\/h1>/);
   assert.match(alerts, /class="card alert-items alert-page">[\s\S]*Your tasks[\s\S]*Bar task[\s\S]*Overdue by 1 day[\s\S]*unread announcements?[\s\S]*Notification settings/);
-  assert.match(barOf(alerts), /<a href="\/alerts" aria-current="page"/);
   assert.equal((await new Client().get('/alerts')).status, 302);                      // signed in only
 
   // Someone who cannot send parts entries but can read the log gets the log; with neither, no Parts tab.
   const pid = db.prepare("INSERT INTO profiles (name, scope, created_at) VALUES ('Bar reader', 'all', ?)").run(new Date().toISOString()).lastInsertRowid;
   db.prepare("INSERT INTO profile_permissions (profile_id, permission) VALUES (?, 'parts.view')").run(pid);
   db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(pid, userId('bar1'));
-  assert.deepEqual(tabs((await c.get('/')).text).slice(0, 2), ['Home /', 'Parts /admin/parts']);
+  assert.deepEqual(tabs((await c.get('/')).text).slice(0, 3), ['Home /', 'Social /social', 'Parts /admin/parts']);
   db.prepare('DELETE FROM profile_permissions WHERE profile_id = ?').run(pid);
-  assert.deepEqual(tabs((await c.get('/')).text), ['Home /', 'Tasks /tasks', 'Alerts /alerts', 'More #navbar']);
+  assert.deepEqual(tabs((await c.get('/')).text), ['Home /', 'Social /social', 'Tasks /tasks', 'More #navbar']);
 
   // The sheet behind More, and Back closing it, are in the script.
   const js = (await new Client().get('/site.js')).text;
@@ -8312,4 +8315,34 @@ test('photos: the browser saves each picture in the smallest form it can write (
   const got = await t.get(`/wall/photo/${photo}`);
   assert.equal(got.status, 200); assert.equal(got.headers.get('content-type'), 'image/webp'); assert.equal(got.headers.get('x-content-type-options'), 'nosniff');
   await t.post(`/social/${post.id}/delete`, {}, { page: '/social' });
+});
+
+test('Social page: a prompt to post beside your picture opens into the full form, posts sit under day headings with their time, and the feed says where it ends', async () => {
+  const t = await loggedIn('tech1');
+  db.prepare("DELETE FROM social_posts").run();
+  const empty = (await t.get('/social')).text.replace(/\s+/g, ' ');
+  // Closed, the form is a prompt with the person's own picture or initials; the full box and the photo button are inside it.
+  assert.match(empty, /<details class="card composer" id="composer" > <summary aria-label="Write a post"> <(img|span) class="avatar[\s\S]*?<span class="composer-prompt">What's on your mind, Terry\?<\/span>/);
+  assert.match(empty, /<details class="card composer"[\s\S]*?<textarea name="body" rows="5"[\s\S]*?<input type="file" name="photos"[^>]*multiple[\s\S]*?<\/details>/);
+  assert.match(empty, /<p class="social-end">The feed is empty\. Say something! <a href="#composer" data-open-composer>Write a post<\/a><\/p>/);
+  assert.match((await t.get('/site.js')).text, /data-open-composer/);
+  // A mistake brings the form back open, with what was typed.
+  assert.match((await t.post('/social', [['body', '']], { multipart: true, page: '/social' })).text, /<details class="card composer" id="composer" open>/);
+  // Posts from different days sit under their own heading, newest day first, each showing its time.
+  const add = db.prepare('INSERT INTO social_posts (user_id, body, created_at) VALUES (?, ?, ?)'); const now = Date.now();
+  add.run(userId('tech1'), 'DAYS older post', new Date(now - 9 * 86400000).toISOString());
+  add.run(userId('tech1'), 'DAYS from yesterday', new Date(now - 86400000).toISOString());
+  add.run(userId('tech2'), 'DAYS first today', new Date(now - 60000).toISOString());
+  add.run(userId('tech1'), 'DAYS second today', new Date(now).toISOString());
+  const feed = (await t.get('/social')).text.replace(/\s+/g, ' ');
+  const heads = [...feed.matchAll(/<h2 class="social-day">([^<]+)<\/h2>/g)].map((m) => m[1]);
+  assert.equal(heads.length, 3); assert.equal(heads[0], 'Today'); assert.equal(heads[1], 'Yesterday'); assert.match(heads[2], /\d/);
+  assert.ok(feed.indexOf('DAYS second today') < feed.indexOf('DAYS first today') && feed.indexOf('DAYS first today') < feed.indexOf('>Yesterday<') && feed.indexOf('>Yesterday<') < feed.indexOf('DAYS from yesterday'));
+  assert.match(feed, /<span class="meta">[^<]*\d{1,2}:\d{2} [AP]M<\/span>/);              // the time, the day being in the heading
+  assert.match(feed, /<p class="social-end">That(&#39;|')s the end of the feed\. Say something!/);
+  // With more than a page, the end is only announced on the last one.
+  for (let i = 0; i < 20; i++) add.run(userId('tech2'), `DAYS filler ${i}`, new Date(now - 20 * 86400000 - i * 1000).toISOString());
+  assert.doesNotMatch((await t.get('/social')).text, /class="social-end"/);
+  assert.match((await t.get('/social?page=2')).text, /s the end of the feed\./);
+  db.prepare("DELETE FROM social_posts WHERE body LIKE 'DAYS %'").run();
 });

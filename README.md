@@ -109,7 +109,7 @@ Reached from the **Usage summary** button on the parts log. For a date range (an
 - **One name for each thing:** Announcements (posting them is "Post announcements"), Tasks (giving them out is "Manage tasks"), Truck inspection, Anonymous complaint (reviewing them is "Complaints"), Certifications, Parts requests, and My activity for a person's own entries and requests.
 - **Notification bell** at the top right on a computer: a red number for everything waiting on you, and a list when you press it: your open tasks by name with their due dates, then unread announcements, discussions with new replies, updates on your requests and, for people who manage them, open parts requests, truck problems, expiring certifications and a backup that did not work. **Notification settings** is at the bottom of the list.
 - **Light / dark** is in the menu: the moon or sun at the right end of the bar on a computer, near the bottom of More on a phone. On the sign-in page, where there is no menu, it stays at the top right.
-- **On a phone** there is a bar of five buttons fixed to the bottom of the screen: **Home**, **Parts** (the parts form), **Tasks** (with the number still to do), **Alerts** (the bell's list as a page, `/alerts`, with the number waiting) and **More**, which slides the whole menu up from the bottom with Notification settings, Change password and Sign out at the end. The phone's Back button closes it. Someone who cannot send parts entries but can read the log gets the log behind Parts; with neither there is no Parts button.
+- **On a phone** there is a bar of five buttons fixed to the bottom of the screen: **Home**, **Social**, **Parts** (the parts form), **Tasks** (with the number still to do) and **More**, which slides the whole menu up from the bottom with Notification settings, Change password and Sign out at the end. The phone's Back button closes it. Alerts are the **bell at the top right**, the same as on a computer, with the number waiting; its list is also a page of its own at `/alerts`. Someone who cannot send parts entries but can read the log gets the log behind Parts; with neither there is no Parts button.
 - A number beside a group is the total of what needs attention inside it (open requests, truck problems, expiring certifications).
 
 ## Look and feel
@@ -251,11 +251,12 @@ On a phone it is one column in that order. On a wider screen announcements, the 
 
 The company's own feed, in the bar beside Tasks. Everyone in every office sees every post.
 
-- **Posting**: a few words, up to six photos, or both. Photos are shrunk on the phone first and lose their hidden details, like every photo on the site. Videos are not taken yet (the disk is small); they can be added once it is larger.
+- **Posting**: the top of the page shows your picture beside "What's on your mind?". Tapping it opens a larger box to write in, with an **Add photos** button. A post is a few words, up to six photos, or both. Photos are shrunk on the phone first and lose their hidden details, like every photo on the site. Videos are not taken yet (the disk is small); they can be added once it is larger.
 - **Reactions**: the same five as elsewhere (like, love, funny, congratulations, thanks). Giving one again takes it back.
 - **Comments**: the newest three show under a post; **See all** opens the post by itself with every comment. With alerts on, the person who posted gets a notification when someone else comments (it can be switched off under Notification settings).
 - **Removing**: people remove their own posts and comments, and comments under their own posts. Moderators remove their own office's people's, as in Discussions; what they remove is written in the activity log. A removed post takes its photos, reactions and comments with it.
 - Posting and commenting need **Read and post in Discussions**; everyone signed in can read and react.
+- **Laid out by day.** Posts sit under **Today**, **Yesterday** or the date, newest first, each with its time. The last page ends with "That's the end of the feed. Say something!" (or "The feed is empty.") and a link that opens the box.
 - **The photo wall is now part of this.** Its pictures became posts when Social was switched on (pictures put up together became one post) and kept their likes; `/photos` goes to Social.
 
 ## Discussions (`/discussions`)
