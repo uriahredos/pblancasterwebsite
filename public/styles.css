@@ -1630,3 +1630,6 @@ td.reports-to .meta { display: block; }
 /* Home page, On call now: the number opens on a line of its own under the person. */
 .p-oncall li { flex-wrap: wrap; }
 .p-oncall .call-pop { flex-basis: 100%; justify-content: space-between; }
+
+/* On call: what a person covers (Sprinkler, Security...). */
+.oncall-covers { display: inline-block; padding: .05rem .5rem; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: .82rem; font-weight: 700; white-space: nowrap; }

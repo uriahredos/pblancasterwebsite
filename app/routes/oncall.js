@@ -18,8 +18,8 @@ const tel = (phone) => String(phone || '').replace(/[^0-9+]/g, '');
 function stretches(rows) {
   const map = new Map();
   for (const s of rows) {
-    const key = `${s.branch_id}|${s.start_on}|${s.end_on}`;
-    if (!map.has(key)) map.set(key, { branch_id: s.branch_id, office: s.office, start_on: s.start_on, end_on: s.end_on, label: `${short(s.start_on)} to ${short(s.end_on)}`, year: s.start_on.slice(0, 4), tech: [], backup: [], notes: new Set() });
+    const key = `${s.market_id ? 'm' + s.market_id : s.branch_id}|${s.start_on}|${s.end_on}`;
+    if (!map.has(key)) map.set(key, { branch_id: s.branch_id, market_id: s.market_id || null, office: s.office, start_on: s.start_on, end_on: s.end_on, label: `${short(s.start_on)} to ${short(s.end_on)}`, year: s.start_on.slice(0, 4), tech: [], backup: [], notes: new Set() });
     const g = map.get(key);
     g[s.role].push({ ...s, tel: tel(s.phone) });
     if (s.note) g.notes.add(s.note);
@@ -27,29 +27,40 @@ function stretches(rows) {
   return [...map.values()].map((g) => ({ ...g, note: [...g.notes].join(', ') }));
 }
 
+/** The offices whose schedule this person may add to: every office, their market's, or just the one they are looking at. */
+const reachOf = (user) => (user.allBranches ? [] : user.marketBranches && user.marketBranches.length > 1 ? user.marketBranches : [user.workBranch]);   // [] = every office
+/** The people who can be put on the schedule by this person, each with their office and the phone on their account. */
+function pickable(user) {
+  const reach = reachOf(user);
+  return db.prepare(`SELECT u.id, u.display_name AS name, u.phone, u.branch_id, b.name AS office FROM users u JOIN branches b ON b.id = u.branch_id
+    WHERE u.active = 1 AND u.display_name <> '' ${reach.length ? `AND u.branch_id IN (${reach.map(Number).join(',')})` : ''}
+    ORDER BY u.branch_id = ? DESC, u.display_name COLLATE NOCASE LIMIT 6000`).all(user.workBranch);
+}
+
 function page(req, res, extra = {}) {
   const today = localDate();
   const offices = oncall.officesFor(req.user);
   const ids = offices.map((o) => o.id);
+  const marketId = oncall.marketOf(offices);
   const all = ids.length ? db.prepare(
-    `SELECT s.*, b.name AS office FROM oncall_shifts s JOIN branches b ON b.id = s.branch_id
-     WHERE s.branch_id IN (${ids.map(Number).join(',')}) AND s.end_on > ? ORDER BY s.start_on, b.name COLLATE NOCASE, s.role = 'backup', s.id LIMIT 3000`).all(today) : [];
+    `${oncall.SCOPED} WHERE ${oncall.seenBy(ids, marketId)} AND s.end_on > ?
+     ORDER BY s.start_on, s.market_id IS NOT NULL, b.name COLLATE NOCASE, s.role = 'backup', s.id LIMIT 4000`).all(today) : [];
   const list = stretches(all);
-  const mineFirst = (a, b) => (b.branch_id === req.user.workBranch) - (a.branch_id === req.user.workBranch);
+  // The office being looked at first, then the rest of the market, then what covers the whole market.
+  const mineFirst = (a, b) => Boolean(a.market_id) - Boolean(b.market_id) || (b.branch_id === req.user.workBranch) - (a.branch_id === req.user.workBranch);
   const current = list.filter((g) => g.start_on <= today).sort(mineFirst);
   // Offices in the market with nobody down for today: say so, so an empty space is not mistaken for "nobody is on call there".
-  const missing = offices.filter((o) => !current.some((g) => g.branch_id === o.id));
+  const missing = offices.filter((o) => !current.some((g) => !g.market_id && g.branch_id === o.id));
   // On a phone the whole year is a very long scroll: the next four weeks show, and the rest waits behind a button.
   const soon = new Date(`${today}T12:00:00Z`); soon.setUTCDate(soon.getUTCDate() + 28);
   const soonUntil = soon.toISOString().slice(0, 10);
   const upcoming = list.filter((g) => g.start_on > today).map((g, i) => ({ ...g, later: i >= 4 && g.start_on > soonUntil }));
   res.status(extra.errors ? 400 : 200).render('oncall', {
-    title: 'On call', wide: true, current, upcoming, laterCount: upcoming.filter((g) => g.later).length, many: offices.length > 1, market: offices[0] && offices[0].market, missing, officeCount: offices.length,
+    title: 'On call', wide: true, current, upcoming, laterCount: upcoming.filter((g) => g.later).length, many: offices.length > 1 || all.some((s) => s.market_id), market: offices[0] && offices[0].market, missing, officeCount: offices.length,
     canManage: access.can(req.user, 'oncall.manage'), roles: oncall.ROLES,
     rates: ratesOf(req.user.workBranch),
     // For whoever keeps the schedule: the people of this office to pick from, each with the phone number on their account.
-    people: access.can(req.user, 'oncall.manage')
-      ? db.prepare("SELECT display_name AS name, phone FROM users WHERE branch_id = ? AND active = 1 AND display_name <> '' ORDER BY display_name COLLATE NOCASE").all(req.user.workBranch) : [],
+    people: access.can(req.user, 'oncall.manage') ? pickable(req.user) : [], widePick: reachOf(req.user).length !== 1,
     rateOffice: (db.prepare('SELECT name FROM branches WHERE id = ?').get(req.user.workBranch) || {}).name, mine: req.user.workBranch, errors: [], values: {}, problems: [], ...extra,
   });
 }
@@ -104,10 +115,16 @@ router.post('/admin/oncall', manage, (req, res) => {
   else if (v.end_on <= v.start_on) errors.push('The hand-over day must be after the first day.');
   if (!v.name) errors.push('Enter the person\'s name.');
   if (errors.length) return page(req, res, { errors, values: v, addOpen: true });
-  db.prepare('INSERT INTO oncall_shifts (branch_id, start_on, end_on, role, name, phone, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-    .run(req.user.workBranch, v.start_on, v.end_on, v.role, v.name, v.phone || null, v.note || null, new Date().toISOString());
-  activity.log(req.user, 'On-call schedule changed', `${v.name} added, ${v.start_on} to ${v.end_on}`);
-  flash(req, 'ok', `${v.name} added to the schedule.`);
+  // Someone picked from the list goes on the schedule of their own office, whichever office is being looked at
+  // (as long as it is one this person runs). A name typed by hand goes on the office being looked at.
+  let branch = req.user.workBranch; let office = '';
+  const picked = /^\d+$/.test(String(req.body.user_id || '')) ? db.prepare("SELECT u.branch_id, b.name AS office FROM users u JOIN branches b ON b.id = u.branch_id WHERE u.id = ? AND u.display_name = ? COLLATE NOCASE").get(req.body.user_id, v.name) : null;
+  if (picked) { const reach = reachOf(req.user); if (!reach.length || reach.includes(picked.branch_id)) { branch = picked.branch_id; office = picked.office; } }
+  const covers = clean(req.body.covers, 60) || null;
+  db.prepare('INSERT INTO oncall_shifts (branch_id, start_on, end_on, role, name, phone, covers, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(branch, v.start_on, v.end_on, v.role, v.name, v.phone || null, covers, v.note || null, new Date().toISOString());
+  activity.log(req.user, 'On-call schedule changed', `${v.name} added${office ? ' (' + office + ')' : ''}, ${v.start_on} to ${v.end_on}`);
+  flash(req, 'ok', office && branch !== req.user.workBranch ? `${v.name} added to the ${office} office's schedule.` : `${v.name} added to the schedule.`);
   res.redirect('/oncall#schedule');
 });
 
@@ -119,6 +136,7 @@ router.post('/admin/oncall/import', manage, (req, res, next) => sheet(req, res, 
   if (req.file.buffer.subarray(0, 2).toString('latin1') === 'PK') return fail('That is an Excel workbook. In Excel choose File > Save As > CSV, then upload the CSV file.');
   if (req.file.buffer.subarray(0, 4).toString('latin1') === '%PDF') return fail('That is a PDF. Upload the spreadsheet saved as CSV instead.');
   const rows = require('./catalog').parseCsv(req.file.buffer.toString('utf8'));
+  if (oncall.isLong(rows)) return importLong(req, res, rows, fail);
   const { shifts, problems } = oncall.parseSheet(rows);
   if (!shifts.length) return fail(problems[0] || 'No on-call shifts could be read from that file.', problems.slice(1));
   // The sheet replaces whatever the schedule held for the days it covers; anything outside those days is left alone.
@@ -134,6 +152,56 @@ router.post('/admin/oncall/import', manage, (req, res, next) => sheet(req, res, 
   flash(req, 'ok', `Schedule loaded: ${new Set(shifts.map((s) => s.start_on)).size} shifts from ${short(from)} ${from.slice(0, 4)} to ${short(to)} ${to.slice(0, 4)}.${problems.length ? ' ' + problems.length + ' line(s) could not be read: ' + problems.slice(0, 3).join(' ') : ''}`);
   res.redirect('/oncall#schedule');
 });
+
+/**
+ * A schedule with one line per person, which can cover several offices and the whole market in one file.
+ * Each line goes to the office it names (one this person may run), or to the market. A missing phone number is
+ * taken from the account of the person with that name. For each office (and the market) in the file, what the
+ * schedule held for the days the file covers is replaced.
+ */
+function importLong(req, res, rows, fail) {
+  const { shifts, problems } = oncall.parseLong(rows);
+  if (!shifts.length) return fail(problems[0] || 'No on-call shifts could be read from that file.', problems.slice(1));
+  const here = req.user.workBranch;
+  const reach = req.user.allBranches ? null : (req.user.marketBranches && req.user.marketBranches.length ? req.user.marketBranches : [here]);
+  const market = (db.prepare('SELECT market_id FROM branches WHERE id = ?').get(here) || {}).market_id || null;
+  const officeByName = new Map(); const bad = new Set();
+  const officeFor = (name) => {
+    if (!name) return { branch: here, market: null };
+    if (/^(the )?(whole )?market$/i.test(name)) return market ? { branch: here, market } : null;
+    if (!officeByName.has(name)) {
+      const hits = db.prepare('SELECT id FROM branches WHERE name = ? COLLATE NOCASE OR number = ?').all(name, name.replace(/^#/, '')).filter((b) => !reach || reach.includes(b.id));
+      officeByName.set(name, hits.length === 1 ? hits[0].id : null);
+    }
+    const id = officeByName.get(name);
+    return id ? { branch: id, market: null } : null;
+  };
+  // Phone numbers from accounts: the one active or listed person with that name, looked for in the market first.
+  const phoneOf = (name, branch) => {
+    const all = db.prepare("SELECT phone, branch_id FROM users WHERE display_name = ? COLLATE NOCASE AND phone IS NOT NULL AND phone <> '' AND removed_at IS NULL").all(name);
+    const near = all.filter((u) => u.branch_id === branch || (market && db.prepare('SELECT 1 FROM branches WHERE id = ? AND market_id = ?').get(u.branch_id, market)));
+    const pick = near.length === 1 ? near : all.length === 1 ? all : [];
+    return pick.length ? pick[0].phone : null;
+  };
+  const placed = [];
+  for (const s of shifts) { const where = officeFor(s.office); if (!where) { bad.add(s.office); continue; } placed.push({ ...s, ...where, phone: s.phone || phoneOf(s.name, where.branch) }); }
+  if (!placed.length) return fail(`None of the lines could be placed. ${[...bad].length ? 'Not an office you run, or not found: ' + [...bad].join(', ') + '.' : ''}${market ? '' : ' Lines for "Market" need the office you are looking at to be in a market.'}`, problems);
+  const scopes = new Map();
+  for (const s of placed) { const k = s.market ? `m${s.market}` : `b${s.branch}`; const sc = scopes.get(k) || { ...s, from: s.start_on, to: s.end_on }; if (s.start_on < sc.from) sc.from = s.start_on; if (s.end_on > sc.to) sc.to = s.end_on; scopes.set(k, sc); }
+  const now = new Date().toISOString();
+  db.transaction(() => {
+    for (const sc of scopes.values()) {
+      if (sc.market) db.prepare('DELETE FROM oncall_shifts WHERE market_id = ? AND start_on >= ? AND start_on < ?').run(sc.market, sc.from, sc.to);
+      else db.prepare('DELETE FROM oncall_shifts WHERE branch_id = ? AND market_id IS NULL AND start_on >= ? AND start_on < ?').run(sc.branch, sc.from, sc.to);
+    }
+    const add = db.prepare('INSERT INTO oncall_shifts (branch_id, market_id, start_on, end_on, role, name, phone, covers, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    for (const s of placed) add.run(s.branch, s.market, s.start_on, s.end_on, s.role, s.name, s.phone, s.covers, s.note, now);
+  })();
+  const noPhone = [...new Set(placed.filter((s) => !s.phone).map((s) => s.name))];
+  activity.log(req.user, 'On-call schedule uploaded', `${placed.length} entries across ${scopes.size} ${scopes.size === 1 ? 'place' : 'places'}`);
+  flash(req, 'ok', `Schedule loaded: ${placed.length} entries.${bad.size ? ` Skipped lines for: ${[...bad].join(', ')} (not found, or not an office you run).` : ''}${noPhone.length ? ` No phone number on file for ${noPhone.length}: ${noPhone.slice(0, 12).join(', ')}${noPhone.length > 12 ? '…' : ''}.` : ''}${problems.length ? ` ${problems.length} line(s) could not be read.` : ''}`);
+  res.redirect('/oncall#schedule');
+}
 
 router.post('/admin/oncall/:id/delete', manage, (req, res) => {
   const s = /^\d+$/.test(req.params.id) ? db.prepare('SELECT * FROM oncall_shifts WHERE id = ? AND branch_id = ?').get(req.params.id, req.user.workBranch) : null;

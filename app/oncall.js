@@ -19,6 +19,12 @@ CREATE TABLE IF NOT EXISTS oncall_shifts (
 CREATE INDEX IF NOT EXISTS oncall_branch ON oncall_shifts(branch_id, start_on);
 `);
 
+// What the person covers (Sprinkler, Security, Supervisor...), and whether the shift is for the whole market
+// rather than one office. A market-wide shift still belongs to the office that entered it, which keeps it editable.
+for (const [col, type] of [['covers', 'TEXT'], ['market_id', 'INTEGER']]) {
+  if (!db.prepare("SELECT 1 FROM pragma_table_info('oncall_shifts') WHERE name = ?").get(col)) db.exec(`ALTER TABLE oncall_shifts ADD COLUMN ${col} ${type}`);
+}
+
 const ROLES = { tech: 'On call', backup: 'Backup' };
 const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
 const monthIndex = (text) => { const k = String(text || '').trim().toLowerCase().replace(/[^a-z]/g, '').slice(0, 3); return k.length < 3 ? -1 : MONTHS.findIndex((m) => m.startsWith(k)); };
@@ -84,9 +90,14 @@ function parseSheet(rows) {
 }
 
 /** A shift covers its first day up to, but not including, the day it is handed on. */
-const covering = (branchIds, day) => (branchIds.length ? db.prepare(
-  `SELECT s.*, b.name AS office FROM oncall_shifts s JOIN branches b ON b.id = s.branch_id
-   WHERE s.branch_id IN (${branchIds.map(Number).join(',')}) AND s.start_on <= ? AND s.end_on > ? ORDER BY s.role = 'backup', s.id`).all(day, day) : []);
+const SCOPED = `SELECT s.*, CASE WHEN s.market_id IS NULL THEN b.name ELSE m.name || ' market' END AS office FROM oncall_shifts s
+   JOIN branches b ON b.id = s.branch_id LEFT JOIN markets m ON m.id = s.market_id`;
+/** WHERE that picks out the shifts these offices see: their own, and their market's market-wide ones. */
+const seenBy = (branchIds, marketId) => `((s.market_id IS NULL AND s.branch_id IN (${branchIds.map(Number).join(',') || 0}))${marketId ? ` OR s.market_id = ${Number(marketId)}` : ''})`;
+const marketOf = (offices) => (offices[0] && offices[0].market_id) || null;
+const covering = (branchIds, day, marketId = null) => (branchIds.length ? db.prepare(
+  `${SCOPED} WHERE ${seenBy(branchIds, marketId)} AND s.start_on <= ? AND s.end_on > ?
+   ORDER BY s.market_id IS NOT NULL, s.role = 'backup', s.id`).all(day, day) : []);
 
 /** The offices whose schedule this person sees: their own, and any other office in the same market. */
 function officesFor(user) {
@@ -104,7 +115,39 @@ function officesFor(user) {
 
 /** Who is on call today for this person's office and market: [{ role, name, phone, office, ... }]. */
 function now(user, today = localDate()) {
-  return covering(officesFor(user).map((o) => o.id), today);
+  const offices = officesFor(user);
+  return covering(offices.map((o) => o.id), today, marketOf(offices));
 }
 
-module.exports = { ROLES, parseSheet, person, covering, officesFor, now };
+const iso = (text) => {
+  const t = String(text || '').trim().replace(/\*+$/, '');
+  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(t); if (m) return valid(+m[1], +m[2] - 1, +m[3]) ? ymd(+m[1], +m[2] - 1, +m[3]) : null;
+  m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(t); if (m) return valid(+m[3], +m[1] - 1, +m[2]) ? ymd(+m[3], +m[1] - 1, +m[2]) : null;
+  return null;
+};
+/** Is this the one-line-per-person layout (it has Start, End and Name columns)? */
+const isLong = (rows) => rows.slice(0, 5).some((r) => { const h = r.map((c) => String(c || '').trim().toLowerCase()); return h.includes('start') && h.includes('end') && h.includes('name'); });
+/**
+ * Reads a schedule with one line per person: Start, End, Office, Covers, Role, Name, Phone, Holiday.
+ * Office is an office's name, empty for the office being looked at, or "Market" for the whole market.
+ * Returns { shifts: [{ start_on, end_on, office, covers, role, name, phone, note }], problems }.
+ */
+function parseLong(rows) {
+  const at = rows.findIndex((r) => { const h = r.map((c) => String(c || '').trim().toLowerCase()); return h.includes('start') && h.includes('name'); });
+  const head = rows[at].map((c) => String(c || '').trim().toLowerCase());
+  const col = (...names) => head.findIndex((h) => names.includes(h));
+  const c = { start: col('start'), end: col('end'), office: col('office'), covers: col('covers', 'cover', 'trade', 'type'), role: col('role'), name: col('name'), phone: col('phone'), note: col('holiday', 'note') };
+  const shifts = []; const problems = [];
+  rows.forEach((r, i) => {
+    if (i <= at || !r.some((x) => String(x || '').trim())) return;
+    const get = (k) => (c[k] >= 0 ? String(r[c[k]] || '').replace(/\s+/g, ' ').trim() : '');
+    const start = iso(get('start')); const end = iso(get('end')); const who = person(`${get('name')} ${get('phone')}`);
+    if (!start || !end || end <= start) { problems.push(`Line ${i + 1}: the dates "${get('start')}" to "${get('end')}" could not be read.`); return; }
+    if (!who) { problems.push(`Line ${i + 1}: nobody is named.`); return; }
+    shifts.push({ start_on: start, end_on: end, office: get('office'), covers: get('covers').slice(0, 60) || null, role: /back|second/i.test(get('role')) ? 'backup' : 'tech',
+      name: who.name, phone: who.phone, note: get('note').slice(0, 120) || null });
+  });
+  return { shifts, problems };
+}
+
+module.exports = { ROLES, parseSheet, parseLong, isLong, person, covering, seenBy, marketOf, SCOPED, officesFor, now };

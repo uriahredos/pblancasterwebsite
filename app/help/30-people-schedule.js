@@ -195,6 +195,8 @@ module.exports = [
       'To load the whole year, press **Load the year from the spreadsheet**. Choose the **File** and press **Load the schedule**.',
     ],
     tips: [
+      'If you run more than one office, the **Name** search holds the people of all of them. Whoever you pick goes on their own office\'s schedule.',
+      'Use **Covers** to say what the person handles, such as Sprinkler or Security. It shows beside their name.',
       'The spreadsheet must be saved as CSV first (in Excel: File, then Save As, then CSV). The year goes on the first line.',
       'Loading a file replaces the schedule for the days the file covers. Swaps you made by hand on those days are lost.',
       'If **Phone** stays empty, the person has no number on their account. Type it in, or nobody can call them from the page.',

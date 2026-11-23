@@ -6,12 +6,12 @@
   <div class="panel-head"><h2 id="now-h">On call now</h2></div>
   <% if (!current.length) { %><p class="empty">Nobody is listed as on call today.<%= canManage ? ' Add the schedule below.' : '' %></p><% } %>
   <% current.forEach(function (g) { %>
-  <% if (many) { %><h3 class="sub-h"><%= g.office %> office</h3><% } %>
+  <% if (many || g.market_id) { %><h3 class="sub-h"><%= g.market_id ? g.office : g.office + ' office' %></h3><% } %>
   <p class="meta oncall-range"><%= g.label %><%= g.note ? ' · ' + g.note : '' %></p>
   <ul class="oncall-people">
     <% g.tech.concat(g.backup).forEach(function (p) { %>
     <li class="role-<%= p.role %>">
-      <span class="oncall-who"><span class="tag <%= p.role === 'tech' ? 'new' : '' %>"><%= roles[p.role] %></span><strong><%= p.name %></strong><% if (p.phone) { %><span class="meta"><%= p.phone %></span><% } %></span>
+      <span class="oncall-who"><span class="tag <%= p.role === 'tech' ? 'new' : '' %>"><%= roles[p.role] %></span><% if (p.covers) { %><span class="oncall-covers"><%= p.covers %></span><% } %><strong><%= p.name %></strong><% if (p.phone) { %><span class="meta"><%= p.phone %></span><% } %></span>
       <% if (p.phone) { %><a class="btn <%= p.role === 'tech' ? 'primary' : '' %>" href="tel:<%= p.tel %>" data-full data-call-number="<%= p.phone %>" data-call-name="<%= p.name %>">Call</a><% } else { %><span class="hint">No number listed</span><% } %>
     </li>
     <% }) %>
@@ -79,7 +79,7 @@
     <% ['tech', 'backup'].forEach(function (role) { %>
     <td data-label="<%= roles[role] %>">
       <% g[role].forEach(function (p) { %>
-      <div class="oncall-cell"><span><%= p.name %><% if (p.phone) { %> <a href="tel:<%= p.tel %>" data-full class="meta"><%= p.phone %></a><% } %></span>
+      <div class="oncall-cell"><span><% if (p.covers) { %><span class="oncall-covers"><%= p.covers %></span> <% } %><%= p.name %><% if (p.phone) { %> <a href="tel:<%= p.tel %>" data-full class="meta"><%= p.phone %></a><% } %></span>
         <% if (canManage && g.branch_id === mine) { %>
         <details class="row-menu"><summary aria-label="Change <%= p.name %>, <%= g.label %>" title="Change">⋯</summary>
           <div class="row-menu-list">
@@ -106,7 +106,7 @@
 <% } %>
 
 <% if (canManage) { %>
-<datalist id="oncall-people"><% people.forEach(function (x) { %><option value="<%= x.name %>" data-phone="<%= x.phone || '' %>"></option><% }) %></datalist>
+<datalist id="oncall-people"><% people.forEach(function (x) { %><option value="<%= x.name %>" data-id="<%= x.id %>" data-phone="<%= x.phone || '' %>" label="<%= x.office %>"></option><% }) %></datalist>
 <details class="mod-tools spaced" <%= typeof addOpen !== 'undefined' && addOpen ? 'open' : '' %>>
   <summary>Add someone to the schedule</summary>
   <form method="post" action="/admin/oncall" class="stack thread-tools">
@@ -116,12 +116,16 @@
       <label>Handed on <span class="hint">The day the next person takes over</span><input type="date" name="end_on" value="<%= values.end_on || '' %>" required></label>
     </div>
     <div class="two">
-      <label>Name <span class="hint">Start typing to pick someone from this office</span><input name="name" value="<%= values.name || '' %>" required maxlength="80" autocomplete="off" list="oncall-people" data-fills-phone placeholder="Search by name"></label>
+      <label>Name <span class="hint"><%= widePick ? 'Start typing to pick someone from any office you run. They go on their own office\'s schedule.' : 'Start typing to pick someone from this office' %></span><input name="name" value="<%= values.name || '' %>" required maxlength="80" autocomplete="off" list="oncall-people" data-fills-phone data-picks-person placeholder="Search by name"></label>
+      <input type="hidden" name="user_id" value="">
       <label>Phone <span class="hint">Filled in from their account</span><input name="phone" type="tel" value="<%= values.phone || '' %>" maxlength="30" autocomplete="off"></label>
     </div>
     <div class="two">
       <label>Role <select name="role"><option value="tech" <%= values.role === 'backup' ? '' : 'selected' %>>On call</option><option value="backup" <%= values.role === 'backup' ? 'selected' : '' %>>Backup</option></select></label>
       <label>Holiday <span class="hint">Optional</span><input name="note" value="<%= values.note || '' %>" maxlength="120" autocomplete="off"></label>
+    </div>
+    <div class="two">
+      <label>Covers <span class="hint">Optional. For example Sprinkler, Security or Supervisor.</span><input name="covers" value="<%= values.covers || '' %>" maxlength="60" autocomplete="off"></label>
     </div>
     <button class="btn primary" type="submit">Add to the schedule</button>
     <p class="hint">Add as many people as you need for the same days: three or four on call, and three or four backups.</p>
@@ -131,7 +135,8 @@
   <summary>Load the year from the spreadsheet</summary>
   <form method="post" action="/admin/oncall/import" enctype="multipart/form-data" class="stack thread-tools" data-confirm="Load this file? It replaces the schedule for the days it covers.">
     <input type="hidden" name="_csrf" value="<%= csrf %>">
-    <p>Upload the on-call schedule saved as CSV (in Excel: File &gt; Save As &gt; CSV). The year goes on the first line; then one line per shift with the month, the days, the technician and the manager, as the sheet is kept today.</p>
+    <p>Upload the on-call schedule saved as CSV (in Excel: File &gt; Save As &gt; CSV). A file with one line per person (columns Start, End, Office, Covers, Role, Name, Phone, Holiday) is read too, and can fill several offices and the whole market at once.</p>
+    <p>For the sheet as it is kept today: The year goes on the first line; then one line per shift with the month, the days, the technician and the manager, as the sheet is kept today.</p>
     <p class="hint">Extra columns of people are read too. A column headed "Backup" or "Manager" is a backup; any other is on call. Uploading again replaces the schedule for the days in the file.</p>
     <label>File <input type="file" name="file" accept=".csv,text/csv" required></label>
     <button class="btn primary" type="submit">Load the schedule</button>

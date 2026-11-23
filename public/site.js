@@ -195,7 +195,7 @@
       return out;
     }
     function choose(box, option) {
-      box.value = option.value; close();
+      box.value = option.value; box._picked = option; close();   // remembered, so two people with one name are told apart
       box.dispatchEvent(new Event('input', { bubbles: true })); box.dispatchEvent(new Event('change', { bubbles: true }));
     }
     function show(box) {
@@ -268,7 +268,8 @@
     if (!list || !id) return;
     var typed = box.value.trim().toLowerCase();
     var hits = Array.prototype.filter.call(list.options, function (o) { return o.value.toLowerCase() === typed; });
-    id.value = hits.length === 1 ? hits[0].getAttribute('data-id') || '' : '';
+    var exact = box._picked && box._picked.value.toLowerCase() === typed ? box._picked : hits.length === 1 ? hits[0] : null;
+    id.value = exact ? exact.getAttribute('data-id') || '' : '';
   }
   document.addEventListener('input', pickPerson); document.addEventListener('change', pickPerson);
 
@@ -279,7 +280,7 @@
     var list = pickList(box); var phone = box.form.querySelector('input[name="phone"]');
     if (!list || !phone) return;
     var typed = box.value.trim().toLowerCase();
-    var hit = Array.prototype.filter.call(list.options, function (o) { return o.value.toLowerCase() === typed; })[0];
+    var hit = box._picked && box._picked.value.toLowerCase() === typed ? box._picked : Array.prototype.filter.call(list.options, function (o) { return o.value.toLowerCase() === typed; })[0];
     if (hit) phone.value = hit.getAttribute('data-phone') || '';
   }
   document.addEventListener('input', fillPhone); document.addEventListener('change', fillPhone);

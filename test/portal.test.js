@@ -8459,23 +8459,99 @@ test('Social page: a prompt to post beside your picture opens into the full form
   db.prepare("DELETE FROM social_posts WHERE body LIKE 'DAYS %'").run();
 });
 
-test('on call: adding or swapping someone offers the people of the office to pick from, each with the phone on their account', async () => {
+test('on call: the picker holds the people of every office the person runs, and someone picked goes on their own office\'s schedule', async () => {
   const home = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id;
-  const owner = await loggedIn('owner'); const tech = await loggedIn('tech1');
+  const owner = await loggedIn('owner'); const tech = await loggedIn('tech1'); const now = new Date().toISOString();
   await owner.post('/branch/view', { branch: String(home) }, { page: '/' });
-  const mate = db.prepare("SELECT id, display_name FROM users WHERE branch_id = ? AND active = 1 AND id <> ? ORDER BY id LIMIT 1").get(home, userId('owner'));
-  const before = db.prepare('SELECT phone, show_phone FROM users WHERE id = ?').get(mate.id);
-  db.prepare("UPDATE users SET phone = '717-555-0142', show_phone = 0 WHERE id = ?").run(mate.id);
-  const away = db.prepare('SELECT display_name FROM users WHERE branch_id <> ? AND active = 1 LIMIT 1').get(home);
-  const page = (await owner.get('/oncall')).text;
-  const list = (/<datalist id="oncall-people">([\s\S]*?)<\/datalist>/.exec(page) || [])[1] || '';
-  assert.ok(list.includes(`<option value="${mate.display_name}" data-phone="717-555-0142"></option>`));
-  if (away) assert.ok(!list.includes(`value="${away.display_name}"`));                      // only this office's people
-  assert.match(page, /<input name="name"[^>]*list="oncall-people" data-fills-phone/);
-  assert.match((await owner.get('/site.js')).text, /data-fills-phone/);
+  const far = db.prepare('INSERT INTO branches (name, state, created_at) VALUES (?, ?, ?)').run('Pick Faraway', 'OH', now).lastInsertRowid;
+  const put = (username, name, office, profile) => { const id = auth.createUser({ username, displayName: name, password: 'correct horse battery', profile, branchId: office }); db.prepare("UPDATE users SET must_change_password = 0, phone = ? WHERE id = ?").run(`717-555-${String(id).padStart(4, '0')}`, id); return id; };
+  const near = put('pick.near', 'Nell Nearby', home, profileId('Technician')); const away = put('pick.away', 'Abe Away', far, profileId('Technician'));
+  const lead = put('pick.lead', 'Lena Lead', home, access.ensureProfile('Office admin (one office)', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'market.all')));
+  const listOf = async (c) => (/<datalist id="oncall-people">([\s\S]*?)<\/datalist>/.exec((await c.get('/oncall')).text) || [])[1] || '';
+  // Someone who sees every office is offered everyone, each labelled with their office; an office's own admin only their office.
+  const wide = await listOf(owner); const homeName = db.prepare('SELECT name FROM branches WHERE id = ?').get(home).name;
+  assert.ok(wide.includes(`<option value="Nell Nearby" data-id="${near}" data-phone="717-555-${String(near).padStart(4, '0')}" label="${homeName}"></option>`));
+  assert.ok(wide.includes(`<option value="Abe Away" data-id="${away}" data-phone="717-555-${String(away).padStart(4, '0')}" label="Pick Faraway"></option>`));
+  const lc = await loggedIn('pick.lead'); const narrow = await listOf(lc);
+  assert.ok(narrow.includes('value="Nell Nearby"')); assert.ok(!narrow.includes('Abe Away'));
+  assert.match((await owner.get('/oncall')).text, /<input name="name"[^>]*list="oncall-people" data-fills-phone data-picks-person/);
+  assert.match((await owner.get('/oncall')).text, /pick someone from any office you run/); assert.match((await lc.get('/oncall')).text, /pick someone from this office/);
   // Someone who does not keep the schedule is sent no list of names and numbers.
-  assert.doesNotMatch((await tech.get('/oncall')).text, /oncall-people|717-555-0142/);
-  db.prepare('UPDATE users SET phone = ?, show_phone = ? WHERE id = ?').run(before.phone, before.show_phone, mate.id);
+  assert.doesNotMatch((await tech.get('/oncall')).text, /oncall-people|717-555-/);
+  // Picked from another office: the shift goes on that office's schedule, with what they cover. Typed by hand: the office being looked at.
+  const day = (n) => { const d = new Date(`${require('../app/util').localDate()}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const add = (c, body) => c.post('/admin/oncall', { start_on: day(1), end_on: day(8), role: 'tech', ...body }, { page: '/oncall' });
+  await add(owner, { name: 'Abe Away', user_id: String(away), phone: '717-555-0000', covers: 'Sprinkler' });
+  await add(owner, { name: 'Walk-in Contractor', user_id: '', phone: '717-555-1111' });
+  await add(owner, { name: 'Somebody Else', user_id: String(away) });                       // an id that does not go with the name is ignored
+  const where = (name) => db.prepare('SELECT branch_id, covers FROM oncall_shifts WHERE name = ?').get(name);
+  assert.deepEqual({ ...where('Abe Away') }, { branch_id: far, covers: 'Sprinkler' });
+  assert.equal(where('Walk-in Contractor').branch_id, home); assert.equal(where('Somebody Else').branch_id, home);
+  // An office's own admin cannot put anyone on another office's schedule, whatever is sent.
+  await add(lc, { name: 'Abe Away', user_id: String(away), phone: '1' });
+  assert.deepEqual(db.prepare("SELECT branch_id FROM oncall_shifts WHERE name = 'Abe Away' ORDER BY id").all().map((r) => r.branch_id), [far, home]);
+  db.prepare("DELETE FROM oncall_shifts WHERE name IN ('Abe Away', 'Walk-in Contractor', 'Somebody Else')").run();
+});
+
+test('on call: one file can fill several offices and the whole market, saying what each person covers, with phones taken from accounts', async () => {
+  const owner = await loggedIn('owner'); const now = new Date().toISOString(); const page = '/oncall';
+  const mk = (name) => { const id = db.prepare('INSERT INTO branches (name, state, created_at) VALUES (?, ?, ?)').run(name, 'PA', now).lastInsertRowid; require('../app/branches').setUp(id); return id; };
+  const a = mk('Call Alpha'); const b = mk('Call Beta'); const out = mk('Call Outside');
+  const m = db.prepare('INSERT INTO markets (name, created_at) VALUES (?, ?)').run('Call Valley', now).lastInsertRowid;
+  db.prepare('UPDATE branches SET market_id = ? WHERE id IN (?, ?)').run(m, a, b);
+  const put = (username, name, office, phone) => { const id = auth.createUser({ username, displayName: name, password: 'correct horse battery', profile: profileId('Technician'), branchId: office }); db.prepare('UPDATE users SET must_change_password = 0, phone = ? WHERE id = ?').run(phone, id); return id; };
+  put('call.sue', 'Sue Supervisor', a, '610-555-0101'); put('call.sam', 'Sam Sprinkler', b, '610-555-0202'); put('call.al', 'Al Alpha', a, null);
+  const day = (n) => { const d = new Date(`${require('../app/util').localDate()}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const us = (ymd) => `${Number(ymd.slice(5, 7))}/${Number(ymd.slice(8))}/${ymd.slice(0, 4)}`;
+  const file = (lines) => new File([['Start,End,Office,Covers,Role,Name,Phone,Holiday', ...lines].join('\n')], 'q4.csv', { type: 'text/csv' });
+  const sheet = file([
+    `${day(-1)},${day(6)},Market,Supervisor,On call,Sue Supervisor,,`,
+    `${day(-1)},${day(6)},Market,"Security: access, video",Backup,Typed Number,610-555-0909,`,
+    `${us(day(-1))}*,${us(day(6))},Call Beta,Sprinkler,On call,Sam Sprinkler,,`,                 // dates as the sheet writes them, star and all
+    `${day(-1)},${day(6)},Call Alpha,Sprinkler,On call,Al Alpha,,`,
+    `${day(2)},${day(3)},Market,Supervisor,On call,Sue Supervisor,,Thanksgiving`,
+    `${day(-1)},${day(6)},No Such Office,Sprinkler,On call,Lost Soul,,`,
+    `not a date,${day(6)},Call Alpha,Sprinkler,On call,Bad Line,,`,
+  ]);
+  await owner.post('/branch/view', { branch: String(a), back: '/' }, { page: '/' });
+  const up = await owner.post('/admin/oncall/import', { file: sheet }, { page, multipart: true });
+  assert.equal(up.status, 302);
+  const rows = () => db.prepare('SELECT branch_id, market_id, role, name, phone, covers, note FROM oncall_shifts WHERE market_id = ? OR branch_id IN (?, ?, ?) ORDER BY id').all(m, a, b, out).map((r) => ({ ...r }));
+  assert.deepEqual(rows(), [
+    { branch_id: a, market_id: m, role: 'tech', name: 'Sue Supervisor', phone: '610-555-0101', covers: 'Supervisor', note: null },        // the phone on her account
+    { branch_id: a, market_id: m, role: 'backup', name: 'Typed Number', phone: '610-555-0909', covers: 'Security: access, video', note: null },
+    { branch_id: b, market_id: null, role: 'tech', name: 'Sam Sprinkler', phone: '610-555-0202', covers: 'Sprinkler', note: null },
+    { branch_id: a, market_id: null, role: 'tech', name: 'Al Alpha', phone: null, covers: 'Sprinkler', note: null },                      // none on file: listed without
+    { branch_id: a, market_id: m, role: 'tech', name: 'Sue Supervisor', phone: '610-555-0101', covers: 'Supervisor', note: 'Thanksgiving' },
+  ]);
+  const said = (await owner.get(page)).text.replace(/\s+/g, ' ');
+  assert.match(said, /Schedule loaded: 5 entries\. Skipped lines for: No Such Office[^<]*No phone number on file for 1: Al Alpha\. 1 line\(s\) could not be read\./);
+  // Everyone in the market sees the market-wide people under the market's name, and each office's own under that office.
+  const shown = (await owner.get(page)).text.replace(/\s+/g, ' ');
+  assert.match(shown, /<h3 class="sub-h">Call Valley market<\/h3>[\s\S]*?<span class="oncall-covers">Supervisor<\/span><strong>Sue Supervisor<\/strong>/);
+  assert.match(shown, /<h3 class="sub-h">Call Beta office<\/h3>[\s\S]*?<span class="oncall-covers">Sprinkler<\/span><strong>Sam Sprinkler<\/strong>/);
+  assert.equal((shown.match(/<strong>Sue Supervisor<\/strong>/g) || []).length, 1);                    // once, not once per office
+  const bob = auth.createUser({ username: 'call.bob', displayName: 'Bob Beta', password: 'correct horse battery', profile: profileId('Technician'), branchId: b }); db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?').run(bob);
+  const bc = await loggedIn('call.bob'); const his = (await bc.get(page)).text;
+  assert.match(his, /Sue Supervisor/); assert.match(his, /Sam Sprinkler/); assert.match(his, /Al Alpha/);
+  assert.match((await bc.get('/')).text, /<span class="oncall-covers">Supervisor<\/span><strong>Sue Supervisor<\/strong>/);      // and on the home page's On call now
+  // An office outside the market sees none of it.
+  const oc = auth.createUser({ username: 'call.out', displayName: 'Olga Outside', password: 'correct horse battery', profile: profileId('Technician'), branchId: out }); db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?').run(oc);
+  assert.doesNotMatch((await (await loggedIn('call.out')).get(page)).text, /Sue Supervisor|Sam Sprinkler/);
+  // Loading the file again replaces what it covers rather than doubling it.
+  await owner.post('/admin/oncall/import', { file: sheet }, { page, multipart: true });
+  assert.equal(rows().length, 5);
+  // An office's own admin cannot write to another office through a file: those lines are skipped.
+  const lead = auth.createUser({ username: 'call.lead', displayName: 'Lou Lead', password: 'correct horse battery', profile: access.ensureProfile('Office admin (one office)', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'market.all')), branchId: a });
+  db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?').run(lead);
+  const lc = await loggedIn('call.lead');
+  await lc.post('/admin/oncall/import', { file: file([`${day(10)},${day(17)},Call Beta,Sprinkler,On call,Sneaky Entry,,`, `${day(10)},${day(17)},Call Alpha,Sprinkler,On call,Fair Entry,,`]) }, { page, multipart: true });
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM oncall_shifts WHERE name = 'Sneaky Entry'").get().n, 0);
+  assert.equal(db.prepare("SELECT branch_id FROM oncall_shifts WHERE name = 'Fair Entry'").get().branch_id, a);
+  db.prepare('DELETE FROM oncall_shifts WHERE market_id = ? OR branch_id IN (?, ?, ?)').run(m, a, b, out);
+  db.prepare('UPDATE branches SET market_id = NULL WHERE market_id = ?').run(m); db.prepare('DELETE FROM markets WHERE id = ?').run(m);
+  const homeId = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id;
+  await owner.post('/branch/view', { branch: String(homeId), back: '/' }, { page: '/' });
 });
 
 test('Help: how-to guides for the jobs a person can do, a "?" on the page each one explains, and nothing for jobs they cannot do', async () => {
