@@ -1,5 +1,5 @@
 <%- include('partials/header', { wide: true }) %>
-<h1>Stock</h1>
+<h1>Warehouse stock</h1>
 <p class="lede"><%= total %> <%= total === 1 ? 'part' : 'parts' %> tracked<% if (lowTotal) { %>, <strong><%= lowTotal %> at or below minimum</strong><% } %>. On hand is the last count, plus deliveries and returns, minus parts taken since.</p>
 <%- include('partials/errors') %>
 <form method="get" class="filters card">
@@ -31,7 +31,7 @@
 <h2>Start tracking a part</h2>
 <form method="post" action="/admin/stock" class="filters card">
   <input type="hidden" name="_csrf" value="<%= csrf %>">
-  <label>Part number <input name="part_number" value="<%= values.part_number || '' %>" required maxlength="100" autocomplete="off"></label>
+  <label>Part <span class="hint">Pick from the catalog or type your own</span> <input name="part_number" value="<%= values.part_number || '' %>" required maxlength="100" autocomplete="off" data-catalog placeholder="Number or name"></label>
   <label>On the shelf now <input name="count" value="<%= values.count || '' %>" inputmode="numeric" required maxlength="6" autocomplete="off"></label>
   <label>Minimum <span class="hint">Optional. Flagged when at or below this.</span> <input name="min_level" value="<%= values.min_level || '' %>" inputmode="numeric" maxlength="6" autocomplete="off"></label>
   <div class="filter-actions"><button class="btn primary small" type="submit">Track it</button></div>

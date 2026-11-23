@@ -871,9 +871,9 @@ test('starting profiles: Technician, Warehouse, Manager and Admin each see only 
   const owner = await loggedIn('owner');
 
   assert.deepEqual(navLinks((await tech.get('/')).text), []); // a technician has no admin menu at all
-  assert.deepEqual(navLinks((await wh.get('/')).text), ['/admin/parts', '/admin/requests', '/admin/parts/audit', '/admin/stock', '/admin/inventory', '/admin/parts/summary', '/admin/catalog', '/admin/inspections', '/admin/inspections/checklist']);
+  assert.deepEqual(navLinks((await wh.get('/')).text), ['/admin/requests', '/admin/inventory', '/admin/parts', '/admin/catalog', '/admin/inspections', '/admin/inspections/checklist']);
   assert.deepEqual(navLinks((await owner.get('/')).text),
-    ['/admin/parts', '/admin/requests', '/admin/parts/audit', '/admin/stock', '/admin/inventory', '/admin/parts/summary', '/admin/catalog', '/admin/inspections', '/admin/inspections/checklist',
+    ['/admin/requests', '/admin/inventory', '/admin/parts', '/admin/catalog', '/admin/inspections', '/admin/inspections/checklist',
       '/admin/training', '/admin/training/sessions', '/admin/certs', '/admin/users', '/admin/tasks', '/admin/announcements', '/admin/newsletters', '/admin/complaints', '/admin/activity', '/admin/import', '/admin/branches', '/admin/profiles', '/admin/backups', '/admin/security']);
 
   for (const url of ['/admin/parts', '/admin/parts/audit', '/admin/parts/summary', '/admin/catalog']) assert.equal((await wh.get(url)).status, 200, url);
@@ -1751,11 +1751,12 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
 
   // A technician: no Team or Setup; Trucks has one thing, so it is a plain "Truck inspection" link.
   const tech = (await (await loggedIn('tech1')).get('/')).text;
-  assert.deepEqual(groupsOf(tech), ['Community', 'Parts', 'Training']);
-  assert.deepEqual(barLinks(tech), ['/', '/tasks', '/social', '/inspection', '/oncall', '/complaint']); // one-item groups show as plain links
+  assert.deepEqual(groupsOf(tech), ['Community', 'Training']);
+  assert.match(tech, /<a href="\/parts" >Parts<\/a>/);                    // for a technician Parts is one plain link: the form
+  assert.deepEqual(barLinks(tech), ['/', '/tasks', '/social', '/parts', '/inspection', '/oncall', '/complaint']); // one-item groups show as plain links
   assert.doesNotMatch(tech, /href="\/admin\//);
   assert.match(tech, /<a href="\/inspection"[^>]*>Truck inspection<\/a>/);
-  assert.doesNotMatch(/<summary[^>]*>Parts[\s\S]*?<\/details>/.exec(tech)[0], /<hr>/); // no stray divider
+  assert.doesNotMatch(/<summary[^>]*>Community[\s\S]*?<\/details>/.exec(tech)[0], /<hr>\s*<hr>|<div class="menu-list">\s*<hr>|<hr>\s*<\/div>/); // no stray divider
 
   // A manager's Team group holds only what their profile allows, and they have no Setup group.
   const mgr = (await (await loggedIn('mgr1')).get('/')).text;
@@ -8559,4 +8560,37 @@ test('home page: a Manage panel for people who run things, and a first-time chec
   assert.ok(db.prepare('SELECT welcomed_at FROM users WHERE id = ?').get(userId('newbie1')).welcomed_at);
   assert.match((await owner.get('/')).text, /welcome-card/);
   await owner.post('/welcome/done', {}, { page: '/' });
+});
+
+test('parts section: a short menu, tabs for the pages that belong together, and every part box offers the catalog', async () => {
+  const owner = await loggedIn('owner'); const t = await loggedIn('tech1');
+  const home = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id;
+  await owner.post('/branch/view', { branch: String(home) }, { page: '/' });
+  // The Parts menu holds five things for someone who runs parts.
+  const menu = /<summary[^>]*>Parts[\s\S]*?<\/details>/.exec((await owner.get('/')).text)[0];
+  assert.deepEqual([...menu.matchAll(/<a href="([^"]+)"[^>]*>([^<]+)/g)].map((m) => `${m[2].trim()} ${m[1]}`),
+    ['Take, return or request /parts', 'Parts requests /admin/requests', 'Inventory /admin/inventory', 'Parts log /admin/parts', 'Catalog /admin/catalog']);
+  // Inventory, Warehouse stock and the count share one strip of tabs; so do the log, the audit and the usage summary.
+  const tabs = (html) => [...((/<nav class="section-tabs[\s\S]*?<\/nav>/.exec(html) || [''])[0]).matchAll(/<a href="([^"]+)" (aria-current="page")?>/g)].map((m) => m[1] + (m[2] ? '*' : ''));
+  assert.deepEqual(tabs((await owner.get('/admin/inventory')).text), ['/admin/inventory*', '/admin/stock', '/admin/inventory/count']);
+  assert.deepEqual(tabs((await owner.get('/admin/stock')).text), ['/admin/inventory', '/admin/stock*', '/admin/inventory/count']);
+  assert.deepEqual(tabs((await owner.get('/admin/inventory/count')).text), ['/admin/inventory', '/admin/stock', '/admin/inventory/count*']);
+  assert.deepEqual(tabs((await owner.get('/admin/parts')).text), ['/admin/parts*', '/admin/parts/audit', '/admin/parts/summary']);
+  assert.deepEqual(tabs((await owner.get('/admin/parts/audit')).text), ['/admin/parts', '/admin/parts/audit*', '/admin/parts/summary']);
+  assert.deepEqual(tabs((await owner.get('/admin/weekly')).text), ['/admin/parts', '/admin/parts/audit', '/admin/parts/summary*']);
+  assert.deepEqual(tabs((await owner.get('/admin/catalog')).text), []); assert.deepEqual(tabs((await t.get('/parts')).text), []);
+  // The Inventory page leads with the list; moving parts and adding places are folded away until wanted.
+  const inv = (await owner.get('/admin/inventory')).text;
+  for (const s of ['Move parts or record a delivery', 'Add a vehicle', 'Add another location']) assert.match(inv, new RegExp(`<details class="mod-tools[^"]*">\\s*<summary>${s}</summary>`));
+  // Every box where a part is typed offers the catalog, and still takes anything typed.
+  assert.match(inv, /<input name="part_number"[^>]*data-catalog/);
+  assert.match((await owner.get('/admin/stock')).text, /<input name="part_number"[^>]*data-catalog/);
+  db.prepare("INSERT OR IGNORE INTO parts_catalog (part_number, description, cost_cents, active, created_at) VALUES ('PICK-200', 'Pickable pull station', 1234, 1, ?)").run(new Date().toISOString());
+  const got = JSON.parse((await t.get('/catalog/suggest?q=pick-2')).text);
+  assert.deepEqual(got, [{ n: 'PICK-200', d: 'Pickable pull station' }]);                          // the number and the name, never the cost
+  assert.deepEqual(JSON.parse((await t.get('/catalog/suggest?q=pull+station')).text).map((p) => p.n), ['PICK-200']);
+  assert.deepEqual(JSON.parse((await t.get('/catalog/suggest?q=%25')).text), []);
+  assert.equal((await new Client().get('/catalog/suggest?q=pick')).status, 302);
+  assert.match((await t.get('/site.js')).text, /input\[data-catalog\]/);
+  db.prepare("DELETE FROM parts_catalog WHERE part_number = 'PICK-200'").run();
 });

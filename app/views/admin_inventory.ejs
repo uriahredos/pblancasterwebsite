@@ -2,7 +2,7 @@
 <h1>Inventory</h1>
 <% var inUse = locations.filter(function (l) { return l.active; }); var away = locations.filter(function (l) { return !l.active; }); %>
 <p class="lede">Where the <%= office ? office.name : '' %> office's parts are: the main warehouse, each technician's vehicle, and anything else you add.</p>
-<p class="filter-actions"><% if (can('inventory.export')) { %><a class="btn small" href="/admin/inventory/export.csv">Export by location</a> <a class="btn small" href="/admin/inventory/export.csv?view=totals">Export totals</a><% if (user.allBranches) { %> <a class="btn small" href="/admin/inventory/export.csv?office=all">Export every office</a><% } %> <% } %><a class="btn small" href="/admin/inventory/count">Inventory count</a></p>
+<p class="filter-actions"><% if (can('inventory.export')) { %><a class="btn small" href="/admin/inventory/export.csv">Export by location</a> <a class="btn small" href="/admin/inventory/export.csv?view=totals">Export totals</a><% if (user.allBranches) { %> <a class="btn small" href="/admin/inventory/export.csv?office=all">Export every office</a><% } %> <% } %></p>
 <div class="table-wrap">
 <table>
   <thead><tr><th>Location</th><th>Kind</th><th>Technician</th><th class="num">Different parts</th><th class="num">Items</th><th>To check</th><th></th></tr></thead>
@@ -23,33 +23,39 @@
 </div>
 
 <% if (mayManage) { %>
-<h2>Move parts</h2>
-<form method="post" action="/admin/inventory/moves" class="filters card">
+<details class="mod-tools spaced">
+<summary>Move parts or record a delivery</summary>
+<form method="post" action="/admin/inventory/moves" class="filters thread-tools">
   <input type="hidden" name="_csrf" value="<%= csrf %>">
   <label>From <select name="from" required><option value="delivery">A delivery (new stock)</option><% inUse.forEach(function (l) { %><option value="<%= l.id %>"><%= l.name %></option><% }) %></select></label>
   <label>To <select name="to" required><% inUse.forEach(function (l) { %><option value="<%= l.id %>"><%= l.name %></option><% }) %></select></label>
-  <label>Part number <input name="part_number" required maxlength="100" autocomplete="off"></label>
+  <label>Part <span class="hint">Pick from the catalog or type your own</span> <input name="part_number" required maxlength="100" autocomplete="off" data-catalog placeholder="Number or name"></label>
   <label>How many <input name="quantity" required inputmode="numeric" maxlength="5" autocomplete="off"></label>
   <label class="grow">Note <span class="hint">Optional</span> <input name="note" maxlength="200" autocomplete="off"></label>
   <div class="filter-actions"><button class="btn primary small" type="submit">Move</button></div>
 </form>
+</details>
 
-<h2>Add a vehicle</h2>
+<details class="mod-tools">
+<summary>Add a vehicle</summary>
 <% if (free.length) { %>
-<form method="post" action="/admin/inventory/locations" class="filters card">
+<form method="post" action="/admin/inventory/locations" class="filters thread-tools">
   <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="kind" value="vehicle">
   <label>Name <span class="hint">For example Truck 14</span> <input name="name" required maxlength="60" autocomplete="off"></label>
   <label class="grow">Whose it is <select name="user_id" required><option value="">Choose a person</option><% free.forEach(function (p) { %><option value="<%= p.id %>"><%= p.display_name %></option><% }) %></select></label>
   <div class="filter-actions"><button class="btn primary small" type="submit">Add vehicle</button></div>
 </form>
-<% } else { %><p class="hint">Everyone in this office already has a vehicle.</p><% } %>
+<% } else { %><p class="hint thread-tools">Everyone in this office already has a vehicle.</p><% } %>
+</details>
 
-<h2>Add another location</h2>
-<form method="post" action="/admin/inventory/locations" class="filters card">
+<details class="mod-tools">
+<summary>Add another location</summary>
+<form method="post" action="/admin/inventory/locations" class="filters thread-tools">
   <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="kind" value="custom">
   <label class="grow">Name <span class="hint">A trailer, a second stockroom, a job site: anywhere parts are kept apart from the warehouse and the vehicles.</span> <input name="name" required maxlength="60" autocomplete="off"></label>
   <div class="filter-actions"><button class="btn primary small" type="submit">Add location</button></div>
 </form>
+</details>
 <% } %>
 
 <% if (away.length) { %>

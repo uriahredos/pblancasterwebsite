@@ -106,9 +106,9 @@ module.exports = [
     perms: ['parts.audit'],
     pages: ['/admin/parts/audit'],
     intro: 'The audit page lists every part taken, returned and requested in the dates you pick, so you can check each entry against the shelf or the paperwork and tick it off.',
-    where: 'Main menu: Parts, then Audit.',
+    where: 'Main menu: Parts, then Parts log, then the Audit tab at the top.',
     steps: [
-      'Open **Parts** in the main menu and choose **Audit**.',
+      'Open **Parts** in the main menu, choose **Parts log**, then the **Audit** tab at the top.',
       'Pick the dates with **From** and **To**, or choose a shortcut such as **Today**, **This week** or **Last month**.',
       'To check one person at a time, choose them under **Person**. To hide what is already done, set **Show** to **Not checked yet**. Then choose **Show**.',
       'Go down the **Taken**, **Returned** and **Requested** lists and compare each entry with the shelf or the paperwork.',
@@ -132,9 +132,9 @@ module.exports = [
     perms: ['parts.view'],
     pages: ['/admin/parts/summary', '/admin/weekly'],
     intro: 'The usage summary adds up what was taken, returned and requested for any dates, by part, person, job and truck.',
-    where: 'Main menu: Parts, then Usage summary. The Weekly summary link is at the top of that page.',
+    where: 'Main menu: Parts, then Parts log, then the Usage summary tab at the top. The Weekly summary link is at the top of that page.',
     steps: [
-      'Open **Parts** in the main menu and choose **Usage summary**.',
+      'Open **Parts** in the main menu, choose **Parts log**, then the **Usage summary** tab at the top.',
       'Set **From** and **To**. You can also choose a **Person**, or type a part or job number in **Search**.',
       'Choose **Show**.',
       'Read the totals under **By part**, **By person**, **By job** and **By truck**.',
@@ -182,9 +182,9 @@ module.exports = [
     perms: ['stock.manage'],
     pages: [],
     intro: 'A part shows on the Stock page only after you tell the site how many are on the warehouse shelf.',
-    where: 'Main menu: Parts, then Stock. The forms are below the table.',
+    where: 'Main menu: Parts, then Inventory, then the Warehouse stock and minimums tab. The forms are below the table.',
     steps: [
-      'Open **Parts** in the main menu and choose **Stock**.',
+      'Open **Parts** in the main menu, choose **Inventory**, then the **Warehouse stock and minimums** tab at the top.',
       'Scroll down to **Start tracking a part**.',
       'Type the **Part number**, and how many you have in **On the shelf now**.',
       'If you want a warning when it runs low, type a number in **Minimum**.',
@@ -207,9 +207,9 @@ module.exports = [
     perms: ['stock.manage'],
     pages: ['/admin/stock'],
     intro: 'The Stock page shows how many of each tracked part the warehouse has, and lets you keep those numbers right.',
-    where: 'Main menu: Parts, then Stock.',
+    where: 'Main menu: Parts, then Inventory, then the Warehouse stock and minimums tab.',
     steps: [
-      'Open **Parts** in the main menu and choose **Stock**.',
+      'Open **Parts** in the main menu, choose **Inventory**, then the **Warehouse stock and minimums** tab at the top.',
       'Find the part. Type in **Search**, or tick **Low stock only**, and choose **Show**.',
       'Choose **Update** on the part\'s row.',
       'For a delivery, go to **Delivery or correction**, type how many arrived in **Quantity**, add a **Reason** such as the PO number, and choose **Save**.',
@@ -262,7 +262,7 @@ module.exports = [
     where: 'Main menu: Parts, then Inventory. The forms are below the table.',
     steps: [
       'Open **Parts** in the main menu and choose **Inventory**.',
-      'To add a truck, go to **Add a vehicle**. Type its **Name**, for example Truck 14.',
+      'To add a truck, open **Add a vehicle** below the list. Type its **Name**, for example Truck 14.',
       'Choose the technician under **Whose it is** and choose **Add vehicle**.',
       'To add a trailer, a second stockroom or a job site, go to **Add another location**, type its **Name** and choose **Add location**.',
       'To rename a place or hand a vehicle to someone else, choose **Open** on its row, go to **Change this location**, change **Name** or **Whose it is** and choose **Save**.',
@@ -270,7 +270,7 @@ module.exports = [
     ],
     tips: [
       'Each person can have only one vehicle. Only people without a vehicle are listed under **Whose it is**.',
-      'A new vehicle starts empty. Sign parts into it, move them with **Move parts**, or count it in the next inventory count.',
+      'A new vehicle starts empty. Sign parts into it, move them with **Move parts or record a delivery**, or count it in the next inventory count.',
       'Handing a vehicle to someone else keeps what is in it.',
       'A place must be empty before it can be put away, and the main warehouse cannot be put away. Its history is kept.',
     ],
@@ -287,7 +287,7 @@ module.exports = [
     where: 'Main menu: Parts, then Inventory. The Move parts form is below the table.',
     steps: [
       'Open **Parts** in the main menu and choose **Inventory**.',
-      'Go to **Move parts**.',
+      'Open **Move parts or record a delivery** below the list.',
       'In **From**, choose the place the parts are leaving. For new stock, leave it on **A delivery (new stock)**.',
       'In **To**, choose the place the parts are going.',
       'Type the **Part number** exactly as it is in the catalog, and the number in **How many**.',
@@ -320,7 +320,7 @@ module.exports = [
     tips: [
       'The list shows the latest 60 movements for that place. There is no single page that lists every movement in the office.',
       'A **To check** tag on a row means the place did not have that many on record when they were taken.',
-      'For one warehouse part, **Stock**, then **Update**, shows what has happened to it under **Since the last count**.',
+      'For one warehouse part, the **Warehouse stock and minimums** tab, then **Update**, shows what has happened to it under **Since the last count**.',
     ],
     related: ['inventory-overview', 'inventory-move-parts'],
   },
@@ -334,7 +334,7 @@ module.exports = [
     intro: 'While an inventory count is under way, you type in how many of each part are really in the warehouse, a vehicle or another place.',
     where: 'Main menu: Parts, then Inventory, then the Inventory count button.',
     steps: [
-      'Open **Parts** in the main menu, choose **Inventory**, then choose **Inventory count**.',
+      'Open **Parts** in the main menu, choose **Inventory**, then the **Inventory count** tab at the top.',
       'Under **Locations**, choose **Count** next to the place you are counting.',
       'Type how many of each part are really there in the **How many** box beside it.',
       'If you find a part that is not listed, type it under **Something here that is not on the list?** in **Part number** and **How many**.',
@@ -359,7 +359,7 @@ module.exports = [
     intro: 'You start the count for a month, wait for every place to be counted, look over where the count and the records disagree, then close it so the records match the shelves.',
     where: 'Main menu: Parts, then Inventory, then the Inventory count button.',
     steps: [
-      'Open **Parts** in the main menu, choose **Inventory**, then choose **Inventory count**.',
+      'Open **Parts** in the main menu, choose **Inventory**, then the **Inventory count** tab at the top.',
       'Pick the month in **Month the count is for** and choose **Start the count**.',
       'Have each place counted. Watch the **Locations** table until every place shows **Done**.',
       'Read the **Differences** table. **Records said** is what the site expected, **Counted** is what was found, and **Difference** is the gap.',

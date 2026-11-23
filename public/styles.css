@@ -1565,6 +1565,13 @@ td.reports-to .meta { display: block; }
 .welcome-steps li.done a { color: var(--muted); text-decoration: line-through; }
 .welcome-more { margin: .6rem 0 0; display: flex; flex-wrap: wrap; gap: .4rem .9rem; align-items: center; }
 .welcome-card form { margin-top: .75rem; }
+.section-tabs { display: flex; flex-wrap: wrap; gap: .35rem; margin: 0 0 1rem; padding: .3rem; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); width: fit-content; max-width: 100%; }
+.section-tabs a { padding: .5rem .9rem; border-radius: 9px; color: var(--ink); font-weight: 600; text-decoration: none; white-space: nowrap; }
+.section-tabs a:hover { background: var(--accent-soft); }
+.section-tabs a[aria-current] { background: var(--accent); color: var(--accent-ink); }
+@media (max-width: 600px) { .section-tabs { width: 100%; } .section-tabs a { flex: 1 1 auto; text-align: center; white-space: normal; } }
+.mod-tools:has(.suggest) { overflow: visible; }
+.mod-tools .filters.thread-tools { border: 0; box-shadow: none; background: none; }
 .help-find input { width: 100%; max-width: 32rem; }
 .help-group h2 { margin: 1.5rem 0 .5rem; }
 .help-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); }

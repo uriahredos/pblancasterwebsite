@@ -111,18 +111,16 @@
         ['', '/newsletters', 'Newsletters', is('/newsletters')]
       ] },
       { name: 'Parts', items: [
-        ['parts.submit', '/parts?action=take', 'Take parts', false],
-        ['parts.submit', '/parts?action=return', 'Return parts', false],
-        ['parts.submit', '/parts?action=request', 'Request parts', false],
+        // Five things, in the order they are used. Audit and Usage summary are tabs on the Parts log; Warehouse stock
+        // and the Inventory count are tabs on Inventory (see the tab strip under <main> below).
+        ['parts.submit', '/parts', 'Take, return or request', path === '/parts', 0, 'Parts'],   // alone in the bar it is simply "Parts"
         'divider',
-        ['parts.view', '/admin/parts', 'Parts log', is('/admin/parts') && !is('/admin/parts/audit') && !is('/admin/parts/summary')],
         ['parts.view', '/admin/requests', 'Parts requests', is('/admin/requests'), badges.requests],
-        ['parts.audit', '/admin/parts/audit', 'Audit', is('/admin/parts/audit')],
-        ['parts.view', '/admin/stock', 'Stock', is('/admin/stock')],
-        ['parts.view', '/admin/inventory', 'Inventory', is('/admin/inventory')],
-        ['parts.view', '/admin/parts/summary', 'Usage summary', is('/admin/parts/summary') || is('/admin/weekly')],
+        ['parts.view', '/admin/inventory', 'Inventory', is('/admin/inventory') || is('/admin/stock')],
+        ['parts.view', '/admin/parts', 'Parts log', is('/admin/parts') || is('/admin/weekly')],
+        [can('parts.view') ? 'no.such.permission' : 'parts.audit', '/admin/parts/audit', 'Audit', is('/admin/parts/audit')],
         ['catalog.manage', '/admin/catalog', 'Catalog', is('/admin/catalog')]
-      ], current: path === '/parts' },
+      ] },
       { name: 'Trucks', items: [
         ['inspections.submit', '/inspection', 'Truck inspection', path === '/inspection'],
         'divider',
@@ -181,7 +179,7 @@
       <span class="nav-sep" aria-hidden="true"></span>
       <% groups.forEach(function (g) { %>
       <% if (g.links.length === 1) { var only = g.links[0]; %>
-      <a href="<%= only[1] %>" <%- g.current ? 'aria-current="page"' : '' %>><%= only[2] %><% if (only[4]) { %> <span class="badge"><%= only[4] %></span><% } %></a>
+      <a href="<%= only[1] %>" <%- g.current ? 'aria-current="page"' : '' %>><%= only[5] || only[2] %><% if (only[4]) { %> <span class="badge"><%= only[4] %></span><% } %></a>
       <% } else { %>
       <details class="menu">
         <summary <%- g.current ? 'aria-current="true"' : '' %>><%= g.name %><% if (g.badge) { %> <span class="badge"><%= g.badge %></span><% } %></summary>
@@ -232,6 +230,22 @@
   <% } %>
 </header>
 <main class="<%= typeof wide !== 'undefined' && wide ? 'wide' : '' %>">
+<% if (user && !isLocked) {
+     // Parts pages that belong together share a strip of tabs, so the menu can stay short.
+     var tabAt = function (p) { return path === p || path.indexOf(p + '/') === 0; };
+     var tabSet = tabAt('/admin/inventory') || tabAt('/admin/stock') ? [
+       [can('parts.view') || can('inventory.manage') || can('stock.manage'), '/admin/inventory', 'Warehouse and vehicles', tabAt('/admin/inventory') && !tabAt('/admin/inventory/count')],
+       [can('parts.view') || can('stock.manage'), '/admin/stock', 'Warehouse stock and minimums', tabAt('/admin/stock')],
+       [can('inventory.count') || can('inventory.approve'), '/admin/inventory/count', 'Inventory count', tabAt('/admin/inventory/count')]
+     ] : tabAt('/admin/parts') || tabAt('/admin/weekly') ? [
+       [can('parts.view'), '/admin/parts', 'Parts log', tabAt('/admin/parts') && !tabAt('/admin/parts/audit') && !tabAt('/admin/parts/summary')],
+       [can('parts.audit'), '/admin/parts/audit', 'Audit', tabAt('/admin/parts/audit')],
+       [can('parts.view'), '/admin/parts/summary', 'Usage summary', tabAt('/admin/parts/summary') || tabAt('/admin/weekly')]
+     ] : [];
+     tabSet = tabSet.filter(function (t) { return t[0]; });
+     if (tabSet.length > 1) { %>
+<nav class="section-tabs no-print" aria-label="This section"><% tabSet.forEach(function (t) { %><a href="<%= t[1] %>" <%- t[3] ? 'aria-current="page"' : '' %>><%= t[2] %></a><% }) %></nav>
+<% } } %>
 <% var pageGuide = user && typeof helpFor === 'function' ? helpFor() : null; if (pageGuide) { %><a class="help-link no-print" href="/help/<%= pageGuide.slug %>?from=<%= encodeURIComponent(path) %>" title="How to use this page: <%= pageGuide.title %>"><span aria-hidden="true">?</span><span class="sr">How to use this page: <%= pageGuide.title %></span></a><% } %>
 <% if (user && user.viewingAs) { %>
 <form method="post" action="/view-as" class="flash view-as no-print" data-no-live>

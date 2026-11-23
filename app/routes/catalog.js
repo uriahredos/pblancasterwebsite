@@ -100,6 +100,18 @@ function render(req, res, extra = {}) {
   res.status(extra.errors ? 400 : 200).render('admin_catalog', { title: 'Parts catalog', rows, total, matching, q, errors: [], values: {}, dollars: require('../inventory').dollars, ...extra });
 }
 
+// Parts from the catalog for any box where a part is typed (stock, inventory moves, count sheets): number and
+// description only, never the cost. Anyone signed in may ask, since a technician counting their own vehicle needs it.
+router.get('/catalog/suggest', require('../auth').requireLogin, (req, res) => {
+  const q = clean(req.query.q, 60);
+  if (q.length < 2) return res.json([]);
+  const esc = q.replace(/[\\%_]/g, '\\$&');
+  res.json(db.prepare(
+    `SELECT part_number AS n, description AS d FROM parts_catalog
+     WHERE active = 1 AND (part_number LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\')
+     ORDER BY (part_number = ?) DESC, (part_number LIKE ? ESCAPE '\\') DESC, part_number COLLATE NOCASE LIMIT 8`).all(`%${esc}%`, `%${esc}%`, q, `${esc}%`));
+});
+
 router.get('/admin/catalog', requireAdmin, (req, res) => render(req, res));
 
 router.post('/admin/catalog', requireAdmin, (req, res) => {

@@ -108,7 +108,7 @@ module.exports = [
     perms: ['parts.submit'],
     pages: ['/parts'],
     intro: 'Use one form to sign parts out, bring them back, or ask for parts to be ordered.',
-    where: 'On a phone: **Parts** on the bottom bar. On a computer: **Parts** in the menu, then **Take parts**, **Return parts** or **Request parts**.',
+    where: 'On a phone: **Parts** on the bottom bar. On a computer: **Parts** in the menu (if it opens a list, choose **Take, return or request**).',
     steps: [
       'Under **What would you like to do?**, tap **Take parts**, **Return parts** or **Request parts**.',
       'Type the **Part name or number** and the **Qty**. Pick the part from the list that appears if you see it.',

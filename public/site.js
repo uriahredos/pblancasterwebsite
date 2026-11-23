@@ -217,6 +217,41 @@
     }, true);
   })();
 
+  // Any box marked data-catalog offers parts from the catalog while typing. Picking one fills the box in; anything
+  // else typed is kept as it is, so a part that is not in the catalog can still be entered.
+  (function () {
+    var timer = null, list = null, owner = null;
+    function close() { if (list && list.parentNode) list.parentNode.removeChild(list); list = null; owner = null; }
+    function open(input, rows) {
+      close();
+      if (!rows.length || document.activeElement !== input) return;
+      list = document.createElement('ul'); list.className = 'suggest'; owner = input;
+      rows.forEach(function (p) {
+        var li = document.createElement('li'), b = document.createElement('strong'); b.textContent = p.n; li.appendChild(b);
+        if (p.d) { var d = document.createElement('span'); d.textContent = p.d; li.appendChild(d); }
+        li.addEventListener('pointerdown', function (e) {
+          e.preventDefault(); input.value = p.n; close();
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        list.appendChild(li);
+      });
+      var wrap = input.parentNode; wrap.classList.add('suggest-wrap'); wrap.appendChild(list);
+    }
+    document.addEventListener('input', function (e) {
+      var input = e.target;
+      if (!input || !input.matches || !input.matches('input[data-catalog]') || !e.isTrusted) return;
+      clearTimeout(timer);
+      var q = input.value.trim();
+      if (q.length < 2) { close(); return; }
+      timer = setTimeout(function () {
+        fetch('/catalog/suggest?q=' + encodeURIComponent(q), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+          .then(function (r) { return r.ok ? r.json() : []; })
+          .then(function (rows) { if (input.value.trim() === q) open(input, rows); }).catch(function () {});
+      }, 200);
+    });
+    document.addEventListener('focusout', function (e) { if (owner && e.target === owner) setTimeout(close, 150); });
+  })();
+
   // "Are you sure?" questions. Asked here, for the whole page, so they still work on parts of a page
   // that were swapped in without a reload.
   document.addEventListener('submit', function (e) {

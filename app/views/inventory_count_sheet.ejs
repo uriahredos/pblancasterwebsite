@@ -22,7 +22,7 @@
   </div>
   <fieldset>
     <legend>Something here that is not on the list?</legend>
-    <label>Part number <input name="add_part" id="add-part" value="<%= added %>" maxlength="100" autocomplete="off"></label>
+    <label>Part <span class="hint">Pick from the catalog or type your own</span> <input name="add_part" id="add-part" value="<%= added %>" maxlength="100" autocomplete="off" data-catalog placeholder="Number or name"></label>
     <label>How many <input name="add_qty" id="add-qty" inputmode="numeric" maxlength="6" autocomplete="off"></label>
   </fieldset>
   <button class="btn primary" type="submit">Save the count</button>

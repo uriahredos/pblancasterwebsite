@@ -257,6 +257,13 @@ Short how-to guides built into the site, reached from **Help** at the right-hand
 - **Print.** Every guide has **Print this guide**, which also saves it as a PDF from the print window.
 - **Adding or changing a guide** is a matter of editing the files in `app/help/` (one list of guides per area; the layout is described at the top of `app/help.js`). The tests check that every guide is well formed and names real permissions.
 
+## Parts section layout
+
+- **The Parts menu holds five things**: **Take, return or request** (the parts form), **Parts requests**, **Inventory**, **Parts log** and **Catalog**. For a technician, who only has the form, **Parts** is a single link straight to it.
+- **Tabs instead of more menu items.** Inventory pages share a strip of tabs: **Warehouse and vehicles**, **Warehouse stock and minimums** (the page that used to be called Stock) and **Inventory count**. The Parts log shares one with **Audit** and **Usage summary**. A tab shows only to someone whose profile allows that page.
+- **The Inventory page leads with the list** of places. Moving parts or recording a delivery, adding a vehicle and adding another location are folded away under their own headings until wanted.
+- **Every box where a part is typed offers the catalog** (the parts form, starting to track a part, moving parts, adding a part to a count): type a number or a name and pick from the list. Anything else typed is kept as it is, so a part that is not in the catalog can still be entered.
+
 ## Search (`/search`)
 
 The magnifying glass at the top right, beside the bell, opens one search for the whole site.
