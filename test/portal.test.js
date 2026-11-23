@@ -8479,6 +8479,7 @@ test('Help: how-to guides for the jobs a person can do, a "?" on the page each o
   // The page a guide explains offers it with a "?"; a page with no guide for this person, and Help itself, do not.
   assert.match((await t.get(first.pages[0])).text, new RegExp(`<a class="help-link no-print" href="/help/${first.slug}\\?from=`));
   assert.doesNotMatch((await t.get('/help')).text, /class="help-link/);
-  assert.match((await t.get('/')).text, /<a href="\/help"[^>]*>Help/);
+  assert.match((await t.get('/')).text, /<a class="nav-help" href="\/help" >Help<\/a>/);          // in the menu bar; first under More on a phone
+  assert.match((await t.get('/help')).text, /<a class="nav-help" href="\/help" aria-current="page">Help<\/a>/);
   assert.equal((await new Client().get('/help')).status, 302);                                // signed-in people only
 });

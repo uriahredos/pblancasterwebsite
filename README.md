@@ -249,7 +249,7 @@ On a phone it is one column in that order. On a wider screen announcements, the 
 
 ## Help (`/help`)
 
-Short how-to guides built into the site, reached from **Help** in the account menu (and at the end of More on a phone).
+Short how-to guides built into the site, reached from **Help** at the right-hand end of the menu bar on a computer (and in the account menu), and at the top of **More** on a phone.
 
 - **Only your own jobs.** A guide is listed only for someone whose profile lets them do the job it describes: a technician sees the everyday guides, a manager also sees the managers' ones. Opening the address of a guide you may not see gives "not here".
 - **A "?" on the page.** Any page a guide explains shows a round **?** at the top right that opens that guide, with a Back button that returns to the page.
