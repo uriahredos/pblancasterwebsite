@@ -8771,9 +8771,11 @@ test('office box: a corporate admin can find and switch to any office by typing,
   const home = (await owner.get('/')).text;
   const list = (/<datalist id="office-list">([\s\S]*?)<\/datalist>/.exec(home) || [])[1] || '';
   assert.equal((list.match(/<option /g) || []).length, total + 1);                                   // every office, and "All offices"
-  assert.ok(list.includes(`<option value="Quietville" data-id="${empty}" label="#9876 · OH"></option>`));   // nobody works there, and it is still offered
+  assert.ok(list.includes(`<option value="Quietville" data-id="${empty}" data-find="Ohio" label="#9876 · OH"></option>`));   // found by "ohio" as well as by its name   // nobody works there, and it is still offered
   assert.equal((home.match(/<datalist id="office-list">/g) || []).length, 1);                        // one list serves the box on a computer and the one in the phone menu
   assert.match((await owner.get('/site.js')).text, /data-office-pick/);
+  // The site draws its own list under these boxes (phones do not show the browser's), and Enter takes the top line.
+  const picker = (await owner.get('/site.js')).text; assert.match(picker, /pick-list/); assert.match(picker, /data-find/); assert.match(picker, /e\.key !== 'Enter'/);
   const viewing = async () => (/<input name="office" list="office-list" value="([^"]*)"/.exec((await owner.get('/')).text) || [])[1];
   // Picked from the list (its id is sent), typed in full, by its number, or back to all of them.
   await owner.post('/branch/view', { branch: String(empty), office: 'Quietville', back: '/' }, { page: '/' }); assert.equal(await viewing(), 'Quietville');
@@ -8809,7 +8811,7 @@ test('markets: corporate admins group offices into markets and appoint market ad
   assert.deepEqual(inMarket(), ['Mkt Alpha', 'Mkt Beta']);
   const page = (await owner.get('/admin/markets')).text.replace(/\s+/g, ' ');
   assert.match(page, /No single office matches/); assert.match(page, /<h2>Test Valley <span class="meta">2 offices<\/span>/);
-  assert.match(page, new RegExp(`<option value="Mkt Outside" data-id="${outside}" label="OH · no market yet">`)); assert.match(page, /label="PA · in Test Valley"/);
+  assert.match(page, new RegExp(`<option value="Mkt Outside" data-id="${outside}" data-find="Ohio" label="OH · no market yet">`)); assert.match(page, /label="PA · in Test Valley"/);
   // An office belongs to one market: adding it to another moves it. Taking it out leaves it in none.
   await owner.post('/admin/markets', { name: 'Other Side' }, { page: '/admin/markets' });
   const m2 = db.prepare("SELECT id FROM markets WHERE name = 'Other Side'").get().id;

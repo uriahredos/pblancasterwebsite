@@ -1615,3 +1615,9 @@ td.reports-to .meta { display: block; }
 .market-offices { list-style: none; margin: 0 0 .75rem; padding: 0; display: grid; gap: .3rem; grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr)); }
 .market-offices li { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .45rem .7rem; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
 .market-offices form { margin: 0; flex: none; }
+
+/* The site's own pick lists (offices, people), drawn under the box. */
+.pick-list { z-index: 80; color: var(--ink); text-align: left; font-weight: 400; min-width: 15rem; max-height: 60vh; overflow-y: auto; }
+.pick-list li.none { color: var(--muted); cursor: default; }
+.nav-branch label { display: block; }
+.nav-branch.in-banner .pick-list { left: auto; right: 0; min-width: 18rem; }

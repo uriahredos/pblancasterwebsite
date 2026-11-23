@@ -9,7 +9,7 @@
   <p class="code"><%= created.password %></p>
 </div>
 <% } %>
-<datalist id="market-offices"><% offices.forEach(function (o) { %><option value="<%= o.name %>" data-id="<%= o.id %>" label="<%= [o.number ? '#' + o.number : '', o.state, o.market ? 'in ' + o.market : 'no market yet'].filter(Boolean).join(' · ') %>"></option><% }) %></datalist>
+<datalist id="market-offices"><% offices.forEach(function (o) { %><option value="<%= o.name %>" data-id="<%= o.id %>" data-find="<%= o.find %>" label="<%= [o.number ? '#' + o.number : '', o.state, o.market ? 'in ' + o.market : 'no market yet'].filter(Boolean).join(' · ') %>"></option><% }) %></datalist>
 
 <% markets.forEach(function (m) { %>
 <section class="card market-card" id="m<%= m.id %>">

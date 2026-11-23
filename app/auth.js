@@ -77,7 +77,8 @@ function loadUser(req, res, next) {
   // Profiles this person can look at the site as (see loadAccess). Listed for their own account menu only.
   res.locals.viewAsChoices = access.viewAsChoices(req.user);
   if (req.user) {
-    const all = db.prepare('SELECT id, name, number, city, state FROM branches ORDER BY name COLLATE NOCASE').all();
+    const all = db.prepare('SELECT id, name, number, city, state, region, marketing_name FROM branches ORDER BY name COLLATE NOCASE').all()
+      .map((b) => ({ ...b, find: require('./util').officeWords(b) }));
     res.locals.branchName = (all.find((b) => b.id === req.user.branch_id) || {}).name || null;
     // Someone who can see every branch chooses which one they are looking at.
     // Every office is offered, with or without people in it: the box is searched by typing, not scrolled.

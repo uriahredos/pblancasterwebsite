@@ -146,10 +146,64 @@
     document.addEventListener('contextmenu', function (e) { if (target(e)) e.preventDefault(); });
   })();
 
+  // Boxes that pick from a list held in the page (offices, people): the site draws its own list under the box as
+  // someone types, because phones do not reliably show the browser's built-in one. Tapping a line, or pressing
+  // Enter for the top line, fills the box in; the handlers further down then act on what was picked.
+  var PICKERS = 'input[data-office-pick], input[data-picks-office], input[data-picks-person], input[data-fills-phone]';
+  function pickList(box) { return document.getElementById(box.getAttribute('data-list') || box.getAttribute('list')); }
+  (function () {
+    var open = null, owner = null;
+    function close() { if (open && open.parentNode) open.parentNode.removeChild(open); open = null; owner = null; }
+    function matches(box) {
+      var list = pickList(box); if (!list) return [];
+      var words = box.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      var out = [];
+      for (var i = 0; i < list.options.length && out.length < 40; i++) {
+        var o = list.options[i], text = (o.value + ' ' + (o.getAttribute('label') || '') + ' ' + (o.getAttribute('data-find') || '')).toLowerCase();
+        if (words.every(function (w) { return text.indexOf(w) !== -1; })) out.push(o);
+      }
+      // What starts with the first word typed comes first: "eph" finds Ephrata before anything that merely contains it.
+      if (words.length) out.sort(function (a, b) { return (b.value.toLowerCase().indexOf(words[0]) === 0) - (a.value.toLowerCase().indexOf(words[0]) === 0); });
+      return out;
+    }
+    function choose(box, option) {
+      box.value = option.value; close();
+      box.dispatchEvent(new Event('input', { bubbles: true })); box.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    function show(box) {
+      // The browser's own list is switched off for this box once ours takes over.
+      if (box.getAttribute('list')) { box.setAttribute('data-list', box.getAttribute('list')); box.removeAttribute('list'); }
+      close();
+      var found = matches(box);
+      if (document.activeElement !== box) return;
+      open = document.createElement('ul'); open.className = 'suggest pick-list'; owner = box;
+      if (!found.length) { var none = document.createElement('li'); none.className = 'none'; none.textContent = 'Nothing matches. Try fewer letters.'; open.appendChild(none); }
+      found.forEach(function (o) {
+        var li = document.createElement('li'), b = document.createElement('strong'); b.textContent = o.value; li.appendChild(b);
+        if (o.getAttribute('label')) { var d = document.createElement('span'); d.textContent = o.getAttribute('label'); li.appendChild(d); }
+        li.addEventListener('pointerdown', function (e) { e.preventDefault(); choose(box, o); });
+        open.appendChild(li);
+      });
+      var wrap = box.parentNode; wrap.classList.add('suggest-wrap'); wrap.appendChild(open);
+    }
+    document.addEventListener('input', function (e) { var b = e.target; if (b && b.matches && b.matches(PICKERS) && e.isTrusted) show(b); });
+    document.addEventListener('focusin', function (e) { var b = e.target; if (b && b.matches && b.matches(PICKERS)) setTimeout(function () { if (document.activeElement === b) show(b); }, 0); });
+    document.addEventListener('focusout', function (e) { if (owner && e.target === owner) setTimeout(close, 150); });
+    // Enter (or Go on a phone's keyboard) takes the top line, unless what is typed is already exactly one of them.
+    document.addEventListener('keydown', function (e) {
+      var b = e.target;
+      if (e.key !== 'Enter' || !b || !b.matches || !b.matches(PICKERS)) return;
+      var found = matches(b); if (!found.length || !b.value.trim()) return;
+      var typed = b.value.trim().toLowerCase();
+      if (found.some(function (o) { return o.value.toLowerCase() === typed; })) return;      // exact already: let the form go
+      e.preventDefault(); choose(b, found[0]);
+    }, true);
+  })();
+
   // The office box beside the name: type to find any office, pick it, and the site switches to it.
   (function () {
     function match(box) {
-      var list = document.getElementById(box.getAttribute('list')); if (!list) return null;
+      var list = pickList(box); if (!list) return null;
       var typed = box.value.trim().toLowerCase(); if (!typed) return null;
       return Array.prototype.filter.call(list.options, function (o) { return o.value.toLowerCase() === typed; })[0] || null;
     }
@@ -170,7 +224,7 @@
   function pickOffice(e) {
     var box = e.target;
     if (!box || !box.matches || !box.matches('input[data-picks-office]') || !box.form) return;
-    var list = document.getElementById(box.getAttribute('list')); var id = box.form.querySelector('input[name="branch"]');
+    var list = pickList(box); var id = box.form.querySelector('input[name="branch"]');
     if (!list || !id) return;
     var typed = box.value.trim().toLowerCase();
     var hits = Array.prototype.filter.call(list.options, function (o) { return o.value.toLowerCase() === typed; });
@@ -182,7 +236,7 @@
   function pickPerson(e) {
     var box = e.target;
     if (!box || !box.matches || !box.matches('input[data-picks-person]') || !box.form) return;
-    var list = document.getElementById(box.getAttribute('list')); var id = box.form.querySelector('input[name="user_id"]');
+    var list = pickList(box); var id = box.form.querySelector('input[name="user_id"]');
     if (!list || !id) return;
     var typed = box.value.trim().toLowerCase();
     var hits = Array.prototype.filter.call(list.options, function (o) { return o.value.toLowerCase() === typed; });
@@ -194,7 +248,7 @@
   function fillPhone(e) {
     var box = e.target;
     if (!box || !box.matches || !box.matches('input[data-fills-phone]') || !box.form) return;
-    var list = document.getElementById(box.getAttribute('list')); var phone = box.form.querySelector('input[name="phone"]');
+    var list = pickList(box); var phone = box.form.querySelector('input[name="phone"]');
     if (!list || !phone) return;
     var typed = box.value.trim().toLowerCase();
     var hit = Array.prototype.filter.call(list.options, function (o) { return o.value.toLowerCase() === typed; })[0];

@@ -701,6 +701,7 @@ A market is a group of offices that corporate admins make and fill. It is how th
 
 ## Offices
 
+- **Pick lists are drawn by the site.** The office box, the office and people searches on the Markets and Offices pages, and the on-call name box show their matches in a list under the box as you type, on phones as well as computers (phones do not reliably show a browser's built-in list). Tap a line to pick it, or press Enter (Go on a phone) for the top one. Offices are found by name, town, number, state (abbreviation or spelled out) and region.
 - **The office box** beside a corporate admin's name (in the menu on a phone) is a search, not a long list: tap it, type a town, a state or an office number, and pick the office. It offers every office, including ones with nobody on the site yet, plus **All offices**. Leaving the box without picking puts the current office back.
 
 One site for every office. Each person belongs to one office; everything that existed before offices belongs to Lancaster.

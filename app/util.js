@@ -63,4 +63,12 @@ const labels = {
 /** 4500 -> "4,500"; 4500.5 -> "4,500.50". Cents show only when there are any. */
 const money = (n) => { const v = Math.round(Number(n || 0) * 100) / 100; return v.toLocaleString('en-US', { minimumFractionDigits: v % 1 ? 2 : 0, maximumFractionDigits: 2 }); };
 
-module.exports = { money, splitNote, fmtDateTime, fmtDate, localDate, localHour, isYmd, clean, labels };
+const STATES = { AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas', CA: 'California', CO: 'Colorado', CT: 'Connecticut', DE: 'Delaware', DC: 'District of Columbia',
+  FL: 'Florida', GA: 'Georgia', HI: 'Hawaii', ID: 'Idaho', IL: 'Illinois', IN: 'Indiana', IA: 'Iowa', KS: 'Kansas', KY: 'Kentucky', LA: 'Louisiana', ME: 'Maine', MD: 'Maryland',
+  MA: 'Massachusetts', MI: 'Michigan', MN: 'Minnesota', MS: 'Mississippi', MO: 'Missouri', MT: 'Montana', NE: 'Nebraska', NV: 'Nevada', NH: 'New Hampshire', NJ: 'New Jersey',
+  NM: 'New Mexico', NY: 'New York', NC: 'North Carolina', ND: 'North Dakota', OH: 'Ohio', OK: 'Oklahoma', OR: 'Oregon', PA: 'Pennsylvania', RI: 'Rhode Island', SC: 'South Carolina',
+  SD: 'South Dakota', TN: 'Tennessee', TX: 'Texas', UT: 'Utah', VT: 'Vermont', VA: 'Virginia', WA: 'Washington', WV: 'West Virginia', WI: 'Wisconsin', WY: 'Wyoming' };
+/** Other words an office can be found by when someone types in a search box: its town, its state spelled out, its region. */
+const officeWords = (b) => [b.city, STATES[String(b.state || '').toUpperCase()], b.region, b.marketing_name].filter(Boolean).join(' ');
+
+module.exports = { officeWords, money, splitNote, fmtDateTime, fmtDate, localDate, localHour, isYmd, clean, labels };

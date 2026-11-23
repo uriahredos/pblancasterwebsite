@@ -65,7 +65,8 @@ function page(req, res, extra = {}) {
   const created = req.session.created || null; delete req.session.created;
   res.status(extra.errors ? 400 : 200).render('admin_markets', {
     title: 'Markets', wide: true, markets, created, errors: [], values: {}, adminProfiles: grantable(req),
-    offices: db.prepare('SELECT b.id, b.name, b.number, b.state, m.name AS market FROM branches b LEFT JOIN markets m ON m.id = b.market_id ORDER BY b.name COLLATE NOCASE').all(),
+    offices: db.prepare('SELECT b.id, b.name, b.number, b.city, b.state, b.region, b.marketing_name, m.name AS market FROM branches b LEFT JOIN markets m ON m.id = b.market_id ORDER BY b.name COLLATE NOCASE').all()
+      .map((b) => ({ ...b, find: require('../util').officeWords(b) })),
     loose: db.prepare('SELECT COUNT(*) AS n FROM branches WHERE market_id IS NULL').get().n, ...extra,
   });
 }
