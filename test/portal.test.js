@@ -8783,6 +8783,12 @@ test('office box: a corporate admin can find and switch to any office by typing,
   await owner.post('/branch/view', { branch: '', office: 'quietville', back: '/' }, { page: '/' }); assert.equal(await viewing(), 'Quietville');
   await owner.post('/branch/view', { branch: 'all', back: '/' }, { page: '/' });
   await owner.post('/branch/view', { branch: '', office: '#9876', back: '/' }, { page: '/' }); assert.equal(await viewing(), 'Quietville');
+  // The name at the top of every page follows the office being looked at, and says so when it is all of them.
+  const top = async (url) => (/<span class="branch">([^<]*)<\/span>/.exec((await owner.get(url)).text) || [])[1];
+  assert.equal(await top('/'), 'Quietville Office'); assert.equal(await top('/admin/users'), 'Quietville Office');
+  assert.match((await owner.get('/parts')).text, /<title>Parts · Pye-Barker Quietville Office<\/title>/);
+  await owner.post('/branch/view', { branch: 'all', back: '/' }, { page: '/' }); assert.equal(await top('/'), 'All Offices');
+  await owner.post('/branch/view', { branch: String(empty), back: '/' }, { page: '/' });
   // Something that is no office changes nothing and says so.
   await owner.post('/branch/view', { branch: '', office: 'Nowhereville', back: '/' }, { page: '/' });
   assert.match((await owner.get('/')).text, /No single office matches/); assert.equal(await viewing(), 'Quietville');

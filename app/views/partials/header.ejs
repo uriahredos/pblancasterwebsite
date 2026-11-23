@@ -1,6 +1,11 @@
 <!doctype html>
 <% var isLocked = typeof locked !== 'undefined' && locked; var signedIn = Boolean(user) && !isLocked;
-   var officeLabel = typeof branchName !== 'undefined' && branchName ? branchName + ' Office' : ''; %><html lang="en"<%- signedIn ? ' data-in data-lock-after="' + lockAfterMs + '"' : '' %><%- signedIn && typeof fresh !== 'undefined' && fresh ? ' data-fresh' : '' %>>
+   var officeLabel = typeof branchName !== 'undefined' && branchName ? branchName + ' Office' : '';
+   // Someone who chooses which office they look at sees that office named at the top, not their own.
+   if (user && typeof branchChoices !== 'undefined' && branchChoices.length) {
+     var lookingAt = user.viewBranch === null ? null : branchChoices.filter(function (b) { return b.id === user.viewBranch; })[0];
+     officeLabel = user.viewBranch === null ? 'All Offices' : lookingAt ? lookingAt.name + ' Office' : officeLabel;
+   } %><html lang="en"<%- signedIn ? ' data-in data-lock-after="' + lockAfterMs + '"' : '' %><%- signedIn && typeof fresh !== 'undefined' && fresh ? ' data-fresh' : '' %>>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
