@@ -474,6 +474,7 @@ CREATE TABLE IF NOT EXISTS branch_stock (
   PRIMARY KEY (branch_id, catalog_id)
 );
 `);
+addColumn('branch_stock', 'max_level', 'INTEGER');   // the most to keep on the shelf: what an order should bring it back up to
 addColumn('inspection_items', 'branch_id', 'INTEGER');
 addColumn('training_sessions', 'branch_id', 'INTEGER');
 addColumn('complaints', 'branch_id', 'INTEGER');          // the branch only; still nothing about who sent it

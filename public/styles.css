@@ -1574,6 +1574,10 @@ td.reports-to .meta { display: block; }
 .mod-tools .filters.thread-tools { border: 0; box-shadow: none; background: none; }
 .count-actions { display: flex; flex-wrap: wrap; gap: .6rem; }
 .count-actions .btn { flex: 1 1 14rem; }
+.stock-insights { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); margin: .5rem 0 1rem; }
+.stock-insights .card { padding: .9rem 1.1rem; }
+.stock-insights h2 { margin: 0 0 .4rem; font-size: 1rem; }
+.stock-insights ol { margin: 0; padding-left: 1.3rem; display: grid; gap: .25rem; }
 .help-find input { width: 100%; max-width: 32rem; }
 .help-group h2 { margin: 1.5rem 0 .5rem; }
 .help-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); }

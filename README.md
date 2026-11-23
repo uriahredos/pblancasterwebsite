@@ -271,6 +271,14 @@ Short how-to guides built into the site, reached from **Help** at the right-hand
 - **Closing** warns about any place not marked finished; it can still be closed, and anything not counted keeps the figures the records have.
 - **Adding a part that is not on the sheet** is at the top of the sheet, with its own button. A part typed by hand that the catalog does not have is accepted there and when moving parts: it joins the catalog with no description or cost (noted in the activity log) so it can be kept track of.
 
+## Warehouse stock: levels, figures and alerts
+
+- **Minimum and maximum.** Each warehouse part can have a **minimum** (alert at or below this) and a **maximum** (what an order should bring it back up to). The form on the Warehouse stock page asks only for the part and its levels: how many are on the shelf comes from the records (deliveries, parts taken, counts), so setting levels counts nothing and moves nothing. A part the warehouse has never held starts at 0.
+- **Figures at the top:** parts tracked, how many are low or out, how many items to order, items used in the last 30 days, the value on the shelf at catalog cost (only for people who may see costs), and how many are over their maximum. Under them, the five **most used** parts of the last 30 days and the five **running out soonest** at that pace.
+- **In the table:** minimum, maximum, used in 30 days, the level (OK, Low, Out, Over) and an **Order** quantity for every low part: enough to reach its maximum, or just past its minimum if it has none.
+- **Export what to order** downloads that list as a spreadsheet.
+- **Alerts.** When a part goes from above its minimum to at or below it, the people who manage stock in that office get an alert on their phone or computer (if they have alerts on, and have not switched "A part drops to or below its minimum" off), and the home office also gets the email. This now happens however the parts leave the warehouse: the parts form, a move to a vehicle, or a correction. Each part alerts once, not on every further take.
+
 ## Search (`/search`)
 
 The magnifying glass at the top right, beside the bell, opens one search for the whole site.

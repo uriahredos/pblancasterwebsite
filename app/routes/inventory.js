@@ -76,7 +76,9 @@ router.post('/admin/inventory/moves', manage, (req, res) => {
   if (qty < 1) return fail('Enter how many, as a whole number.');
   if (!part) part = customPart(typed, req.user);          // typed by hand: it joins the catalog so it can be kept track of
   const note = clean(req.body.note, 200) || null;
+  const stockLib = require('../stock'); const before = stockLib.levels(req.user.workBranch);
   inv.move({ branchId: req.user.workBranch, catalogId: part.id, from: from && from.id, to: to.id, quantity: qty, kind: from ? 'transfer' : 'receive', note, userId: req.user.id });
+  stockLib.tellLow(req.user, req.user.workBranch, before);   // moving parts out of the warehouse can take one to its minimum
   activity.log(req.user, from ? 'Parts moved' : 'Delivery received', `${qty} × ${part.part_number}: ${from ? from.name + ' to ' : 'into '}${to.name}`);
   flash(req, 'ok', `${qty} × ${part.part_number} ${from ? 'moved to' : 'received into'} ${to.name}.`);
   res.redirect(back);

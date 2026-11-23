@@ -1140,7 +1140,8 @@ test('stock: low level is flagged, and an email goes out once when a take crosse
   sent.length = 0;
   await takeParts(tech, [['LOW-1', 3]]);                   // 7 left: fine
   assert.equal(sent.length, 0);
-  assert.doesNotMatch((await wh.get('/admin/stock?low=1')).text, /LOW-1/);
+  const lowTable = async () => (/<tbody>[\s\S]*?<\/tbody>/.exec((await wh.get('/admin/stock?low=1')).text) || [''])[0];   // the list itself, not the figures above it
+  assert.doesNotMatch(await lowTable(), /LOW-1/);
   await takeParts(tech, [['LOW-1', 3]]);                   // 4 left: at the minimum
   assert.equal(sent.length, 1);
   assert.equal(sent[0].to, 'boss@example.com');
@@ -1149,7 +1150,7 @@ test('stock: low level is flagged, and an email goes out once when a take crosse
   await takeParts(tech, [['LOW-1', 1]]);                   // already low: no second email
   assert.equal(sent.length, 1);
   const low = (await wh.get('/admin/stock?low=1')).text;
-  assert.match(low, /LOW-1/); assert.match(low, /1 at or below minimum/);
+  assert.match(await lowTable(), /LOW-1/); assert.match(low, /at or below minimum/);
   await takeParts(tech, [['LOW-1', 3]]);
   assert.match((await wh.get('/admin/stock?q=LOW-1')).text, />Out</);
 });
@@ -8619,4 +8620,59 @@ test('parts section: a short menu, tabs for the pages that belong together, and 
   assert.ok(made); assert.equal(require('../app/inventory').onHand(whId, made.id), 3);
   db.prepare('DELETE FROM inv_moves WHERE catalog_id = ?').run(made.id); db.prepare('DELETE FROM parts_catalog WHERE id = ?').run(made.id);
   db.prepare("DELETE FROM parts_catalog WHERE part_number = 'PICK-200'").run();
+});
+
+test('warehouse stock: levels without a count, a maximum to order up to, figures at the top, and an alert when any move reaches the minimum', async () => {
+  const wh = await loggedIn('wh1'); const owner = await loggedIn('owner'); const page = '/admin/stock';
+  const home = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('wh1')).branch_id;
+  await owner.post('/branch/view', { branch: String(home) }, { page: '/' });
+  const invLib = require('../app/inventory'); const w = invLib.warehouseOf(home);
+  // The form asks for the part and its levels, not for a count.
+  const form = (/<h2>Set a minimum and maximum<\/h2>[\s\S]*?<\/form>/.exec((await wh.get(page)).text) || [''])[0];
+  assert.match(form, /name="part_number"[^>]*data-catalog/); assert.match(form, /name="min_level"/); assert.match(form, /name="max_level"/); assert.doesNotMatch(form, /name="count"|On the shelf now/);
+  // A part already in the warehouse keeps what the records hold; setting levels moves nothing.
+  const now = new Date().toISOString();
+  const pid = db.prepare("INSERT INTO parts_catalog (part_number, description, cost_cents, active, created_at) VALUES ('LVL-1', 'Level test horn', 250, 1, ?)").run(now).lastInsertRowid;
+  invLib.move({ branchId: home, catalogId: pid, to: w.id, quantity: 12, kind: 'receive', userId: userId('wh1') });
+  const movesBefore = db.prepare('SELECT COUNT(*) n FROM inv_moves WHERE catalog_id = ?').get(pid).n;
+  assert.equal((await wh.post(page, { part_number: 'LVL-1' }, { page })).status, 400);                       // a minimum, a maximum, or both
+  assert.equal((await wh.post(page, { part_number: 'LVL-1', min_level: '9', max_level: '5' }, { page })).status, 400);
+  assert.equal((await wh.post(page, { part_number: 'LVL-1', min_level: '5', max_level: '20' }, { page })).status, 302);
+  const row = () => stockLib.list(home).find((r) => r.part_number === 'LVL-1');
+  assert.deepEqual([row().on_hand, row().min_level, row().max_level, row().low], [12, 5, 20, false]);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM inv_moves WHERE catalog_id = ?').get(pid).n, movesBefore);
+  // A part the warehouse has never held starts at nothing on hand: at once low, with an order up to its maximum.
+  await wh.post(page, { part_number: 'LVL-NEW', min_level: '2', max_level: '6' }, { page });
+  const fresh = stockLib.list(home).find((r) => r.part_number === 'LVL-NEW');
+  assert.deepEqual([fresh.on_hand, fresh.low, fresh.order], [0, true, 6]);
+  // Moving parts out to a vehicle takes it to its minimum: the people who run stock are told once.
+  const pushLib = require('../app/push'); const got = []; pushLib.setSender(async (sub, payload) => { got.push(JSON.parse(payload)); });
+  await wh.post('/push/subscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/lvl-device', p256dh: 'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM', auth: 'tBHItJI5svbpez7KI4CCXg', device: 'Test phone' }, { page: '/settings/notifications' });
+  const truck = invLib.addCustom ? db.prepare("INSERT INTO inv_locations (branch_id, kind, name, active, created_at) VALUES (?, 'custom', 'LVL trailer', 1, ?)").run(home, now).lastInsertRowid : null;
+  await owner.post('/admin/inventory/moves', { from: String(w.id), to: String(truck), part_number: 'LVL-1', quantity: '3' }, { page: '/admin/inventory' });   // 9 left
+  await new Promise((r) => setTimeout(r, 20)); assert.equal(got.filter((g) => /LVL-1/.test(g.title)).length, 0);
+  await owner.post('/admin/inventory/moves', { from: String(w.id), to: String(truck), part_number: 'LVL-1', quantity: '4' }, { page: '/admin/inventory' });   // 5 left: at the minimum
+  await new Promise((r) => setTimeout(r, 20));
+  const alerts = got.filter((g) => /LVL-1/.test(g.title));
+  assert.equal(alerts.length, 1); assert.deepEqual([alerts[0].title, alerts[0].tag, alerts[0].url], ['Low stock: LVL-1', 'low_stock', '/admin/stock?low=1']); assert.match(alerts[0].body, /5 left \(minimum 5\)/);
+  await owner.post('/admin/inventory/moves', { from: String(w.id), to: String(truck), part_number: 'LVL-1', quantity: '1' }, { page: '/admin/inventory' });   // already low: not told again
+  await new Promise((r) => setTimeout(r, 20)); assert.equal(got.filter((g) => /LVL-1/.test(g.title)).length, 1);
+  // The page: what was used, how long it lasts, how many to order, and the value for someone who may see costs.
+  const r = row(); assert.deepEqual([r.on_hand, r.used, r.low, r.order], [4, 8, true, 16]); assert.equal(r.days_left, 15);   // 8 used in 30 days, 4 left
+  const html = (await owner.get(page)).text.replace(/\s+/g, ' ');
+  for (const label of ['Tracked', 'Low or out', 'To order', 'Used in 30 days', 'Value on the shelf']) assert.ok(html.includes(`<span class="stat-label">${label}</span>`), label);
+  assert.match(html, /Most used, last 30 days<\/h2>[\s\S]*?LVL-1<\/strong><\/a> <span class="hint">8 used, 4 left/);
+  assert.match(html, /Running out soonest<\/h2>[\s\S]*?LVL-1<\/strong><\/a> <span class="hint">about 15 days left/);
+  assert.match(html, /<strong>LVL-1<\/strong><\/a><\/td> <td>Level test horn<\/td> <td class="num"><strong>4<\/strong><\/td> <td class="num">5<\/td> <td class="num">20<\/td> <td class="num">8<\/td> <td><span class="tag request">Low<\/span><\/td> <td class="num"><strong>16<\/strong>/);
+  // The list of what to order, as a spreadsheet.
+  const csv = (await wh.get('/admin/stock/reorder.csv')).text;
+  assert.match(csv, /Part number,Description,On hand,Minimum,Maximum,Used in 30 days,Order/); assert.match(csv, /LVL-1,Level test horn,4,5,20,8,16/); assert.match(csv, /LVL-NEW,,0,2,6,0,6/);
+  assert.equal((await (await loggedIn('tech1')).get('/admin/stock/reorder.csv')).status, 403);
+  // On the part's own page both levels are edited together.
+  await wh.post(`${page}/${pid}/min`, { min_level: '3', max_level: '' }, { page: `${page}/${pid}` });
+  assert.deepEqual([row().min_level, row().max_level, row().low], [3, null, false]);
+  pushLib.setSender(async () => {});
+  db.prepare("DELETE FROM push_subscriptions WHERE endpoint LIKE '%lvl-device'").run();
+  for (const n of ['LVL-1', 'LVL-NEW']) { const c = db.prepare('SELECT id FROM parts_catalog WHERE part_number = ?').get(n); db.prepare('DELETE FROM inv_moves WHERE catalog_id = ?').run(c.id); db.prepare('DELETE FROM branch_stock WHERE catalog_id = ?').run(c.id); db.prepare('DELETE FROM parts_catalog WHERE id = ?').run(c.id); }
+  db.prepare('DELETE FROM inv_locations WHERE id = ?').run(truck);
 });
