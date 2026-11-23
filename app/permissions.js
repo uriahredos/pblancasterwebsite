@@ -6,61 +6,62 @@ const db = require('./db');
  * tick-box appear on the profile page; a route then checks it with can().
  */
 const GROUPS = [
-  { title: 'Sending forms', items: [
-    ['parts.submit', 'Take, return and request parts'],
-    ['training.submit', 'Send training requests'],
+  // Grouped the way the menu is, each line saying in a few words what ticking it lets someone do.
+  { title: 'Everyday', items: [
+    ['parts.submit', 'Use the parts form: take, return and request parts'],
+    ['fleet.signout', 'Sign out lifts and shared equipment'],
+    ['inspections.submit', 'Do truck inspections'],
+    ['training.submit', 'Ask for training'],
     ['complaints.submit', 'Send anonymous complaints'],
-    ['inspections.submit', 'Send truck inspections'],
+    ['forum.use', 'Post and comment on Social and in Discussions'],
   ] },
-  { title: 'Discussions', items: [
-    ['forum.use', 'Read and post in Discussions'],
-    ['forum.moderate', 'Remove other people\'s posts and threads; lock, pin and move threads'],
-  ] },
-  { title: 'Parts', items: [
-    ['parts.view', 'See the parts log, usage summary and exports'],
-    ['parts.manage', 'Update parts requests; edit or cancel other people\'s entries'],
-    ['parts.audit', 'Use the audit page and mark entries as checked'],
-    ['catalog.manage', 'Manage the parts catalog'],
-    ['stock.manage', 'Manage stock: counts, deliveries, minimum levels'],
-    ['inventory.manage', 'Manage inventory locations: vehicles and other places parts are kept'],
-    ['inventory.count', 'Count inventory during an inventory count (people can always count their own vehicle)'],
-    ['inventory.approve', 'Start an inventory count, look over the differences and close it'],
-    ['inventory.export', 'Export the office\'s inventory as a spreadsheet: the warehouse, each vehicle and the totals'],
+  { title: 'Parts and inventory', items: [
+    ['parts.view', 'See the parts log, parts requests, stock and inventory'],
+    ['parts.manage', 'Answer parts requests; fix or cancel anyone\'s parts entry'],
+    ['parts.audit', 'Audit parts entries'],
+    ['catalog.manage', 'Edit the parts catalog and see costs'],
+    ['stock.manage', 'Change warehouse stock: deliveries, counts, minimums and maximums'],
+    ['inventory.manage', 'Add vehicles and locations; move parts between them'],
+    ['inventory.count', 'Count any location during an inventory count'],
+    ['inventory.approve', 'Start and close an inventory count'],
+    ['inventory.export', 'Export inventory spreadsheets'],
   ] },
   { title: 'Fleet', items: [
-    ['fleet.signout', 'Sign out lifts and other shared equipment'],
-    ['fleet.manage', 'Keep the fleet list: trucks and vans, trailers, lifts and other equipment; close anyone\'s equipment sign-out'],
-    ['inspections.view', 'See truck inspections and exports'],
-    ['inspections.manage', 'Mark inspection problems as fixed; edit the inspection checklist'],
+    ['fleet.manage', 'Add and edit the fleet list; return anyone\'s equipment sign-out'],
+    ['inspections.view', 'See truck inspections'],
+    ['inspections.manage', 'Mark truck problems fixed; edit the inspection checklist'],
   ] },
   { title: 'Training', items: [
-    ['training.view', 'See training requests and exports'],
-    ['training.manage', 'Update training requests; edit or cancel them'],
+    ['training.view', 'See training requests'],
+    ['training.manage', 'Answer, edit or cancel training requests'],
+    ['certs.manage', 'Record licenses and certifications'],
   ] },
-  { title: 'People', items: [
-    ['users.manage', 'Add people, edit them, reset passwords, disable accounts, choose their profile and who manages them'],
-    ['profiles.manage', 'Create profiles and change what each profile can do'],
-    ['certs.manage', 'Record and edit people\'s licenses and certifications'],
-    ['announcements.post', 'Post announcements and see who has read them'],
-    ['tasks.assign', 'Assign tasks to people and see whether they are done'],
-    ['newsletters.manage', 'Upload and remove the monthly newsletters'],
-    ['events.post', 'Post events for people to sign up to'],
-    ['oncall.manage', 'Keep the on-call schedule: load it from the spreadsheet, add and swap people'],
-    ['daily.manage', 'Run the daily question: approve suggestions, add and schedule questions'],
-    ['activity.view', 'See the activity log (who changed what)'],
+  { title: 'Team', items: [
+    ['users.manage', 'Add and edit people; reset passwords; disable accounts'],
+    ['tasks.assign', 'Assign tasks'],
+    ['oncall.manage', 'Edit the on-call schedule and rates'],
+  ] },
+  { title: 'News and community', items: [
+    ['announcements.post', 'Post announcements'],
+    ['events.post', 'Post events'],
+    ['newsletters.manage', 'Upload newsletters'],
+    ['daily.manage', 'Run the daily question'],
+    ['forum.moderate', 'Remove anyone\'s posts and comments; lock and move discussions'],
   ] },
   { title: 'Sales', items: [
-    ['sales.use', 'Sales: add and work leads, and see the office\'s sales board (hidden from everyone without this)'],
-    ['sales.manage', 'Sales manager: edit, hand over and remove anyone\'s leads, and export them'],
+    ['sales.use', 'Use Sales: add and work leads'],
+    ['sales.manage', 'Manage everyone\'s leads and export them'],
   ] },
-  { title: 'Email', items: [
-    ['digest.weekly', 'Receive the weekly parts summary email (needs an email address on their account)'],
+  { title: 'Running the site', items: [
+    ['activity.view', 'See the activity log'],
+    ['profiles.manage', 'Create and change profiles'],
+    ['digest.weekly', 'Get the weekly parts email'],
   ] },
   { title: 'Sensitive', items: [
-    ['branches.all', 'See and manage every office, add offices and move people between them (without this, a person sees only their own office\'s parts, trucks, tasks and training)'],
+    ['branches.all', 'See and manage every office'],
     ['complaints.review', 'Read and answer anonymous complaints'],
-    ['backups', 'Download backups (a backup contains everything, including complaints)'],
-    ['records.delete', 'Permanently delete parts entries, training requests, inspections and (with complaint access) complaints'],
+    ['backups', 'Download backups (a backup holds everything, complaints included)'],
+    ['records.delete', 'Permanently delete records'],
   ] },
 ];
 const ALL = GROUPS.flatMap((g) => g.items.map((i) => i[0]));
