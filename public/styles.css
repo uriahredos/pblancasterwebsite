@@ -1536,8 +1536,10 @@ td.reports-to .meta { display: block; }
 .help-link { float: right; margin: 0 0 .5rem .75rem; width: 36px; height: 36px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--accent); font-weight: 800; font-size: 1.1rem; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; position: relative; z-index: 2; }
 .help-link:hover { border-color: var(--accent); background: var(--accent-soft); }
 .nav > a.nav-help { margin-left: auto; }
+.nav > a.nav-manage { margin-left: auto; }
+.nav > a.nav-manage + a.nav-help { margin-left: 0; }
 .nav > a.nav-help ~ .nav-theme { margin-left: 0; }
-@media (max-width: 899px) { .nav > a.nav-help { order: -1; margin-left: 0; border-bottom: 1px solid rgba(255,255,255,.15); } }
+@media (max-width: 899px) { .nav > a.nav-help, .nav > a.nav-manage { order: -1; margin-left: 0; border-bottom: 1px solid rgba(255,255,255,.15); } .nav > a.nav-manage { order: -2; } }
 .search-link { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; flex: none; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--banner-ink); }
 .search-link:hover { border-color: var(--accent); }
 .search-form { display: flex; gap: .5rem; align-items: center; max-width: 40rem; }
@@ -1548,6 +1550,7 @@ td.reports-to .meta { display: block; }
 .search-list a:hover, .search-list a:focus-visible { border-color: var(--accent); background: var(--accent-soft); }
 .search-list li:first-child a { border-color: var(--accent); }
 .search-list a span { color: var(--muted); font-size: .9rem; }
+.manage-section h2 { margin: 1.4rem 0 .5rem; }
 .manage-panel { margin: 1rem 0; padding: 1rem 1.1rem; }
 .manage-panel h2 { margin: 0 0 .6rem; font-size: 1.15rem; display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
 .manage-panel h2 a { font-size: .9rem; font-weight: 600; }
@@ -1597,3 +1600,8 @@ td.reports-to .meta { display: block; }
 .edit-photo { display: grid; gap: .35rem; font-weight: 600; }
 .edit-photo img { width: 7.5rem; height: 7.5rem; object-fit: cover; border-radius: 10px; background: var(--accent-soft); display: block; }
 .edit-photo span { display: flex; align-items: center; gap: .4rem; }
+
+/* With the Manage link the bar holds one more thing: a little less room around each so it stays on one row. */
+@media (min-width: 1150px) { .nav:has(> .nav-manage) > a, .nav:has(> .nav-manage) .menu > summary { padding-left: .36rem; padding-right: .36rem; } }
+@media (min-width: 1020px) and (max-width: 1149px) { .nav:has(> .nav-manage) > a, .nav:has(> .nav-manage) .menu > summary { padding-left: .2rem; padding-right: .2rem; font-size: .76rem; } }
+@media (min-width: 900px) and (max-width: 1019px) { .nav:has(> .nav-manage) > a, .nav:has(> .nav-manage) .menu > summary { padding-left: .13rem; padding-right: .13rem; font-size: .71rem; } }

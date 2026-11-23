@@ -117,6 +117,7 @@ app.use((req, res, next) => {
   res.locals.lockAfterMs = device.lockAfterMs(req);
   // The key a device needs to register for alerts, for the bar that offers them (only to someone signed in).
   // The how-to guide for this page, if this person has one: the header offers it as "How to use this page".
+  res.locals.runsThings = () => require('./manage').has(req.user);   // whether the menu offers Manage
   res.locals.helpFor = () => require('./help').forPage(req.user, req.path);
   res.locals.pushKey = req.session && req.session.userId ? require('./push').vapid().publicKey : '';
   res.setHeader('Cache-Control', 'no-store');

@@ -192,6 +192,7 @@
       </details>
       <% } %>
       <% }) %>
+      <% if (typeof runsThings === 'function' && runsThings()) { var waitingNow = (badges.requests || 0) + (badges.inspections || 0) + (badges.certs || 0); %><a class="nav-manage" href="/manage" <%- path === '/manage' ? 'aria-current="page"' : '' %>>Manage<% if (waitingNow) { %> <span class="badge" title="Waiting on you"><%= waitingNow %></span><% } %></a><% } %>
       <a class="nav-help" href="/help" <%- path.indexOf('/help') === 0 ? 'aria-current="page"' : '' %>>Help</a>
       <% if (branchChoices.length) { %>
       <form method="post" action="/branch/view" class="nav-branch in-menu">

@@ -8555,15 +8555,21 @@ test('search: one box finds pages, guides, people, offices and parts, and only w
   db.prepare("DELETE FROM parts_catalog WHERE part_number = 'SRCH-100'").run();
 });
 
-test('home page: a Manage panel for people who run things, and a first-time checklist that can be put away', async () => {
+test('Manage page for people who run things (not on the home page), and a first-time checklist that can be put away', async () => {
   makeUser('newbie1', 'Nora Newbie');
   const nora = await loggedIn('newbie1'); const owner = await loggedIn('owner');
-  // A technician gets no Manage panel; the owner gets the jobs their profile allows, with a number where something waits.
+  // The jobs someone runs are on their own Manage page, not on the home page. A technician has no such page or link.
   const hers = (await nora.get('/')).text; const theirs = (await owner.get('/')).text;
-  assert.doesNotMatch(hers, /manage-panel/);
-  const panel = (/<section class="card manage-panel"[\s\S]*?<\/section>/.exec(theirs) || [''])[0];
-  for (const job of ['People and passwords', 'Assign a task', 'Post an announcement', 'On-call schedule', 'Parts requests', 'Inventory']) assert.ok(panel.includes(`<span>${job}</span>`), job);
+  assert.doesNotMatch(hers, /manage-panel|manage-jobs|class="nav-manage"/); assert.doesNotMatch(theirs, /manage-panel|manage-jobs/);
+  assert.equal((await nora.get('/manage')).status, 403);
+  assert.match(theirs, /<a class="nav-manage" href="\/manage" >Manage/);
+  const panel = (await owner.get('/manage')).text;
+  for (const title of ['People', 'Schedule and news', 'Parts', 'Fleet and training', 'The site']) assert.ok(panel.includes(`<h2>${title}</h2>`), title);
+  for (const job of ['People and passwords', 'Assign a task', 'Post an announcement', 'On-call schedule', 'Parts requests', 'Inventory', 'Fleet list', 'Activity log']) assert.ok(panel.includes(`<span>${job}</span>`), job);
   assert.match(panel, /<a href="\/help">How-to guides<\/a>/);
+  // Someone who runs only one thing sees only that.
+  const wh = (await (await loggedIn('wh1')).get('/manage')).text;
+  assert.ok(wh.includes('<span>Parts requests</span>')); assert.ok(!wh.includes('<span>People and passwords</span>')); assert.ok(!wh.includes('<h2>The site</h2>'));
   // The checklist: four steps, none ticked for a new person, with the guide to start from; no managers' line for a technician.
   const card = (/<section class="card welcome-card"[\s\S]*?<\/section>/.exec(hers) || [''])[0];
   assert.match(card, /Welcome, Nora\. A few things to set up/);

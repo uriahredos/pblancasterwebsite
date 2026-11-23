@@ -90,15 +90,6 @@
 </section>
 <% } %>
 
-<% if (manage.length) { %>
-<section class="card manage-panel" aria-labelledby="manage-h">
-  <h2 id="manage-h">Manage <a href="/help">How-to guides</a></h2>
-  <div class="manage-jobs">
-    <% manage.forEach(function (j) { %><a href="<%= j.url %>" class="<%= j.n ? 'waiting' : '' %>"><span><%= j.label %></span><% if (j.n && j.label !== 'Inventory count under way') { %><span class="badge" title="Waiting"><%= j.n %></span><% } %></a><% }) %>
-  </div>
-</section>
-<% } %>
-
 <% if (!hasPasskey) { %>
 <div class="card tip-card" id="passkey-tip" hidden>
   <p><strong>Get in with your face or fingerprint.</strong> The site now locks when you close it. Set up Face ID or fingerprint so you do not have to type your password each time.</p>

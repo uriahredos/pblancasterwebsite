@@ -303,9 +303,9 @@ The magnifying glass at the top right, beside the bell, opens one search for the
 - **Only what you may open.** A result is never shown for a page or guide the person's profile does not allow. Parts show only to people who work with parts: someone who runs stock lands on Stock for that part, everyone else on the parts form with the part already filled in.
 - The list of pages it knows is in `app/search.js`; a test fails if a link is added to the menu without adding it there.
 
-## Home page: Manage panel and first-time checklist
+## Manage page and first-time checklist
 
-- **Manage.** Anyone whose profile lets them run something sees a **Manage** panel near the top of the home page: the jobs they do most (add a person, assign a task, post an announcement, the on-call schedule, parts requests, low stock, inventory, truck problems, certifications and so on, each only if their profile allows it), with a red number on any that have something waiting, and a link to the how-to guides.
+- **Manage** (`/manage`). Anyone whose profile lets them run something has a **Manage** link in the menu bar (first under More on a phone), with a number when something is waiting. The page groups their jobs under People, Schedule and news, Parts, Fleet and training, and The site; each job shows only if their profile allows it, with a number where something waits (open parts requests, low stock, truck problems, certifications to renew, overdue tasks they gave). It is not on the home page.
 - **First-time checklist.** A new person sees "A few things to set up": add a photo, turn on alerts, set up Face ID or fingerprint, and put the site on the phone's home screen, each ticked as it is done, plus a link to the "find your way around" guide. Managers also get links to the main managers' guides. It goes away once the first three are done, or for good with **Done, hide this**. While it shows, the separate photo and Face ID reminders stay hidden so there is one card, not three.
 
 ## Social (`/social`)

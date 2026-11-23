@@ -1,0 +1,12 @@
+<%- include('partials/header', { wide: true }) %>
+<h1>Manage</h1>
+<p class="lede">The jobs you run, in one place. A number means something is waiting. <a href="/help">How-to guides</a></p>
+<% sections.forEach(function (s) { %>
+<section class="manage-section">
+  <h2><%= s.title %></h2>
+  <div class="manage-jobs">
+    <% s.jobs.forEach(function (j) { %><a href="<%= j.url %>" class="<%= j.n ? 'waiting' : '' %>"><span><%= j.label %></span><% if (j.n && !j.flag) { %><span class="badge" title="Waiting"><%= j.n %></span><% } %></a><% }) %>
+  </div>
+</section>
+<% }) %>
+<%- include('partials/footer') %>

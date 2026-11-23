@@ -65,6 +65,7 @@ const PAGES = [
   ['', '/my', 'My activity', 'what i sent my entries my requests'],
   ['', '/settings/notifications', 'Notification settings', 'alerts push notifications turn on turn off'],
   ['', '/account/password', 'Password and Face ID', 'change password reset my password fingerprint passkey face id'],
+  [(u) => require('./manage').has(u), '/manage', 'Manage', 'manager jobs admin run things waiting'],
   ['', '/help', 'Help', 'how to guides manual instructions'],
 ];
 const maySee = (user, who) => (typeof who === 'function' ? who(user) : !who || access.can(user, who));
