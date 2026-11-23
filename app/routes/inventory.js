@@ -67,12 +67,14 @@ router.post('/admin/inventory/moves', manage, (req, res) => {
   const own = (id) => { const l = inv.location(id); return l && l.branch_id === req.user.workBranch && l.active ? l : null; };
   const to = own(req.body.to); const from = req.body.from === 'delivery' ? null : own(req.body.from);
   const qty = /^\d{1,5}$/.test(String(req.body.quantity || '').trim()) ? Number(req.body.quantity) : 0;
-  const part = db.prepare('SELECT id, part_number FROM parts_catalog WHERE part_number = ?').get(clean(req.body.part_number, 100));
+  const typed = clean(req.body.part_number, 100);
+  let part = db.prepare('SELECT id, part_number FROM parts_catalog WHERE part_number = ?').get(typed);
   const fail = (msg) => { flash(req, 'err', msg); res.redirect(back); };
   if (!to || (req.body.from !== 'delivery' && !from)) return fail('Choose where the parts are coming from and going to.');
   if (from && from.id === to.id) return fail('Choose two different places.');
-  if (!part) return fail('That part number is not in the catalog.');
+  if (!typed) return fail('Enter the part.');
   if (qty < 1) return fail('Enter how many, as a whole number.');
+  if (!part) part = customPart(typed, req.user);          // typed by hand: it joins the catalog so it can be kept track of
   const note = clean(req.body.note, 200) || null;
   inv.move({ branchId: req.user.workBranch, catalogId: part.id, from: from && from.id, to: to.id, quantity: qty, kind: from ? 'transfer' : 'receive', note, userId: req.user.id });
   activity.log(req.user, from ? 'Parts moved' : 'Delivery received', `${qty} × ${part.part_number}: ${from ? from.name + ' to ' : 'into '}${to.name}`);
@@ -224,13 +226,20 @@ router.post('/admin/inventory/count/:id/discard', requirePerm('inventory.approve
   res.redirect('/admin/inventory/count');
 });
 
+/** A part typed by hand that the catalog does not have: added to it (with no description or cost yet) so it can be counted and moved. */
+function customPart(number, user) {
+  const id = db.prepare("INSERT INTO parts_catalog (part_number, description, created_at) VALUES (?, '', ?)").run(number, new Date().toISOString()).lastInsertRowid;
+  activity.log(user, 'Catalog part added', `${number}, typed by hand`);
+  return db.prepare('SELECT id, part_number FROM parts_catalog WHERE id = ?').get(id);
+}
+
 function sheetPage(req, res, extra = {}) {
   const audit = auditOf(req); const place = audit ? inv.location(req.params.loc) : null;
   if (!audit || !place || place.branch_id !== audit.branch_id || !mayCount(req.user, audit, place)) { forbidden(res); return null; }
   if (audit.status !== 'open') { res.redirect(mayCountAll(req.user) ? `/admin/inventory/count/${audit.id}` : '/'); return null; }
   if (extra.justLoad) return { audit, place };
   res.status(extra.errors ? 400 : 200).render('inventory_count_sheet', { title: `Count: ${place.name}`, audit, place, rows: counts.sheet(audit, place), monthName: counts.monthName,
-    backToCount: mayCountAll(req.user) && audit.branch_id === req.user.workBranch, errors: [], added: '', ...extra });
+    backToCount: mayCountAll(req.user) && audit.branch_id === req.user.workBranch, errors: [], added: '', finished: counts.finishedAt(audit, place), ...extra });
   return null;
 }
 router.get('/admin/inventory/count/:id/:loc', requireLogin, (req, res) => { sheetPage(req, res); });
@@ -251,14 +260,20 @@ router.post('/admin/inventory/count/:id/:loc', requireLogin, (req, res) => {
     }
     const added = clean(req.body.add_part, 100);
     if (added) {
-      const part = db.prepare('SELECT id FROM parts_catalog WHERE part_number = ?').get(added); const n = number(req.body.add_qty ?? '');
-      if (!part) errors.push(`${added} is not in the catalog, so it cannot be counted. Ask whoever keeps the catalog to add it.`);
-      else if (n === null) errors.push(`Enter how many of ${added} there are.`);
-      else { counts.count(audit, place, part.id, n, req.user.id); saved += 1; }
+      let part = db.prepare('SELECT id FROM parts_catalog WHERE part_number = ?').get(added); const n = number(req.body.add_qty ?? '');
+      if (n === null) errors.push(`Enter how many of ${added} there are.`);
+      else { if (!part) part = customPart(added, req.user); counts.count(audit, place, part.id, n, req.user.id); saved += 1; }
     }
   })();
-  if (errors.length) return sheetPage(req, res, { errors, added: errors.some((e) => /not in the catalog|how many of/.test(e)) ? clean(req.body.add_part, 100) : '' });
-  flash(req, 'ok', `Saved. ${saved} ${saved === 1 ? 'part' : 'parts'} counted in ${place.name}.`);
+  if (errors.length) return sheetPage(req, res, { errors, added: errors.some((e) => /how many of/.test(e)) ? clean(req.body.add_part, 100) : '' });
+  // Saving keeps what has been counted so far and nothing more. A location is finished only when someone says so.
+  if (req.body.finish === '1') {
+    counts.finish(audit, place, req.user.id);
+    flash(req, 'ok', `${place.name} is marked as finished. ${saved} ${saved === 1 ? 'part' : 'parts'} counted.`);
+    return res.redirect(mayCountAll(req.user) && audit.branch_id === req.user.workBranch ? `/admin/inventory/count/${audit.id}` : '/');
+  }
+  if (req.body.finish === 'reopen') { counts.reopen(audit, place); flash(req, 'ok', `${place.name} is open again.`); }
+  else flash(req, 'ok', `Saved. ${saved} ${saved === 1 ? 'part' : 'parts'} counted so far in ${place.name}. Come back any time to carry on.`);
   res.redirect(`/admin/inventory/count/${audit.id}/${place.id}`);
 });
 

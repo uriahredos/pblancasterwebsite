@@ -8041,14 +8041,34 @@ test('inventory: a count sets what was counted against the records, closing corr
   for (const url of [`${page}/${audit.id}`, `${page}/${audit.id}/${truck}`]) assert.equal((await outsider.get(url)).status, 403, url);
   await cam.post(`${page}/${audit.id}/${truck}`, { [`qty_${p1}`]: '2' }, { page: `${page}/${audit.id}/${truck}` });
   assert.deepEqual({ ...db.prepare('SELECT expected, counted, counted_by FROM inv_counts WHERE audit_id = ? AND location_id = ?').get(audit.id, truck) }, { expected: -3, counted: 2, counted_by: driver });
+  // Saving keeps the progress and nothing more: the vehicle is still theirs to count, and it is not shown as done.
+  assert.match(bell((await cam.get('/')).text), /vehicle to count/);
+  const row = (html, name) => (new RegExp(`<td><strong>${name}</strong></td>[\\s\\S]*?</tr>`).exec(html) || [''])[0];
+  assert.match(row((await owner.get(`${page}/${audit.id}`)).text, 'Truck 88'), /<span class="tag request">In progress<\/span>/);
+  const mid = (await cam.get(`${page}/${audit.id}/${truck}`)).text;
+  assert.match(mid, new RegExp(`name="qty_${p1}" value="2"`));                 // what was saved is there to carry on from
+  assert.match(mid, />Save and come back later<\/button>/); assert.match(mid, /name="finish" value="1"[^>]*>Save and mark as finished<\/button>/);
+  // Finishing is its own button. Only then is it done, and the reminder goes.
+  assert.equal((await cam.post(`${page}/${audit.id}/${truck}`, { [`qty_${p1}`]: '2', finish: '1' }, { page: `${page}/${audit.id}/${truck}` })).location, '/');
   assert.doesNotMatch(bell((await cam.get('/')).text), /vehicle to count/);
+  assert.match(row((await owner.get(`${page}/${audit.id}`)).text, 'Truck 88'), /<span class="tag return"[^>]*>Done<\/span>/);
+  const after = (await cam.get(`${page}/${audit.id}/${truck}`)).text;
+  assert.match(after, /Marked as finished by /); assert.match(after, /name="finish" value="reopen"[^>]*>Not finished after all<\/button>/);
+  // It can be opened again, and finished again.
+  await cam.post(`${page}/${audit.id}/${truck}`, { [`qty_${p1}`]: '2', finish: 'reopen' }, { page: `${page}/${audit.id}/${truck}` });
+  assert.match(bell((await cam.get('/')).text), /vehicle to count/);
+  await cam.post(`${page}/${audit.id}/${truck}`, { [`qty_${p1}`]: '2', finish: '1' }, { page: `${page}/${audit.id}/${truck}` });
 
   // The warehouse: a count, a part found that the records did not have there, and the mistakes a person makes.
   const whSheet = `${page}/${audit.id}/${wh}`;
   assert.equal((await owner.post(whSheet, { [`qty_${p1}`]: 'lots' }, { page: whSheet })).status, 400);
-  assert.match((await owner.post(whSheet, { [`qty_${p1}`]: '13', add_part: 'NOT-REAL', add_qty: '4' }, { page: whSheet })).text, /NOT-REAL is not in the catalog/);
+  assert.match((await owner.post(whSheet, { [`qty_${p1}`]: '13', add_part: 'NOT-REAL', add_qty: '' }, { page: whSheet })).text, /Enter how many of NOT-REAL there are/);
   await owner.post(whSheet, { [`qty_${p1}`]: '13', add_part: 'cnt-2', add_qty: '4' }, { page: whSheet });
   assert.match((await owner.get(whSheet)).text, new RegExp(`name="qty_${p2}" value="4"`));
+  // Every warehouse part has a number now, but nobody has said the warehouse is finished: it is in progress, and closing says so.
+  const midway = (await owner.get(`${page}/${audit.id}`)).text;
+  assert.match(row(midway, 'Main warehouse'), /<span class="tag request">In progress<\/span>/); assert.doesNotMatch(row(midway, 'Main warehouse'), />Done</);
+  assert.match(midway, /Not marked as finished yet: [^<]*Main warehouse/);
   const view = (await owner.get(`${page}/${audit.id}`)).text.replace(/\s+/g, ' ');
   assert.match(view, /3 parts counted so far, <strong>3 different from the records<\/strong>/);
   assert.match(view, /<td>Truck 88<\/td><td><strong>CNT-1<\/strong>[\s\S]*?<td class="num">-3<\/td><td class="num">2<\/td><td class="num"><strong>\+5<\/strong><\/td> <td class="num">\$12\.50<\/td>/);
@@ -8592,5 +8612,11 @@ test('parts section: a short menu, tabs for the pages that belong together, and 
   assert.deepEqual(JSON.parse((await t.get('/catalog/suggest?q=%25')).text), []);
   assert.equal((await new Client().get('/catalog/suggest?q=pick')).status, 302);
   assert.match((await t.get('/site.js')).text, /input\[data-catalog\]/);
+  // A part typed by hand that the catalog does not have is accepted: it joins the catalog and is moved like any other.
+  const whId = require('../app/inventory').warehouseOf(home).id;
+  await owner.post('/admin/inventory/moves', { from: 'delivery', to: String(whId), part_number: 'HAND-TYPED-1', quantity: '3' }, { page: '/admin/inventory' });
+  const made = db.prepare("SELECT id, description FROM parts_catalog WHERE part_number = 'HAND-TYPED-1'").get();
+  assert.ok(made); assert.equal(require('../app/inventory').onHand(whId, made.id), 3);
+  db.prepare('DELETE FROM inv_moves WHERE catalog_id = ?').run(made.id); db.prepare('DELETE FROM parts_catalog WHERE id = ?').run(made.id);
   db.prepare("DELETE FROM parts_catalog WHERE part_number = 'PICK-200'").run();
 });

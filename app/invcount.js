@@ -39,6 +39,14 @@ CREATE TABLE IF NOT EXISTS inv_snapshots (
   cost_cents INTEGER,
   PRIMARY KEY (audit_id, location_id, catalog_id)
 );
+-- A location someone has said is finished for this count. Saving a count never sets this by itself.
+CREATE TABLE IF NOT EXISTS inv_count_done (
+  audit_id INTEGER NOT NULL REFERENCES inv_audits(id) ON DELETE CASCADE,
+  location_id INTEGER NOT NULL REFERENCES inv_locations(id),
+  done_by INTEGER REFERENCES users(id),
+  done_at TEXT NOT NULL,
+  PRIMARY KEY (audit_id, location_id)
+);
 `);
 
 const now = () => new Date().toISOString();
@@ -84,14 +92,14 @@ function count(audit, place, catalogId, counted, userId) {
 function progress(audit) {
   const places = inv.locations(audit.branch_id).map((l) => {
     const due = sheet(audit, l);
-    return { ...l, due: due.length, done: due.filter((p) => p.counted !== null).length };
+    return { ...l, due: due.length, done: due.filter((p) => p.counted !== null).length, finished: finishedAt(audit, l) };
   });
   const differences = db.prepare(
     `SELECT k.*, l.name AS location, c.part_number, c.description, c.cost_cents, u.display_name AS counted_name FROM inv_counts k
      JOIN inv_locations l ON l.id = k.location_id JOIN parts_catalog c ON c.id = k.catalog_id LEFT JOIN users u ON u.id = k.counted_by
      WHERE k.audit_id = ? AND k.counted <> k.expected ORDER BY l.name COLLATE NOCASE, c.part_number`).all(audit.id);
   const lines = db.prepare('SELECT COUNT(*) AS n FROM inv_counts WHERE audit_id = ?').get(audit.id).n;
-  return { places, differences, lines, notStarted: places.filter((l) => l.due && !l.done), value: differences.reduce((n, d) => n + (d.cost_cents === null ? 0 : (d.counted - d.expected) * d.cost_cents), 0) };
+  return { places, differences, lines, notStarted: places.filter((l) => l.due && !l.finished), value: differences.reduce((n, d) => n + (d.cost_cents === null ? 0 : (d.counted - d.expected) * d.cost_cents), 0) };
 }
 
 /**
@@ -130,12 +138,19 @@ function closedFigures(auditId) {
 /** Set an open count aside: what was counted is thrown away and nothing else changes. */
 const discard = (audit) => db.prepare("DELETE FROM inv_audits WHERE id = ? AND status = 'open'").run(audit.id);
 
-/** For the bell: this person's own vehicle, when a count is under way and nothing in it has been counted yet. */
+/** Whether a location has been marked finished for this count (and by whom), or null. Only a person marks it. */
+const finishedAt = (audit, place) => db.prepare(
+  `SELECT d.done_at, u.display_name AS by_name FROM inv_count_done d LEFT JOIN users u ON u.id = d.done_by WHERE d.audit_id = ? AND d.location_id = ?`).get(audit.id, place.id) || null;
+const finish = (audit, place, userId) => db.prepare(
+  'INSERT INTO inv_count_done (audit_id, location_id, done_by, done_at) VALUES (?, ?, ?, ?) ON CONFLICT(audit_id, location_id) DO NOTHING').run(audit.id, place.id, userId, now());
+const reopen = (audit, place) => db.prepare('DELETE FROM inv_count_done WHERE audit_id = ? AND location_id = ?').run(audit.id, place.id);
+
+/** For the bell: this person's own vehicle, while a count is under way and they have not marked it finished. */
 function vehicleToCount(user) {
   const a = open(user.branch_id); if (!a) return null;
   const v = inv.vehicleOf(user.id); if (!v || v.branch_id !== user.branch_id) return null;
-  if (db.prepare('SELECT 1 FROM inv_counts WHERE audit_id = ? AND location_id = ?').get(a.id, v.id)) return null;
+  if (finishedAt(a, v)) return null;
   return `/admin/inventory/count/${a.id}/${v.id}`;
 }
 
-module.exports = { isMonth, monthName, get, open, past, start, sheet, count, progress, close, closedFigures, discard, vehicleToCount };
+module.exports = { isMonth, monthName, get, open, past, start, sheet, count, progress, close, closedFigures, discard, vehicleToCount, finishedAt, finish, reopen };

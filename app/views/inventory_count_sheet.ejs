@@ -1,7 +1,8 @@
 <%- include('partials/header') %>
 <% if (backToCount) { %><p class="back"><a class="back-link" href="/admin/inventory/count/<%= audit.id %>">Count for <%= monthName(audit.month) %></a></p><% } %>
 <h1>Count: <%= place.name %></h1>
-<p class="lede">Type how many of each part are really there. Leave a box empty if you have not counted that part. You can save and come back.</p>
+<p class="lede">Type how many of each part are really there. Leave a box empty if you have not counted that part. Save as often as you like and come back; mark it finished only when the whole place is counted.</p>
+<% if (finished) { %><p class="flash ok">Marked as finished<%= finished.by_name ? ' by ' + finished.by_name : '' %>, <%= fmtDateTime(finished.done_at) %>. You can still change a number and save.</p><% } %>
 <%- include('partials/errors') %>
 <form method="post" action="/admin/inventory/count/<%= audit.id %>/<%= place.id %>" class="stack" data-no-live id="count-form">
   <input type="hidden" name="_csrf" value="<%= csrf %>">
@@ -26,7 +27,11 @@
     </tbody>
   </table>
   </div>
-  <button class="btn primary" type="submit">Save the count</button>
+  <div class="count-actions">
+    <button class="btn" type="submit">Save and come back later</button>
+    <% if (finished) { %><button class="btn" type="submit" name="finish" value="reopen">Not finished after all</button>
+    <% } else { %><button class="btn primary" type="submit" name="finish" value="1" data-confirm-button="Mark <%= place.name %> as finished? Parts left empty are treated as not counted.">Save and mark as finished</button><% } %>
+  </div>
 </form>
 <div class="scan-overlay" id="scan-overlay" hidden>
   <div class="scan-box card">

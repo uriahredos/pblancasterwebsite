@@ -1572,6 +1572,8 @@ td.reports-to .meta { display: block; }
 @media (max-width: 600px) { .section-tabs { width: 100%; } .section-tabs a { flex: 1 1 auto; text-align: center; white-space: normal; } }
 .mod-tools:has(.suggest) { overflow: visible; }
 .mod-tools .filters.thread-tools { border: 0; box-shadow: none; background: none; }
+.count-actions { display: flex; flex-wrap: wrap; gap: .6rem; }
+.count-actions .btn { flex: 1 1 14rem; }
 .help-find input { width: 100%; max-width: 32rem; }
 .help-group h2 { margin: 1.5rem 0 .5rem; }
 .help-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); }

@@ -264,6 +264,13 @@ Short how-to guides built into the site, reached from **Help** at the right-hand
 - **The Inventory page leads with the list** of places. Moving parts or recording a delivery, adding a vehicle and adding another location are folded away under their own headings until wanted.
 - **Every box where a part is typed offers the catalog** (the parts form, starting to track a part, moving parts, adding a part to a count): type a number or a name and pick from the list. Anything else typed is kept as it is, so a part that is not in the catalog can still be entered.
 
+## Inventory count: saving and finishing
+
+- **Saving is not finishing.** A count sheet has two buttons. **Save and come back later** keeps the numbers typed so far and nothing else; the place shows as **In progress** and can be carried on at any time, by the same person or another. **Save and mark as finished** is the only thing that shows the place as **Done**. A finished place can still be changed, or opened again with **Not finished after all**.
+- **The technician's reminder stays** in the bell until they mark their own vehicle finished, not just until their first save.
+- **Closing** warns about any place not marked finished; it can still be closed, and anything not counted keeps the figures the records have.
+- **Adding a part that is not on the sheet** is at the top of the sheet, with its own button. A part typed by hand that the catalog does not have is accepted there and when moving parts: it joins the catalog with no description or cost (noted in the activity log) so it can be kept track of.
+
 ## Search (`/search`)
 
 The magnifying glass at the top right, beside the bell, opens one search for the whole site.

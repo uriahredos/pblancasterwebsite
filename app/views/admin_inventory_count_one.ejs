@@ -12,7 +12,7 @@
   <tr>
     <td><strong><%= l.name %></strong></td><td><%= l.technician || '' %></td>
     <td class="num"><%= l.done %> of <%= l.due %></td>
-    <td><% if (!l.due) { %><span class="hint">Nothing on record</span><% } else if (l.done >= l.due) { %><span class="tag return">Done</span><% } else if (l.done) { %><span class="tag request">Part done</span><% } else { %><span class="tag overdue">Not started</span><% } %></td>
+    <td><% if (!l.due) { %><span class="hint">Nothing on record</span><% } else if (l.finished) { %><span class="tag return" title="Marked as finished<%= l.finished.by_name ? ' by ' + l.finished.by_name : '' %>">Done</span><% } else if (l.done) { %><span class="tag request">In progress</span><% } else { %><span class="tag overdue">Not started</span><% } %></td>
     <td><% if (mayCount) { %><a href="/admin/inventory/count/<%= audit.id %>/<%= l.id %>">Count</a><% } %></td>
   </tr>
   <% }) %>
@@ -41,7 +41,7 @@
 
 <% if (mayApprove) { %>
 <h2 id="close">Close the count</h2>
-<% if (notStarted.length) { %><p class="flash err">Not counted yet: <%= notStarted.map(function (l) { return l.name; }).join(', ') %>. You can still close; those keep the figures the records have.</p><% } %>
+<% if (notStarted.length) { %><p class="flash err">Not marked as finished yet: <%= notStarted.map(function (l) { return l.name; }).join(', ') %>. You can still close; anything not counted keeps the figures the records have.</p><% } %>
 <p>Closing corrects the records to match what was counted, settles what was marked "to check" in the places counted, and keeps a copy of every location's figures as <%= monthName(audit.month) %>'s inventory. It cannot be undone.</p>
 <% if (proved) { %>
 <form method="post" action="/admin/inventory/count/<%= audit.id %>/close" data-no-live data-confirm="Close <%= monthName(audit.month) %>? This cannot be undone.">
