@@ -1,11 +1,59 @@
 'use strict';
 // Guides for trucks, training, sales and running the site. See app/help.js for what each field means.
 module.exports = [
-  // ---- Trucks and training ------------------------------------------------------------
+  {
+    slug: 'sign-out-a-lift',
+    title: 'Sign out a scissor lift or other equipment',
+    group: 'Fleet and training',
+    perms: ['fleet.signout'],
+    pages: ['/fleet/signout'],
+    intro: 'Tell the office which lift you are taking, when, where it is going and when it will be back.',
+    where: 'Main menu: Fleet, then Sign out equipment. On a phone it is under More. Home also has a Sign out a lift button.',
+    steps: [
+      'Open **Fleet** in the main menu and choose **Sign out equipment**.',
+      'Under **What are you taking?**, choose the lift or piece of equipment.',
+      'Fill in **Taking it on** and **At** with the day and time you will pick it up.',
+      'Fill in **Bringing it back on** and **At** with the day and time it will be back.',
+      'In **Where will it be used?**, type the job site or customer. Add the **Job number** if you have one.',
+      'Choose **Sign it out**.',
+      'When it is back, find it under **Signed out now and coming up** and choose **Mark as returned**.',
+    ],
+    tips: [
+      'If someone already has it for that time, the site tells you who, when and where, so you can pick another time or ask them.',
+      'Plans changed before you took it? Choose **Cancel** next to your sign-out.',
+      'Only equipment the office has set up to be signed out is in the list. Ask whoever runs the fleet to add anything missing.',
+    ],
+    related: ['fleet-list'],
+  },
+
+  {
+    slug: 'fleet-list',
+    title: 'See the fleet, and add a truck, trailer or lift',
+    group: 'Fleet and training',
+    perms: [],
+    pages: ['/fleet'],
+    intro: 'The Fleet page lists what the office runs: trucks and vans, trailers, lifts and other equipment, and who has what signed out.',
+    where: 'Main menu: Fleet, then Fleet list. On a phone it is under More.',
+    steps: [
+      'Open **Fleet** in the main menu and choose **Fleet list**.',
+      'Look under **Signed out** to see what is out, who has it, where and until when.',
+      'Each kind has its own list. The **Now** column shows **Available** or **Out** for anything that is signed out before use.',
+      'To add something, open **Add to the fleet** at the bottom, choose the **Kind**, type its **Name or number** and choose **Add it**. This needs a profile that keeps the fleet list.',
+      'Tick **People sign it out before using it** for a lift or anything else that is shared.',
+      'To change or retire something, choose its name, then use **Change it** or **Put it away**.',
+    ],
+    tips: [
+      'A technician\'s truck that carries parts is listed here too. Its parts are kept on the Inventory page.',
+      'Putting something away keeps its sign-out history, and it can be brought back.',
+    ],
+    related: ['sign-out-a-lift'],
+  },
+
+  // ---- Fleet and training ------------------------------------------------------------
   {
     slug: 'review-truck-inspections',
     title: 'Review truck inspections and mark problems fixed',
-    group: 'Trucks and training',
+    group: 'Fleet and training',
     perms: ['inspections.view'],
     pages: ['/admin/inspections'],
     intro: 'See every truck inspection people have sent, deal with the problems they reported, and download the list as a spreadsheet.',
@@ -29,7 +77,7 @@ module.exports = [
   {
     slug: 'edit-inspection-checklist',
     title: 'Edit the truck inspection checklist',
-    group: 'Trucks and training',
+    group: 'Fleet and training',
     perms: ['inspections.manage'],
     pages: ['/admin/inspections/checklist'],
     intro: 'Change what people are asked to check when they fill in the truck inspection form.',
@@ -52,7 +100,7 @@ module.exports = [
   {
     slug: 'review-training-requests',
     title: 'Review and answer training requests',
-    group: 'Trucks and training',
+    group: 'Fleet and training',
     perms: ['training.view'],
     pages: ['/admin/training'],
     intro: 'Read the training people have asked for, set where each request stands, reply to the person, and download the list.',
@@ -77,7 +125,7 @@ module.exports = [
   {
     slug: 'training-sessions',
     title: 'Schedule a training session and record who attended',
-    group: 'Trucks and training',
+    group: 'Fleet and training',
     perms: ['training.view'],
     pages: ['/admin/training/sessions'],
     intro: 'Plan a training session, list who is expected, and afterwards record who came.',

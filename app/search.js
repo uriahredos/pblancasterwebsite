@@ -35,6 +35,8 @@ const PAGES = [
   ['parts.view', '/admin/inventory', 'Inventory', 'vehicles trucks warehouse locations export count sedona'],
   ['parts.view', '/admin/parts/summary', 'Usage summary', 'parts report usage weekly'],
   ['catalog.manage', '/admin/catalog', 'Catalog', 'parts list part numbers prices cost import'],
+  ['', '/fleet', 'Fleet list', 'fleet trucks vans trailers lifts scissor lift equipment vehicles'],
+  ['fleet.signout', '/fleet/signout', 'Sign out equipment', 'scissor lift sign out borrow reserve book equipment trailer'],
   ['inspections.submit', '/inspection', 'Truck inspection', 'vehicle check walk around van'],
   ['inspections.view', '/admin/inspections', 'Inspection log', 'truck problems vehicle inspections'],
   ['inspections.manage', '/admin/inspections/checklist', 'Checklist', 'inspection questions truck checklist'],

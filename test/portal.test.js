@@ -1732,7 +1732,7 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
   const barLinks = (html) => { const nav = /<nav class="nav"[\s\S]*?<\/nav>/.exec(html)[0].replace(/<details[\s\S]*?<\/details>/g, '').replace(/<div class="nav-account">[\s\S]*?<\/div>/, ''); return [...nav.matchAll(/<a href="([^"]+)"/g)].map((m) => m[1]); };
 
   const owner = (await (await loggedIn('owner')).get('/admin/users')).text;
-  assert.deepEqual(groupsOf(owner), ['Community', 'Parts', 'Trucks', 'Training', 'Team', 'Setup', 'Corporate']);
+  assert.deepEqual(groupsOf(owner), ['Community', 'Parts', 'Fleet', 'Training', 'Team', 'Setup', 'Corporate']);
   assert.deepEqual(barLinks(owner), ['/', '/tasks', '/social', '/oncall', '/sales']);   // the master account also sees the sales side
   // What used to be one long Admin list is two: Team (people and what goes out to them) and Setup (the site itself).
   const team = /<summary[^>]*>Team[\s\S]*?<\/details>/.exec(owner)[0];
@@ -1752,18 +1752,19 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
   assert.doesNotMatch(owner, /id="menu-toggle"/);                          // the old phone Menu button is gone
   assert.match(owner, /class="nav-account">[\s\S]*Password and Face ID[\s\S]*Sign out/); // account links are in the menu for phones
 
-  // A technician: no Team or Setup; Trucks has one thing, so it is a plain "Truck inspection" link.
+  // A technician: no Team or Setup. Fleet holds the fleet list, the equipment sign-out and the truck inspection.
   const tech = (await (await loggedIn('tech1')).get('/')).text;
-  assert.deepEqual(groupsOf(tech), ['Community', 'Training']);
+  assert.deepEqual(groupsOf(tech), ['Community', 'Fleet', 'Training']);
+  assert.deepEqual([...(/<summary[^>]*>Fleet[\s\S]*?<\/details>/.exec(tech)[0]).matchAll(/<a href="([^"]+)"/g)].map((m) => m[1]), ['/fleet', '/fleet/signout', '/inspection']);
   assert.match(tech, /<a href="\/parts" >Parts<\/a>/);                    // for a technician Parts is one plain link: the form
-  assert.deepEqual(barLinks(tech), ['/', '/tasks', '/social', '/parts', '/inspection', '/oncall', '/complaint']); // one-item groups show as plain links
+  assert.deepEqual(barLinks(tech), ['/', '/tasks', '/social', '/parts', '/oncall', '/complaint']); // one-item groups show as plain links
   assert.doesNotMatch(tech, /href="\/admin\//);
   assert.match(tech, /<a href="\/inspection"[^>]*>Truck inspection<\/a>/);
   assert.doesNotMatch(/<summary[^>]*>Community[\s\S]*?<\/details>/.exec(tech)[0], /<hr>\s*<hr>|<div class="menu-list">\s*<hr>|<hr>\s*<\/div>/); // no stray divider
 
   // A manager's Team group holds only what their profile allows, and they have no Setup group.
   const mgr = (await (await loggedIn('mgr1')).get('/')).text;
-  assert.deepEqual(groupsOf(mgr), ['Community', 'Parts', 'Trucks', 'Training', 'Team']);           // Manage tasks and Post announcements
+  assert.deepEqual(groupsOf(mgr), ['Community', 'Parts', 'Fleet', 'Training', 'Team']);           // Manage tasks and Post announcements
   assert.deepEqual(barLinks(mgr), ['/', '/tasks', '/social', '/oncall']);
   assert.doesNotMatch(mgr, /admin\/(users|profiles|complaints|backups|activity)"/);
 
@@ -8687,4 +8688,65 @@ test('warehouse stock: levels without a count, a maximum to order up to, figures
   db.prepare("DELETE FROM push_subscriptions WHERE endpoint LIKE '%lvl-device'").run();
   for (const n of ['LVL-1', 'LVL-NEW', 'LVL-LOOSE']) { const c = db.prepare('SELECT id FROM parts_catalog WHERE part_number = ?').get(n); db.prepare('DELETE FROM inv_moves WHERE catalog_id = ?').run(c.id); db.prepare('DELETE FROM branch_stock WHERE catalog_id = ?').run(c.id); db.prepare('DELETE FROM parts_catalog WHERE id = ?').run(c.id); }
   db.prepare('DELETE FROM inv_locations WHERE id = ?').run(truck);
+});
+
+test('fleet: the office\'s trucks, trailers, lifts and other equipment in one list, and a lift signed out for a time and a place', async () => {
+  const owner = await loggedIn('owner'); const t1 = await loggedIn('tech1'); const t2 = await loggedIn('tech2'); const outsider = await loggedIn('inv.away');
+  const home = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id;
+  await owner.post('/branch/view', { branch: String(home) }, { page: '/' });
+  // Whoever runs the fleet adds to it; a technician cannot.
+  assert.equal((await t1.post('/fleet', { kind: 'lift', name: 'Sneaky lift' }, { page: '/fleet' })).status, 403);
+  await owner.post('/fleet', { kind: 'lift', name: 'Scissor lift 1', details: 'Genie GS-1930, 19 ft', ident: 'SN 4471', bookable: '1' }, { page: '/fleet' });
+  await owner.post('/fleet', { kind: 'trailer', name: 'Enclosed trailer', ident: 'PA XKT-2210' }, { page: '/fleet' });
+  await owner.post('/fleet', { kind: 'truck', name: 'Box truck 7', user_id: String(userId('tech2')) }, { page: '/fleet' });
+  await owner.post('/fleet', { kind: 'lift', name: 'scissor LIFT 1', bookable: '1' }, { page: '/fleet' });        // the same name again is refused
+  const lift = db.prepare("SELECT * FROM fleet_items WHERE name = 'Scissor lift 1'").get();
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM fleet_items WHERE name = 'Scissor lift 1' COLLATE NOCASE").get().n, 1);
+  // Everyone in the office sees the list, grouped by kind; another office does not see this one's.
+  const list = (await t1.get('/fleet')).text.replace(/\s+/g, ' ');
+  for (const h of ['Trucks and vans', 'Trailers', 'Lifts']) assert.ok(list.includes(`<h2>${h}</h2>`), h);
+  assert.match(list, /<strong>Scissor lift 1<\/strong><\/a><\/td><td>Genie GS-1930, 19 ft<\/td><td>SN 4471<\/td><td><\/td> <td><span class="tag return">Available<\/span>/);
+  assert.match(list, /<strong>Box truck 7<\/strong><\/a><\/td><td><\/td><td><\/td><td>Uma Tech<\/td>/);
+  assert.match(list, new RegExp(`<a href="/fleet/signout\\?item=${lift.id}">Sign out</a>`)); assert.doesNotMatch(list, /Add to the fleet/);
+  assert.match((await owner.get('/fleet')).text, /<summary>Add to the fleet<\/summary>/);
+  assert.doesNotMatch((await outsider.get('/fleet')).text, /SN 4471|Genie GS-1930/); assert.equal((await outsider.get(`/fleet/${lift.id}`)).status, 404);
+  // Signing it out: which lift, when, where, and until when. Each is asked for.
+  const day = (n) => { const d = new Date(`${require('../app/util').localDate()}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const form = (await t1.get(`/fleet/signout?item=${lift.id}`)).text;
+  assert.match(form, new RegExp(`<option value="${lift.id}" selected>Scissor lift 1 \\(Genie GS-1930, 19 ft\\)</option>`)); assert.doesNotMatch(form, /Enclosed trailer<\/option>/);   // only what is set up to be signed out
+  for (const f of ['start_date', 'start_time', 'end_date', 'end_time', 'place']) assert.match(form, new RegExp(`name="${f}"[^>]*required`));
+  const ask = (c, o) => c.post('/fleet/signout', { item: String(lift.id), start_date: day(2), start_time: '07:00', end_date: day(3), end_time: '15:30', place: 'Lincoln Elementary gym', job_number: 'J-5512', ...o }, { page: '/fleet/signout' });
+  assert.match((await ask(t1, { place: '' })).text, /Say where it will be used/);
+  assert.match((await ask(t1, { end_date: day(2), end_time: '06:00' })).text, /has to be after the time it goes out/);
+  assert.match((await ask(t1, { start_date: day(-3), end_date: day(-2) })).text, /already passed/);
+  assert.match((await ask(t1, { item: '999999' })).text, /Choose which lift/);
+  assert.equal((await ask(t1, {})).status, 302);
+  const s = db.prepare('SELECT * FROM fleet_signouts WHERE item_id = ?').get(lift.id);
+  assert.deepEqual([s.user_id, s.start_at, s.end_at, s.place, s.job_number, s.returned_at], [userId('tech1'), `${day(2)}T07:00`, `${day(3)}T15:30`, 'Lincoln Elementary gym', 'J-5512', null]);
+  // Two people cannot have it at once; a time that does not overlap is fine.
+  const clash = (await ask(t2, { start_date: day(3), start_time: '08:00', end_date: day(3), end_time: '12:00', place: 'Elsewhere' })).text;
+  assert.match(clash, /Scissor lift 1 is already signed out by Terry Tech from [A-Z][a-z]{2} \d+\/\d+, 7:00 AM until [A-Z][a-z]{2} \d+\/\d+, 3:30 PM \(Lincoln Elementary gym\)/);
+  assert.equal((await ask(t2, { start_date: day(3), start_time: '15:30', end_date: day(3), end_time: '18:00', place: 'Elsewhere' })).status, 302);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM fleet_signouts WHERE item_id = ?').get(lift.id).n, 2);
+  // Everyone sees who has it, when, where and for how long.
+  const board = (await t2.get('/fleet/signout')).text.replace(/\s+/g, ' ');
+  assert.match(board, /<strong>Scissor lift 1<\/strong><\/a><\/td> <td>Terry Tech<\/td> <td>[A-Z][a-z]{2} \d+\/\d+, 7:00 AM<br><span class="hint">until [A-Z][a-z]{2} \d+\/\d+, 3:30 PM \(1 day 8\.5 hours\)<\/span><\/td> <td>Lincoln Elementary gym<br><span class="hint">Job J-5512<\/span>/);
+  // Only the person who signed it out, or whoever runs the fleet, can cancel or return it.
+  assert.equal((await t2.post(`/fleet/signout/${s.id}/return`, {}, { page: '/fleet/signout' })).status, 403);
+  await t1.post(`/fleet/signout/${s.id}/return`, {}, { page: '/fleet/signout' });                               // not out yet: cancelled
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM fleet_signouts WHERE id = ?').get(s.id).n, 0);
+  // One that is out now shows on the fleet list, and coming back frees the lift.
+  const nowId = db.prepare('INSERT INTO fleet_signouts (item_id, user_id, start_at, end_at, place, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(lift.id, userId('tech2'), `${day(-1)}T08:00`, `${day(1)}T17:00`, 'Warehouse racking job', new Date().toISOString()).lastInsertRowid;
+  assert.match((await t1.get('/fleet')).text.replace(/\s+/g, ' '), /<span class="tag request">Out<\/span> <span class="hint">Uma Tech, until /);
+  assert.match((await ask(t1, { start_date: day(0), start_time: '23:00', end_date: day(1), end_time: '09:00' })).text, /already signed out by Uma Tech/);
+  await owner.post(`/fleet/signout/${nowId}/return`, { back: 'fleet' }, { page: '/fleet' });
+  assert.ok(db.prepare('SELECT returned_at FROM fleet_signouts WHERE id = ?').get(nowId).returned_at);
+  assert.match((await t1.get('/fleet')).text.replace(/\s+/g, ' '), /SN 4471<\/td><td><\/td> <td><span class="tag return">Available<\/span>/);
+  assert.match((await owner.get(`/fleet/${lift.id}`)).text, /Warehouse racking job/);                              // its history is kept on its own page
+  // Put away, it leaves the list and can no longer be signed out; its page uses the site's own back button.
+  assert.match((await t1.get(`/fleet/${lift.id}`)).text, /<p class="back"><a class="back-link" href="\/fleet">Fleet<\/a><\/p>/);
+  await owner.post(`/fleet/${lift.id}`, { op: 'retire' }, { page: `/fleet/${lift.id}` });
+  assert.doesNotMatch((await t1.get('/fleet/signout')).text, /Scissor lift 1<\/option>|Scissor lift 1 \(/);
+  assert.match((await ask(t1, { start_date: day(5), end_date: day(6) })).text, /Choose which lift/);
+  db.prepare("DELETE FROM fleet_items WHERE branch_id = ?").run(home);
 });

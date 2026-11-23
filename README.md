@@ -280,6 +280,16 @@ Short how-to guides built into the site, reached from **Help** at the right-hand
 - **Export what to order** downloads that list as a spreadsheet.
 - **Alerts.** When a part goes from above its minimum to at or below it, the people who manage stock in that office get an alert on their phone or computer (if they have alerts on, and have not switched "A part drops to or below its minimum" off), and the home office also gets the email. This now happens however the parts leave the warehouse: the parts form, a move to a vehicle, or a correction. Each part alerts once, not on every further take.
 
+## Fleet (`/fleet`)
+
+The menu group that was called Trucks is **Fleet**. It holds the **Fleet list**, **Sign out equipment**, the **Truck inspection**, and (for people who run them) the inspection log and checklist.
+
+- **Fleet list.** Everything the office runs, by kind: trucks and vans, trailers, lifts and other equipment, each with its details, plate or serial, and whose it is. Everyone in the office can see it. A technician's truck that carries parts (an Inventory location) is listed with the rest. Each office has its own list.
+- **Keeping the list** needs **Keep the fleet list** on the profile (given to start with to whoever could manage truck inspections): add something, change it, or put it away. Putting something away keeps its history and it can be brought back.
+- **Signing equipment out** (`/fleet/signout`). Anything ticked "People sign it out before using it" (a scissor lift, a shared trailer) is signed out with: which one, the day and time it is taken, the day and time it comes back, where it will be used, and optionally a job number and a note. The site works out how long that is. Needs **Sign out lifts and other shared equipment** (given to start with to everyone who could use the parts form).
+- **No double booking.** If someone already has it for any part of that time, the site says who, when and where, and refuses.
+- **Who has what.** The Fleet list and the sign-out page both show what is out now, due back, or coming up, with who, where and for how long. The person who signed it out, or whoever keeps the fleet list, marks it **returned** (or cancels it before it has gone out). Each item's own page keeps its sign-out history.
+
 ## Search (`/search`)
 
 The magnifying glass at the top right, beside the bell, opens one search for the whole site.

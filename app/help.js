@@ -14,7 +14,7 @@ const access = require('./permissions');
 
 const dir = path.join(__dirname, 'help');
 const guides = fs.readdirSync(dir).filter((f) => f.endsWith('.js')).sort().flatMap((f) => require(path.join(dir, f)));
-const GROUPS = ['Getting started', 'Everyday', 'Parts and inventory', 'People', 'Schedule and tasks', 'News and community', 'Trucks and training', 'Sales', 'Running the site'];
+const GROUPS = ['Getting started', 'Everyday', 'Parts and inventory', 'People', 'Schedule and tasks', 'News and community', 'Fleet and training', 'Sales', 'Running the site'];
 const bySlug = new Map(guides.map((g) => [g.slug, g]));
 
 const maySee = (user, g) => !(g.perms || []).length || g.perms.some((p) => access.can(user, p));

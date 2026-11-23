@@ -1,0 +1,40 @@
+<%- include('partials/header', { wide: true }) %>
+<p class="back"><a class="back-link" href="/fleet">Fleet</a></p>
+<h1>Sign out equipment</h1>
+<p class="lede">Say which lift or piece of equipment you are taking, when, where it is going and when it will be back.</p>
+<%- include('partials/errors') %>
+<% if (!choices.length) { %>
+<p class="flash err">Nothing in this office is set up to be signed out yet.<%= mayManage ? ' Add a lift on the Fleet page and tick "People sign it out before using it".' : ' Ask whoever runs the fleet to add the lift.' %></p>
+<% } else { %>
+<form method="post" action="/fleet/signout" class="card stack signout-form" data-no-live data-once>
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>What are you taking?
+    <select name="item" required><option value="">Choose</option><% choices.forEach(function (c) { %><option value="<%= c.id %>" <%= String(values.item) === String(c.id) ? 'selected' : '' %>><%= c.name %><%= c.details ? ' (' + c.details + ')' : '' %></option><% }) %></select></label>
+  <div class="two">
+    <label>Taking it on <input type="date" name="start_date" value="<%= values.start_date || '' %>" min="<%= today %>" required></label>
+    <label>At <input type="time" name="start_time" value="<%= values.start_time || '' %>" required></label>
+  </div>
+  <div class="two">
+    <label>Bringing it back on <input type="date" name="end_date" value="<%= values.end_date || '' %>" min="<%= today %>" required></label>
+    <label>At <input type="time" name="end_time" value="<%= values.end_time || '' %>" required></label>
+  </div>
+  <label>Where will it be used? <span class="hint">Job site or customer</span> <input name="place" value="<%= values.place || '' %>" maxlength="120" required autocomplete="off"></label>
+  <div class="two">
+    <label>Job number <span class="hint">Optional</span> <input name="job_number" value="<%= values.job_number || '' %>" maxlength="40" autocomplete="off"></label>
+    <label>Note <span class="hint">Optional</span> <input name="note" value="<%= values.note || '' %>" maxlength="300" autocomplete="off"></label>
+  </div>
+  <button class="btn primary" type="submit">Sign it out</button>
+</form>
+<% } %>
+
+<h2>Signed out now and coming up</h2>
+<div class="table-wrap">
+<table class="fleet-out">
+  <thead><tr><th>What</th><th>Who</th><th>When</th><th>Where</th><th></th><th></th></tr></thead>
+  <tbody>
+  <% out.forEach(function (s) { %><%- include('partials/fleet_out', { s: s, back: '', mayClose: mayManage || s.user_id === user.id }) %><% }) %>
+  <% if (!out.length) { %><tr><td colspan="6" class="empty">Nothing is signed out.</td></tr><% } %>
+  </tbody>
+</table>
+</div>
+<%- include('partials/footer') %>

@@ -27,7 +27,9 @@ const GROUPS = [
     ['inventory.approve', 'Start an inventory count, look over the differences and close it'],
     ['inventory.export', 'Export the office\'s inventory as a spreadsheet: the warehouse, each vehicle and the totals'],
   ] },
-  { title: 'Trucks', items: [
+  { title: 'Fleet', items: [
+    ['fleet.signout', 'Sign out lifts and other shared equipment'],
+    ['fleet.manage', 'Keep the fleet list: trucks and vans, trailers, lifts and other equipment; close anyone\'s equipment sign-out'],
     ['inspections.view', 'See truck inspections and exports'],
     ['inspections.manage', 'Mark inspection problems as fixed; edit the inspection checklist'],
   ] },
@@ -64,7 +66,7 @@ const GROUPS = [
 const ALL = GROUPS.flatMap((g) => g.items.map((i) => i[0]));
 // Sales is its own side of the site. Besides the two Sales profiles, only Admin and Corporate admin start with it.
 const SALES = ['sales.use', 'sales.manage'];
-const SUBMIT = ['parts.submit', 'training.submit', 'complaints.submit', 'inspections.submit'];
+const SUBMIT = ['parts.submit', 'training.submit', 'complaints.submit', 'inspections.submit', 'fleet.signout'];
 
 // Starting profiles. After the first start they are ordinary profiles: change them on the Profiles page.
 const DEFAULTS = [
@@ -145,7 +147,7 @@ function migrate() {
     // hold the closest existing permission, so nobody has to re-tick boxes after an update.
     const INHERIT = {
       'stock.manage': 'catalog.manage', 'inventory.manage': 'stock.manage', 'inventory.count': 'stock.manage', 'inventory.approve': 'users.manage', 'inventory.export': 'inventory.manage', 'activity.view': 'profiles.manage',
-      'inspections.submit': 'parts.submit', 'inspections.view': 'parts.view', 'inspections.manage': 'parts.manage',
+      'inspections.submit': 'parts.submit', 'inspections.view': 'parts.view', 'inspections.manage': 'parts.manage', 'fleet.signout': 'parts.submit', 'fleet.manage': 'inspections.manage',
       'certs.manage': 'training.manage', 'announcements.post': 'training.manage', 'records.delete': 'profiles.manage',
       'tasks.assign': 'announcements.post',
       'newsletters.manage': 'users.manage', 'forum.use': 'parts.submit', 'forum.moderate': 'users.manage', 'daily.manage': 'users.manage', 'events.post': 'announcements.post', 'oncall.manage': 'tasks.assign',

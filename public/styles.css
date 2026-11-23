@@ -1578,6 +1578,8 @@ td.reports-to .meta { display: block; }
 .stock-insights .card { padding: .9rem 1.1rem; }
 .stock-insights h2 { margin: 0 0 .4rem; font-size: 1rem; }
 .stock-insights ol { margin: 0; padding-left: 1.3rem; display: grid; gap: .25rem; }
+.signout-form select, .signout-form input { width: 100%; }
+.plain-list { list-style: none; margin: 0; display: grid; gap: .3rem; }
 .help-find input { width: 100%; max-width: 32rem; }
 .help-group h2 { margin: 1.5rem 0 .5rem; }
 .help-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); }

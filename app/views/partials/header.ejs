@@ -121,7 +121,10 @@
         [can('parts.view') ? 'no.such.permission' : 'parts.audit', '/admin/parts/audit', 'Audit', is('/admin/parts/audit')],
         ['catalog.manage', '/admin/catalog', 'Catalog', is('/admin/catalog')]
       ] },
-      { name: 'Trucks', items: [
+      { name: 'Fleet', items: [
+        ['', '/fleet', 'Fleet list', is('/fleet') && !is('/fleet/signout')],
+        ['fleet.signout', '/fleet/signout', 'Sign out equipment', is('/fleet/signout')],
+        'divider',
         ['inspections.submit', '/inspection', 'Truck inspection', path === '/inspection'],
         'divider',
         ['inspections.view', '/admin/inspections', 'Inspection log', is('/admin/inspections') && !is('/admin/inspections/checklist'), badges.inspections],

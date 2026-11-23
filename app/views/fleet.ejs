@@ -1,0 +1,56 @@
+<%- include('partials/header', { wide: true }) %>
+<h1>Fleet</h1>
+<p class="lede">What the <%= office %> office runs: trucks and vans, trailers, lifts and other equipment.</p>
+<% if (maySign) { %><p class="filter-actions"><a class="btn primary small" href="/fleet/signout">Sign out a lift or equipment</a></p><% } %>
+
+<% if (out.length) { %>
+<h2>Signed out</h2>
+<div class="table-wrap">
+<table class="fleet-out">
+  <thead><tr><th>What</th><th>Who</th><th>When</th><th>Where</th><th></th><th></th></tr></thead>
+  <tbody><% out.forEach(function (s) { %><%- include('partials/fleet_out', { s: s, back: 'fleet', mayClose: mayManage || s.user_id === user.id }) %><% }) %></tbody>
+</table>
+</div>
+<% } %>
+
+<% groups.forEach(function (g) { %>
+<h2><%= g.title %></h2>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Name</th><th>Details</th><th>Plate or serial</th><th>Whose it is</th><th>Now</th><th></th></tr></thead>
+  <tbody>
+  <% g.items.forEach(function (f) { %>
+  <tr>
+    <% if (f.stocked) { %>
+    <td><strong><%= f.name %></strong></td><td><span class="hint">Carries parts</span></td><td></td><td><%= f.person || '' %></td><td></td>
+    <td><% if (seesInventory) { %><a href="/admin/inventory/locations/<%= f.id %>">Its parts</a><% } %></td>
+    <% } else { %>
+    <td><a href="/fleet/<%= f.id %>"><strong><%= f.name %></strong></a></td><td><%= f.details || '' %></td><td><%= f.ident || '' %></td><td><%= f.person || '' %></td>
+    <td><% if (f.out) { %><span class="tag <%= f.out.state === 'late' ? 'overdue' : 'request' %>"><%= f.out.state === 'late' ? 'Due back' : 'Out' %></span> <span class="hint"><%= f.out.display_name %>, until <%= f.out.until %></span><% } else if (f.bookable) { %><span class="tag return">Available</span><% if (f.next) { %> <span class="hint">next out <%= f.next.from %></span><% } %><% } %></td>
+    <td><% if (f.bookable && maySign) { %><a href="/fleet/signout?item=<%= f.id %>">Sign out</a><% } else { %><a href="/fleet/<%= f.id %>">Open</a><% } %></td>
+    <% } %>
+  </tr>
+  <% }) %>
+  </tbody>
+</table>
+</div>
+<% }) %>
+<% if (!groups.length) { %><p class="hint">Nothing is in the fleet yet.<%= mayManage ? ' Add the first thing below.' : '' %></p><% } %>
+
+<% if (mayManage) { %>
+<details class="mod-tools spaced" id="add">
+<summary>Add to the fleet</summary>
+<form method="post" action="/fleet" class="filters thread-tools" data-no-live>
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <%- include('partials/fleet_fields', { v: { kind: 'lift', bookable: 1 }, people: people, kinds: kinds }) %>
+  <div class="filter-actions"><button class="btn primary small" type="submit">Add it</button></div>
+</form>
+</details>
+<% if (retired.length) { %>
+<details class="mod-tools">
+<summary>Put away (<%= retired.length %>)</summary>
+<ul class="thread-tools plain-list"><% retired.forEach(function (f) { %><li><a href="/fleet/<%= f.id %>"><%= f.name %></a> <span class="hint"><%= kinds[f.kind] %></span></li><% }) %></ul>
+</details>
+<% } %>
+<% } %>
+<%- include('partials/footer') %>

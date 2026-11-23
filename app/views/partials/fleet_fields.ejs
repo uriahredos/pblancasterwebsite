@@ -1,0 +1,7 @@
+<%# The boxes that describe one thing in the fleet. Pass `v` (its values), `people` and `kinds`. %>
+<label>Kind <select name="kind" required><% Object.keys(kinds).forEach(function (k) { %><option value="<%= k %>" <%= v.kind === k ? 'selected' : '' %>><%= kinds[k] %></option><% }) %></select></label>
+<label>Name or number <span class="hint">For example Scissor lift 1</span> <input name="name" value="<%= v.name || '' %>" required maxlength="60" autocomplete="off"></label>
+<label>Details <span class="hint">Make, model, size. Optional.</span> <input name="details" value="<%= v.details || '' %>" maxlength="120" autocomplete="off"></label>
+<label>Plate or serial <span class="hint">Optional</span> <input name="ident" value="<%= v.ident || '' %>" maxlength="60" autocomplete="off"></label>
+<label>Whose it is <span class="hint">Leave empty if it is shared</span> <select name="user_id"><option value="">Nobody's: shared</option><% people.forEach(function (p) { %><option value="<%= p.id %>" <%= v.user_id === p.id ? 'selected' : '' %>><%= p.display_name %></option><% }) %></select></label>
+<label class="choice"><input type="checkbox" name="bookable" value="1" <%= v.bookable ? 'checked' : '' %>> People sign it out before using it</label>

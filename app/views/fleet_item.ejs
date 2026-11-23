@@ -1,0 +1,32 @@
+<%- include('partials/header', { wide: true }) %>
+<p class="back"><a class="back-link" href="/fleet">Fleet</a></p>
+<h1><%= item.name %></h1>
+<p class="lede"><%= [kinds[item.kind], item.details, item.ident, person ? person.display_name : '', item.active ? '' : 'put away'].filter(Boolean).join(' · ') %></p>
+<% if (item.active && item.bookable && maySign) { %><p class="filter-actions"><a class="btn primary small" href="/fleet/signout?item=<%= item.id %>">Sign it out</a></p><% } %>
+
+<% if (item.bookable || history.length) { %>
+<h2>Sign-outs</h2>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Who</th><th>From</th><th>Until</th><th>How long</th><th>Where</th><th>Returned</th></tr></thead>
+  <tbody>
+  <% history.forEach(function (s) { %><tr><td><%= s.display_name %></td><td><%= s.from %></td><td><%= s.until %></td><td><%= s.length %></td><td><%= s.place %><% if (s.job_number) { %> <span class="hint">Job <%= s.job_number %></span><% } %></td><td><%= s.back || 'Not yet' %></td></tr><% }) %>
+  <% if (!history.length) { %><tr><td colspan="6" class="empty">Nobody has signed it out yet.</td></tr><% } %>
+  </tbody>
+</table>
+</div>
+<% } %>
+
+<% if (mayManage) { %>
+<h2>Change it</h2>
+<form method="post" action="/fleet/<%= item.id %>" class="filters card" data-no-live>
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <%- include('partials/fleet_fields', { v: item, people: people, kinds: kinds }) %>
+  <div class="filter-actions"><button class="btn primary small" type="submit">Save</button></div>
+</form>
+<form method="post" action="/fleet/<%= item.id %>" class="spaced" data-no-live <%- item.active ? 'data-confirm="Put ' + item.name.replace(/"/g, '') + ' away? Its history is kept and it can be brought back."' : '' %>>
+  <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="op" value="<%= item.active ? 'retire' : 'restore' %>">
+  <button class="link" type="submit"><%= item.active ? 'Put it away (sold, scrapped or no longer here)' : 'Bring it back into the fleet' %></button>
+</form>
+<% } %>
+<%- include('partials/footer') %>

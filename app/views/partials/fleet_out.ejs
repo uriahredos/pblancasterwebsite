@@ -1,0 +1,9 @@
+<%# One sign-out in a list. Pass `s`, `back` ('fleet' or ''), and `mayClose`. %>
+<tr>
+  <td><a href="/fleet/<%= s.item_id %>"><strong><%= s.item %></strong></a></td>
+  <td><%= s.display_name %></td>
+  <td><%= s.from %><br><span class="hint">until <%= s.until %> (<%= s.length %>)</span></td>
+  <td><%= s.place %><% if (s.job_number) { %><br><span class="hint">Job <%= s.job_number %></span><% } %><% if (s.note) { %><br><span class="hint"><%= s.note %></span><% } %></td>
+  <td><% if (s.state === 'late') { %><span class="tag overdue">Due back</span><% } else if (s.state === 'out') { %><span class="tag request">Out now</span><% } else { %><span class="tag">Coming up</span><% } %></td>
+  <td><% if (mayClose) { %><form method="post" action="/fleet/signout/<%= s.id %>/return" data-no-live <%- s.state === 'coming' ? 'data-confirm="Cancel this sign-out?"' : '' %>><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="back" value="<%= back %>"><button class="btn small" type="submit"><%= s.state === 'coming' ? 'Cancel' : 'Mark as returned' %></button></form><% } %></td>
+</tr>
