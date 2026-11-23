@@ -84,7 +84,7 @@
         <details class="row-menu"><summary aria-label="Change <%= p.name %>, <%= g.label %>" title="Change">⋯</summary>
           <div class="row-menu-list">
             <form method="post" action="/admin/oncall/<%= p.id %>" class="stack swap"><input type="hidden" name="_csrf" value="<%= csrf %>">
-              <label>Swap for <input name="name" value="<%= p.name %>" maxlength="80" required autocomplete="off"></label>
+              <label>Swap for <input name="name" value="<%= p.name %>" maxlength="80" required autocomplete="off" list="oncall-people" data-fills-phone></label>
               <label>Phone <input name="phone" type="tel" value="<%= p.phone || '' %>" maxlength="30" autocomplete="off"></label>
               <button class="btn small" type="submit">Save</button>
             </form>
@@ -106,6 +106,7 @@
 <% } %>
 
 <% if (canManage) { %>
+<datalist id="oncall-people"><% people.forEach(function (x) { %><option value="<%= x.name %>" data-phone="<%= x.phone || '' %>"></option><% }) %></datalist>
 <details class="mod-tools spaced" <%= typeof addOpen !== 'undefined' && addOpen ? 'open' : '' %>>
   <summary>Add someone to the schedule</summary>
   <form method="post" action="/admin/oncall" class="stack thread-tools">
@@ -115,8 +116,8 @@
       <label>Handed on <span class="hint">The day the next person takes over</span><input type="date" name="end_on" value="<%= values.end_on || '' %>" required></label>
     </div>
     <div class="two">
-      <label>Name <input name="name" value="<%= values.name || '' %>" required maxlength="80" autocomplete="off"></label>
-      <label>Phone <input name="phone" type="tel" value="<%= values.phone || '' %>" maxlength="30" autocomplete="off"></label>
+      <label>Name <span class="hint">Start typing to pick someone from this office</span><input name="name" value="<%= values.name || '' %>" required maxlength="80" autocomplete="off" list="oncall-people" data-fills-phone placeholder="Search by name"></label>
+      <label>Phone <span class="hint">Filled in from their account</span><input name="phone" type="tel" value="<%= values.phone || '' %>" maxlength="30" autocomplete="off"></label>
     </div>
     <div class="two">
       <label>Role <select name="role"><option value="tech" <%= values.role === 'backup' ? '' : 'selected' %>>On call</option><option value="backup" <%= values.role === 'backup' ? 'selected' : '' %>>Backup</option></select></label>

@@ -146,6 +146,18 @@
     document.addEventListener('contextmenu', function (e) { if (target(e)) e.preventDefault(); });
   })();
 
+  // On call: picking a person from the office's list puts the phone number from their account in the box beside it.
+  function fillPhone(e) {
+    var box = e.target;
+    if (!box || !box.matches || !box.matches('input[data-fills-phone]') || !box.form) return;
+    var list = document.getElementById(box.getAttribute('list')); var phone = box.form.querySelector('input[name="phone"]');
+    if (!list || !phone) return;
+    var typed = box.value.trim().toLowerCase();
+    var hit = Array.prototype.filter.call(list.options, function (o) { return o.value.toLowerCase() === typed; })[0];
+    if (hit) phone.value = hit.getAttribute('data-phone') || '';
+  }
+  document.addEventListener('input', fillPhone); document.addEventListener('change', fillPhone);
+
   // "Are you sure?" questions. Asked here, for the whole page, so they still work on parts of a page
   // that were swapped in without a reload.
   document.addEventListener('submit', function (e) {

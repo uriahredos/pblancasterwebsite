@@ -8421,3 +8421,22 @@ test('Social page: a prompt to post beside your picture opens into the full form
   assert.match((await t.get('/social?page=2')).text, /s the end of the feed\./);
   db.prepare("DELETE FROM social_posts WHERE body LIKE 'DAYS %'").run();
 });
+
+test('on call: adding or swapping someone offers the people of the office to pick from, each with the phone on their account', async () => {
+  const home = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id;
+  const owner = await loggedIn('owner'); const tech = await loggedIn('tech1');
+  await owner.post('/branch/view', { branch: String(home) }, { page: '/' });
+  const mate = db.prepare("SELECT id, display_name FROM users WHERE branch_id = ? AND active = 1 AND id <> ? ORDER BY id LIMIT 1").get(home, userId('owner'));
+  const before = db.prepare('SELECT phone, show_phone FROM users WHERE id = ?').get(mate.id);
+  db.prepare("UPDATE users SET phone = '717-555-0142', show_phone = 0 WHERE id = ?").run(mate.id);
+  const away = db.prepare('SELECT display_name FROM users WHERE branch_id <> ? AND active = 1 LIMIT 1').get(home);
+  const page = (await owner.get('/oncall')).text;
+  const list = (/<datalist id="oncall-people">([\s\S]*?)<\/datalist>/.exec(page) || [])[1] || '';
+  assert.ok(list.includes(`<option value="${mate.display_name}" data-phone="717-555-0142"></option>`));
+  if (away) assert.ok(!list.includes(`value="${away.display_name}"`));                      // only this office's people
+  assert.match(page, /<input name="name"[^>]*list="oncall-people" data-fills-phone/);
+  assert.match((await owner.get('/site.js')).text, /data-fills-phone/);
+  // Someone who does not keep the schedule is sent no list of names and numbers.
+  assert.doesNotMatch((await tech.get('/oncall')).text, /oncall-people|717-555-0142/);
+  db.prepare('UPDATE users SET phone = ?, show_phone = ? WHERE id = ?').run(before.phone, before.show_phone, mate.id);
+});

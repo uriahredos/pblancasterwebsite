@@ -47,6 +47,9 @@ function page(req, res, extra = {}) {
     title: 'On call', wide: true, current, upcoming, laterCount: upcoming.filter((g) => g.later).length, many: offices.length > 1, market: offices[0] && offices[0].market, missing, officeCount: offices.length,
     canManage: access.can(req.user, 'oncall.manage'), roles: oncall.ROLES,
     rates: ratesOf(req.user.workBranch),
+    // For whoever keeps the schedule: the people of this office to pick from, each with the phone number on their account.
+    people: access.can(req.user, 'oncall.manage')
+      ? db.prepare("SELECT display_name AS name, phone FROM users WHERE branch_id = ? AND active = 1 AND display_name <> '' ORDER BY display_name COLLATE NOCASE").all(req.user.workBranch) : [],
     rateOffice: (db.prepare('SELECT name FROM branches WHERE id = ?').get(req.user.workBranch) || {}).name, mine: req.user.workBranch, errors: [], values: {}, problems: [], ...extra,
   });
 }
