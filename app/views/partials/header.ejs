@@ -71,6 +71,7 @@
         <% } %>
         <% } %>
         <% if (user && !user.must_change_password && !isLocked) { var alertTotal = alerts.reduce(function (n, a) { return n + a[0]; }, 0) + badges.newTasks + newThreads.length; %>
+        <a class="search-link" href="/search" title="Search the site" aria-label="Search the site"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.500 20.500 20.500"/></svg></a>
         <details class="bell" id="bell">
           <summary aria-label="Notifications<%= alertTotal ? ', ' + alertTotal + ' waiting' : ', none' %>" title="Notifications">
             <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 2.5a6.5 6.5 0 0 0-6.5 6.5v3.2c0 .7-.25 1.38-.7 1.9L3.6 15.5a1.25 1.25 0 0 0 .95 2.06h14.9a1.25 1.25 0 0 0 .95-2.06l-1.2-1.4a2.9 2.9 0 0 1-.7-1.9V9A6.5 6.5 0 0 0 12 2.5zM9.6 19.3a2.5 2.5 0 0 0 4.8 0z"/></svg>

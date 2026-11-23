@@ -1,0 +1,20 @@
+<%- include('partials/header') %>
+<h1>Search</h1>
+<form method="get" action="/search" class="search-form" role="search" data-no-live>
+  <label class="grow"><span class="sr">Search the site</span>
+    <input type="search" name="q" id="search-box" value="<%= q %>" placeholder="Search pages, people, parts and guides" autocomplete="off" autofocus maxlength="60"></label>
+  <button class="btn primary" type="submit">Search</button>
+</form>
+<div id="search-results" aria-live="polite">
+  <% if (q && q.length >= 2 && !groups.length) { %><p class="hint">Nothing found for "<%= q %>". Try fewer or different words.</p><% } %>
+  <% if (!q) { %><p class="hint">Try a page ("on call"), a job ("reset password"), a name, or a part number.</p><% } %>
+  <% groups.forEach(function (g) { %>
+  <section class="search-group">
+    <h2><%= g.name %></h2>
+    <ul class="search-list">
+      <% g.items.forEach(function (it) { %><li><a href="<%= it.url %>"><strong><%= it.label %></strong><span><%= it.sub %></span></a></li><% }) %>
+    </ul>
+  </section>
+  <% }) %>
+</div>
+<%- include('partials/footer') %>

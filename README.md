@@ -257,6 +257,20 @@ Short how-to guides built into the site, reached from **Help** at the right-hand
 - **Print.** Every guide has **Print this guide**, which also saves it as a PDF from the print window.
 - **Adding or changing a guide** is a matter of editing the files in `app/help/` (one list of guides per area; the layout is described at the top of `app/help.js`). The tests check that every guide is well formed and names real permissions.
 
+## Search (`/search`)
+
+The magnifying glass at the top right, beside the bell, opens one search for the whole site.
+
+- **What it finds:** pages (by name or by another word for them, so "reset password" finds Users for a manager and Password and Face ID for everyone), how-to guides, people (name or job), offices, and parts from the catalog (number or description).
+- **As you type:** results fill in under the box. **Enter** goes straight to the first one.
+- **Only what you may open.** A result is never shown for a page or guide the person's profile does not allow. Parts show only to people who work with parts: someone who runs stock lands on Stock for that part, everyone else on the parts form with the part already filled in.
+- The list of pages it knows is in `app/search.js`; a test fails if a link is added to the menu without adding it there.
+
+## Home page: Manage panel and first-time checklist
+
+- **Manage.** Anyone whose profile lets them run something sees a **Manage** panel near the top of the home page: the jobs they do most (add a person, assign a task, post an announcement, the on-call schedule, parts requests, low stock, inventory, truck problems, certifications and so on, each only if their profile allows it), with a red number on any that have something waiting, and a link to the how-to guides.
+- **First-time checklist.** A new person sees "A few things to set up": add a photo, turn on alerts, set up Face ID or fingerprint, and put the site on the phone's home screen, each ticked as it is done, plus a link to the "find your way around" guide. Managers also get links to the main managers' guides. It goes away once the first three are done, or for good with **Done, hide this**. While it shows, the separate photo and Face ID reminders stay hidden so there is one card, not three.
+
 ## Social (`/social`)
 
 The company's own feed, in the bar beside Tasks. Everyone in every office sees every post.

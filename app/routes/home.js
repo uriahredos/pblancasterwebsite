@@ -164,6 +164,42 @@ router.get('/', requireLogin, (req, res) => {
   if (newFaces) branch.push({ label: 'New faces', value: newFaces, sub: newFaces === 1 ? 'person to welcome' : 'people to welcome', level: '', url: '/#welcome' });
   branch.push(...waiting);
 
+  // For someone who runs things: the jobs they do most, each with the number waiting on them where there is one.
+  const waitingOn = (label) => { const t = waiting.find((w) => w.label === label); return t ? Number(t.value) : 0; };
+  const counting = (can('inventory.count') || can('inventory.approve')) && require('../invcount').open(req.user.workBranch);
+  const manage = [
+    [can('users.manage') && req.user.scope === 'all', '/admin/users/invite', 'Add a person', 0],
+    [can('users.manage'), '/admin/users', 'People and passwords', 0],
+    [can('tasks.assign'), '/admin/tasks', 'Assign a task', waitingOn('Overdue tasks')],
+    [can('announcements.post'), '/admin/announcements', 'Post an announcement', 0],
+    [can('oncall.manage'), '/oncall', 'On-call schedule', 0],
+    [can('parts.view'), '/admin/requests', 'Parts requests', waitingOn('Parts requests')],
+    [can('parts.view') || can('stock.manage'), '/admin/stock?low=1', 'Low stock', waitingOn('Low stock')],
+    [can('parts.view') || can('inventory.manage'), '/admin/inventory', 'Inventory', 0],
+    [Boolean(counting), '/admin/inventory/count', 'Inventory count under way', 1],
+    [can('inspections.view'), '/admin/inspections?show=open', 'Truck problems', waitingOn('Truck problems')],
+    [can('training.view'), '/admin/training', 'Training log', 0],
+    [can('certs.manage'), '/admin/certs?show=attention', 'Certifications', waitingOn('Certifications')],
+    [can('complaints.review'), '/admin/complaints', 'Complaints', 0],
+    [can('activity.view'), '/admin/activity', 'Activity log', 0],
+  ].filter((j) => j[0]).map(([, url, label, n]) => ({ url, label, n }));
+
+  // First-time checklist: shown until the person puts it away or has done the three things the site can see.
+  const help = require('../help');
+  const hasPasskey = db.prepare('SELECT 1 FROM passkeys WHERE user_id = ?').get(me) !== undefined;
+  const hasAlerts = db.prepare('SELECT 1 FROM push_subscriptions WHERE user_id = ?').get(me) !== undefined;
+  const steps = [
+    { key: 'photo', done: Boolean(req.user.photo_path), url: '/profile', label: 'Add your photo' },
+    { key: 'alerts', done: hasAlerts, url: '/settings/notifications', label: 'Turn on alerts on this phone or computer' },
+    { key: 'passkey', done: hasPasskey, url: '/account/password#face-id', label: 'Set up Face ID or fingerprint' },
+    { key: 'app', done: false, url: '/help/get-the-app-and-alerts', label: 'Put the site on your phone\'s home screen' },
+  ];
+  const welcome = req.user.welcomed_at || steps.slice(0, 3).every((s) => s.done) ? null : {
+    steps, first: help.get(req.user, 'find-your-way-around'),
+    guides: manage.length ? ['add-a-person', 'edit-a-person', 'assign-a-task', 'keep-the-on-call-schedule', 'post-an-announcement', 'parts-requests', 'inventory-overview']
+      .map((s) => help.get(req.user, s)).filter(Boolean).slice(0, 5) : [],
+  };
+
   // The person's own open things sit under the office numbers. Tasks have their own list, and a zero is left out.
   const mine = status.filter((t) => t.label !== 'Tasks' && (t.warn || !/^(0|None)$/.test(t.value)))
     .map((t) => ({ ...t, label: `My ${t.label.charAt(0).toLowerCase()}${t.label.slice(1)}` }));
@@ -181,10 +217,16 @@ router.get('/', requireLogin, (req, res) => {
     onCall, onCallOffices: new Set(onCall.map((p) => p.branch_id)).size, around, company, slides: feed.slides(req.user, { around, shouts: homeShouts, week: homeWeek, spot: company.spot }),
     shouts: homeShouts, thisWeek: homeWeek, wallPhotos: social.recentPhotos(me, 4),
     dailyCard: require('../daily').card(me), welcomes: require('./community').recentWelcomes(me),
-    profileEmpty: !req.user.photo_path && !req.user.about && !req.user.skills,
-    title: 'Home', wide: true, hasPasskey: db.prepare('SELECT 1 FROM passkeys WHERE user_id = ?').get(me) !== undefined, branch, branchTitle: 'Office at a glance', officeId: office ? office.id : null, critical, notices, board, replies, talk, myCerts, issue: issues[0] || null, issueIsNew, upcoming, mine, dateLine,
+    profileEmpty: !welcome && !req.user.photo_path && !req.user.about && !req.user.skills, manage, welcome,
+    title: 'Home', wide: true, hasPasskey: hasPasskey || Boolean(welcome), branch, branchTitle: 'Office at a glance', officeId: office ? office.id : null, critical, notices, board, replies, talk, myCerts, issue: issues[0] || null, issueIsNew, upcoming, mine, dateLine,
     categories: require('./announcements').CATEGORIES,
   });
+});
+
+// Putting the first-time checklist away for good.
+router.post('/welcome/done', requireLogin, (req, res) => {
+  db.prepare('UPDATE users SET welcomed_at = ? WHERE id = ? AND welcomed_at IS NULL').run(new Date().toISOString(), req.user.id);
+  res.redirect('/');
 });
 
 router.get('/my', requireLogin, (req, res) => {

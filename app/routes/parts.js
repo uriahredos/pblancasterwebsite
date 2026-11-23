@@ -99,7 +99,8 @@ function frequentParts(userId) {
 
 router.get('/parts', requirePerm('parts.submit'), (req, res) => {
   const action = ['take', 'return', 'request'].includes(req.query.action) ? req.query.action : '';
-  res.render('parts', { title: 'Parts', values: { action, items: [], truck: req.user.default_truck || '' }, errors: [], editing: null, frequent: frequentParts(req.user.id), ...vehicleChoice(req.user, req.user) });
+  const part = clean(req.query.part, 200);                 // from a search result: the form opens with that part filled in
+  res.render('parts', { title: 'Parts', values: { action, items: part ? [{ part_name: part, quantity: '' }] : [], truck: req.user.default_truck || '' }, errors: [], editing: null, frequent: frequentParts(req.user.id), ...vehicleChoice(req.user, req.user) });
 });
 
 router.post('/parts', requirePerm('parts.submit'), parseUpload, verifyCsrf, (req, res) => {

@@ -2936,6 +2936,9 @@ test('Face ID / fingerprint: set up on a device, used to unlock and to sign in, 
   const count = (u) => db.prepare('SELECT COUNT(*) n FROM passkeys WHERE user_id = ?').get(userId(u)).n;
 
   // Setting up: the site hands out a one-time challenge and stores only the device's public key.
+  // A new person is first offered it in the welcome checklist; once that is put away, the home page keeps offering it.
+  assert.match((await c.get('/')).text, /data-step="passkey"><span class="tick"[^>]*>✓<\/span><a href="\/account\/password#face-id">/);
+  await c.post('/welcome/done', {}, { page: '/' });
   assert.match((await c.get('/')).text, /id="passkey-tip"/);                              // offered on the home page until it is set up
   const page = (await c.get('/account/password')).text;
   assert.match(page, /Face ID or fingerprint/); assert.match(page, /id="passkey-add"/);
@@ -3016,6 +3019,7 @@ test('profiles: people fill in their own, others find them by name, job or skill
   const pid = userId('prof1');
 
   // An empty profile is nudged on the home page and says so plainly on its own page.
+  await penny.post('/welcome/done', {}, { page: '/' });                                     // the welcome checklist comes first for a new person
   assert.match((await penny.get('/')).text, /id="profile-tip"/);
   assert.match((await penny.get(`/people/${pid}`)).text, /Your profile is empty/);
   assert.match((await quinn.get(`/people/${pid}`)).text, /Penny has not filled in a profile yet/);
@@ -8482,4 +8486,77 @@ test('Help: how-to guides for the jobs a person can do, a "?" on the page each o
   assert.match((await t.get('/')).text, /<a class="nav-help" href="\/help" >Help<\/a>/);          // in the menu bar; first under More on a phone
   assert.match((await t.get('/help')).text, /<a class="nav-help" href="\/help" aria-current="page">Help<\/a>/);
   assert.equal((await new Client().get('/help')).status, 302);                                // signed-in people only
+});
+
+test('search: one box finds pages, guides, people, offices and parts, and only what the person may open', async () => {
+  const search = require('../app/search');
+  // Every link in the menu can be found by search.
+  const header = fs.readFileSync(path.join(__dirname, '..', 'app', 'views', 'partials', 'header.ejs'), 'utf8');
+  const menu = [...header.matchAll(/\[[^\[\]]*?'(\/[^']*)', '([^']+)', (?:is\(|path|false)/g)].map((m) => m[1]);
+  assert.ok(menu.length >= 40);
+  for (const url of menu) assert.ok(search.PAGES.some((p) => p[1] === url), `${url} is in the menu but not in search`);
+  const t = await loggedIn('tech1'); const owner = await loggedIn('owner');
+  const find = async (who, q) => JSON.parse((await who.get(`/search/suggest?q=${encodeURIComponent(q)}`)).text).groups;
+  const urls = (groups, name) => ((groups.find((g) => g.name === name) || {}).items || []).map((i) => i.url);
+  // A page by its name, and by another word for it.
+  assert.equal(urls(await find(t, 'on call'), 'Pages')[0], '/oncall');
+  assert.ok(urls(await find(t, 'fingerprint'), 'Pages').includes('/account/password'));
+  assert.ok(urls(await find(t, 'on call'), 'How-to guides').includes('/help/see-who-is-on-call'));
+  // "reset password": a manager is sent to Users; a technician only to their own password page and guides.
+  assert.ok(urls(await find(owner, 'reset password'), 'Pages').includes('/admin/users'));
+  const mine = await find(t, 'reset password');
+  assert.ok(!urls(mine, 'Pages').includes('/admin/users')); assert.ok(urls(mine, 'Pages').includes('/account/password'));
+  for (const g of await find(t, 'backup')) for (const u of urls([g], g.name)) assert.doesNotMatch(u, /^\/admin\/(backups|users|profiles)/);
+  assert.ok(!urls(await find(t, 'add a person'), 'How-to guides').includes('/help/add-a-person'));
+  assert.ok(urls(await find(owner, 'add a person'), 'How-to guides').includes('/help/add-a-person'));
+  // People by name, an office by name.
+  assert.ok(urls(await find(t, 'uma'), 'People').includes(`/people/${userId('tech2')}`));
+  const office = db.prepare('SELECT b.id, b.name FROM branches b JOIN users u ON u.branch_id = b.id WHERE u.id = ?').get(userId('tech1'));
+  assert.ok(urls(await find(t, office.name), 'Offices').includes(`/branches/${office.id}`));
+  // A part: the technician lands on the parts form with it filled in; someone who runs stock lands on Stock.
+  db.prepare("INSERT OR IGNORE INTO parts_catalog (part_number, description, active, created_at) VALUES ('SRCH-100', 'Searchable smoke detector', 1, ?)").run(new Date().toISOString());
+  assert.deepEqual(urls(await find(t, 'srch-100'), 'Parts'), ['/parts?action=take&part=SRCH-100']);
+  assert.ok(urls(await find(t, 'searchable smoke'), 'Parts').length === 1);
+  assert.deepEqual(urls(await find(owner, 'srch-100'), 'Parts'), ['/admin/stock?q=SRCH-100']);
+  assert.match((await t.get('/parts?action=take&part=SRCH-100')).text, /<input name="part_name" value="SRCH-100"/);
+  // Odd input is harmless: wildcards match nothing special, one letter asks for nothing, and signed-out people get nothing.
+  assert.deepEqual(await find(t, '%'), []); assert.deepEqual(await find(t, 'a'), []); assert.deepEqual(urls(await find(t, '%%__'), 'People'), []);
+  assert.equal((await new Client().get('/search/suggest?q=uma')).status, 302);
+  // The page itself works without scripts, and the magnifier is in the top bar.
+  const page = (await t.get('/search?q=on+call')).text;
+  assert.match(page, /<input type="search" name="q" id="search-box" value="on call"/); assert.match(page, /<a href="\/oncall"><strong>On call<\/strong><span>Page<\/span><\/a>/);
+  assert.match((await t.get('/search?q=zzzqqq')).text, /Nothing found for "zzzqqq"/);
+  assert.match((await t.get('/')).text, /<a class="search-link" href="\/search"/);
+  db.prepare("DELETE FROM parts_catalog WHERE part_number = 'SRCH-100'").run();
+});
+
+test('home page: a Manage panel for people who run things, and a first-time checklist that can be put away', async () => {
+  makeUser('newbie1', 'Nora Newbie');
+  const nora = await loggedIn('newbie1'); const owner = await loggedIn('owner');
+  // A technician gets no Manage panel; the owner gets the jobs their profile allows, with a number where something waits.
+  const hers = (await nora.get('/')).text; const theirs = (await owner.get('/')).text;
+  assert.doesNotMatch(hers, /manage-panel/);
+  const panel = (/<section class="card manage-panel"[\s\S]*?<\/section>/.exec(theirs) || [''])[0];
+  for (const job of ['People and passwords', 'Assign a task', 'Post an announcement', 'On-call schedule', 'Parts requests', 'Inventory']) assert.ok(panel.includes(`<span>${job}</span>`), job);
+  assert.match(panel, /<a href="\/help">How-to guides<\/a>/);
+  // The checklist: four steps, none ticked for a new person, with the guide to start from; no managers' line for a technician.
+  const card = (/<section class="card welcome-card"[\s\S]*?<\/section>/.exec(hers) || [''])[0];
+  assert.match(card, /Welcome, Nora\. A few things to set up/);
+  assert.equal((card.match(/<li class="" data-step=/g) || []).length, 4);
+  assert.match(card, /<a href="\/help\/find-your-way-around">/); assert.doesNotMatch(card, /For managers/);
+  assert.doesNotMatch(hers, /id="profile-tip"|id="passkey-tip"/);                              // one card at a time, not three
+  // Adding a photo ticks that step.
+  db.prepare("UPDATE users SET photo_path = 'nora.jpg' WHERE id = ?").run(userId('newbie1'));
+  assert.match((await nora.get('/')).text, /<li class="done" data-step="photo">/);
+  db.prepare('UPDATE users SET photo_path = NULL WHERE id = ?').run(userId('newbie1'));
+  // A manager's checklist also points at the managers' guides.
+  db.prepare('UPDATE users SET welcomed_at = NULL WHERE id = ?').run(userId('owner'));
+  const boss = (/<section class="card welcome-card"[\s\S]*?<\/section>/.exec((await owner.get('/')).text) || [''])[0];
+  assert.match(boss, /<strong>For managers:<\/strong>\s*<a href="\/help\/[a-z-]+">/);
+  // Putting it away is for good, and only for the person who did it.
+  await nora.post('/welcome/done', {}, { page: '/' });
+  assert.doesNotMatch((await nora.get('/')).text, /welcome-card/);
+  assert.ok(db.prepare('SELECT welcomed_at FROM users WHERE id = ?').get(userId('newbie1')).welcomed_at);
+  assert.match((await owner.get('/')).text, /welcome-card/);
+  await owner.post('/welcome/done', {}, { page: '/' });
 });

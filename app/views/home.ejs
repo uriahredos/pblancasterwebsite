@@ -69,6 +69,36 @@
 </section>
 <% } %>
 
+<% if (welcome) { %>
+<section class="card welcome-card" id="welcome-card" aria-labelledby="welcome-h">
+  <h2 id="welcome-h">Welcome, <%= user.display_name.split(' ')[0] %>. A few things to set up</h2>
+  <ul class="welcome-steps">
+    <% welcome.steps.forEach(function (s) { %>
+    <li class="<%= s.done ? 'done' : '' %>" data-step="<%= s.key %>"><span class="tick" aria-hidden="true">✓</span><a href="<%= s.url %>"><%= s.label %></a><% if (s.done) { %><span class="sr"> (done)</span><% } %></li>
+    <% }) %>
+  </ul>
+  <p class="welcome-more">
+    <% if (welcome.first) { %><a href="/help/<%= welcome.first.slug %>">Find your way around</a><% } %>
+    <a href="/help">All how-to guides</a>
+  </p>
+  <% if (welcome.guides.length) { %>
+  <p class="welcome-more"><strong>For managers:</strong>
+    <% welcome.guides.forEach(function (g) { %><a href="/help/<%= g.slug %>"><%= g.title %></a><% }) %>
+  </p>
+  <% } %>
+  <form method="post" action="/welcome/done" data-no-live><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn small" type="submit">Done, hide this</button></form>
+</section>
+<% } %>
+
+<% if (manage.length) { %>
+<section class="card manage-panel" aria-labelledby="manage-h">
+  <h2 id="manage-h">Manage <a href="/help">How-to guides</a></h2>
+  <div class="manage-jobs">
+    <% manage.forEach(function (j) { %><a href="<%= j.url %>" class="<%= j.n ? 'waiting' : '' %>"><span><%= j.label %></span><% if (j.n && j.label !== 'Inventory count under way') { %><span class="badge" title="Waiting"><%= j.n %></span><% } %></a><% }) %>
+  </div>
+</section>
+<% } %>
+
 <% if (!hasPasskey) { %>
 <div class="card tip-card" id="passkey-tip" hidden>
   <p><strong>Get in with your face or fingerprint.</strong> The site now locks when you close it. Set up Face ID or fingerprint so you do not have to type your password each time.</p>

@@ -175,6 +175,7 @@ app.use(require('./routes/reactions'));
 app.use(require('./routes/sales'));
 app.use(require('./routes/oncall'));
 app.use(require('./routes/help'));
+app.use(require('./routes/search'));
 require('./team');   // adds its columns on first start
 require('./removal');
 app.use(require('./routes/digest'));

@@ -566,6 +566,7 @@ CREATE TABLE IF NOT EXISTS wall_likes (
   PRIMARY KEY (photo_id, user_id)
 );
 `);
+addColumn('users', 'welcomed_at', 'TEXT');        // when the person put the first-time checklist away
 addColumn('users', 'birthday', 'TEXT');            // "MM-DD": the day only, never the year
 addColumn('branches', 'address', 'TEXT');
 addColumn('branches', 'phone', 'TEXT');

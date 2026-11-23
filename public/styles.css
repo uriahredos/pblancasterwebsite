@@ -1538,6 +1538,33 @@ td.reports-to .meta { display: block; }
 .nav > a.nav-help { margin-left: auto; }
 .nav > a.nav-help ~ .nav-theme { margin-left: 0; }
 @media (max-width: 899px) { .nav > a.nav-help { order: -1; margin-left: 0; border-bottom: 1px solid rgba(255,255,255,.15); } }
+.search-link { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; flex: none; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--banner-ink); }
+.search-link:hover { border-color: var(--accent); }
+.search-form { display: flex; gap: .5rem; align-items: center; max-width: 40rem; }
+.search-form input { width: 100%; font-size: 1.1rem; }
+.search-group h2 { margin: 1.25rem 0 .4rem; font-size: 1rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.search-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .35rem; max-width: 40rem; }
+.search-list a { display: flex; flex-wrap: wrap; align-items: baseline; gap: .15rem .75rem; padding: .7rem 1rem; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); text-decoration: none; }
+.search-list a:hover, .search-list a:focus-visible { border-color: var(--accent); background: var(--accent-soft); }
+.search-list li:first-child a { border-color: var(--accent); }
+.search-list a span { color: var(--muted); font-size: .9rem; }
+.manage-panel { margin: 1rem 0; padding: 1rem 1.1rem; }
+.manage-panel h2 { margin: 0 0 .6rem; font-size: 1.15rem; display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
+.manage-panel h2 a { font-size: .9rem; font-weight: 600; }
+.manage-jobs { display: grid; gap: .5rem; grid-template-columns: repeat(auto-fill, minmax(11.5rem, 1fr)); }
+.manage-jobs a { position: relative; display: flex; align-items: center; justify-content: space-between; gap: .5rem; min-height: 48px; padding: .55rem .8rem; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font-weight: 600; text-decoration: none; }
+.manage-jobs a:hover { border-color: var(--accent); background: var(--accent-soft); }
+.manage-jobs a.waiting { border-color: color-mix(in srgb, var(--err) 45%, var(--line)); }
+.manage-jobs .badge { flex: none; }
+.welcome-card { margin: 1rem 0; padding: 1rem 1.1rem; border-left: 5px solid var(--green); }
+.welcome-card h2 { margin: 0 0 .2rem; font-size: 1.15rem; }
+.welcome-steps { list-style: none; margin: .6rem 0; padding: 0; display: grid; gap: .4rem; }
+.welcome-steps li { display: flex; align-items: center; gap: .6rem; }
+.welcome-steps .tick { flex: none; width: 1.5rem; height: 1.5rem; border-radius: 999px; border: 2px solid var(--line); display: inline-flex; align-items: center; justify-content: center; font-size: .9rem; font-weight: 800; color: transparent; }
+.welcome-steps li.done .tick { background: var(--green); border-color: var(--green); color: #fff; }
+.welcome-steps li.done a { color: var(--muted); text-decoration: line-through; }
+.welcome-more { margin: .6rem 0 0; display: flex; flex-wrap: wrap; gap: .4rem .9rem; align-items: center; }
+.welcome-card form { margin-top: .75rem; }
 .help-find input { width: 100%; max-width: 32rem; }
 .help-group h2 { margin: 1.5rem 0 .5rem; }
 .help-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); }

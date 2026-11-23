@@ -108,16 +108,16 @@
   })();
 
   // Social: opening the prompt to post puts the cursor in the box; "Write a post" at the end of the feed opens it.
-  (function () {
-    var box = document.getElementById('composer');
-    if (!box) return;
-    box.addEventListener('toggle', function () { if (box.open) { var t = box.querySelector('textarea'); if (t) t.focus(); } });
-    document.addEventListener('click', function (e) {
-      var a = e.target.closest && e.target.closest('[data-open-composer]');
-      if (!a) return;
-      e.preventDefault(); box.open = true; box.scrollIntoView({ block: 'start' });
-    });
-  })();
+  // (Listened for on the whole page, because pages are swapped in without a reload.)
+  document.addEventListener('toggle', function (e) {
+    var box = e.target;
+    if (box && box.id === 'composer' && box.open) { var t = box.querySelector('textarea'); if (t) t.focus(); }
+  }, true);
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('[data-open-composer]'); var box = document.getElementById('composer');
+    if (!a || !box) return;
+    e.preventDefault(); box.open = true; box.scrollIntoView({ block: 'start' });
+  });
 
   // Reactions on a phone: holding a finger on one shows who gave it (most recent first) instead of giving it.
   (function () {
@@ -159,18 +159,62 @@
   document.addEventListener('input', fillPhone); document.addEventListener('change', fillPhone);
 
   // Help: typing in the box leaves only the guides that mention every word typed.
-  (function () {
-    var box = document.getElementById('help-filter');
-    if (!box) return;
-    box.addEventListener('input', function () {
-      var want = box.value.toLowerCase().split(/\s+/).filter(Boolean), shown = 0;
-      Array.prototype.forEach.call(document.querySelectorAll('.help-list li'), function (li) {
-        var text = li.getAttribute('data-words') || ''; var ok = want.every(function (w) { return text.indexOf(w) !== -1; });
-        li.hidden = !ok; if (ok) shown++;
-      });
-      Array.prototype.forEach.call(document.querySelectorAll('.help-group'), function (g) { g.hidden = !g.querySelector('li:not([hidden])'); });
-      document.getElementById('help-none').hidden = shown > 0;
+  document.addEventListener('input', function (e) {
+    var box = e.target;
+    if (!box || box.id !== 'help-filter') return;
+    var want = box.value.toLowerCase().split(/\s+/).filter(Boolean), shown = 0;
+    Array.prototype.forEach.call(document.querySelectorAll('.help-list li'), function (li) {
+      var text = li.getAttribute('data-words') || ''; var ok = want.every(function (w) { return text.indexOf(w) !== -1; });
+      li.hidden = !ok; if (ok) shown++;
     });
+    Array.prototype.forEach.call(document.querySelectorAll('.help-group'), function (g) { g.hidden = !g.querySelector('li:not([hidden])'); });
+    var none = document.getElementById('help-none'); if (none) none.hidden = shown > 0;
+  });
+
+  // First-time checklist: the site cannot see from its side whether it is on the home screen, but the phone can.
+  function tickAppStep() {
+    var step = document.querySelector('.welcome-steps li[data-step="app"]');
+    var standalone = window.navigator.standalone === true || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+    if (step && standalone) step.classList.add('done');
+  }
+  tickAppStep();
+  if (window.MutationObserver && document.querySelector('main')) new MutationObserver(tickAppStep).observe(document.querySelector('main'), { childList: true });
+
+  // Search: results fill in as someone types; Enter goes straight to the first one.
+  (function () {
+    var timer = null, asked = 0;
+    function show(out, groups, q) {
+      while (out.firstChild) out.removeChild(out.firstChild);
+      if (!groups.length) { var none = document.createElement('p'); none.className = 'hint'; none.textContent = q.length < 2 ? 'Try a page ("on call"), a job ("reset password"), a name, or a part number.' : 'Nothing found for "' + q + '". Try fewer or different words.'; out.appendChild(none); return; }
+      groups.forEach(function (g) {
+        var sec = document.createElement('section'); sec.className = 'search-group';
+        var h = document.createElement('h2'); h.textContent = g.name; sec.appendChild(h);
+        var ul = document.createElement('ul'); ul.className = 'search-list';
+        g.items.forEach(function (it) {
+          var li = document.createElement('li'), a = document.createElement('a'), s = document.createElement('strong'), sub = document.createElement('span');
+          a.setAttribute('href', it.url); s.textContent = it.label; sub.textContent = it.sub; a.appendChild(s); a.appendChild(sub); li.appendChild(a); ul.appendChild(li);
+        });
+        sec.appendChild(ul); out.appendChild(sec);
+      });
+    }
+    document.addEventListener('input', function (e) {
+      var box = e.target;
+      if (!box || box.id !== 'search-box') return;
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        var out = document.getElementById('search-results'); var q = box.value.trim(), mine = ++asked;
+        if (!out) return;
+        if (q.length < 2) { show(out, [], q); return; }
+        fetch('/search/suggest?q=' + encodeURIComponent(q), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (d) { if (d && mine === asked && document.getElementById('search-results') === out) show(out, d.groups || [], q); }).catch(function () {});
+      }, 160);
+    });
+    document.addEventListener('submit', function (e) {
+      var form = e.target; if (!form || !form.classList || !form.classList.contains('search-form')) return;
+      var box = document.getElementById('search-box'); var first = document.querySelector('#search-results .search-list a');
+      if (box && first && box.value.trim().length >= 2) { e.preventDefault(); e.stopImmediatePropagation(); first.click(); }
+    }, true);
   })();
 
   // "Are you sure?" questions. Asked here, for the whole page, so they still work on parts of a page
