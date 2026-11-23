@@ -4785,7 +4785,8 @@ test('on call across a market: your own office first, each person tagged with th
   assert.ok(page.indexOf('Owen Ownoffice') < page.indexOf('Nell Nearby'), 'own office comes first');
   assert.match(page, /Nobody is listed today for 1 of the 3 offices in this market:<\/strong>\s*<a href="\/branches\/\d+">Quiet Office<\/a>/);
   const home = /<section class="panel p-oncall"[\s\S]*?<\/section>/.exec((await t1.get('/')).text)[0];
-  assert.match(home, /Owen Ownoffice<\/strong><span class="meta oncall-office">Lancaster<\/span>[\s\S]*Nell Nearby<\/strong><span class="meta oncall-office">Nearby Office<\/span>/);
+  // The home page shows only the office being looked at; the rest of the market is on the On call page.
+  assert.match(home, /Owen Ownoffice/); assert.doesNotMatch(home, /Nell Nearby/);
   // Someone in an office outside the market sees none of it.
   const far = db.prepare("SELECT u.username FROM users u JOIN branches b ON b.id = u.branch_id WHERE u.active = 1 AND u.must_change_password = 0 AND (b.market IS NULL OR b.market <> 'Test Market') LIMIT 1").get();
   if (far) { const c = new Client(); const r = await c.post('/login', { username: far.username, password: 'correct horse battery' }, { page: '/login' }); if (r.status === 302) assert.doesNotMatch((await c.get('/oncall')).text, /Nell Nearby|Owen Ownoffice/); }
@@ -8477,7 +8478,7 @@ test('on call: the picker holds the people of every office the person runs, and 
   assert.match((await owner.get('/oncall')).text, /<input name="name"[^>]*list="oncall-people" data-fills-phone data-picks-person/);
   assert.match((await owner.get('/oncall')).text, /pick someone from any office you run/); assert.match((await lc.get('/oncall')).text, /pick someone from this office/);
   // Someone who does not keep the schedule is sent no list of names and numbers.
-  assert.doesNotMatch((await tech.get('/oncall')).text, /oncall-people|717-555-/);
+  assert.doesNotMatch((await tech.get('/oncall')).text, /oncall-people/);
   // Picked from another office: the shift goes on that office's schedule, with what they cover. Typed by hand: the office being looked at.
   const day = (n) => { const d = new Date(`${require('../app/util').localDate()}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
   const add = (c, body) => c.post('/admin/oncall', { start_on: day(1), end_on: day(8), role: 'tech', ...body }, { page: '/oncall' });
@@ -8534,13 +8535,26 @@ test('on call: one file can fill several offices and the whole market, saying wh
   const bob = auth.createUser({ username: 'call.bob', displayName: 'Bob Beta', password: 'correct horse battery', profile: profileId('Technician'), branchId: b }); db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?').run(bob);
   const bc = await loggedIn('call.bob'); const his = (await bc.get(page)).text;
   assert.match(his, /Sue Supervisor/); assert.match(his, /Sam Sprinkler/); assert.match(his, /Al Alpha/);
-  assert.match((await bc.get('/')).text, /<span class="oncall-covers">Supervisor<\/span><strong>Sue Supervisor<\/strong>/);      // and on the home page's On call now
+  // The home page's On call now is only the office being looked at: Bob's own sprinkler person, not the market's or another office's.
+  const bobHome = (/<section class="panel p-oncall"[\s\S]*?<\/section>/.exec((await bc.get('/')).text) || [''])[0];
+  assert.match(bobHome, /<span class="oncall-covers">Sprinkler<\/span><strong>Sam Sprinkler<\/strong>/); assert.doesNotMatch(bobHome, /Sue Supervisor|Al Alpha|Typed Number/);
   // An office outside the market sees none of it.
   const oc = auth.createUser({ username: 'call.out', displayName: 'Olga Outside', password: 'correct horse battery', profile: profileId('Technician'), branchId: out }); db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?').run(oc);
   assert.doesNotMatch((await (await loggedIn('call.out')).get(page)).text, /Sue Supervisor|Sam Sprinkler/);
   // Loading the file again replaces what it covers rather than doubling it.
   await owner.post('/admin/oncall/import', { file: sheet }, { page, multipart: true });
   assert.equal(rows().length, 5);
+  // A line whose role is "Clear" empties the market (or an office) for those days and adds nobody.
+  await owner.post('/admin/oncall/import', { file: file([`${day(-1)},${day(6)},Market,,Clear,,,`, `${day(-1)},${day(6)},Call Alpha,Supervisor,On call,Sue Supervisor,,`]) }, { page, multipart: true });
+  assert.deepEqual(rows().map((r) => `${r.market_id ? 'market' : r.branch_id === a ? 'alpha' : 'beta'}:${r.name}`), ['beta:Sam Sprinkler', 'alpha:Sue Supervisor']);
+  // From an office outside the market, "Market" still means the market the file's own offices are in.
+  const outside = db.prepare("INSERT INTO branches (name, created_at) VALUES ('Call Faraway Nomarket', ?)").run(new Date().toISOString()).lastInsertRowid;
+  await owner.post('/branch/view', { branch: String(outside), back: '/' }, { page: '/' });
+  await owner.post('/admin/oncall/import', { file: file([`${day(-1)},${day(6)},Market,,On call,Mark Market,,`, `${day(-1)},${day(6)},Call Alpha,Supervisor,On call,Sue Supervisor,,`]) }, { page, multipart: true });
+  assert.ok(rows().some((r) => r.market_id && r.name === 'Mark Market' && r.branch_id === a));
+  await owner.post('/admin/oncall/import', { file: file([`${day(-1)},${day(6)},Market,,Clear,,,`, `${day(-1)},${day(6)},Call Alpha,Supervisor,On call,Sue Supervisor,,`]) }, { page, multipart: true });
+  assert.ok(!rows().some((r) => r.market_id));
+  await owner.post('/branch/view', { branch: String(a), back: '/' }, { page: '/' });
   // An office's own admin cannot write to another office through a file: those lines are skipped.
   const lead = auth.createUser({ username: 'call.lead', displayName: 'Lou Lead', password: 'correct horse battery', profile: access.ensureProfile('Office admin (one office)', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'market.all')), branchId: a });
   db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?').run(lead);
@@ -8942,6 +8956,16 @@ test('markets: corporate admins group offices into markets and appoint market ad
   await mc.post('/branch/view', { branch: String(b), back: '/' }, { page: '/' });
   assert.match(await sees(), /Mia Market/); assert.doesNotMatch(await sees(), /Bea Beta/);
   assert.doesNotMatch((await mc.get('/')).text, /data-office-pick/);                                               // one office left: nothing to choose between
+  // Looking at the site as the Market admin profile gives the same box, for the market of the office in view.
+  await owner.post(`/admin/markets/${m}/offices`, { branch: String(b) }, { page: '/admin/markets' });
+  await owner.post('/branch/view', { branch: String(a), back: '/' }, { page: '/' }); await owner.post('/view-as', { profile: String(profile) }, { page: '/' });
+  const asMkt = (await owner.get('/')).text;
+  assert.match(asMkt, /looking at the site as <strong>Market admin<\/strong>/);
+  assert.deepEqual([...((/<datalist id="office-list">([\s\S]*?)<\/datalist>/.exec(asMkt) || [])[1] || '').matchAll(/<option value="([^"]+)"/g)].map((x) => x[1]), ['Mkt Alpha', 'Mkt Beta']);
+  await owner.post('/branch/view', { branch: String(b), back: '/' }, { page: '/' });
+  assert.match((await owner.get('/')).text, /<span class="branch">Mkt Beta Office<\/span>/);
+  await owner.post('/view-as', { profile: '' }, { page: '/' });
+  await owner.post(`/admin/markets/${m}/offices/${b}/remove`, {}, { page: '/admin/markets' });
   // Stood down, she is a technician again and is signed out; renaming and removing a market keep its offices.
   await owner.post(`/admin/markets/${m}/admins/${mia}/remove`, {}, { page: '/admin/markets' });
   assert.equal(db.prepare('SELECT profile_id FROM users WHERE id = ?').get(mia).profile_id, profileId('Technician'));

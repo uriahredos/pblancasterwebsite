@@ -232,7 +232,8 @@ function loadAccess(user, viewBranch, viewProfile) {
       user.is_master = 0;                                     // for this request only: nothing here is saved
       user.perms = permsOf(as.id); user.scope = as.scope; user.profile_name = as.name;
       user.allBranches = user.perms.has('branches.all');
-      user.marketBranches = [];
+      // Looking as a market admin: the offices of the market the office in view belongs to, so the box to move between them is there.
+      user.marketBranches = !user.allBranches && user.perms.has('market.all') ? marketOffices(user.viewBranch || user.branch_id) : [];
       // Without "every office" they stay in the office they were looking at (their own, if that was all of them).
       if (!user.allBranches && !user.viewBranch) user.viewBranch = user.branch_id || -1;
       user.workBranch = user.viewBranch || user.branch_id;

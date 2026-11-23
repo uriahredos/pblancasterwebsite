@@ -164,11 +164,12 @@ function importLong(req, res, rows, fail) {
   if (!shifts.length) return fail(problems[0] || 'No on-call shifts could be read from that file.', problems.slice(1));
   const here = req.user.workBranch;
   const reach = req.user.allBranches ? null : (req.user.marketBranches && req.user.marketBranches.length ? req.user.marketBranches : [here]);
-  const market = (db.prepare('SELECT market_id FROM branches WHERE id = ?').get(here) || {}).market_id || null;
+  let market = (db.prepare('SELECT market_id FROM branches WHERE id = ?').get(here) || {}).market_id || null;
+  let marketHome = here;
   const officeByName = new Map(); const bad = new Set();
   const officeFor = (name) => {
     if (!name) return { branch: here, market: null };
-    if (/^(the )?(whole )?market$/i.test(name)) return market ? { branch: here, market } : null;
+    if (/^(the )?(whole )?market$/i.test(name)) return market ? { branch: marketHome, market } : null;
     if (!officeByName.has(name)) {
       const hits = db.prepare('SELECT id FROM branches WHERE name = ? COLLATE NOCASE OR number = ?').all(name, name.replace(/^#/, '')).filter((b) => !reach || reach.includes(b.id));
       officeByName.set(name, hits.length === 1 ? hits[0].id : null);
@@ -176,6 +177,12 @@ function importLong(req, res, rows, fail) {
     const id = officeByName.get(name);
     return id ? { branch: id, market: null } : null;
   };
+  // Looking at an office outside any market (or at Corporate): "Market" means the one market the file's own offices share.
+  if (!market && (req.user.allBranches || (req.user.marketBranches || []).length)) {
+    const named = [...new Set(shifts.map((x) => x.office).filter((n) => n && !/^(the )?(whole )?market$/i.test(n)))].map((n) => (officeFor(n) || {}).branch).filter(Boolean);
+    const found = named.map((id) => ({ id, m: (db.prepare('SELECT market_id FROM branches WHERE id = ?').get(id) || {}).market_id })).filter((x) => x.m);
+    if (found.length && new Set(found.map((x) => x.m)).size === 1) { market = found[0].m; marketHome = found[0].id; }
+  }
   // Phone numbers from accounts: the one active or listed person with that name, looked for in the market first.
   const phoneOf = (name, branch) => {
     const all = db.prepare("SELECT phone, branch_id FROM users WHERE display_name = ? COLLATE NOCASE AND phone IS NOT NULL AND phone <> '' AND removed_at IS NULL").all(name);
@@ -184,7 +191,7 @@ function importLong(req, res, rows, fail) {
     return pick.length ? pick[0].phone : null;
   };
   const placed = [];
-  for (const s of shifts) { const where = officeFor(s.office); if (!where) { bad.add(s.office); continue; } placed.push({ ...s, ...where, phone: s.phone || phoneOf(s.name, where.branch) }); }
+  for (const s of shifts) { const where = officeFor(s.office); if (!where) { bad.add(s.office); continue; } placed.push(s.clear ? { ...s, ...where } : { ...s, ...where, phone: s.phone || phoneOf(s.name, where.branch) }); }
   if (!placed.length) return fail(`None of the lines could be placed. ${[...bad].length ? 'Not an office you run, or not found: ' + [...bad].join(', ') + '.' : ''}${market ? '' : ' Lines for "Market" need the office you are looking at to be in a market.'}`, problems);
   const scopes = new Map();
   for (const s of placed) { const k = s.market ? `m${s.market}` : `b${s.branch}`; const sc = scopes.get(k) || { ...s, from: s.start_on, to: s.end_on }; if (s.start_on < sc.from) sc.from = s.start_on; if (s.end_on > sc.to) sc.to = s.end_on; scopes.set(k, sc); }
@@ -195,11 +202,12 @@ function importLong(req, res, rows, fail) {
       else db.prepare('DELETE FROM oncall_shifts WHERE branch_id = ? AND market_id IS NULL AND start_on >= ? AND start_on < ?').run(sc.branch, sc.from, sc.to);
     }
     const add = db.prepare('INSERT INTO oncall_shifts (branch_id, market_id, start_on, end_on, role, name, phone, covers, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-    for (const s of placed) add.run(s.branch, s.market, s.start_on, s.end_on, s.role, s.name, s.phone, s.covers, s.note, now);
+    for (const s of placed) if (!s.clear) add.run(s.branch, s.market, s.start_on, s.end_on, s.role, s.name, s.phone, s.covers, s.note, now);
   })();
-  const noPhone = [...new Set(placed.filter((s) => !s.phone).map((s) => s.name))];
-  activity.log(req.user, 'On-call schedule uploaded', `${placed.length} entries across ${scopes.size} ${scopes.size === 1 ? 'place' : 'places'}`);
-  flash(req, 'ok', `Schedule loaded: ${placed.length} entries.${bad.size ? ` Skipped lines for: ${[...bad].join(', ')} (not found, or not an office you run).` : ''}${noPhone.length ? ` No phone number on file for ${noPhone.length}: ${noPhone.slice(0, 12).join(', ')}${noPhone.length > 12 ? '…' : ''}.` : ''}${problems.length ? ` ${problems.length} line(s) could not be read.` : ''}`);
+  const entered = placed.filter((s) => !s.clear); const cleared = placed.filter((s) => s.clear).length;
+  const noPhone = [...new Set(entered.filter((s) => !s.phone).map((s) => s.name))];
+  activity.log(req.user, 'On-call schedule uploaded', `${entered.length} entries across ${scopes.size} ${scopes.size === 1 ? 'place' : 'places'}`);
+  flash(req, 'ok', `Schedule loaded: ${entered.length} entries.${cleared ? ' Earlier entries were cleared where the file asked.' : ''}${bad.size ? ` Skipped lines for: ${[...bad].join(', ')} (not found, or not an office you run).` : ''}${noPhone.length ? ` No phone number on file for ${noPhone.length}: ${noPhone.slice(0, 12).join(', ')}${noPhone.length > 12 ? '…' : ''}.` : ''}${problems.length ? ` ${problems.length} line(s) could not be read.` : ''}`);
   res.redirect('/oncall#schedule');
 }
 

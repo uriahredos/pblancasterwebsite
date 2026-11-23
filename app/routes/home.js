@@ -191,7 +191,8 @@ router.get('/', requireLogin, (req, res) => {
 
   const now = new Date();
   const dateLine = new Intl.DateTimeFormat('en-US', { timeZone: config.timezone, weekday: 'long', month: 'long', day: 'numeric' }).format(now);
-  const onCall = require('../oncall').now(req.user, today).map((p) => ({ ...p, tel: String(p.phone || '').replace(/[^0-9+]/g, '') }));
+  // Only the office being looked at: its own people on call today. The rest of the market is on the On call page.
+  const onCall = require('../oncall').covering([req.user.workBranch].filter(Boolean), today).map((p) => ({ ...p, tel: String(p.phone || '').replace(/[^0-9+]/g, '') }));
   onCall.sort((x, y) => (y.branch_id === req.user.branch_id) - (x.branch_id === req.user.branch_id) || (x.role === 'backup') - (y.role === 'backup'));   // your own office first, then the rest of the market
   const feed = require('../feed');
   const around = feed.recent(req.user, 8); const company = feed.company(req.user, today);

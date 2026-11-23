@@ -143,6 +143,8 @@ function parseLong(rows) {
     const get = (k) => (c[k] >= 0 ? String(r[c[k]] || '').replace(/\s+/g, ' ').trim() : '');
     const start = iso(get('start')); const end = iso(get('end')); const who = person(`${get('name')} ${get('phone')}`);
     if (!start || !end || end <= start) { problems.push(`Line ${i + 1}: the dates "${get('start')}" to "${get('end')}" could not be read.`); return; }
+    // A line whose role is "Clear" names nobody: it empties that office (or the market) for those days, and nothing more.
+    if (/^clear$/i.test(get('role'))) { shifts.push({ start_on: start, end_on: end, office: get('office'), clear: true }); return; }
     if (!who) { problems.push(`Line ${i + 1}: nobody is named.`); return; }
     shifts.push({ start_on: start, end_on: end, office: get('office'), covers: get('covers').slice(0, 60) || null, role: /back|second/i.test(get('role')) ? 'backup' : 'tech',
       name: who.name, phone: who.phone, note: get('note').slice(0, 120) || null });
