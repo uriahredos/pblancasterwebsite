@@ -1533,6 +1533,20 @@ td.reports-to .meta { display: block; }
 .social-comment .comment-menu .row-menu-list { left: auto; right: 0; min-width: 9rem; }
 .reactions button.react { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
 .react-who { flex-basis: 100%; margin: .15rem 0 0; padding: .5rem .75rem; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: 0 6px 18px rgba(0, 0, 0, .14); font-size: .95rem; overflow-wrap: anywhere; }
+.help-link { float: right; margin: 0 0 .5rem .75rem; width: 36px; height: 36px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--accent); font-weight: 800; font-size: 1.1rem; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; position: relative; z-index: 2; }
+.help-link:hover { border-color: var(--accent); background: var(--accent-soft); }
+.help-find input { width: 100%; max-width: 32rem; }
+.help-group h2 { margin: 1.5rem 0 .5rem; }
+.help-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); }
+.help-list a { display: grid; gap: .2rem; height: 100%; padding: .8rem 1rem; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); text-decoration: none; }
+.help-list a:hover { border-color: var(--accent); }
+.help-list a span { color: var(--muted); font-size: .92rem; }
+.help-guide { max-width: 46rem; }
+.help-guide h1 { margin-top: 0; }
+.help-where { padding: .6rem .8rem; border-radius: 10px; background: var(--accent-soft); }
+.help-steps { padding-left: 1.4rem; display: grid; gap: .6rem; font-size: 1.05rem; }
+.help-steps li::marker { font-weight: 800; color: var(--accent); }
+.help-tips { padding-left: 1.2rem; display: grid; gap: .35rem; }
 .edit-photos { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: .75rem; }
 .edit-photos legend { font-weight: 600; margin-bottom: .5rem; padding: 0; }
 .edit-photo { display: grid; gap: .35rem; font-weight: 600; }

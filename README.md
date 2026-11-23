@@ -247,6 +247,16 @@ The home page, from the top:
 
 On a phone it is one column in that order. On a wider screen announcements, the newsletter, shout-outs, new hires, photos and discussions are on the left; office at a glance, tasks, the buttons and the rest are on the right.
 
+## Help (`/help`)
+
+Short how-to guides built into the site, reached from **Help** in the account menu (and at the end of More on a phone).
+
+- **Only your own jobs.** A guide is listed only for someone whose profile lets them do the job it describes: a technician sees the everyday guides, a manager also sees the managers' ones. Opening the address of a guide you may not see gives "not here".
+- **A "?" on the page.** Any page a guide explains shows a round **?** at the top right that opens that guide, with a Back button that returns to the page.
+- **Find a guide.** The box at the top of Help leaves only the guides that mention what is typed.
+- **Print.** Every guide has **Print this guide**, which also saves it as a PDF from the print window.
+- **Adding or changing a guide** is a matter of editing the files in `app/help/` (one list of guides per area; the layout is described at the top of `app/help.js`). The tests check that every guide is well formed and names real permissions.
+
 ## Social (`/social`)
 
 The company's own feed, in the bar beside Tasks. Everyone in every office sees every post.

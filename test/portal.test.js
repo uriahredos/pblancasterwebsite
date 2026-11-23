@@ -8440,3 +8440,44 @@ test('on call: adding or swapping someone offers the people of the office to pic
   assert.doesNotMatch((await tech.get('/oncall')).text, /oncall-people|717-555-0142/);
   db.prepare('UPDATE users SET phone = ?, show_phone = ? WHERE id = ?').run(before.phone, before.show_phone, mate.id);
 });
+
+test('Help: how-to guides for the jobs a person can do, a "?" on the page each one explains, and nothing for jobs they cannot do', async () => {
+  const help = require('../app/help'); const access = require('../app/permissions');
+  const known = new Set(access.GROUPS.flatMap((g) => g.items.map((i) => i[0])));
+  // Every guide is well formed: its own address, a known group, real permissions, steps to follow, and no page claimed twice.
+  assert.ok(help.guides.length >= 30);
+  const slugs = new Set(); const owned = new Map();
+  for (const g of help.guides) {
+    assert.match(g.slug, /^[a-z0-9]+(-[a-z0-9]+)*$/); assert.ok(!slugs.has(g.slug), `two guides called ${g.slug}`); slugs.add(g.slug);
+    assert.ok(help.GROUPS.includes(g.group), `${g.slug}: group ${g.group}`);
+    assert.ok(g.title && g.intro && g.where, `${g.slug}: title, intro and where`);
+    assert.ok(Array.isArray(g.steps) && g.steps.length >= 2 && g.steps.length <= 10, `${g.slug}: steps`);
+    for (const p of g.perms || []) assert.ok(known.has(p), `${g.slug}: unknown permission ${p}`);
+    for (const p of g.pages || []) {
+      assert.match(p, /^\/[\w\-./]*$/); assert.doesNotMatch(p, /^\/complaint/i, `${g.slug}: complaint pages carry no extras`);
+      assert.ok(!owned.has(p), `${p} is claimed by ${owned.get(p)} and ${g.slug}`); owned.set(p, g.slug);
+    }
+    for (const r of g.related || []) assert.ok(help.guides.some((x) => x.slug === r), `${g.slug}: related guide ${r} does not exist`);
+    for (const line of [g.title, g.intro, g.where, ...g.steps, ...(g.tips || [])]) { assert.doesNotMatch(line, /[<>`]|\u2014/, `${g.slug}: plain words only`); assert.equal((line.match(/\*\*/g) || []).length % 2, 0, `${g.slug}: unbalanced bold`); }
+  }
+  assert.equal(help.rich('Tap **Save** <now>'), 'Tap <strong>Save</strong> &lt;now&gt;');
+  // A technician sees the everyday guides and none of the managers'; the owner sees those as well.
+  const t = await loggedIn('tech1'); const owner = await loggedIn('owner');
+  const mine = (await t.get('/help')).text; const theirs = (await owner.get('/help')).text;
+  const listed = (html) => [...html.matchAll(/<a href="\/help\/([a-z0-9-]+)">/g)].map((m) => m[1]);
+  const manager = help.guides.find((g) => (g.perms || []).includes('users.manage')); assert.ok(manager);
+  assert.ok(listed(mine).length >= 8); assert.ok(!listed(mine).includes(manager.slug)); assert.ok(listed(theirs).includes(manager.slug));
+  assert.ok(listed(theirs).length > listed(mine).length);
+  assert.equal((await t.get(`/help/${manager.slug}`)).status, 404); assert.equal((await owner.get(`/help/${manager.slug}`)).status, 200);
+  assert.equal((await t.get('/help/no-such-guide')).status, 404);
+  // A guide page: numbered steps, bold button names, a custom back button, and a print button.
+  const first = help.guides.find((g) => listed(mine).includes(g.slug) && (g.pages || []).length);
+  const page = (await t.get(`/help/${first.slug}?from=${encodeURIComponent(first.pages[0])}`)).text;
+  assert.match(page, /<ol class="help-steps">\s*<li>/); assert.match(page, new RegExp(`<a class="back-link" href="${first.pages[0]}">Back to the page</a>`)); assert.match(page, /data-print>Print this guide/);
+  assert.match((await t.get(`/help/${first.slug}?from=//evil.example`)).text, /<a class="back-link" href="\/help">Help<\/a>/);   // never sent off the site
+  // The page a guide explains offers it with a "?"; a page with no guide for this person, and Help itself, do not.
+  assert.match((await t.get(first.pages[0])).text, new RegExp(`<a class="help-link no-print" href="/help/${first.slug}\\?from=`));
+  assert.doesNotMatch((await t.get('/help')).text, /class="help-link/);
+  assert.match((await t.get('/')).text, /<a href="\/help"[^>]*>Help/);
+  assert.equal((await new Client().get('/help')).status, 302);                                // signed-in people only
+});

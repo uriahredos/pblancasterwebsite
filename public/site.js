@@ -158,6 +158,21 @@
   }
   document.addEventListener('input', fillPhone); document.addEventListener('change', fillPhone);
 
+  // Help: typing in the box leaves only the guides that mention every word typed.
+  (function () {
+    var box = document.getElementById('help-filter');
+    if (!box) return;
+    box.addEventListener('input', function () {
+      var want = box.value.toLowerCase().split(/\s+/).filter(Boolean), shown = 0;
+      Array.prototype.forEach.call(document.querySelectorAll('.help-list li'), function (li) {
+        var text = li.getAttribute('data-words') || ''; var ok = want.every(function (w) { return text.indexOf(w) !== -1; });
+        li.hidden = !ok; if (ok) shown++;
+      });
+      Array.prototype.forEach.call(document.querySelectorAll('.help-group'), function (g) { g.hidden = !g.querySelector('li:not([hidden])'); });
+      document.getElementById('help-none').hidden = shown > 0;
+    });
+  })();
+
   // "Are you sure?" questions. Asked here, for the whole page, so they still work on parts of a page
   // that were swapped in without a reload.
   document.addEventListener('submit', function (e) {

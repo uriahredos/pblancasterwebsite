@@ -52,6 +52,7 @@
             <p class="bell-title">Settings</p>
             <a href="/settings/notifications">Notifications</a>
             <a href="/account/password">Password and Face ID</a>
+            <a href="/help">Help</a>
             <% if (typeof viewAsChoices !== 'undefined' && viewAsChoices.length) { %>
             <form method="post" action="/view-as" class="view-as-pick" data-no-live>
               <input type="hidden" name="_csrf" value="<%= csrf %>">
@@ -211,6 +212,7 @@
         <a href="/my" <%- path === '/my' ? 'aria-current="page"' : '' %>>My activity<% if (badges.updates) { %> <span class="badge" title="Updates you have not seen"><%= badges.updates %></span><% } %></a>
         <a href="/settings/notifications">Notification settings</a>
         <a href="/account/password">Password and Face ID<span class="hint-light"><%= user.display_name %></span></a>
+        <a href="/help" <%- path.indexOf('/help') === 0 ? 'aria-current="page"' : '' %>>Help<span class="hint-light">How-to guides</span></a>
         <% if (typeof viewAsChoices !== 'undefined' && viewAsChoices.length) { %>
         <form method="post" action="/view-as" class="view-as-pick in-menu" data-no-live>
           <input type="hidden" name="_csrf" value="<%= csrf %>">
@@ -229,6 +231,7 @@
   <% } %>
 </header>
 <main class="<%= typeof wide !== 'undefined' && wide ? 'wide' : '' %>">
+<% var pageGuide = user && typeof helpFor === 'function' ? helpFor() : null; if (pageGuide) { %><a class="help-link no-print" href="/help/<%= pageGuide.slug %>?from=<%= encodeURIComponent(path) %>" title="How to use this page: <%= pageGuide.title %>"><span aria-hidden="true">?</span><span class="sr">How to use this page: <%= pageGuide.title %></span></a><% } %>
 <% if (user && user.viewingAs) { %>
 <form method="post" action="/view-as" class="flash view-as no-print" data-no-live>
   <input type="hidden" name="_csrf" value="<%= csrf %>">

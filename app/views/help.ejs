@@ -1,0 +1,16 @@
+<%- include('partials/header') %>
+<h1>Help</h1>
+<p class="lede">Short how-to guides for the jobs you can do on this site.</p>
+<label class="help-find"><span class="sr">Find a guide</span><input type="search" id="help-filter" placeholder="Find a guide, for example: on call" autocomplete="off"></label>
+<p class="hint" id="help-none" hidden>No guide matches that. Try another word.</p>
+<% groups.forEach(function (grp) { %>
+<section class="help-group">
+  <h2><%= grp.name %></h2>
+  <ul class="help-list">
+    <% grp.guides.forEach(function (g) { %>
+    <li data-words="<%= words(g) %>"><a href="/help/<%= g.slug %>"><strong><%= g.title %></strong><span><%= g.intro %></span></a></li>
+    <% }) %>
+  </ul>
+</section>
+<% }) %>
+<%- include('partials/footer') %>

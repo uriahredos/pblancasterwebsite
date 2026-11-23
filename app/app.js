@@ -116,6 +116,8 @@ app.use((req, res, next) => {
   // How long this device may sit unused: the page needs it too, to check when it comes back from the background.
   res.locals.lockAfterMs = device.lockAfterMs(req);
   // The key a device needs to register for alerts, for the bar that offers them (only to someone signed in).
+  // The how-to guide for this page, if this person has one: the header offers it as "How to use this page".
+  res.locals.helpFor = () => require('./help').forPage(req.user, req.path);
   res.locals.pushKey = req.session && req.session.userId ? require('./push').vapid().publicKey : '';
   res.setHeader('Cache-Control', 'no-store');
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
@@ -172,6 +174,7 @@ app.use(require('./routes/forum'));
 app.use(require('./routes/reactions'));
 app.use(require('./routes/sales'));
 app.use(require('./routes/oncall'));
+app.use(require('./routes/help'));
 require('./team');   // adds its columns on first start
 require('./removal');
 app.use(require('./routes/digest'));

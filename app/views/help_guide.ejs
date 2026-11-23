@@ -1,0 +1,20 @@
+<%- include('partials/header') %>
+<p class="back no-print"><% if (back) { %><a class="back-link" href="<%= back %>">Back to the page</a><% } else { %><a class="back-link" href="/help">Help</a><% } %></p>
+<article class="card help-guide">
+  <h1><%= guide.title %></h1>
+  <p class="lede"><%= guide.intro %></p>
+  <% if (guide.where) { %><p class="help-where"><strong>Where:</strong> <%- rich(guide.where) %><% if (guide.pages && guide.pages[0]) { %> <a class="no-print" href="<%= guide.pages[0] %>">Open it</a><% } %></p><% } %>
+  <ol class="help-steps">
+    <% guide.steps.forEach(function (s) { %><li><%- rich(s) %></li><% }) %>
+  </ol>
+  <% if (guide.tips && guide.tips.length) { %>
+  <h2>Good to know</h2>
+  <ul class="help-tips"><% guide.tips.forEach(function (t) { %><li><%- rich(t) %></li><% }) %></ul>
+  <% } %>
+  <% if (related.length) { %>
+  <h2 class="no-print">Related guides</h2>
+  <ul class="help-tips no-print"><% related.forEach(function (r) { %><li><a href="/help/<%= r.slug %>"><%= r.title %></a></li><% }) %></ul>
+  <% } %>
+  <p class="no-print"><button type="button" class="btn small" data-print>Print this guide</button> <% if (back) { %><a class="btn small" href="/help">All guides</a><% } %></p>
+</article>
+<%- include('partials/footer') %>
