@@ -150,7 +150,7 @@ router.get('/admin/stock/:id', requireLogin, (req, res) => {
 router.post('/admin/stock/:id/:op', manage, (req, res) => {
   const part = getPart(req.params.id);
   const branchId = req.user.workBranch;
-  if (!tracked(branchId, part)) return res.redirect('/admin/stock');
+  if (!part) return res.redirect('/admin/stock');
   const back = `/admin/stock/${part.id}`;
   switch (req.params.op) {
     case 'adjust': {
@@ -187,6 +187,8 @@ router.post('/admin/stock/:id/:op', manage, (req, res) => {
       const max = noMax ? null : wholeNumber(req.body.max_level);
       if (hasMax && !noMax && max === null) { flash(req, 'err', 'The maximum must be a whole number, or blank for none.'); break; }
       if (min !== null && max !== null && max < min) { flash(req, 'err', 'The maximum cannot be less than the minimum.'); break; }
+      // A part that is in the warehouse but has never had a level starts its record here, from what the records hold.
+      db.prepare('INSERT OR IGNORE INTO branch_stock (branch_id, catalog_id, count_qty, count_at) VALUES (?, ?, ?, ?)').run(branchId, part.id, inv.onHand(inv.warehouseOf(branchId).id, part.id), new Date().toISOString());
       db.prepare('UPDATE branch_stock SET min_level = ? WHERE branch_id = ? AND catalog_id = ?').run(min, branchId, part.id);
       if (hasMax) db.prepare('UPDATE branch_stock SET max_level = ? WHERE branch_id = ? AND catalog_id = ?').run(max, branchId, part.id);
       activity.log(req.user, 'Stock minimum', `${part.part_number}: ${blank ? 'no minimum' : 'minimum ' + min}${hasMax ? (noMax ? ', no maximum' : ', maximum ' + max) : ''}`);

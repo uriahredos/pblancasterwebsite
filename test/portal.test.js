@@ -1127,8 +1127,10 @@ test('stock: on hand follows the count, takes, returns, cancellations, deliverie
   assert.equal((await mgr.post(`${part}/adjust`, { quantity: '5' })).status, 403);
   assert.equal((await mgr.post(page, { part_number: 'X', count: '1' })).status, 403);
   assert.equal((await tech.get(page)).status, 403);
+  // Taking the levels off a part does not take it off the shelf: it stays listed while the warehouse holds any, with no minimum.
   await wh.post(`${part}/stop`, {}, { page: part });
-  assert.ok(!stockLib.list(1).some((r) => r.part_number === 'STK-1'));
+  const kept = stockLib.list(1).find((r) => r.part_number === 'STK-1');
+  assert.ok(kept && kept.on_hand > 0); assert.deepEqual([kept.tracked, kept.min_level, kept.low], [0, null, false]);
 });
 
 test('stock: low level is flagged, and an email goes out once when a take crosses the minimum', async () => {
@@ -7351,7 +7353,7 @@ test('speed: the look-ups made on nearly every page have an index to use', () =>
     ['SELECT a.at FROM activity_log a LEFT JOIN users u ON u.id = a.user_id WHERE u.branch_id = 5 ORDER BY a.id DESC LIMIT 500', 'activity_user'],
   ]) assert.match(plan(sql), new RegExp(`USING (COVERING )?INDEX ${index}\\b`), `${sql} should use ${index}`);
   // Stock for one office is its own warehouse's movements, found by index: never a pass over every movement.
-  const stockPlan = (() => { const seen = []; const orig = db.prepare; db.prepare = function (sql) { seen.push(sql); return orig.apply(this, arguments); }; try { require('../app/stock').list(1); } finally { delete db.prepare; } return plan(seen.find((q) => /FROM branch_stock bs/.test(q)), 1); })();
+  const stockPlan = (() => { const seen = []; const orig = db.prepare; db.prepare = function (sql) { seen.push(sql); return orig.apply(this, arguments); }; try { require('../app/stock').list(1); } finally { delete db.prepare; } return plan(seen.find((q) => /LEFT JOIN branch_stock bs/.test(q)), 1); })();
   assert.match(stockPlan, /USING (COVERING )?INDEX inv_moves_to\b/); assert.match(stockPlan, /USING (COVERING )?INDEX inv_moves_from\b/);
   assert.doesNotMatch(stockPlan, /SCAN m\b/);
 });
@@ -8660,7 +8662,7 @@ test('warehouse stock: levels without a count, a maximum to order up to, figures
   // The page: what was used, how long it lasts, how many to order, and the value for someone who may see costs.
   const r = row(); assert.deepEqual([r.on_hand, r.used, r.low, r.order], [4, 8, true, 16]); assert.equal(r.days_left, 15);   // 8 used in 30 days, 4 left
   const html = (await owner.get(page)).text.replace(/\s+/g, ' ');
-  for (const label of ['Tracked', 'Low or out', 'To order', 'Used in 30 days', 'Value on the shelf']) assert.ok(html.includes(`<span class="stat-label">${label}</span>`), label);
+  for (const label of ['Parts', 'Low or out', 'To order', 'Used in 30 days', 'Value on the shelf']) assert.ok(html.includes(`<span class="stat-label">${label}</span>`), label);
   assert.match(html, /Most used, last 30 days<\/h2>[\s\S]*?LVL-1<\/strong><\/a> <span class="hint">8 used, 4 left/);
   assert.match(html, /Running out soonest<\/h2>[\s\S]*?LVL-1<\/strong><\/a> <span class="hint">about 15 days left/);
   assert.match(html, /<strong>LVL-1<\/strong><\/a><\/td> <td>Level test horn<\/td> <td class="num"><strong>4<\/strong><\/td> <td class="num">5<\/td> <td class="num">20<\/td> <td class="num">8<\/td> <td><span class="tag request">Low<\/span><\/td> <td class="num"><strong>16<\/strong>/);
@@ -8668,11 +8670,21 @@ test('warehouse stock: levels without a count, a maximum to order up to, figures
   const csv = (await wh.get('/admin/stock/reorder.csv')).text;
   assert.match(csv, /Part number,Description,On hand,Minimum,Maximum,Used in 30 days,Order/); assert.match(csv, /LVL-1,Level test horn,4,5,20,8,16/); assert.match(csv, /LVL-NEW,,0,2,6,0,6/);
   assert.equal((await (await loggedIn('tech1')).get('/admin/stock/reorder.csv')).status, 403);
+  // The page and the Inventory page agree: a part that is in the warehouse shows here even though nobody set a level for it.
+  const loose = db.prepare("INSERT INTO parts_catalog (part_number, description, active, created_at) VALUES ('LVL-LOOSE', 'No level set', 1, ?)").run(now).lastInsertRowid;
+  invLib.move({ branchId: home, catalogId: loose, to: w.id, quantity: 7, kind: 'receive', userId: userId('wh1') });
+  const lr = stockLib.list(home).find((x) => x.part_number === 'LVL-LOOSE');
+  assert.deepEqual([lr.on_hand, lr.min_level, lr.low, lr.order], [7, null, false, 0]);
+  const listed = stockLib.list(home); const held = invLib.contents(w.id).filter((x) => x.on_hand !== 0);
+  for (const h of held) assert.ok(listed.some((x) => x.id === h.id && x.on_hand === h.on_hand), `${h.part_number} is in the warehouse but not on the stock page`);
+  assert.match((await owner.get(page)).text, new RegExp(`<a class="hint" href="/admin/stock/${loose}#levels">Set</a>`));
+  await wh.post(`${page}/${loose}/min`, { min_level: '10', max_level: '12' }, { page: `${page}/${loose}` });      // a level can be set straight from its page
+  assert.deepEqual((({ min_level, max_level, low, order }) => [min_level, max_level, low, order])(stockLib.list(home).find((x) => x.part_number === 'LVL-LOOSE')), [10, 12, true, 5]);
   // On the part's own page both levels are edited together.
   await wh.post(`${page}/${pid}/min`, { min_level: '3', max_level: '' }, { page: `${page}/${pid}` });
   assert.deepEqual([row().min_level, row().max_level, row().low], [3, null, false]);
   pushLib.setSender(async () => {});
   db.prepare("DELETE FROM push_subscriptions WHERE endpoint LIKE '%lvl-device'").run();
-  for (const n of ['LVL-1', 'LVL-NEW']) { const c = db.prepare('SELECT id FROM parts_catalog WHERE part_number = ?').get(n); db.prepare('DELETE FROM inv_moves WHERE catalog_id = ?').run(c.id); db.prepare('DELETE FROM branch_stock WHERE catalog_id = ?').run(c.id); db.prepare('DELETE FROM parts_catalog WHERE id = ?').run(c.id); }
+  for (const n of ['LVL-1', 'LVL-NEW', 'LVL-LOOSE']) { const c = db.prepare('SELECT id FROM parts_catalog WHERE part_number = ?').get(n); db.prepare('DELETE FROM inv_moves WHERE catalog_id = ?').run(c.id); db.prepare('DELETE FROM branch_stock WHERE catalog_id = ?').run(c.id); db.prepare('DELETE FROM parts_catalog WHERE id = ?').run(c.id); }
   db.prepare('DELETE FROM inv_locations WHERE id = ?').run(truck);
 });

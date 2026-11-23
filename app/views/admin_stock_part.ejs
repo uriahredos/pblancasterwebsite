@@ -4,7 +4,7 @@
 <p class="lede"><%= part.description %></p>
 <div class="stats">
   <div class="stat <%= part.low ? 'request' : 'return' %>"><span class="stat-label">On hand</span><span class="stat-num"><%= part.on_hand %></span><span class="stat-sub"><%= part.on_hand <= 0 ? 'Out of stock' : part.low ? 'At or below minimum' : 'OK' %></span></div>
-  <div class="stat"><span class="stat-label">Minimum</span><span class="stat-num"><%= part.min_level === null ? '–' : part.min_level %></span><span class="stat-sub">Maximum: <%= part.max_level === null ? 'none' : part.max_level %>. Last counted: <%= part.count_qty %> on <%= fmtDateTime(part.count_at) %></span></div>
+  <div class="stat"><span class="stat-label">Minimum</span><span class="stat-num"><%= part.min_level === null ? '–' : part.min_level %></span><span class="stat-sub">Maximum: <%= part.max_level === null ? 'none' : part.max_level %>. Last counted: <%= part.count_at ? part.count_qty : 'not yet' %><%= part.count_at ? ' on ' : '' %><%= fmtDateTime(part.count_at) %></span></div>
   <div class="stat"><span class="stat-label">Used in 30 days</span><span class="stat-num"><%= part.used %></span><span class="stat-sub"><%= part.days_left === null ? 'not enough use to say how long it lasts' : 'about ' + part.days_left + (part.days_left === 1 ? ' day' : ' days') + ' left at this pace' %></span></div>
   <% if (part.order) { %><div class="stat request"><span class="stat-label">To order</span><span class="stat-num"><%= part.order %></span><span class="stat-sub"><%= part.max_level === null ? 'to get back above the minimum' : 'to bring it back up to ' + part.max_level %></span></div><% } %>
 </div>
@@ -23,7 +23,7 @@
   <label>Counted on the shelf now <input name="count" inputmode="numeric" required maxlength="6" autocomplete="off"></label>
   <div class="filter-actions"><button class="btn small" type="submit">Set count</button></div>
 </form>
-<h2>Minimum and maximum</h2>
+<h2 id="levels">Minimum and maximum</h2>
 <form method="post" action="/admin/stock/<%= part.id %>/min" class="filters card">
   <input type="hidden" name="_csrf" value="<%= csrf %>">
   <label>Minimum <span class="hint">Alert when at or below this. Blank for none.</span> <input name="min_level" value="<%= part.min_level === null ? '' : part.min_level %>" inputmode="numeric" maxlength="6" autocomplete="off"></label>

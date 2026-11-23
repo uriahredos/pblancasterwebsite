@@ -9,8 +9,14 @@ const ON_HAND = `
   COALESCE((SELECT SUM(m.quantity) FROM inv_moves m WHERE m.to_id = w.id AND m.catalog_id = c.id), 0)
   - COALESCE((SELECT SUM(m.quantity) FROM inv_moves m WHERE m.from_id = w.id AND m.catalog_id = c.id), 0)`;
 
-const SELECT = `SELECT c.id, c.part_number, c.description, c.category, c.active, bs.branch_id, c.cost_cents, bs.count_qty, bs.count_at, bs.min_level, bs.max_level, (${ON_HAND}) AS on_hand
-  FROM branch_stock bs JOIN parts_catalog c ON c.id = bs.catalog_id JOIN inv_locations w ON w.branch_id = bs.branch_id AND w.kind = 'warehouse' WHERE bs.branch_id = ?`;
+// Every part the warehouse holds or has held, and every part given a level, so this page and the Inventory page
+// never disagree about what is in the warehouse. A part with no level set simply has no minimum or maximum.
+const SELECT = `SELECT c.id, c.part_number, c.description, c.category, c.active, w.branch_id, c.cost_cents, bs.count_qty, bs.count_at, bs.min_level, bs.max_level,
+    bs.catalog_id IS NOT NULL AS tracked, (${ON_HAND}) AS on_hand
+  FROM inv_locations w JOIN parts_catalog c LEFT JOIN branch_stock bs ON bs.branch_id = w.branch_id AND bs.catalog_id = c.id
+  WHERE w.kind = 'warehouse' AND w.branch_id = ?
+    AND c.id IN (SELECT catalog_id FROM branch_stock WHERE branch_id = w.branch_id
+                 UNION SELECT catalog_id FROM inv_moves WHERE to_id = w.id UNION SELECT catalog_id FROM inv_moves WHERE from_id = w.id)`;
 
 function list(branchId, { q = '', low = false } = {}) {
   inv.ensureOffice(branchId);
@@ -21,7 +27,7 @@ function list(branchId, { q = '', low = false } = {}) {
     sql += " AND (c.part_number LIKE ? ESCAPE '\\' OR c.description LIKE ? ESCAPE '\\')";
     params.push(like, like);
   }
-  let rows = db.prepare(sql + ' ORDER BY c.part_number').all(...params);
+  let rows = db.prepare(sql + ' ORDER BY c.part_number').all(...params).filter((r) => r.tracked || r.on_hand !== 0);   // gone and never given a level: not listed
   // What left the warehouse in the last 30 days for work (taken to a job or out to a vehicle), not corrections.
   const since = new Date(Date.now() - USE_DAYS * 86400000).toISOString();
   const used = new Map(db.prepare(
@@ -45,7 +51,7 @@ const USE_DAYS = 30;
 function figures(rows) {
   const priced = rows.filter((r) => r.cost_cents !== null && r.on_hand > 0);
   return {
-    tracked: rows.length, low: rows.filter((r) => r.low && r.on_hand > 0).length, out: rows.filter((r) => r.on_hand <= 0).length,
+    tracked: rows.length, items: rows.reduce((n, r) => n + Math.max(0, r.on_hand), 0), noLevel: rows.filter((r) => r.min_level === null).length, low: rows.filter((r) => r.low && r.on_hand > 0).length, out: rows.filter((r) => r.on_hand <= 0).length,
     over: rows.filter((r) => r.over).length, toOrder: rows.filter((r) => r.order).length, orderUnits: rows.reduce((n, r) => n + r.order, 0),
     valueCents: priced.reduce((n, r) => n + r.on_hand * r.cost_cents, 0), unpriced: rows.filter((r) => r.cost_cents === null && r.on_hand > 0).length,
     used: rows.reduce((n, r) => n + r.used, 0),

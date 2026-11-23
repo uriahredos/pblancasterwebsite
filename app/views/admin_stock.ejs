@@ -3,7 +3,7 @@
 <p class="lede">The main warehouse: what is on the shelf, what is running low and what to order.</p>
 <%- include('partials/errors') %>
 <div class="stats stock-figures">
-  <a class="stat" href="/admin/stock"><span class="stat-label">Tracked</span><span class="stat-num"><%= figures.tracked %></span><span class="stat-sub"><%= figures.tracked === 1 ? 'part with a level set' : 'parts with a level set' %></span></a>
+  <a class="stat" href="/admin/stock"><span class="stat-label">Parts</span><span class="stat-num"><%= figures.tracked %></span><span class="stat-sub"><%= figures.items %> <%= figures.items === 1 ? 'item' : 'items' %> on the shelf<%= figures.noLevel ? ', ' + figures.noLevel + ' with no minimum yet' : '' %></span></a>
   <a class="stat <%= figures.low || figures.out ? 'request' : 'return' %>" href="/admin/stock?low=1"><span class="stat-label">Low or out</span><span class="stat-num"><%= figures.low + figures.out %></span><span class="stat-sub"><%= figures.out ? figures.out + ' out, ' + figures.low + ' low' : figures.low ? 'at or below minimum' : 'nothing below its minimum' %></span></a>
   <a class="stat" href="/admin/stock?low=1"><span class="stat-label">To order</span><span class="stat-num"><%= figures.orderUnits %></span><span class="stat-sub"><%= figures.toOrder ? 'items across ' + figures.toOrder + (figures.toOrder === 1 ? ' part' : ' parts') : 'nothing to order' %></span></a>
   <div class="stat"><span class="stat-label">Used in <%= useDays %> days</span><span class="stat-num"><%= figures.used %></span><span class="stat-sub">items out of the warehouse</span></div>
@@ -30,7 +30,7 @@
     <td><a href="/admin/stock/<%= p.id %>"><strong><%= p.part_number %></strong></a></td>
     <td><%= p.description %></td>
     <td class="num"><strong><%= p.on_hand %></strong></td>
-    <td class="num"><%= p.min_level === null ? '' : p.min_level %></td>
+    <td class="num"><% if (p.min_level === null) { %><a class="hint" href="/admin/stock/<%= p.id %>#levels">Set</a><% } else { %><%= p.min_level %><% } %></td>
     <td class="num"><%= p.max_level === null ? '' : p.max_level %></td>
     <td class="num"><%= p.used || '' %></td>
     <td><% if (p.on_hand <= 0) { %><span class="tag overdue">Out</span><% } else if (p.low) { %><span class="tag request">Low</span><% } else if (p.over) { %><span class="tag">Over</span><% } else { %><span class="tag return">OK</span><% } %></td>
@@ -38,7 +38,7 @@
     <td><a href="/admin/stock/<%= p.id %>"><%= can('stock.manage') ? 'Update' : 'Open' %></a></td>
   </tr>
   <% }) %>
-  <% if (!rows.length) { %><tr><td colspan="9" class="empty"><%= total ? 'No parts match.' : 'No parts have a level set yet. Set one below.' %></td></tr><% } %>
+  <% if (!rows.length) { %><tr><td colspan="9" class="empty"><%= total ? 'No parts match.' : 'Nothing is in the warehouse yet. Record a delivery or a count, or set a level below.' %></td></tr><% } %>
   </tbody>
 </table>
 </div>
