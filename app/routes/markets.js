@@ -47,6 +47,34 @@ if (!db.prepare("SELECT 1 FROM meta WHERE key = 'market_seed_1'").get()) {
   })();
 }
 
+// Once: the Downingtown office (formerly Keystone Fire and Security), which the company's office list does not
+// carry yet, joins the site and the Delaware Valley market. Nothing is done twice, and nothing a person has since
+// set is overwritten.
+if (!db.prepare("SELECT 1 FROM meta WHERE key = 'office_downingtown_1'").get()) {
+  db.transaction(() => {
+    const now = new Date().toISOString();
+    // Only where markets are in use: a brand-new, empty site gets no office it never asked for.
+    if (!db.prepare('SELECT 1 FROM markets').get()) { db.prepare("INSERT INTO meta (key, value) VALUES ('office_downingtown_1', ?)").run(now); return; }
+    let b = db.prepare("SELECT id, market_id FROM branches WHERE name = 'Downingtown' COLLATE NOCASE").get();
+    if (!b) {
+      const id = db.prepare('INSERT INTO branches (name, city, state, street, address, phone, about, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+        .run('Downingtown', 'Downingtown', 'PA', '288 Boot Rd', '288 Boot Rd, Downingtown, PA 19335', '610-363-2233', 'Formerly Keystone Fire and Security.', now).lastInsertRowid;
+      require('../branches').setUp(id);
+      b = { id, market_id: null };
+    } else {
+      db.prepare("UPDATE branches SET city = COALESCE(NULLIF(city, ''), 'Downingtown'), state = COALESCE(NULLIF(state, ''), 'PA'), address = COALESCE(NULLIF(address, ''), '288 Boot Rd, Downingtown, PA 19335'), phone = COALESCE(NULLIF(phone, ''), '610-363-2233') WHERE id = ?").run(b.id);
+    }
+    if (!b.market_id) {
+      // The market by the name it goes by now, or failing that the one its neighbours are in.
+      const m = db.prepare("SELECT id FROM markets WHERE name LIKE 'del%val%' ORDER BY id LIMIT 1").get()
+        || db.prepare("SELECT id FROM markets WHERE name = 'NJ/PA/DE' COLLATE NOCASE").get()
+        || db.prepare("SELECT market_id AS id FROM branches WHERE market_id IS NOT NULL AND name IN ('Ephrata', 'Allentown', 'King of Prussia') COLLATE NOCASE GROUP BY market_id ORDER BY COUNT(*) DESC LIMIT 1").get();
+      if (m && m.id) db.prepare('UPDATE branches SET market_id = ? WHERE id = ?').run(m.id, b.id);
+    }
+    db.prepare("INSERT INTO meta (key, value) VALUES ('office_downingtown_1', ?)").run(now);
+  })();
+}
+
 function page(req, res, extra = {}) {
   const profiles = marketProfiles().map((p) => p.id);
   const markets = db.prepare('SELECT * FROM markets ORDER BY name COLLATE NOCASE').all().map((m) => {
