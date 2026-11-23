@@ -3254,8 +3254,8 @@ test('branches: each branch sees only its own parts, stock, trucks, tasks, train
   assert.equal(db.prepare('SELECT COUNT(*) n FROM inspection_items WHERE branch_id = ? AND active = 1').get(hbg).n, db.prepare('SELECT COUNT(*) n FROM inspection_items WHERE branch_id = ? AND active = 1').get(lanc).n);
 
   // The branch box: looking at Harrisburg, a new person joins Harrisburg.
-  assert.match((await owner.get('/')).text, /<select name="branch" data-autosubmit>[\s\S]*All offices/);
-  assert.doesNotMatch((await tech1.get('/')).text, /name="branch" data-autosubmit/);
+  assert.match((await owner.get('/')).text, /<datalist id="office-list"><option value="All offices" data-id="all">[\s\S]*<input name="office" list="office-list"[^>]*data-office-pick/);
+  assert.doesNotMatch((await tech1.get('/')).text, /data-office-pick|office-list/);
   assert.equal((await tech1.post('/branch/view', { branch: String(hbg) }, { page: '/' })).status, 403);
   await owner.post('/branch/view', { branch: String(hbg), back: '/admin/users' }, { page: '/' });
   const adminProfile = profileId('Admin (no complaints)') || profileId('Admin');
@@ -3593,7 +3593,7 @@ test('corporate: corporate admins appoint an admin for each office; office admin
   await edc.login('ed.ephrata', temp);
   await edc.post('/account/password', { current: temp, password: 'orchard admin password', confirm: 'orchard admin password' });
   const home = (await edc.get('/')).text;
-  assert.match(home, /<span class="branch">Ephrata Office<\/span>/); assert.doesNotMatch(home, /Corporate<|\/admin\/branches|\/admin\/profiles|name="branch" data-autosubmit/);
+  assert.match(home, /<span class="branch">Ephrata Office<\/span>/); assert.doesNotMatch(home, /Corporate<|\/admin\/branches|\/admin\/profiles|data-office-pick/);
   await edc.post('/admin/users', { username: 'eph.tech', display_name: 'Tess Ephrata', profile_id: String(profileId('Technician')) }, { page: '/admin/users' });
   assert.equal(db.prepare("SELECT branch_id FROM users WHERE username = 'eph.tech'").get().branch_id, eph);
   const edUsers = (await edc.get('/admin/users')).text;
@@ -3615,7 +3615,7 @@ test('corporate: corporate admins appoint an admin for each office; office admin
   page = (await owner.get('/admin/branches')).text.replace(/\s+/g, ' ');
   assert.match(page, /Corporate admins<\/h2>[\s\S]*Ed Ephrata<\/strong><span class="meta">Corporate admin · Ephrata office/);
   assert.equal((await edc.get('/admin/branches')).status, 200);
-  assert.match((await edc.get('/')).text, /name="branch" data-autosubmit/);
+  assert.match((await edc.get('/')).text, /data-office-pick/);
   await edc.post('/branch/view', { branch: 'all' }, { page: '/' });
   assert.match((await edc.get('/admin/users')).text, /Terry Tech/);
   await edc.post(`/admin/corporate/admins/${ed.id}/remove`, {}, { page: '/admin/branches' });      // nobody stands themselves down
@@ -8762,4 +8762,31 @@ test('fleet: the office\'s trucks, trailers, lifts and other equipment in one li
   assert.doesNotMatch((await t1.get('/fleet/signout')).text, /Scissor lift 1<\/option>|Scissor lift 1 \(/);
   assert.match((await ask(t1, { start_date: day(5), end_date: day(6) })).text, /Choose which lift/);
   db.prepare("DELETE FROM fleet_items WHERE branch_id = ?").run(home);
+});
+
+test('office box: a corporate admin can find and switch to any office by typing, including one with nobody in it', async () => {
+  const owner = await loggedIn('owner');
+  const empty = db.prepare("INSERT INTO branches (name, number, state, created_at) VALUES ('Quietville', '9876', 'OH', ?)").run(new Date().toISOString()).lastInsertRowid;
+  const total = db.prepare('SELECT COUNT(*) n FROM branches').get().n;
+  const home = (await owner.get('/')).text;
+  const list = (/<datalist id="office-list">([\s\S]*?)<\/datalist>/.exec(home) || [])[1] || '';
+  assert.equal((list.match(/<option /g) || []).length, total + 1);                                   // every office, and "All offices"
+  assert.ok(list.includes(`<option value="Quietville" data-id="${empty}" label="#9876 · OH"></option>`));   // nobody works there, and it is still offered
+  assert.equal((home.match(/<datalist id="office-list">/g) || []).length, 1);                        // one list serves the box on a computer and the one in the phone menu
+  assert.match((await owner.get('/site.js')).text, /data-office-pick/);
+  const viewing = async () => (/<input name="office" list="office-list" value="([^"]*)"/.exec((await owner.get('/')).text) || [])[1];
+  // Picked from the list (its id is sent), typed in full, by its number, or back to all of them.
+  await owner.post('/branch/view', { branch: String(empty), office: 'Quietville', back: '/' }, { page: '/' }); assert.equal(await viewing(), 'Quietville');
+  await owner.post('/branch/view', { branch: '', office: 'all offices', back: '/' }, { page: '/' }); assert.equal(await viewing(), 'All offices');
+  await owner.post('/branch/view', { branch: '', office: 'quietville', back: '/' }, { page: '/' }); assert.equal(await viewing(), 'Quietville');
+  await owner.post('/branch/view', { branch: 'all', back: '/' }, { page: '/' });
+  await owner.post('/branch/view', { branch: '', office: '#9876', back: '/' }, { page: '/' }); assert.equal(await viewing(), 'Quietville');
+  // Something that is no office changes nothing and says so.
+  await owner.post('/branch/view', { branch: '', office: 'Nowhereville', back: '/' }, { page: '/' });
+  assert.match((await owner.get('/')).text, /No single office matches/); assert.equal(await viewing(), 'Quietville');
+  // Still only for people who see every office.
+  assert.equal((await (await loggedIn('tech1')).post('/branch/view', { branch: String(empty) }, { page: '/' })).status, 403);
+  const home1 = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id;
+  await owner.post('/branch/view', { branch: String(home1), back: '/' }, { page: '/' });
+  db.prepare('DELETE FROM inv_locations WHERE branch_id = ?').run(empty); db.prepare('DELETE FROM branches WHERE id = ?').run(empty);
 });

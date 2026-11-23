@@ -146,6 +146,26 @@
     document.addEventListener('contextmenu', function (e) { if (target(e)) e.preventDefault(); });
   })();
 
+  // The office box beside the name: type to find any office, pick it, and the site switches to it.
+  (function () {
+    function match(box) {
+      var list = document.getElementById(box.getAttribute('list')); if (!list) return null;
+      var typed = box.value.trim().toLowerCase(); if (!typed) return null;
+      return Array.prototype.filter.call(list.options, function (o) { return o.value.toLowerCase() === typed; })[0] || null;
+    }
+    function go(e) {
+      var box = e.target;
+      if (!box || !box.matches || !box.matches('input[data-office-pick]') || !box.form) return;
+      var hit = match(box); if (!hit || hit.value === box.getAttribute('data-current')) return;
+      box.form.querySelector('input[name="branch"]').value = hit.getAttribute('data-id');
+      box.form.submit();
+    }
+    document.addEventListener('input', go); document.addEventListener('change', go);
+    // Tapping the box clears it so the whole list can be searched; leaving it without picking puts the office back.
+    document.addEventListener('focusin', function (e) { var b = e.target; if (b && b.matches && b.matches('input[data-office-pick]')) b.value = ''; });
+    document.addEventListener('focusout', function (e) { var b = e.target; if (b && b.matches && b.matches('input[data-office-pick]') && !match(b)) b.value = b.getAttribute('data-current'); });
+  })();
+
   // Offices: picking a person from an office's list notes exactly who was picked, so two people with one name are told apart.
   function pickPerson(e) {
     var box = e.target;

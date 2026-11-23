@@ -686,6 +686,8 @@ On **Corporate > Offices and admins** a corporate admin can:
 
 ## Offices
 
+- **The office box** beside a corporate admin's name (in the menu on a phone) is a search, not a long list: tap it, type a town, a state or an office number, and pick the office. It offers every office, including ones with nobody on the site yet, plus **All offices**. Leaving the box without picking puts the current office back.
+
 One site for every office. Each person belongs to one office; everything that existed before offices belongs to Lancaster.
 
 **Shared by everyone:** People and profiles, Discussions, the daily question, new-hire welcomes, newsletters, and the parts catalog (the list of part numbers).

@@ -77,13 +77,11 @@ function loadUser(req, res, next) {
   // Profiles this person can look at the site as (see loadAccess). Listed for their own account menu only.
   res.locals.viewAsChoices = access.viewAsChoices(req.user);
   if (req.user) {
-    const all = db.prepare('SELECT id, name FROM branches ORDER BY name COLLATE NOCASE').all();
+    const all = db.prepare('SELECT id, name, number, city, state FROM branches ORDER BY name COLLATE NOCASE').all();
     res.locals.branchName = (all.find((b) => b.id === req.user.branch_id) || {}).name || null;
     // Someone who can see every branch chooses which one they are looking at.
-    if (req.user.allBranches && all.length > 1) {
-      const used = new Set(db.prepare('SELECT DISTINCT branch_id FROM users').all().map((r) => r.branch_id));
-      res.locals.branchChoices = all.filter((b) => used.has(b.id) || b.id === req.user.viewBranch);
-    }
+    // Every office is offered, with or without people in it: the box is searched by typing, not scrolled.
+    if (req.user.allBranches && all.length > 1) res.locals.branchChoices = all;
   }
   if (req.user) {
     // Tasks assigned to this person and not done yet: overdue first, then soonest due, then ones with no date.

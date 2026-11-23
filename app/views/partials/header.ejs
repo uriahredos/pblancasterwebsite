@@ -28,14 +28,14 @@
         <% if (officeLabel || !user) { %><span class="branch"><%= officeLabel || 'Employee Portal' %></span><% } %>
       </a>
       <div class="who">
+        <% var viewingOffice = user && branchChoices.length ? (user.viewBranch === null ? 'All offices' : (branchChoices.filter(function (b) { return b.id === user.viewBranch; })[0] || {}).name || '') : ''; %>
         <% if (user && !isLocked && branchChoices.length) { %>
+      <datalist id="office-list"><option value="All offices" data-id="all"></option><% branchChoices.forEach(function (b) { %><option value="<%= b.name %>" data-id="<%= b.id %>" label="<%= [b.number ? '#' + b.number : '', b.city && b.city !== b.name ? b.city : '', b.state].filter(Boolean).join(' · ') %>"></option><% }) %></datalist>
       <form method="post" action="/branch/view" class="nav-branch in-banner">
         <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="back" value="<%= path %>">
-        <label><span class="sr">Office you are looking at</span>
-          <select name="branch" data-autosubmit>
-            <% branchChoices.forEach(function (b) { %><option value="<%= b.id %>" <%= user.viewBranch === b.id ? 'selected' : '' %>><%= b.name %></option><% }) %>
-            <option value="all" <%= user.viewBranch === null ? 'selected' : '' %>>All offices</option>
-          </select></label>
+        <label><span class="sr">Office you are looking at. Type a town, state or number to find another.</span>
+          <input name="office" list="office-list" value="<%= viewingOffice %>" data-current="<%= viewingOffice %>" data-office-pick autocomplete="off" placeholder="Search offices" title="Type to find an office"></label>
+        <input type="hidden" name="branch" value="">
         <noscript><button type="submit">Go</button></noscript>
       </form>
       <% } %>
@@ -197,11 +197,9 @@
       <% if (branchChoices.length) { %>
       <form method="post" action="/branch/view" class="nav-branch in-menu">
         <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="back" value="<%= path %>">
-        <label><span class="sr">Office you are looking at</span>
-          <select name="branch" data-autosubmit>
-            <% branchChoices.forEach(function (b) { %><option value="<%= b.id %>" <%= user.viewBranch === b.id ? 'selected' : '' %>><%= b.name %></option><% }) %>
-            <option value="all" <%= user.viewBranch === null ? 'selected' : '' %>>All offices</option>
-          </select></label>
+        <label><span class="sr">Office you are looking at. Type a town, state or number to find another.</span>
+          <input name="office" list="office-list" value="<%= viewingOffice %>" data-current="<%= viewingOffice %>" data-office-pick autocomplete="off" placeholder="Search offices" title="Type to find an office"></label>
+        <input type="hidden" name="branch" value="">
         <noscript><button type="submit">Go</button></noscript>
       </form>
       <% } %>

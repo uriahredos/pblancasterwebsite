@@ -257,14 +257,14 @@ module.exports = [
     where: 'The office box is at the top of every page, beside your name. On a phone it is in the main menu.',
     steps: [
       'Find the box at the top of the page that shows an office name.',
-      'Choose the office you want. The page reloads and now shows that office.',
-      'To see every office together, choose **All offices**.',
-      'To go back, choose your own office from the same box.',
+      'Tap the box and start typing the town, state or office number. Pick the office from the list. The page reloads and now shows that office.',
+      'To see every office together, type and pick **All offices**.',
+      'To go back, type and pick your own office in the same box.',
     ],
     tips: [
       'Your choice stays until you change it or sign out, so check the box before you trust what a list is showing.',
       'Choose one office, not **All offices**, before you add something that belongs to an office, such as a training session, a checklist item or a lead.',
-      'People without this box only ever see their own office.',
+      'Every office is in the list, including ones with nobody on the site yet.',
     ],
     related: ['add-an-office', 'view-site-as-profile'],
   },
