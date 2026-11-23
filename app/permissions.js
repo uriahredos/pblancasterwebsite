@@ -58,6 +58,7 @@ const GROUPS = [
     ['digest.weekly', 'Get the weekly parts email'],
   ] },
   { title: 'Sensitive', items: [
+    ['market.all', 'See and manage every office in their own market'],
     ['branches.all', 'See and manage every office'],
     ['complaints.review', 'Read and answer anonymous complaints'],
     ['backups', 'Download backups (a backup holds everything, complaints included)'],
@@ -74,7 +75,7 @@ const DEFAULTS = [
   { name: 'Technician', scope: 'all', perms: [...SUBMIT, 'forum.use'] },
   { name: 'Warehouse', scope: 'all', perms: [...SUBMIT, 'forum.use', 'parts.view', 'parts.manage', 'parts.audit', 'catalog.manage', 'stock.manage', 'inventory.manage', 'inventory.count', 'inventory.export', 'inspections.view', 'inspections.manage'] },
   { name: 'Manager', scope: 'team', perms: [...SUBMIT, 'forum.use', 'parts.view', 'parts.manage', 'parts.audit', 'training.view', 'training.manage', 'digest.weekly', 'inspections.view', 'inspections.manage', 'certs.manage', 'announcements.post', 'tasks.assign'] },
-  { name: 'Admin', scope: 'all', perms: ALL.filter((p) => p !== 'branches.all') },   // an admin runs one branch
+  { name: 'Admin', scope: 'all', perms: ALL.filter((p) => p !== 'branches.all' && p !== 'market.all') },   // an admin runs one branch
 ];
 
 db.exec(`
@@ -134,7 +135,7 @@ function migrate() {
       for (const d of DEFAULTS) createProfile(d.name, d.scope, d.perms);
     }
     const withoutProfile = db.prepare('SELECT id, role, can_review_complaints AS reviewer FROM users WHERE profile_id IS NULL').all();
-    const oneBranch = ALL.filter((p) => p !== 'branches.all');
+    const oneBranch = ALL.filter((p) => p !== 'branches.all' && p !== 'market.all');
     const noComplaints = oneBranch.filter((p) => p !== 'complaints.review' && p !== 'backups');
     for (const u of withoutProfile) {
       let profileId;
@@ -210,7 +211,11 @@ function loadAccess(user, viewBranch, viewProfile) {
   user.perms = user.is_master ? new Set(ALL) : profile ? permsOf(profile.id) : new Set();
   user.scope = user.is_master || !profile ? 'all' : profile.scope;
   user.allBranches = Boolean(user.is_master || user.perms.has('branches.all'));
-  const chosen = user.allBranches && viewBranch !== undefined && viewBranch !== null ? viewBranch : user.branch_id;
+  // A market admin runs every office in the market their own office belongs to, one at a time: never all at once,
+  // and never an office outside it.
+  user.marketBranches = !user.allBranches && user.perms.has('market.all') ? marketOffices(user.branch_id) : [];
+  const inMarket = user.marketBranches.includes(Number(viewBranch));
+  const chosen = (user.allBranches || inMarket) && viewBranch !== undefined && viewBranch !== null ? viewBranch : user.branch_id;
   // null = every branch at once. workBranch is the one branch that stock, the truck checklist and new training sessions belong to.
   user.viewBranch = chosen === 'all' ? null : (db.prepare('SELECT id FROM branches WHERE id = ?').get(chosen) || { id: user.branch_id }).id;
   // Fail closed: an account with no office (which should not happen) sees no office's records rather than every office's.
@@ -227,12 +232,21 @@ function loadAccess(user, viewBranch, viewProfile) {
       user.is_master = 0;                                     // for this request only: nothing here is saved
       user.perms = permsOf(as.id); user.scope = as.scope; user.profile_name = as.name;
       user.allBranches = user.perms.has('branches.all');
+      user.marketBranches = [];
       // Without "every office" they stay in the office they were looking at (their own, if that was all of them).
       if (!user.allBranches && !user.viewBranch) user.viewBranch = user.branch_id || -1;
       user.workBranch = user.viewBranch || user.branch_id;
     }
   }
   return user;
+}
+
+/** The offices in the same market as this one (itself included); just itself when it is in no market. */
+function marketOffices(branchId) {
+  if (!branchId) return [];
+  const mine = db.prepare('SELECT market_id FROM branches WHERE id = ?').get(branchId);
+  if (!mine || !mine.market_id) return [branchId];
+  return db.prepare('SELECT id FROM branches WHERE market_id = ? ORDER BY name COLLATE NOCASE').all(mine.market_id).map((r) => r.id);
 }
 
 const can = (user, perm) => Boolean(user && user.perms && user.perms.has(perm));
@@ -289,5 +303,5 @@ function viewAsChoices(user) {
 
 module.exports = {
   viewAsChoices, GROUPS, ALL, SUBMIT, DEFAULTS, profileByName, permsOf, setPermissions, createProfile, ensureProfile,
-  loadAccess, can, visibleUserIds, canSee, canGrant, mayManage, moderates, migrate,
+  loadAccess, marketOffices, can, visibleUserIds, canSee, canGrant, mayManage, moderates, migrate,
 };

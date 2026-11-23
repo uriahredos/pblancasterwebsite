@@ -90,10 +90,15 @@ const covering = (branchIds, day) => (branchIds.length ? db.prepare(
 
 /** The offices whose schedule this person sees: their own, and any other office in the same market. */
 function officesFor(user) {
-  const mine = db.prepare('SELECT id, name, market FROM branches WHERE id = ?').get(user.workBranch || user.branch_id);
+  const mine = db.prepare('SELECT b.id, b.name, b.market, b.market_id, m.name AS market_name FROM branches b LEFT JOIN markets m ON m.id = b.market_id WHERE b.id = ?').get(user.workBranch || user.branch_id);
   if (!mine) return [];
+  // A market made on the Markets page decides it; an office not yet in one falls back to the company list's market.
+  if (mine.market_id) {
+    const others = db.prepare('SELECT id, name FROM branches WHERE market_id = ? AND id <> ? ORDER BY name COLLATE NOCASE').all(mine.market_id, mine.id);
+    return [{ ...mine, market: mine.market_name }, ...others.map((o) => ({ ...o, market: mine.market_name }))];
+  }
   const market = String(mine.market || '').trim();
-  const others = market ? db.prepare('SELECT id, name, market FROM branches WHERE market = ? AND id <> ? ORDER BY name COLLATE NOCASE').all(market, mine.id) : [];
+  const others = market ? db.prepare('SELECT id, name, market FROM branches WHERE market = ? AND market_id IS NULL AND id <> ? ORDER BY name COLLATE NOCASE').all(market, mine.id) : [];
   return [mine, ...others];
 }
 

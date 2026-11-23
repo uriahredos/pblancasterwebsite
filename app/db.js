@@ -608,6 +608,9 @@ addColumn('branches', 'region', 'TEXT');
 addColumn('branches', 'marketing_name', 'TEXT');   // the name the office goes by, when it differs from its town
 addColumn('branches', 'market', 'TEXT');
 addColumn('branches', 'product_lines', 'TEXT');
+// Markets: groups of offices that corporate admins make and fill. An office belongs to one market at most.
+db.exec(`CREATE TABLE IF NOT EXISTS markets (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE, created_at TEXT NOT NULL)`);
+addColumn('branches', 'market_id', 'INTEGER');
 addColumn('tasks', 'status', "TEXT NOT NULL DEFAULT 'new'");
 // A task can be a vehicle inspection: it is finished by sending the inspection, which is then linked here.
 addColumn('tasks', 'kind', "TEXT NOT NULL DEFAULT 'general'");

@@ -56,6 +56,7 @@ const PAGES = [
   ['users.manage', '/poster', 'QR code sign', 'poster sign qr code print'],
   ['activity.view', '/admin/activity', 'Activity log', 'who changed what history audit trail'],
   [(u) => u.scope === 'all' && access.can(u, 'users.manage'), '/admin/import', 'Import', 'upload contact list many people spreadsheet'],
+  [everyOffice, '/admin/markets', 'Markets', 'market groups of offices market admin region'],
   [everyOffice, '/admin/branches', 'Offices and admins', 'add an office corporate branches'],
   [(u) => everyOffice(u) && access.can(u, 'profiles.manage'), '/admin/profiles', 'Profiles', 'permissions roles what people can do'],
   [(u) => everyOffice(u) && access.can(u, 'backups'), '/admin/backups', 'Backups', 'download backup copy restore'],

@@ -166,6 +166,18 @@
     document.addEventListener('focusout', function (e) { var b = e.target; if (b && b.matches && b.matches('input[data-office-pick]') && !match(b)) b.value = b.getAttribute('data-current'); });
   })();
 
+  // Markets: picking an office from the list notes exactly which one, so its id is sent.
+  function pickOffice(e) {
+    var box = e.target;
+    if (!box || !box.matches || !box.matches('input[data-picks-office]') || !box.form) return;
+    var list = document.getElementById(box.getAttribute('list')); var id = box.form.querySelector('input[name="branch"]');
+    if (!list || !id) return;
+    var typed = box.value.trim().toLowerCase();
+    var hits = Array.prototype.filter.call(list.options, function (o) { return o.value.toLowerCase() === typed; });
+    id.value = hits.length === 1 ? hits[0].getAttribute('data-id') || '' : '';
+  }
+  document.addEventListener('input', pickOffice); document.addEventListener('change', pickOffice);
+
   // Offices: picking a person from an office's list notes exactly who was picked, so two people with one name are told apart.
   function pickPerson(e) {
     var box = e.target;

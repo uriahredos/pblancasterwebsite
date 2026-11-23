@@ -30,7 +30,7 @@
       <div class="who">
         <% var viewingOffice = user && branchChoices.length ? (user.viewBranch === null ? 'All offices' : (branchChoices.filter(function (b) { return b.id === user.viewBranch; })[0] || {}).name || '') : ''; %>
         <% if (user && !isLocked && branchChoices.length) { %>
-      <datalist id="office-list"><option value="All offices" data-id="all"></option><% branchChoices.forEach(function (b) { %><option value="<%= b.name %>" data-id="<%= b.id %>" label="<%= [b.number ? '#' + b.number : '', b.city && b.city !== b.name ? b.city : '', b.state].filter(Boolean).join(' · ') %>"></option><% }) %></datalist>
+      <datalist id="office-list"><% if (user.allBranches) { %><option value="All offices" data-id="all"></option><% } %><% branchChoices.forEach(function (b) { %><option value="<%= b.name %>" data-id="<%= b.id %>" label="<%= [b.number ? '#' + b.number : '', b.city && b.city !== b.name ? b.city : '', b.state].filter(Boolean).join(' · ') %>"></option><% }) %></datalist>
       <form method="post" action="/branch/view" class="nav-branch in-banner">
         <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="back" value="<%= path %>">
         <label><span class="sr">Office you are looking at. Type a town, state or number to find another.</span>
@@ -160,6 +160,7 @@
       ] },
       { name: 'Corporate', items: user.allBranches ? [
         ['', '/admin/branches', 'Offices and admins', is('/admin/branches')],
+        ['', '/admin/markets', 'Markets', is('/admin/markets')],
         ['profiles.manage', '/admin/profiles', 'Profiles', is('/admin/profiles')],
         ['backups', '/admin/backups', 'Backups', is('/admin/backups')],
         ['users.manage', '/admin/security', 'Security check', is('/admin/security')]

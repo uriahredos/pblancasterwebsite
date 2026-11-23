@@ -82,6 +82,8 @@ function loadUser(req, res, next) {
     // Someone who can see every branch chooses which one they are looking at.
     // Every office is offered, with or without people in it: the box is searched by typing, not scrolled.
     if (req.user.allBranches && all.length > 1) res.locals.branchChoices = all;
+    // A market admin chooses among their market's offices.
+    else if (req.user.marketBranches && req.user.marketBranches.length > 1) res.locals.branchChoices = all.filter((b) => req.user.marketBranches.includes(b.id));
   }
   if (req.user) {
     // Tasks assigned to this person and not done yet: overdue first, then soonest due, then ones with no date.

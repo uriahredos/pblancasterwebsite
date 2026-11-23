@@ -1,0 +1,80 @@
+<%- include('partials/header', { wide: true }) %>
+<h1>Markets</h1>
+<p class="lede">A market is a group of offices. Each market can have its own admins, who run every office in it.</p>
+<%- include('partials/errors') %>
+<% if (created) { %>
+<div class="card stack created">
+  <p><strong><%= created.name %></strong> is now an admin for the <%= created.market %> market. Their sign-in was off, so it has been switched on. They sign in as <strong><%= created.username %></strong>.</p>
+  <p>Give them this temporary password. It is shown only this once, and they choose their own the first time they sign in.</p>
+  <p class="code"><%= created.password %></p>
+</div>
+<% } %>
+<datalist id="market-offices"><% offices.forEach(function (o) { %><option value="<%= o.name %>" data-id="<%= o.id %>" label="<%= [o.number ? '#' + o.number : '', o.state, o.market ? 'in ' + o.market : 'no market yet'].filter(Boolean).join(' · ') %>"></option><% }) %></datalist>
+
+<% markets.forEach(function (m) { %>
+<section class="card market-card" id="m<%= m.id %>">
+  <h2><%= m.name %> <span class="meta"><%= m.offices.length %> <%= m.offices.length === 1 ? 'office' : 'offices' %></span></h2>
+
+  <h3 class="sub-h">Offices</h3>
+  <% if (m.offices.length) { %>
+  <ul class="market-offices">
+    <% m.offices.forEach(function (o) { %>
+    <li><span><strong><%= o.name %></strong> <span class="meta"><%= [o.number ? '#' + o.number : '', o.state, o.people + (o.people === 1 ? ' person' : ' people')].filter(Boolean).join(' · ') %></span></span>
+      <form method="post" action="/admin/markets/<%= m.id %>/offices/<%= o.id %>/remove" data-no-live data-confirm="Take <%= o.name %> out of the <%= m.name %> market?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Take out</button></form></li>
+    <% }) %>
+  </ul>
+  <% } else { %><p class="hint">No offices yet. Add the first one below.</p><% } %>
+  <form method="post" action="/admin/markets/<%= m.id %>/offices" class="filters" data-no-live>
+    <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="branch" value="">
+    <label class="grow">Add an office <span class="hint">Type a town, state or office number</span>
+      <input name="office" list="market-offices" required maxlength="80" autocomplete="off" placeholder="Search offices" data-picks-office></label>
+    <div class="filter-actions"><button class="btn primary small" type="submit">Add to <%= m.name %></button></div>
+  </form>
+
+  <h3 class="sub-h">Market admins</h3>
+  <% if (m.admins.length) { %>
+  <ul class="market-offices">
+    <% m.admins.forEach(function (a) { %>
+    <li><span><strong><%= a.display_name %></strong> <span class="meta"><%= a.office %> · <%= a.profile %></span></span>
+      <form method="post" action="/admin/markets/<%= m.id %>/admins/<%= a.id %>/remove" data-no-live data-confirm="Stop <%= a.display_name %> being an admin for the <%= m.name %> market?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Stand down</button></form></li>
+    <% }) %>
+  </ul>
+  <% } else { %><p class="hint">This market has no admin of its own yet. Corporate admins and each office's own admin run its offices until it does.</p><% } %>
+  <% if (adminProfiles.length && m.people.length) { %>
+  <form method="post" action="/admin/markets/<%= m.id %>/admins" class="filters" data-no-live>
+    <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="user_id" value="">
+    <label class="grow">Add a market admin <span class="hint">Start typing a name. People already listed in this market's offices.</span>
+      <input name="person" list="market-people-<%= m.id %>" required maxlength="80" autocomplete="off" placeholder="Search by name" data-picks-person></label>
+    <datalist id="market-people-<%= m.id %>"><% m.people.forEach(function (p) { %><option value="<%= p.display_name %>" data-id="<%= p.id %>" label="<%= p.office %>"></option><% }) %></datalist>
+    <% if (adminProfiles.length > 1) { %><label>Profile <select name="profile_id"><% adminProfiles.forEach(function (p) { %><option value="<%= p.id %>"><%= p.name %></option><% }) %></select></label>
+    <% } else { %><input type="hidden" name="profile_id" value="<%= adminProfiles[0].id %>"><% } %>
+    <div class="filter-actions"><button class="btn primary small" type="submit">Appoint</button></div>
+  </form>
+  <% } else if (!adminProfiles.length) { %><p class="hint">No profile has "See and manage every office in their own market" yet. Tick it on a profile under Profiles to be able to appoint market admins.</p>
+  <% } else if (m.offices.length) { %><p class="hint">Nobody is listed in this market's offices yet. Add people under Users first.</p><% } %>
+
+  <details class="mod-tools spaced">
+    <summary>Rename or remove this market</summary>
+    <div class="thread-tools stack">
+      <form method="post" action="/admin/markets/<%= m.id %>" class="filters" data-no-live>
+        <input type="hidden" name="_csrf" value="<%= csrf %>">
+        <label class="grow">Name <input name="name" value="<%= m.name %>" required maxlength="60" autocomplete="off"></label>
+        <div class="filter-actions"><button class="btn small" type="submit">Rename</button></div>
+      </form>
+      <form method="post" action="/admin/markets/<%= m.id %>" data-no-live data-confirm="Remove the <%= m.name %> market? Its offices stay on the site, in no market.">
+        <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="op" value="remove"><button class="link danger" type="submit">Remove this market</button>
+      </form>
+    </div>
+  </details>
+</section>
+<% }) %>
+<% if (!markets.length) { %><p class="hint">No markets yet. Make the first one below.</p><% } %>
+
+<h2>Add a market</h2>
+<form method="post" action="/admin/markets" class="filters card" data-no-live>
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label class="grow">Name <span class="hint">For example NJ/PA/DE</span> <input name="name" value="<%= values.name || '' %>" required maxlength="60" autocomplete="off"></label>
+  <div class="filter-actions"><button class="btn primary small" type="submit">Add market</button></div>
+</form>
+<p class="meta"><%= loose %> <%= loose === 1 ? 'office is' : 'offices are' %> in no market yet.</p>
+<%- include('partials/footer') %>

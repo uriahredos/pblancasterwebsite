@@ -684,6 +684,17 @@ On **Corporate > Offices and admins** a corporate admin can:
 - stand an office admin down (they go back to the Technician profile);
 - make an existing person a corporate admin, or stand one down (they become an admin of their own office and are signed out so the change takes hold at once). Nobody can stand themselves or the master account down.
 
+## Markets (`/admin/markets`)
+
+A market is a group of offices that corporate admins make and fill. It is how the site grows from one office to many: offices are brought on market by market.
+
+- **Corporate > Markets** lists each market with its offices and its admins. A corporate admin adds a market by name, adds offices to it with a search (town, state or office number), takes offices out, renames it or removes it. An office is in one market at most; adding it to another moves it. Removing a market leaves its offices on the site, in no market.
+- **Market admins.** A profile with **See and manage every office in their own market** makes someone a market admin. A corporate admin appoints one from the people already listed in the market's offices. The site starts with a **Market admin** profile for this (an office admin's permissions plus the market); it can be changed under Profiles.
+- **What a market admin gets.** An office box beside their name holding only their market's offices. They run one of those offices at a time, exactly as that office's own admin would. They cannot choose an office outside the market, cannot see all offices at once, and have no Corporate menu. Taking an office out of the market ends their reach over it at once; standing them down signs them out.
+- **Three levels, then:** an office admin runs one office, a market admin runs each office of one market, a corporate admin runs every office.
+- **On call** is shared by the offices of a market. (An office not yet in a market still follows the market named for it in the company's office list.)
+- **The first market**, NJ/PA/DE, is made the first time this version starts, from the offices already on the site named Ephrata, Allentown, Downingtown, North Wales, King of Prussia, Wilmington (DE), Dover, Deptford and West Deptford. Any of those not on the site yet is simply added on the Markets page once the office exists.
+
 ## Offices
 
 - **The office box** beside a corporate admin's name (in the menu on a phone) is a search, not a long list: tap it, type a town, a state or an office number, and pick the office. It offers every office, including ones with nobody on the site yet, plus **All offices**. Leaving the box without picking puts the current office back.

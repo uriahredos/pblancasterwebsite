@@ -387,7 +387,10 @@ router.post('/admin/people/import', requirePerm('users.manage'), (req, res, next
 const everyBranch = (req, res, next) => requireLogin(req, res, () => (req.user.allBranches ? next() : forbidden(res)));
 
 // Choose which branch the logs, stock and other branch pages show.
-router.post('/branch/view', everyBranch, (req, res) => {
+router.post('/branch/view', requireLogin, (req, res) => {
+  // Corporate admins choose any office or all of them; a market admin only an office of their market.
+  const within = req.user.marketBranches || [];
+  if (!req.user.allBranches && within.length < 2) return forbidden(res);
   let b = req.body.branch === 'all' ? 'all' : isId(req.body.branch) && db.prepare('SELECT id FROM branches WHERE id = ?').get(req.body.branch) ? Number(req.body.branch) : null;
   // The search box sends the office's id once one is picked; a name typed in full (or an office number) is taken too.
   const typed = clean(req.body.office, 80);
@@ -398,6 +401,7 @@ router.post('/branch/view', everyBranch, (req, res) => {
       if (hit.length === 1) b = hit[0].id; else flash(req, 'err', `No single office matches "${typed}". Pick one from the list as you type.`);
     }
   }
+  if (!req.user.allBranches && b !== null && !within.includes(b)) { b = null; flash(req, 'err', 'That office is not in your market.'); }
   if (b !== null) req.session.viewBranch = b;
   const back = String(req.body.back || '/');
   // Back to the page they were on. From a complaint page that is by way of the home page, as after signing in (see landing).
@@ -416,7 +420,7 @@ router.post('/view-as', requireLogin, (req, res) => {
 // Profiles that make someone an office's admin (they manage that office's people, and nothing outside it),
 // and profiles that make someone a corporate admin (every office).
 const profilePerms = () => db.prepare('SELECT p.id, p.name, p.scope FROM profiles p ORDER BY p.name COLLATE NOCASE').all().map((p) => ({ ...p, perms: access.permsOf(p.id) }));
-const officeAdminProfiles = () => profilePerms().filter((p) => p.scope === 'all' && p.perms.has('users.manage') && !p.perms.has('branches.all'));
+const officeAdminProfiles = () => profilePerms().filter((p) => p.scope === 'all' && p.perms.has('users.manage') && !p.perms.has('branches.all') && !p.perms.has('market.all'));
 const corporateProfiles = () => profilePerms().filter((p) => p.scope === 'all' && p.perms.has('branches.all'));
 const grantable = (req, list) => list.filter((p) => access.canGrant(req.user, p.perms));
 
