@@ -8877,3 +8877,16 @@ test('markets: corporate admins group offices into markets and appoint market ad
   assert.ok(db.prepare('SELECT 1 FROM branches WHERE id = ?').get(a));
   db.prepare('DELETE FROM markets WHERE id = ?').run(m2);
 });
+
+test('on call: the Call button carries the number so a computer can show it; a phone still dials', async () => {
+  const owner = await loggedIn('owner');
+  const home = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id;
+  await owner.post('/branch/view', { branch: String(home), back: '/' }, { page: '/' });
+  const day = (n) => { const d = new Date(`${require('../app/util').localDate()}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  await owner.post('/admin/oncall', { start_on: day(-1), end_on: day(2), role: 'tech', name: 'Cal Caller', phone: '(717) 555-0199' }, { page: '/oncall' });
+  const page = (await owner.get('/oncall')).text;
+  assert.match(page, /<a class="btn primary" href="tel:7175550199" data-full data-call-number="\(717\) 555-0199" data-call-name="Cal Caller">Call<\/a>/);   // the link a phone dials, and the number a computer shows
+  const js = (await owner.get('/site.js')).text;
+  assert.match(js, /a\[data-call-number\]/); assert.match(js, /\(hover: hover\) and \(pointer: fine\)/); assert.match(js, /if \(!desk\) return;/);   // only a computer gets the pop-up
+  db.prepare("DELETE FROM oncall_shifts WHERE name = 'Cal Caller'").run();
+});

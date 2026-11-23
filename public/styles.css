@@ -1621,3 +1621,8 @@ td.reports-to .meta { display: block; }
 .pick-list li.none { color: var(--muted); cursor: default; }
 .nav-branch label { display: block; }
 .nav-branch.in-banner .pick-list { left: auto; right: 0; min-width: 18rem; }
+
+/* On call, on a computer: the number shown when Call is pressed. */
+.call-pop { display: inline-flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin: .5rem 0 0; padding: .6rem .9rem; border: 1px solid var(--accent); border-radius: 12px; background: var(--surface); color: var(--ink); box-shadow: 0 8px 22px rgba(0, 0, 0, .18); }
+.call-pop strong { font-size: 1.35rem; letter-spacing: .02em; user-select: all; }
+.call-pop .call-who { color: var(--muted); }

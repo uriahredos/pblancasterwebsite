@@ -146,6 +146,34 @@
     document.addEventListener('contextmenu', function (e) { if (target(e)) e.preventDefault(); });
   })();
 
+  // On call, on a computer: Call shows the number to dial instead of handing a tel: link to a computer that has
+  // nothing to dial with. A phone (anything worked by touch) keeps the link and dials.
+  (function () {
+    var desk = window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+    function closeAll(except) { Array.prototype.forEach.call(document.querySelectorAll('.call-pop'), function (n) { if (n !== except) n.parentNode.removeChild(n); }); }
+    document.addEventListener('click', function (e) {
+      var a = e.target.closest && e.target.closest('a[data-call-number]');
+      if (!a) { if (!(e.target.closest && e.target.closest('.call-pop'))) closeAll(null); return; }
+      if (!desk) return;
+      e.preventDefault(); e.stopPropagation();
+      var had = a.nextElementSibling && a.nextElementSibling.classList.contains('call-pop') ? a.nextElementSibling : null;
+      closeAll(null); if (had) return;                                   // a second press puts it away
+      var number = a.getAttribute('data-call-number');
+      var pop = document.createElement('span'); pop.className = 'call-pop'; pop.setAttribute('role', 'status');
+      var who = document.createElement('span'); who.className = 'call-who'; who.textContent = a.getAttribute('data-call-name') || '';
+      var num = document.createElement('strong'); num.textContent = number;
+      var copy = document.createElement('button'); copy.type = 'button'; copy.className = 'btn small'; copy.textContent = 'Copy';
+      copy.addEventListener('click', function () {
+        var done = function () { copy.textContent = 'Copied'; };
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(number).then(done, function () {});
+        else { var r = document.createRange(); r.selectNodeContents(num); var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r); try { document.execCommand('copy'); done(); } catch (err) {} }
+      });
+      pop.appendChild(who); pop.appendChild(num); pop.appendChild(copy);
+      a.parentNode.insertBefore(pop, a.nextSibling);
+    }, true);
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeAll(null); });
+  })();
+
   // Boxes that pick from a list held in the page (offices, people): the site draws its own list under the box as
   // someone types, because phones do not reliably show the browser's built-in one. Tapping a line, or pressing
   // Enter for the top line, fills the box in; the handlers further down then act on what was picked.
