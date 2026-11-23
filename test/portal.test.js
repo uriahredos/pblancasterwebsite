@@ -8404,7 +8404,8 @@ test('Social page: a prompt to post beside your picture opens into the full form
   // A mistake brings the form back open, with what was typed.
   assert.match((await t.post('/social', [['body', '']], { multipart: true, page: '/social' })).text, /<details class="card composer" id="composer" open>/);
   // Posts from different days sit under their own heading, newest day first, each showing its time.
-  const add = db.prepare('INSERT INTO social_posts (user_id, body, created_at) VALUES (?, ?, ?)'); const now = Date.now();
+  const add = db.prepare('INSERT INTO social_posts (user_id, body, created_at) VALUES (?, ?, ?)');
+  const now = new Date(`${require('../app/util').localDate()}T17:00:00Z`).getTime();   // the middle of today, so the test reads the same at midnight
   add.run(userId('tech1'), 'DAYS older post', new Date(now - 9 * 86400000).toISOString());
   add.run(userId('tech1'), 'DAYS from yesterday', new Date(now - 86400000).toISOString());
   add.run(userId('tech2'), 'DAYS first today', new Date(now - 60000).toISOString());

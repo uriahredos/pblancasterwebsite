@@ -182,7 +182,7 @@ module.exports = [
     title: 'Keep the on-call schedule',
     group: 'Schedule and tasks',
     perms: ['oncall.manage'],
-    pages: ['/admin/oncall'],
+    pages: [],
     intro: 'Add people to the on-call schedule, swap one person for another, take someone off, or load the whole year from the spreadsheet.',
     where: 'Choose **On call** in the main menu. The tools for keeping the schedule are at the bottom of the page, under **Coming up**.',
     steps: [
@@ -253,7 +253,7 @@ module.exports = [
     title: 'Post an event people sign up to',
     group: 'Schedule and tasks',
     perms: ['events.post'],
-    pages: ['/events'],
+    pages: [],
     intro: 'Put a cookout, potluck, drive or get-together on the Events page so people can say they are coming.',
     where: 'Open the **Community** menu and choose **Events**. Scroll down to **Add an event**.',
     steps: [

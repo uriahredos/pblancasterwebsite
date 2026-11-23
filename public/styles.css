@@ -1538,7 +1538,7 @@ td.reports-to .meta { display: block; }
 .help-find input { width: 100%; max-width: 32rem; }
 .help-group h2 { margin: 1.5rem 0 .5rem; }
 .help-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); }
-.help-list a { display: grid; gap: .2rem; height: 100%; padding: .8rem 1rem; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); text-decoration: none; }
+.help-list a { display: grid; align-content: start; gap: .2rem; height: 100%; padding: .8rem 1rem; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); text-decoration: none; }
 .help-list a:hover { border-color: var(--accent); }
 .help-list a span { color: var(--muted); font-size: .92rem; }
 .help-guide { max-width: 46rem; }
