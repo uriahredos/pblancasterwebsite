@@ -236,8 +236,8 @@ module.exports = [
       'Look under **Other offices** first. If the office is already listed there, press its name and skip to the step about adding an admin.',
       'If it is not there, scroll to **Add an office**, type the town in **Name** and press **Add office**.',
       'On the card for the office, press **Add an admin for** followed by the office name.',
-      'Choose a person under **Someone already in this office**, or fill in **Full name** and **Username** for someone new. Then press **Appoint admin**.',
-      'For someone new, the page shows a temporary password once. Give it to them straight away. They choose their own the first time they sign in.',
+      'Under **Who?**, start typing the name and pick the person from the list. They must already be listed in that office. Then press **Appoint admin**.',
+      'If that person could not sign in before, the page shows a temporary password once. Give it to them straight away. They choose their own the first time they sign in.',
     ],
     tips: [
       'Do not type the word Office in the name. It is added for you.',

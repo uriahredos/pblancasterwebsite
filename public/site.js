@@ -146,6 +146,18 @@
     document.addEventListener('contextmenu', function (e) { if (target(e)) e.preventDefault(); });
   })();
 
+  // Offices: picking a person from an office's list notes exactly who was picked, so two people with one name are told apart.
+  function pickPerson(e) {
+    var box = e.target;
+    if (!box || !box.matches || !box.matches('input[data-picks-person]') || !box.form) return;
+    var list = document.getElementById(box.getAttribute('list')); var id = box.form.querySelector('input[name="user_id"]');
+    if (!list || !id) return;
+    var typed = box.value.trim().toLowerCase();
+    var hits = Array.prototype.filter.call(list.options, function (o) { return o.value.toLowerCase() === typed; });
+    id.value = hits.length === 1 ? hits[0].getAttribute('data-id') || '' : '';
+  }
+  document.addEventListener('input', pickPerson); document.addEventListener('change', pickPerson);
+
   // On call: picking a person from the office's list puts the phone number from their account in the box beside it.
   function fillPhone(e) {
     var box = e.target;

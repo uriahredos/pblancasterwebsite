@@ -3568,16 +3568,23 @@ test('corporate: corporate admins appoint an admin for each office; office admin
   assert.match((await owner.get('/admin/branches')).text, new RegExp(`href="/admin/branches\\?office=${eph}#o${eph}"`));
   assert.match(page, /<h1>Corporate<\/h1>/); assert.match(page, /Ephrata office<\/strong>[\s\S]*This office has no admin of its own yet/);
 
-  // A new person as Ephrata's admin: created in that office with a temporary password shown once.
+  // An office's admin is always someone already on the site in that office: here Ed, listed in Ephrata with his sign-in off.
   // (In these checks the profile called Admin can see every office, so an office's admin gets a profile that cannot.)
   const adminProfile = access.ensureProfile('Office admin', 'all', access.ALL.filter((p) => p !== 'branches.all'));
-  assert.match((await owner.post(`/admin/branches/${eph}/admins`, { profile_id: String(adminProfile), display_name: 'Ed Ephrata', username: 'tech1' }, { page: '/admin/branches' })).text, /already taken/);
-  assert.match((await owner.post(`/admin/branches/${eph}/admins`, { profile_id: String(profileId('Corporate admin')), display_name: 'Ed Ephrata', username: 'ed.ephrata' }, { page: '/admin/branches' })).text, /Choose which admin profile/);   // not a way to make corporate admins
-  await owner.post(`/admin/branches/${eph}/admins`, { profile_id: String(adminProfile), display_name: 'Ed Ephrata', username: 'ed.ephrata', email: 'ed@example.com' }, { page: '/admin/branches' });
+  const noNew = await owner.post(`/admin/branches/${eph}/admins`, { profile_id: String(adminProfile), display_name: 'Nell New', username: 'nell.new' }, { page: '/admin/branches' });
+  assert.match(noNew.text, /Choose someone from that office/); assert.equal(db.prepare("SELECT COUNT(*) n FROM users WHERE username = 'nell.new'").get().n, 0);   // no account is made here any more
+  assert.match(noNew.text.replace(/\s+/g, ' '), /Nobody is listed in the Ephrata office yet\. Add its people first/);
+  const edId = auth.createUser({ username: 'ed.ephrata', displayName: 'Ed Ephrata', email: 'ed@example.com', password: 'not used until appointed', profile: profileId('Technician'), branchId: eph });
+  db.prepare('UPDATE users SET active = 0, in_directory = 1 WHERE id = ?').run(edId);
+  const pick = (await owner.get(`/admin/branches?office=${eph}`)).text.replace(/\s+/g, ' ');
+  assert.match(pick, new RegExp(`<input name="person" list="office-people-${eph}"[^>]*data-picks-person>`)); assert.match(pick, new RegExp(`<option value="Ed Ephrata" data-id="${edId}"></option>`));
+  assert.doesNotMatch(pick, /name="username"|or someone new/);
+  assert.match((await owner.post(`/admin/branches/${eph}/admins`, { profile_id: String(profileId('Corporate admin')), user_id: String(edId) }, { page: '/admin/branches' })).text, /Choose which admin profile/);   // not a way to make corporate admins
+  await owner.post(`/admin/branches/${eph}/admins`, { profile_id: String(adminProfile), person: 'ed ephrata', user_id: '' }, { page: '/admin/branches' });   // typed in full, as the page sends it without scripts
   const ed = db.prepare("SELECT * FROM users WHERE username = 'ed.ephrata'").get();
-  assert.deepEqual([ed.branch_id, ed.profile_id, ed.must_change_password, ed.active], [eph, adminProfile, 1, 1]);
+  assert.deepEqual([ed.branch_id, ed.profile_id, ed.must_change_password, ed.active], [eph, adminProfile, 1, 1]);   // his sign-in is switched on with a temporary password
   page = (await owner.get('/admin/branches')).text.replace(/\s+/g, ' ');
-  const temp = /created as an admin for the Ephrata office[\s\S]*?<p class="code">([a-z0-9-]+)<\/p>/.exec(page)[1];
+  const temp = /<strong>Ed Ephrata<\/strong> is now an admin for the Ephrata office[\s\S]*?<p class="code">([a-z0-9-]+)<\/p>/.exec(page)[1];
   assert.doesNotMatch((await owner.get('/admin/branches')).text, new RegExp(temp));                // once only
   assert.match(page, /Ed Ephrata<\/strong><span class="meta">Office admin · has not signed in yet/);
 

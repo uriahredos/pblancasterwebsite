@@ -671,6 +671,8 @@ With hundreds of offices, the Corporate page shows in full only the offices that
 
 ## Corporate and office admins
 
+- **An office's admin is always picked from people already on the site in that office.** On Corporate > Offices and admins, **Add an admin** has a name search over that office's people (including people from the contact list who cannot sign in yet); a corporate admin picks one and they get the office admin profile. If their sign-in was off it is switched on and a temporary password is shown once. No new account is made on this page: someone new is added under Users (or the contact list import) first. This keeps one source of people, ready for a company sign-in that supplies them.
+
 There are two levels of admin.
 
 - **Corporate admins** see and manage every office. They have a **Corporate** menu: **Offices and admins**, **Profiles** and **Backups**. The master account is always one; others are people on a profile with **See and manage every office** ticked (the site starts with one called **Corporate admin**).

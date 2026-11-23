@@ -4,7 +4,11 @@
 <%- include('partials/errors') %>
 <% if (created) { %>
 <div class="card stack created">
+  <% if (created.what === 'appointed') { %>
+  <p><strong><%= created.name %></strong> is now an admin for the <%= created.office %> office. Their sign-in was off, so it has been switched on. They sign in as <strong><%= created.username %></strong>.</p>
+  <% } else { %>
   <p>Account <strong><%= created.username %></strong> was created as an admin for the <%= created.office %> office.</p>
+  <% } %>
   <p>Give them this temporary password. It is shown only this once, and they choose their own the first time they sign in.</p>
   <p class="code"><%= created.password %></p>
 </div>
@@ -28,7 +32,7 @@
     <% } else { %><input type="hidden" name="profile_id" value="<%= corporateProfiles[0].id %>"><% } %>
     <div class="filter-actions"><button class="btn primary" type="submit">Appoint</button></div>
   </form>
-  <p class="hint">The person needs an account first. Someone new to the site: add them as an admin of their office below, then appoint them here.</p>
+  <p class="hint">The person has to be on the site already. Someone new is added under Users first.</p>
   <% } %>
 </div>
 
@@ -54,15 +58,14 @@
         <% if (officeProfiles.length > 1) { %><label>Admin profile <select name="profile_id"><% officeProfiles.forEach(function (p) { %><option value="<%= p.id %>"><%= p.name %></option><% }) %></select></label>
         <% } else { %><input type="hidden" name="profile_id" value="<%= officeProfiles[0].id %>"><% } %>
         <% if (b.others.length) { %>
-        <label>Someone already in this office <select name="user_id"><option value="">Choose a person</option><% b.others.forEach(function (p) { %><option value="<%= p.id %>"><%= p.display_name %></option><% }) %></select></label>
-        <p class="or">or someone new</p>
-        <% } %>
-        <div class="two">
-          <label>Full name <input name="display_name" value="<%= values.office === b.id ? values.display_name || '' : '' %>" maxlength="80" autocomplete="off"></label>
-          <label>Username <span class="hint">What they type to sign in</span><input name="username" value="<%= values.office === b.id ? values.username || '' : '' %>" maxlength="40" autocapitalize="none" autocomplete="off"></label>
-        </div>
-        <label>Email <span class="hint">Optional</span><input name="email" type="email" value="<%= values.office === b.id ? values.email || '' : '' %>" maxlength="120" autocomplete="off"></label>
+        <label>Who? <span class="hint">Start typing a name. People already listed in the <%= b.name %> office.</span>
+          <input name="person" list="office-people-<%= b.id %>" value="<%= values.office === b.id ? values.person || '' : '' %>" required maxlength="80" autocomplete="off" placeholder="Search by name" data-picks-person></label>
+        <input type="hidden" name="user_id" value="">
+        <datalist id="office-people-<%= b.id %>"><% b.others.forEach(function (p) { %><option value="<%= p.display_name %>" data-id="<%= p.id %>"></option><% }) %></datalist>
         <button class="btn primary" type="submit">Appoint admin</button>
+        <% } else { %>
+        <p class="hint">Nobody is listed in the <%= b.name %> office yet. Add its people first: choose <%= b.name %> in the office box beside your name, then open Users and add them (or load the contact list under Import). Then come back and pick the admin here.</p>
+        <% } %>
       </form>
     </details>
     <% } %>

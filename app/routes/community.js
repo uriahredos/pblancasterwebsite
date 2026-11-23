@@ -474,33 +474,34 @@ router.post('/admin/branches/:id', everyBranch, (req, res) => {
   res.redirect('/admin/branches');
 });
 
-// Appoint an admin for an office: someone already in it, or a new person (who gets a temporary password).
+// Appoint an admin for an office: always someone who is already on the site in that office. (New people are added
+// under Users or by the contact-list import; with a company sign-in they will arrive from the company's own list.)
 router.post('/admin/branches/:id/admins', everyBranch, (req, res) => {
   const b = isId(req.params.id) ? db.prepare('SELECT * FROM branches WHERE id = ?').get(req.params.id) : null;
   if (!b) return res.redirect('/admin/branches');
   const profile = grantable(req, officeAdminProfiles()).find((p) => String(p.id) === String(req.body.profile_id));
-  if (!profile) return branchPage(req, res, { errors: ['Choose which admin profile they get.'] });
+  if (!profile) return branchPage(req, res, { errors: ['Choose which admin profile they get.'], values: { office: b.id } });
   const auth = require('../auth');
-  if (isId(req.body.user_id)) {
-    const u = db.prepare('SELECT * FROM users WHERE id = ? AND branch_id = ? AND is_master = 0').get(req.body.user_id, b.id);
-    if (!u || u.id === req.user.id) return branchPage(req, res, { errors: ['Choose someone from that office.'] });
-    db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(profile.id, u.id);
-    activity.log(req.user, 'Office admin appointed', `${u.display_name} for ${b.name} (${profile.name})`);
-    flash(req, 'ok', `${u.display_name} is now an admin for the ${b.name} office.${u.active ? '' : ' Their sign-in is switched off: enable it and reset their password under Users.'}`);
-    return res.redirect(`/admin/branches#o${b.id}`);
+  const inOffice = 'branch_id = ? AND is_master = 0 AND removed_at IS NULL';
+  // The page sends the person's id; a name typed in full is taken too, when only one person in the office has it.
+  let u = isId(req.body.user_id) ? db.prepare(`SELECT * FROM users WHERE id = ? AND ${inOffice}`).get(req.body.user_id, b.id) : null;
+  const typed = clean(req.body.person, 80);
+  if (!u && typed && !isId(req.body.user_id)) {
+    const same = db.prepare(`SELECT * FROM users WHERE display_name = ? COLLATE NOCASE AND ${inOffice}`).all(typed, b.id);
+    if (same.length === 1) u = same[0];
+    else if (same.length > 1) return branchPage(req, res, { errors: [`More than one person in ${b.name} is called ${typed}. Pick the one you mean from the list.`], values: { office: b.id, person: typed } });
   }
-  const values = { username: clean(req.body.username, 40), display_name: clean(req.body.display_name, 80), email: clean(req.body.email, 120) };
-  const errors = [];
-  if (!values.display_name) errors.push('Choose someone from the office, or enter a new person\'s name.');
-  else if (!/^[a-zA-Z0-9._-]{3,40}$/.test(values.username)) errors.push('Username: 3-40 letters, numbers, dot, dash or underscore.');
-  else if (db.prepare('SELECT 1 FROM users WHERE username = ?').get(values.username)) errors.push('That username is already taken.');
-  if (values.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)) errors.push('That email address does not look right.');
-  if (errors.length) return branchPage(req, res, { errors, values: { ...values, office: b.id } });
-  const password = auth.tempPassword();
-  auth.createUser({ username: values.username, displayName: values.display_name, email: values.email, password, profile: profile.id, branchId: b.id });
-  activity.log(req.user, 'Office admin appointed', `${values.display_name} (${values.username}) for ${b.name} (${profile.name})`);
-  req.session.created = { username: values.username, password, what: 'created', office: b.name };
-  res.redirect('/admin/branches');
+  if (!u || u.id === req.user.id) return branchPage(req, res, { errors: [`Choose someone from that office. A person who is not on the site yet is added under Users first, with ${b.name} chosen as the office.`], values: { office: b.id, person: typed } });
+  db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(profile.id, u.id);
+  activity.log(req.user, 'Office admin appointed', `${u.display_name} for ${b.name} (${profile.name})`);
+  if (!u.active) {
+    // Listed but never able to sign in: their sign-in is switched on with a temporary password, shown once.
+    db.prepare('UPDATE users SET active = 1 WHERE id = ?').run(u.id);
+    req.session.created = { username: u.username, name: u.display_name, password: auth.issueTemp(u.id), what: 'appointed', office: b.name };
+    return res.redirect('/admin/branches');
+  }
+  flash(req, 'ok', `${u.display_name} is now an admin for the ${b.name} office.`);
+  res.redirect(`/admin/branches#o${b.id}`);
 });
 
 // Stand an office admin down: they go back to the Technician profile.
