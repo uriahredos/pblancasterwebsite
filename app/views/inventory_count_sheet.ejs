@@ -6,6 +6,12 @@
 <form method="post" action="/admin/inventory/count/<%= audit.id %>/<%= place.id %>" class="stack" data-no-live id="count-form">
   <input type="hidden" name="_csrf" value="<%= csrf %>">
   <p><button type="button" class="btn small" id="scan-btn" hidden>Scan barcode</button></p>
+  <fieldset>
+    <legend>Something here that is not on the list below?</legend>
+    <label>Part <span class="hint">Pick from the catalog or type your own</span> <input name="add_part" id="add-part" value="<%= added %>" maxlength="100" autocomplete="off" data-catalog placeholder="Number or name"></label>
+    <label>How many <input name="add_qty" id="add-qty" inputmode="numeric" maxlength="6" autocomplete="off"></label>
+    <button class="btn small" type="submit">Add it to the list</button>
+  </fieldset>
   <div class="table-wrap">
   <table>
     <thead><tr><th>Part</th><th class="num">How many</th></tr></thead>
@@ -16,15 +22,10 @@
       <td class="num"><input class="count-box" id="q<%= p.id %>" name="qty_<%= p.id %>" value="<%= p.counted === null ? '' : p.counted %>" inputmode="numeric" maxlength="6" autocomplete="off"></td>
     </tr>
     <% }) %>
-    <% if (!rows.length) { %><tr><td colspan="2" class="empty">The records show nothing here. Add what you find below.</td></tr><% } %>
+    <% if (!rows.length) { %><tr><td colspan="2" class="empty">The records show nothing here. Add what you find above.</td></tr><% } %>
     </tbody>
   </table>
   </div>
-  <fieldset>
-    <legend>Something here that is not on the list?</legend>
-    <label>Part <span class="hint">Pick from the catalog or type your own</span> <input name="add_part" id="add-part" value="<%= added %>" maxlength="100" autocomplete="off" data-catalog placeholder="Number or name"></label>
-    <label>How many <input name="add_qty" id="add-qty" inputmode="numeric" maxlength="6" autocomplete="off"></label>
-  </fieldset>
   <button class="btn primary" type="submit">Save the count</button>
 </form>
 <div class="scan-overlay" id="scan-overlay" hidden>

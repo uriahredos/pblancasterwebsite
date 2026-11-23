@@ -337,7 +337,7 @@ module.exports = [
       'Open **Parts** in the main menu, choose **Inventory**, then the **Inventory count** tab at the top.',
       'Under **Locations**, choose **Count** next to the place you are counting.',
       'Type how many of each part are really there in the **How many** box beside it.',
-      'If you find a part that is not listed, type it under **Something here that is not on the list?** in **Part number** and **How many**.',
+      'If you find a part that is not listed, type it at the top under **Something here that is not on the list below?** in **Part** and **How many**, then choose **Add it to the list**.',
       'Choose **Save the count**. You can save and come back as often as you like.',
       'Go back to the count page and check the place now shows **Done**. **Part done** means some boxes are still empty.',
     ],

@@ -348,7 +348,7 @@ module.exports = [
       'Count one part in your vehicle and type the number in its **How many** box.',
       'Do the same for each part on the list. Type 0 if you looked and there are none.',
       'To find a part on the list quickly, tap **Scan barcode** and point the camera at it.',
-      'If you find a part that is not on the list, type it under **Something here that is not on the list?** in **Part number** and **How many**.',
+      'If you find a part that is not on the list, type it at the top under **Something here that is not on the list below?** in **Part** and **How many**, then choose **Add it to the list**.',
       'Tap **Save the count**.',
     ],
     tips: [
