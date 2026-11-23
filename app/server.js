@@ -71,7 +71,10 @@ require('./backup').startNightlyBackups();
 require('./uploads').startTending();          // photos and documents follow the database: sealed while it is encrypted
 require('./digest').start();
 require('./certs').start();
-const server = app.listen(config.port, () => console.log(`Pye-Barker portal listening on port ${config.port}`));
+// HOST, when set (127.0.0.1 on a server of one's own, behind IIS or Caddy), keeps the site off the network except through that front door.
+const server = process.env.HOST
+  ? app.listen(config.port, process.env.HOST, () => console.log(`Pye-Barker portal listening on ${process.env.HOST}:${config.port}`))
+  : app.listen(config.port, () => console.log(`Pye-Barker portal listening on port ${config.port}`));
 
 // A clean stop (a deploy, a restart): stop taking requests, fold what SQLite keeps beside the database into the one
 // file, and close it. Anything still running after ten seconds is cut off, so a stop never hangs.

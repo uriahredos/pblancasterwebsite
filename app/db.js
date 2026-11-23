@@ -11,7 +11,7 @@ db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 // A new version of the code keeps a checked copy of the database, as the last version left it, before it makes any of the changes below.
 // A database that was brought back from a backup on this very start is already a copy of something on the disk, so it is not copied again.
-require('./dbfile').beforeUpdate(db, config.dataDir, process.env.RENDER_GIT_COMMIT, require('./util').localDate(), Boolean(encryption.restored && !encryption.restored.again));
+require('./dbfile').beforeUpdate(db, config.dataDir, process.env.RENDER_GIT_COMMIT || process.env.APP_VERSION, require('./util').localDate(), Boolean(encryption.restored && !encryption.restored.again));
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (

@@ -60,6 +60,10 @@ The same `Dockerfile` works on Railway, Fly.io or any server with Docker. Mount 
 
 All the data is the database, `/data/portal.db`, and the photos and documents in `/data/uploads`. While the site is running, the newest changes to the database sit in two files beside it (`portal.db-wal` and `portal.db-shm`), so a copy of `portal.db` taken by hand can be missing recent work. Take copies from the Backups page instead. When the site is stopped in the ordinary way (a deploy, a restart) it folds those two files into `portal.db` and closes it before it exits. See Backups below.
 
+## Put it on a Windows server of your own
+
+The site can run on a Windows Server instead of Render: Node.js as a Windows service, with IIS or Caddy in front for HTTPS. The step-by-step guide, the settings file to copy, and the install, update and backup scripts are in [`deploy/windows`](deploy/windows/README.md). It has been reviewed for Windows but not yet run on one, so the first install should be on a spare server. Two settings exist for this: `HOST` (the address to listen on, `127.0.0.1` behind a web server) and `APP_VERSION` (set by the update script so the site keeps its "before an update" backup).
+
 ## Put it on a phone's home screen
 
 The site can be installed like an app, with its own icon.

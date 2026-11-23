@@ -1,0 +1,8 @@
+# Caddy in front of PB Portal. Replace the name with the site's real address.
+# With the server reachable from the internet on ports 80 and 443, Caddy gets and renews the certificate itself.
+# For an internal-only server, give it the company's certificate instead:
+#     tls C:\certs\portal.crt C:\certs\portal.key
+portal.example.com {
+	encode gzip
+	reverse_proxy 127.0.0.1:3000
+}
