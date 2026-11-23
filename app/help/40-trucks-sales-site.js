@@ -282,12 +282,12 @@ module.exports = [
     steps: [
       'Find the box at the top of the page that shows an office name.',
       'Tap the box and start typing the town, state or office number. Pick the office from the list. The page reloads and now shows that office.',
-      'To see every office together, type and pick **All offices**.',
+      'To see every office together, type and pick **Corporate**.',
       'To go back, type and pick your own office in the same box.',
     ],
     tips: [
       'Your choice stays until you change it or sign out, so check the box before you trust what a list is showing.',
-      'Choose one office, not **All offices**, before you add something that belongs to an office, such as a training session, a checklist item or a lead.',
+      'Choose one office, not **Corporate**, before you add something that belongs to an office, such as a training session, a checklist item or a lead.',
       'Every office is in the list, including ones with nobody on the site yet.',
     ],
     related: ['add-an-office', 'view-site-as-profile'],

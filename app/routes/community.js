@@ -395,7 +395,7 @@ router.post('/branch/view', requireLogin, (req, res) => {
   // The search box sends the office's id once one is picked; a name typed in full (or an office number) is taken too.
   const typed = clean(req.body.office, 80);
   if (b === null && typed) {
-    if (/^all offices$/i.test(typed)) b = 'all';
+    if (/^(corporate|all offices)$/i.test(typed)) b = 'all';
     else {
       const hit = db.prepare('SELECT id FROM branches WHERE name = ? COLLATE NOCASE OR number = ? LIMIT 2').all(typed, typed.replace(/^#/, ''));
       if (hit.length === 1) b = hit[0].id; else flash(req, 'err', `No single office matches "${typed}". Pick one from the list as you type.`);

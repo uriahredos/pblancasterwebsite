@@ -3254,7 +3254,7 @@ test('branches: each branch sees only its own parts, stock, trucks, tasks, train
   assert.equal(db.prepare('SELECT COUNT(*) n FROM inspection_items WHERE branch_id = ? AND active = 1').get(hbg).n, db.prepare('SELECT COUNT(*) n FROM inspection_items WHERE branch_id = ? AND active = 1').get(lanc).n);
 
   // The branch box: looking at Harrisburg, a new person joins Harrisburg.
-  assert.match((await owner.get('/')).text, /<datalist id="office-list"><option value="All offices" data-id="all">[\s\S]*<input name="office" list="office-list"[^>]*data-office-pick/);
+  assert.match((await owner.get('/')).text, /<datalist id="office-list"><option value="Corporate" data-id="all"[\s\S]*<input name="office" list="office-list"[^>]*data-office-pick/);
   assert.doesNotMatch((await tech1.get('/')).text, /data-office-pick|office-list/);
   assert.equal((await tech1.post('/branch/view', { branch: String(hbg) }, { page: '/' })).status, 403);
   await owner.post('/branch/view', { branch: String(hbg), back: '/admin/users' }, { page: '/' });
@@ -7547,7 +7547,7 @@ test('People: past 500 the page says how many there are and goes on to the next 
   const owner = await loggedIn('owner');
   await owner.post('/branch/view', { branch: 'all', back: '/' }, { page: '/' });
   const all = (await owner.get('/admin/users/positions')).text;
-  assert.match(all, /Only the first 1000 people are listed here\. To work on everyone in one office, choose that office instead of All offices\./);
+  assert.match(all, /Only the first 1000 people are listed here\. To work on everyone in one office, choose that office instead of Corporate\./);
   assert.equal((all.match(/<tr id="p\d+"/g) || []).length, 1000);
   await owner.post('/branch/view', { branch: String(town), back: '/' }, { page: '/' });
   const oneOffice = (await owner.get('/admin/users/positions')).text;
@@ -8779,15 +8779,18 @@ test('office box: a corporate admin can find and switch to any office by typing,
   const viewing = async () => (/<input name="office" list="office-list" value="([^"]*)"/.exec((await owner.get('/')).text) || [])[1];
   // Picked from the list (its id is sent), typed in full, by its number, or back to all of them.
   await owner.post('/branch/view', { branch: String(empty), office: 'Quietville', back: '/' }, { page: '/' }); assert.equal(await viewing(), 'Quietville');
-  await owner.post('/branch/view', { branch: '', office: 'all offices', back: '/' }, { page: '/' }); assert.equal(await viewing(), 'All offices');
+  await owner.post('/branch/view', { branch: '', office: 'all offices', back: '/' }, { page: '/' }); assert.equal(await viewing(), 'Corporate');   // the old name still works when typed
+  await owner.post('/branch/view', { branch: String(empty), back: '/' }, { page: '/' }); await owner.post('/branch/view', { branch: '', office: 'corporate', back: '/' }, { page: '/' }); assert.equal(await viewing(), 'Corporate');
   await owner.post('/branch/view', { branch: '', office: 'quietville', back: '/' }, { page: '/' }); assert.equal(await viewing(), 'Quietville');
   await owner.post('/branch/view', { branch: 'all', back: '/' }, { page: '/' });
   await owner.post('/branch/view', { branch: '', office: '#9876', back: '/' }, { page: '/' }); assert.equal(await viewing(), 'Quietville');
   // The name at the top of every page follows the office being looked at, and says so when it is all of them.
   const top = async (url) => (/<span class="branch">([^<]*)<\/span>/.exec((await owner.get(url)).text) || [])[1];
   assert.equal(await top('/'), 'Quietville Office'); assert.equal(await top('/admin/users'), 'Quietville Office');
+  assert.match((await owner.get('/')).text, /<p class="hero-sub">Quietville Office<\/p>/);
   assert.match((await owner.get('/parts')).text, /<title>Parts · Pye-Barker Quietville Office<\/title>/);
-  await owner.post('/branch/view', { branch: 'all', back: '/' }, { page: '/' }); assert.equal(await top('/'), 'All Offices');
+  await owner.post('/branch/view', { branch: 'all', back: '/' }, { page: '/' }); assert.equal(await top('/'), 'Corporate');
+  assert.match((await owner.get('/')).text, /<p class="hero-sub">Corporate<\/p>/);                    // and under the greeting on the home page
   await owner.post('/branch/view', { branch: String(empty), back: '/' }, { page: '/' });
   // Something that is no office changes nothing and says so.
   await owner.post('/branch/view', { branch: '', office: 'Nowhereville', back: '/' }, { page: '/' });

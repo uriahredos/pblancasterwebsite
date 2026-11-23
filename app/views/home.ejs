@@ -18,7 +18,10 @@
   <div>
     <p class="hero-date"><%= dateLine %></p>
     <h1>Hi, <%= user.display_name.split(' ')[0] %></h1>
-    <p class="hero-sub"><%= branchName ? branchName + ' Office' : 'Pye-Barker Fire & Safety' %></p>
+    <% // Under the greeting: the office being looked at (Corporate when it is all of them), or the person's own.
+       var heroOffice = branchName ? branchName + ' Office' : 'Pye-Barker Fire & Safety';
+       if (branchChoices.length) { var heroAt = branchChoices.filter(function (b) { return b.id === user.viewBranch; })[0]; heroOffice = user.viewBranch === null ? 'Corporate' : heroAt ? heroAt.name + ' Office' : heroOffice; } %>
+    <p class="hero-sub"><%= heroOffice %></p>
   </div>
   <img class="hero-mark" src="/logo-flame.png?v=<%= assetV %>" alt="" width="422" height="208" aria-hidden="true">
   <span class="embers" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>

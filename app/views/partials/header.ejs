@@ -4,7 +4,7 @@
    // Someone who chooses which office they look at sees that office named at the top, not their own.
    if (user && typeof branchChoices !== 'undefined' && branchChoices.length) {
      var lookingAt = user.viewBranch === null ? null : branchChoices.filter(function (b) { return b.id === user.viewBranch; })[0];
-     officeLabel = user.viewBranch === null ? 'All Offices' : lookingAt ? lookingAt.name + ' Office' : officeLabel;
+     officeLabel = user.viewBranch === null ? 'Corporate' : lookingAt ? lookingAt.name + ' Office' : officeLabel;
    } %><html lang="en"<%- signedIn ? ' data-in data-lock-after="' + lockAfterMs + '"' : '' %><%- signedIn && typeof fresh !== 'undefined' && fresh ? ' data-fresh' : '' %>>
 <head>
 <meta charset="utf-8">
@@ -33,9 +33,9 @@
         <% if (officeLabel || !user) { %><span class="branch"><%= officeLabel || 'Employee Portal' %></span><% } %>
       </a>
       <div class="who">
-        <% var viewingOffice = user && branchChoices.length ? (user.viewBranch === null ? 'All offices' : (branchChoices.filter(function (b) { return b.id === user.viewBranch; })[0] || {}).name || '') : ''; %>
+        <% var viewingOffice = user && branchChoices.length ? (user.viewBranch === null ? 'Corporate' : (branchChoices.filter(function (b) { return b.id === user.viewBranch; })[0] || {}).name || '') : ''; %>
         <% if (user && !isLocked && branchChoices.length) { %>
-      <datalist id="office-list"><% if (user.allBranches) { %><option value="All offices" data-id="all"></option><% } %><% branchChoices.forEach(function (b) { %><option value="<%= b.name %>" data-id="<%= b.id %>" data-find="<%= b.find %>" label="<%= [b.number ? '#' + b.number : '', b.city && b.city !== b.name ? b.city : '', b.state].filter(Boolean).join(' · ') %>"></option><% }) %></datalist>
+      <datalist id="office-list"><% if (user.allBranches) { %><option value="Corporate" data-id="all" data-find="all offices every office everything overview" label="Every office together"></option><% } %><% branchChoices.forEach(function (b) { %><option value="<%= b.name %>" data-id="<%= b.id %>" data-find="<%= b.find %>" label="<%= [b.number ? '#' + b.number : '', b.city && b.city !== b.name ? b.city : '', b.state].filter(Boolean).join(' · ') %>"></option><% }) %></datalist>
       <form method="post" action="/branch/view" class="nav-branch in-banner">
         <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="back" value="<%= path %>">
         <label><span class="sr">Office you are looking at. Type a town, state or number to find another.</span>
