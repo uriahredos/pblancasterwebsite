@@ -1626,3 +1626,7 @@ td.reports-to .meta { display: block; }
 .call-pop { display: inline-flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin: .5rem 0 0; padding: .6rem .9rem; border: 1px solid var(--accent); border-radius: 12px; background: var(--surface); color: var(--ink); box-shadow: 0 8px 22px rgba(0, 0, 0, .18); }
 .call-pop strong { font-size: 1.35rem; letter-spacing: .02em; user-select: all; }
 .call-pop .call-who { color: var(--muted); }
+
+/* Home page, On call now: the number opens on a line of its own under the person. */
+.p-oncall li { flex-wrap: wrap; }
+.p-oncall .call-pop { flex-basis: 100%; justify-content: space-between; }

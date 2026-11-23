@@ -8886,6 +8886,7 @@ test('on call: the Call button carries the number so a computer can show it; a p
   await owner.post('/admin/oncall', { start_on: day(-1), end_on: day(2), role: 'tech', name: 'Cal Caller', phone: '(717) 555-0199' }, { page: '/oncall' });
   const page = (await owner.get('/oncall')).text;
   assert.match(page, /<a class="btn primary" href="tel:7175550199" data-full data-call-number="\(717\) 555-0199" data-call-name="Cal Caller">Call<\/a>/);   // the link a phone dials, and the number a computer shows
+  assert.match((await owner.get('/')).text, /href="tel:7175550199" data-full data-call-number="\(717\) 555-0199" data-call-name="Cal Caller">Call<\/a>/);   // the home page's On call now panel does the same
   const js = (await owner.get('/site.js')).text;
   assert.match(js, /a\[data-call-number\]/); assert.match(js, /\(hover: hover\) and \(pointer: fine\)/); assert.match(js, /if \(!desk\) return;/);   // only a computer gets the pop-up
   db.prepare("DELETE FROM oncall_shifts WHERE name = 'Cal Caller'").run();
