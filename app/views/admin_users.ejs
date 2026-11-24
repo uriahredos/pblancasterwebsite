@@ -14,7 +14,7 @@
 <div class="card dup-card" id="duplicates">
   <div class="rec-head"><strong><%= dupCount %> duplicate <%= dupCount === 1 ? 'account' : 'accounts' %> found</strong>
     <% if (dupCount > 1) { %><form method="post" action="/admin/users/duplicates" data-no-live data-confirm="Remove all <%= dupCount %> duplicate accounts? Anything recorded under them moves to the account that is kept. This cannot be undone."><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="all" value="1"><button class="btn small" type="submit">Remove all <%= dupCount %></button></form><% } %></div>
-  <p class="hint">The same person is on the list twice in one office, and the extra account is disabled or has no role. Removing it moves anything recorded under it (and its job title, email or phone if the other account lacks them; an admin's email is never taken from it) to the account that is kept.</p>
+  <p class="hint">The same person is on the list twice in one branch, and the extra account is disabled or has no role. Removing it moves anything recorded under it (and its job title, email or phone if the other account lacks them; an admin's email is never taken from it) to the account that is kept.</p>
   <ul class="dup-list">
   <% duplicates.forEach(function (g) { g.extras.forEach(function (e) { %>
     <li>
@@ -30,7 +30,7 @@
 <div class="card dup-card" id="disabled">
   <div class="rec-head"><strong><%= disabledCount %> disabled <%= disabledCount === 1 ? 'account' : 'accounts' %></strong>
     <form method="post" action="/admin/users/remove-disabled" data-no-live data-confirm="Remove all <%= disabledCount %> disabled accounts for good?<%= disabledListed ? ' ' + disabledListed + ' of them are people shown in the People list who have no sign-in; they will leave the People list and the chart.' : '' %> This cannot be undone."><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn small danger" type="submit">Remove all <%= disabledCount %></button></form></div>
-  <p class="hint">Disabled accounts cannot sign in.<% if (disabledListed) { %> <strong><%= disabledListed %> of these <%= disabledListed === 1 ? 'is a person' : 'are people' %> from the office contact list who <%= disabledListed === 1 ? 'has' : 'have' %> no sign-in yet.</strong> They still show in People and on the organization chart; removing them takes them out of both. To give one of them a sign-in instead, choose Enable from the menu on their row.<% } %> Download a backup first if you are unsure.</p>
+  <p class="hint">Disabled accounts cannot sign in.<% if (disabledListed) { %> <strong><%= disabledListed %> of these <%= disabledListed === 1 ? 'is a person' : 'are people' %> from the branch contact list who <%= disabledListed === 1 ? 'has' : 'have' %> no sign-in yet.</strong> They still show in People and on the organization chart; removing them takes them out of both. To give one of them a sign-in instead, choose Enable from the menu on their row.<% } %> Download a backup first if you are unsure.</p>
 </div>
 <% } %>
 <% if (canAdd) { %>
@@ -61,7 +61,7 @@
 
 <h2><%= canAdd ? 'Everyone' : 'Your people' %></h2>
 <div class="filters users-find">
-  <label class="grow">Find a person <input type="search" id="users-find" placeholder="Name, username, office or profile" autocomplete="off"></label>
+  <label class="grow">Find a person <input type="search" id="users-find" placeholder="Name, username, branch or profile" autocomplete="off"></label>
   <label>Account
     <select id="users-state"><option value="">Any</option><option value="Temporary password">Temporary password (not signed in yet)</option><option value="Active">Active</option><option value="Disabled">Disabled</option></select>
   </label>
@@ -69,7 +69,7 @@
 <p class="meta" id="users-count" data-total="<%= users.length %>"><%= users.length %> <%= users.length === 1 ? 'person' : 'people' %></p>
 <div class="table-wrap">
 <table id="users-table">
-  <thead><tr><th>Name</th><th>Office</th><th>Username</th><th>Profile</th><th>Managed by</th><th>Account</th><th><span class="sr">Actions</span></th></tr></thead>
+  <thead><tr><th>Name</th><th>Branch</th><th>Username</th><th>Profile</th><th>Managed by</th><th>Account</th><th><span class="sr">Actions</span></th></tr></thead>
   <tbody>
   <% users.forEach(function (u) { %>
   <tr class="<%= u.active ? '' : 'off' %>">
@@ -89,7 +89,7 @@
           <% if (u.id !== user.id && !u.is_master) { %>
           <form method="post" action="/admin/users/<%= u.id %>/toggle-active"><input type="hidden" name="_csrf" value="<%= csrf %>"><button type="submit"><%= u.active ? 'Disable' : 'Enable' %></button></form>
           <hr>
-          <form method="post" action="/admin/users/<%= u.id %>/remove" data-no-live data-confirm="Remove <%= u.display_name %> for good? Their sign-in and details are erased and they leave every list. What they recorded for the office is kept. This cannot be undone."><input type="hidden" name="_csrf" value="<%= csrf %>"><button type="submit" class="danger-text">Remove for good</button></form>
+          <form method="post" action="/admin/users/<%= u.id %>/remove" data-no-live data-confirm="Remove <%= u.display_name %> for good? Their sign-in and details are erased and they leave every list. What they recorded for the branch is kept. This cannot be undone."><input type="hidden" name="_csrf" value="<%= csrf %>"><button type="submit" class="danger-text">Remove for good</button></form>
           <% } %>
         </div>
       </details>

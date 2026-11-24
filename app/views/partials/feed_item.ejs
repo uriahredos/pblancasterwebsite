@@ -6,7 +6,7 @@
     <p class="feed-title"><a href="<%= i.url %>"><strong><%= lead ? i.text : i.title %></strong></a></p>
     <% if (lead) { %><p class="feed-text"><%= i.title %></p><% } else if (i.text) { %><p class="feed-text"><%= i.text %></p><% } %>
     <% if (i.photo) { %><a class="feed-photo" href="/wall/photo/<%= i.photo %>"><img src="/wall/photo/<%= i.photo %>" alt="<%= i.text || 'Photo from ' + i.who.display_name %>" loading="lazy"></a><% } %>
-    <p class="feed-meta"><% if (i.who.office) { %><span class="pill <%= i.away ? 'away' : '' %>"><%= i.who.office %> office</span> <% } %><span><%= i.when %></span><% if (i.extra) { %> · <span><%= i.extra %></span><% } %><% if (i.done) { %> · <span><%= i.done %></span><% } %></p>
+    <p class="feed-meta"><% if (i.who.office) { %><span class="pill <%= i.away ? 'away' : '' %>"><%= i.who.office %> branch</span> <% } %><span><%= i.when %></span><% if (i.extra) { %> · <span><%= i.extra %></span><% } %><% if (i.done) { %> · <span><%= i.done %></span><% } %></p>
   </div>
   <% if (i.link) { %><a class="btn small" href="<%= i.link.url %>"><%= i.link.label %></a><% } %>
   <% if (i.action) { %><form method="post" action="<%= i.action.url %>"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="back" value="home"><button class="btn primary small" type="submit"><%= i.action.label %></button></form><% } %>

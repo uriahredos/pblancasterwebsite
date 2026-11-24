@@ -586,7 +586,7 @@ router.post('/admin/users/:id/edit', requirePerm('users.manage'), (req, res) => 
       db.prepare('UPDATE users SET branch_id = ? WHERE id = ?').run(moveTo.id, target.id);
       db.prepare('DELETE FROM user_managers WHERE manager_id = ? OR user_id = ?').run(target.id, target.id);
       target.branch_id = moveTo.id;
-      changes.push(`moved to ${moveTo.name} office`);
+      changes.push(`moved to ${moveTo.name} branch`);
     }
     if (changes.length) activity.log(req.user, 'Person edited', `${values.display_name}: ${changes.join(', ')}`);
     const newProfile = profileId ? db.prepare('SELECT scope FROM profiles WHERE id = ?').get(profileId) : null;
@@ -635,7 +635,7 @@ router.post('/admin/users/:id/:op', requirePerm('users.manage'), (req, res) => {
         const how = require('../removal').remove(target.id);
         if (how) {
           activity.log(req.user, 'Person removed', `${target.display_name} (${target.username})${how === 'kept-records' ? ', records kept' : ''}`);
-          flash(req, 'ok', `${target.display_name} was removed.${how === 'kept-records' ? ' What they recorded for the office is kept, with their name on it.' : ''}`);
+          flash(req, 'ok', `${target.display_name} was removed.${how === 'kept-records' ? ' What they recorded for the branch is kept, with their name on it.' : ''}`);
         }
       }
       break;

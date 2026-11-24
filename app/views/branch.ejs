@@ -1,7 +1,7 @@
 <%- include('partials/header') %>
-<p class="back"><a class="back-link" href="<%= many ? '/branches' : '/people' %>"><%= many ? 'Offices' : 'People' %></a></p>
+<p class="back"><a class="back-link" href="<%= many ? '/branches' : '/people' %>"><%= many ? 'Branches' : 'People' %></a></p>
 <% if (b.photo_path) { %><img class="branch-hero" src="/branches/photo/<%= b.id %>?v=<%= b.photo_path.slice(0, 8) %>" alt="The <%= b.name %> branch"><% } %>
-<div class="title-row"><h1><%= b.name %> office</h1><% if (canEdit && !editing) { %><a class="btn small" href="/branches/<%= b.id %>?edit=1#edit">Edit this page</a><% } %></div>
+<div class="title-row"><h1><%= b.name %> branch</h1><% if (canEdit && !editing) { %><a class="btn small" href="/branches/<%= b.id %>?edit=1#edit">Edit this page</a><% } %></div>
 <%
   var place = b.address || b.street || '';
   var phones = b.phone ? b.phone.split(/\s*\/\s*/).filter(Boolean) : [];
@@ -9,7 +9,7 @@
 %>
 <div class="card office-card">
   <dl class="facts">
-    <% if (b.number) { %><dt>Office</dt><dd><span class="office-no"><%= b.number %></span><%= b.city && b.state ? ' ' + b.city + ', ' + (stateNames[b.state] || b.state) : '' %></dd><% } %>
+    <% if (b.number) { %><dt>Branch</dt><dd><span class="office-no"><%= b.number %></span><%= b.city && b.state ? ' ' + b.city + ', ' + (stateNames[b.state] || b.state) : '' %></dd><% } %>
     <% if (place) { %><dt>Address</dt><dd><%= place %></dd><% } %>
     <% if (phones.length) { %><dt>Phone</dt><dd><% phones.forEach(function (ph, i) { %><%= i ? ' / ' : '' %><a href="tel:<%= ph.replace(/[^0-9+]/g, '') %>"><%= ph %></a><% }) %></dd><% } %>
     <% if (b.market) { %><dt>Market</dt><dd><%= b.market %></dd><% } %>
@@ -24,9 +24,9 @@
   <% } %>
 </div>
 <div class="card does">
-  <p class="plain"><strong>What this office does</strong></p>
+  <p class="plain"><strong>What this branch does</strong></p>
   <% if (services.length) { %><p class="chips big"><% services.forEach(function (s) { %><a class="skill" href="/branches?service=<%= s.id %>"><%= s.name %> <span class="meta"><%= s.code %></span></a><% }) %></p>
-  <% } else { %><p class="empty">Not listed yet.<%= canEdit ? ' Check off what this office does under "Edit this page".' : ' Its admin can add this.' %></p><% } %>
+  <% } else { %><p class="empty">Not listed yet.<%= canEdit ? ' Check off what this branch does under "Edit this page".' : ' Its admin can add this.' %></p><% } %>
   <% if (b.product_lines) { %><p class="plain"><span class="meta">Product lines</span> <% b.product_lines.split(/,\s*/).forEach(function (pl, i) { %><%= i ? ' · ' : '' %><a href="/branches?q=<%= encodeURIComponent(pl) %>"><%= pl %></a><% }) %></p><% } %>
 </div>
 <% if (b.about) { %><div class="card"><p class="pre"><%= b.about %></p></div><% } %>
@@ -37,8 +37,8 @@
   <label>Photo <span class="hint">The building, the crew, the trucks.</span><input type="file" name="photo" accept="image/jpeg,image/png,image/webp" data-shrink="1800"></label>
   <% if (b.photo_path) { %><label class="choice"><input type="checkbox" name="remove_photo" value="1"> Remove the photo</label><% } %>
   <fieldset>
-    <legend>What this office does</legend>
-    <p class="hint">Check everything this office offers. People across the company search by these.</p>
+    <legend>What this branch does</legend>
+    <p class="hint">Check everything this branch offers. People across the company search by these.</p>
     <input type="hidden" name="services_form" value="1">
     <div class="check-grid">
       <% allServices.forEach(function (s) { %><label class="choice"><input type="checkbox" name="services" value="<%= s.id %>" <%= services.some(function (x) { return x.id === s.id; }) ? 'checked' : '' %>> <%= s.name %> <span class="hint">(<%= s.code %>)</span></label><% }) %>
@@ -46,7 +46,7 @@
   </fieldset>
   <label>Address <input name="address" value="<%= b.address || '' %>" maxlength="200" autocomplete="off"></label>
   <label>Main phone <input name="phone" type="tel" value="<%= b.phone || '' %>" maxlength="30" autocomplete="off"></label>
-  <label>About this office <span class="hint">What it covers, what it is known for, anything visitors should know.</span><textarea name="about" rows="5" maxlength="1500"><%= b.about || '' %></textarea></label>
+  <label>About this branch <span class="hint">What it covers, what it is known for, anything visitors should know.</span><textarea name="about" rows="5" maxlength="1500"><%= b.about || '' %></textarea></label>
   <div class="filter-actions"><button class="btn primary" type="submit">Save</button><a class="btn" href="/branches/<%= b.id %>">Cancel</a></div>
 </form>
 <script src="/shrink.js?v=<%= assetV %>" defer></script>
@@ -60,7 +60,7 @@
     </section>
     <section class="panel" aria-labelledby="who-h">
       <div class="panel-head"><h2 id="who-h">Who's who</h2><a href="/people?branch=<%= b.id %>">Search them</a></div>
-      <% if (!people.length) { %><p class="empty">Nobody has been added to this office yet.</p><% } %>
+      <% if (!people.length) { %><p class="empty">Nobody has been added to this branch yet.</p><% } %>
       <% if (teamChart.tops.length) { %>
       <%- include('partials/org_chart') %>
       <% if (can('users.manage')) { %><p class="filter-actions"><a class="btn small" href="/branches/<%= b.id %>/chart.pdf" data-no-soft download>Download the chart as PDF</a></p><% } %>
@@ -85,7 +85,7 @@
     <% if (inside) { %>
     <section class="panel" aria-labelledby="bsh-h">
       <div class="panel-head"><h2 id="bsh-h">Shout-outs</h2><a href="/shoutouts">All</a></div>
-      <% if (!shouts.length) { %><div class="one-line"><p class="empty">None yet for this office.</p><a class="btn small" href="/shoutouts#give">👏 Give one</a></div><% } %>
+      <% if (!shouts.length) { %><div class="one-line"><p class="empty">None yet for this branch.</p><a class="btn small" href="/shoutouts#give">👏 Give one</a></div><% } %>
       <ul class="shouts"><% shouts.forEach(function (s) { %><%- include('partials/shout', { s: s, back: '' }) %><% }) %></ul>
     </section>
     <% } %>

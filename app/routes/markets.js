@@ -107,7 +107,7 @@ router.post('/admin/markets', everyOffice, (req, res) => {
   if (db.prepare('SELECT 1 FROM markets WHERE name = ?').get(name)) return page(req, res, { errors: ['There is already a market with that name.'], values: { name } });
   const id = db.prepare('INSERT INTO markets (name, created_at) VALUES (?, ?)').run(name, new Date().toISOString()).lastInsertRowid;
   activity.log(req.user, 'Market added', name);
-  flash(req, 'ok', `${name} market added. Add its offices below.`);
+  flash(req, 'ok', `${name} market added. Add its branches below.`);
   res.redirect(`/admin/markets#m${id}`);
 });
 
@@ -118,7 +118,7 @@ router.post('/admin/markets/:id', everyOffice, (req, res) => {
   if (req.body.op === 'remove') {
     db.transaction(() => { db.prepare('UPDATE branches SET market_id = NULL WHERE market_id = ?').run(m.id); db.prepare('DELETE FROM markets WHERE id = ?').run(m.id); })();
     activity.log(req.user, 'Market removed', m.name);
-    flash(req, 'ok', `${m.name} market removed. Its offices are in no market now.`);
+    flash(req, 'ok', `${m.name} market removed. Its branches are in no market now.`);
     return res.redirect('/admin/markets');
   }
   const name = clean(req.body.name, 60);
@@ -134,7 +134,7 @@ router.post('/admin/markets/:id/offices', everyOffice, (req, res) => {
   const typed = clean(req.body.office, 80);
   let hits = isId(req.body.branch) ? db.prepare('SELECT * FROM branches WHERE id = ?').all(req.body.branch) : [];
   if (!hits.length && typed) hits = db.prepare('SELECT * FROM branches WHERE name = ? COLLATE NOCASE OR number = ?').all(typed, typed.replace(/^#/, ''));
-  if (hits.length !== 1) { flash(req, 'err', typed ? `No single office matches "${typed}". Pick one from the list as you type.` : 'Choose an office.'); return res.redirect(`/admin/markets#m${m.id}`); }
+  if (hits.length !== 1) { flash(req, 'err', typed ? `No single branch matches "${typed}". Pick one from the list as you type.` : 'Choose a branch.'); return res.redirect(`/admin/markets#m${m.id}`); }
   const b = hits[0]; const was = b.market_id && b.market_id !== m.id ? market(b.market_id) : null;
   db.prepare('UPDATE branches SET market_id = ? WHERE id = ?').run(m.id, b.id);
   activity.log(req.user, 'Market changed', `${b.name} added to ${m.name}${was ? ` (was in ${was.name})` : ''}`);
@@ -161,7 +161,7 @@ router.post('/admin/markets/:id/admins', everyOffice, (req, res) => {
     if (same.length === 1) u = same[0];
     else if (same.length > 1) return page(req, res, { errors: [`More than one person in ${m.name} is called ${typed}. Pick the one you mean from the list.`] });
   }
-  if (!u || u.id === req.user.id) return page(req, res, { errors: [`Choose someone from one of the ${m.name} market's offices. A person who is not on the site yet is added under Users first.`] });
+  if (!u || u.id === req.user.id) return page(req, res, { errors: [`Choose someone from one of the ${m.name} market's branches. A person who is not on the site yet is added under Users first.`] });
   db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(profile.id, u.id);
   const what = access.kindOf(profile.perms) === 'admin' ? 'admin' : 'manager';
   activity.log(req.user, `Market ${what} appointed`, `${u.display_name} for ${m.name} (${profile.name})`);

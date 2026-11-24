@@ -126,7 +126,7 @@ router.post('/admin/oncall', manage, (req, res) => {
   db.prepare('INSERT INTO oncall_shifts (branch_id, start_on, end_on, role, name, phone, covers, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
     .run(branch, v.start_on, v.end_on, v.role, v.name, v.phone || null, covers, v.note || null, new Date().toISOString());
   activity.log(req.user, 'On-call schedule changed', `${v.name} added${office ? ' (' + office + ')' : ''}, ${v.start_on} to ${v.end_on}`);
-  flash(req, 'ok', office && branch !== req.user.workBranch ? `${v.name} added to the ${office} office's schedule.` : `${v.name} added to the schedule.`);
+  flash(req, 'ok', office && branch !== req.user.workBranch ? `${v.name} added to the ${office} branch's schedule.` : `${v.name} added to the schedule.`);
   res.redirect('/oncall#schedule');
 });
 
@@ -194,7 +194,7 @@ function importLong(req, res, rows, fail) {
   };
   const placed = [];
   for (const s of shifts) { const where = officeFor(s.office); if (!where) { bad.add(s.office); continue; } placed.push(s.clear ? { ...s, ...where } : { ...s, ...where, phone: s.phone || phoneOf(s.name, where.branch) }); }
-  if (!placed.length) return fail(`None of the lines could be placed. ${[...bad].length ? 'Not an office you run, or not found: ' + [...bad].join(', ') + '.' : ''}${market ? '' : ' Lines for "Market" need the office you are looking at to be in a market.'}`, problems);
+  if (!placed.length) return fail(`None of the lines could be placed. ${[...bad].length ? 'Not a branch you run, or not found: ' + [...bad].join(', ') + '.' : ''}${market ? '' : ' Lines for "Market" need the branch you are looking at to be in a market.'}`, problems);
   const scopes = new Map();
   for (const s of placed) { const k = s.market ? `m${s.market}` : `b${s.branch}`; const sc = scopes.get(k) || { ...s, from: s.start_on, to: s.end_on }; if (s.start_on < sc.from) sc.from = s.start_on; if (s.end_on > sc.to) sc.to = s.end_on; scopes.set(k, sc); }
   const now = new Date().toISOString();
@@ -209,7 +209,7 @@ function importLong(req, res, rows, fail) {
   const entered = placed.filter((s) => !s.clear); const cleared = placed.filter((s) => s.clear).length;
   const noPhone = [...new Set(entered.filter((s) => !s.phone).map((s) => s.name))];
   activity.log(req.user, 'On-call schedule uploaded', `${entered.length} entries across ${scopes.size} ${scopes.size === 1 ? 'place' : 'places'}`);
-  flash(req, 'ok', `Schedule loaded: ${entered.length} entries.${cleared ? ' Earlier entries were cleared where the file asked.' : ''}${bad.size ? ` Skipped lines for: ${[...bad].join(', ')} (not found, or not an office you run).` : ''}${noPhone.length ? ` No phone number on file for ${noPhone.length}: ${noPhone.slice(0, 12).join(', ')}${noPhone.length > 12 ? '…' : ''}.` : ''}${problems.length ? ` ${problems.length} line(s) could not be read.` : ''}`);
+  flash(req, 'ok', `Schedule loaded: ${entered.length} entries.${cleared ? ' Earlier entries were cleared where the file asked.' : ''}${bad.size ? ` Skipped lines for: ${[...bad].join(', ')} (not found, or not a branch you run).` : ''}${noPhone.length ? ` No phone number on file for ${noPhone.length}: ${noPhone.slice(0, 12).join(', ')}${noPhone.length > 12 ? '…' : ''}.` : ''}${problems.length ? ` ${problems.length} line(s) could not be read.` : ''}`);
   res.redirect('/oncall#schedule');
 }
 

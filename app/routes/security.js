@@ -148,10 +148,10 @@ function checks(req) {
   add(true, 'Old temporary passwords stop working', waiting.length ? `${waiting.length} ${waiting.length === 1 ? 'account has' : 'accounts have'} not signed in yet. A temporary password lasts ${config.tempPasswordDays} days: ${dead} ${dead === 1 ? 'has' : 'have'} expired and can no longer be used, ${waiting.length - dead} ${waiting.length - dead === 1 ? 'is' : 'are'} still good.` : 'Everyone has signed in and chosen their own password.', '');
 
   const noOffice = people.filter((u) => !u.branch_id && !u.is_master);
-  add(!noOffice.length, 'Every account belongs to an office', noOffice.length ? `${noOffice.length} without one: ${noOffice.slice(0, 6).map((u) => u.display_name).join(', ')}.` : 'Yes.', 'Open each of them under Users and choose their office. Until then they see no office records.');
+  add(!noOffice.length, 'Every account belongs to a branch', noOffice.length ? `${noOffice.length} without one: ${noOffice.slice(0, 6).map((u) => u.display_name).join(', ')}.` : 'Yes.', 'Open each of them under Users and choose their branch. Until then they see no branch records.');
 
   const corp = people.filter((u) => u.is_master || (u.profile_id && access.permsOf(u.profile_id).has('branches.all')));
-  add(corp.length <= 5, 'Few people can see every office', `${corp.length}: ${corp.slice(0, 8).map((u) => u.display_name).join(', ')}.`, 'Each of these accounts can read and change every office. Keep the list as short as the job needs (Corporate, then Offices and admins).');
+  add(corp.length <= 5, 'Few people can see every branch', `${corp.length}: ${corp.slice(0, 8).map((u) => u.display_name).join(', ')}.`, 'Each of these accounts can read and change every branch. Keep the list as short as the job needs (Corporate, then Branches and admins).');
 
   return list;
 }

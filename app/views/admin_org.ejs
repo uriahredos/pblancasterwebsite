@@ -2,16 +2,16 @@
 <div class="title-row"><h1>Users</h1></div>
 <%- include('partials/users_tabs', { tab: 'chart' }) %>
 <% if (!office) { %>
-<p class="card empty">Choose one office with the picker at the top right to see its chart.</p>
+<p class="card empty">Choose one branch with the picker at the top right to see its chart.</p>
 <% } else { %>
-<div class="title-row"><h2><%= office.name %> office</h2><% if (teamChart.tops.length) { %><a class="btn small" href="/branches/<%= office.id %>/chart.pdf" data-no-soft download>Download as PDF</a><% } %></div>
+<div class="title-row"><h2><%= office.name %> branch</h2><% if (teamChart.tops.length) { %><a class="btn small" href="/branches/<%= office.id %>/chart.pdf" data-no-soft download>Download as PDF</a><% } %></div>
 <% if (!teamChart.tops.length) { %>
 <p class="card empty">No chart yet. Open <a href="/admin/users/positions">Positions and reporting</a>, pick each person's job title, then save.</p>
 <% } else { %>
 <div class="card"><%- include('partials/org_chart') %></div>
 <% if (teamChart.rest.length) { %><h2>Not on the chart</h2>
 <div class="card"><ul class="roster"><% teamChart.rest.forEach(function (p) { %><li><a href="/people/<%= p.id %>"><%- include('partials/avatar', { who: p }) %><span class="person-text"><strong><%= p.display_name %></strong><span class="meta"><%= p.job_title || '' %></span></span></a></li><% }) %></ul></div><% } %>
-<p class="hint spaced">Everyone can see this chart on the <a href="/branches/<%= office.id %>"><%= office.name %> office page</a>. Change it under <a href="/admin/users/positions">Positions and reporting</a>.</p>
+<p class="hint spaced">Everyone can see this chart on the <a href="/branches/<%= office.id %>"><%= office.name %> branch page</a>. Change it under <a href="/admin/users/positions">Positions and reporting</a>.</p>
 <% } %>
 <% } %>
 <%- include('partials/footer') %>

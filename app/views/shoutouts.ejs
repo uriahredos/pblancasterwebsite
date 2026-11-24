@@ -7,11 +7,11 @@
   <label>Who is it for?
     <select name="to_user" required>
       <option value="">Choose a person</option>
-      <% if (away.length) { %><optgroup label="Your office"><% } %>
+      <% if (away.length) { %><optgroup label="Your branch"><% } %>
       <% people.forEach(function (p) { %><option value="<%= p.id %>" <%= values.to_user === p.id ? 'selected' : '' %>><%= p.display_name %><%= p.branch ? ' · ' + p.branch : '' %></option><% }) %>
-      <% if (away.length) { %></optgroup><optgroup label="Other offices in your market"><% away.forEach(function (p) { %><option value="<%= p.id %>" <%= values.to_user === p.id ? 'selected' : '' %>><%= p.display_name %><%= p.branch ? ' · ' + p.branch : '' %></option><% }) %></optgroup><% } %>
+      <% if (away.length) { %></optgroup><optgroup label="Other branches in your market"><% away.forEach(function (p) { %><option value="<%= p.id %>" <%= values.to_user === p.id ? 'selected' : '' %>><%= p.display_name %><%= p.branch ? ' · ' + p.branch : '' %></option><% }) %></optgroup><% } %>
     </select><% if (elsewhere) { %>
-    <span class="hint">For someone in another office of your market, open their page from <a href="/people">People</a> and choose Give a shout-out there.</span><% } %>
+    <span class="hint">For someone in another branch of your market, open their page from <a href="/people">People</a> and choose Give a shout-out there.</span><% } %>
   </label>
   <label>What did they do? <span class="hint">A sentence or two is plenty.</span>
     <textarea name="message" rows="3" maxlength="400" required><%= values.message || '' %></textarea>

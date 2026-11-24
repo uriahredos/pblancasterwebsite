@@ -1,13 +1,13 @@
 <%- include('partials/header') %>
 <h1>Corporate</h1>
-<p class="lede">The company level: its offices, who runs each one, and who can see across all of them.</p>
+<p class="lede">The company level: its branches, who runs each one, and who can see across all of them.</p>
 <%- include('partials/errors') %>
 <% if (created) { %>
 <div class="card stack created">
   <% if (created.what === 'appointed') { %>
-  <p><strong><%= created.name %></strong> is now <%= created.role === 'manager' ? 'a manager' : 'an admin' %> for the <%= created.office %> office. Their sign-in was off, so it has been switched on. They sign in as <strong><%= created.username %></strong>.</p>
+  <p><strong><%= created.name %></strong> is now <%= created.role === 'manager' ? 'a manager' : 'an admin' %> for the <%= created.office %> branch. Their sign-in was off, so it has been switched on. They sign in as <strong><%= created.username %></strong>.</p>
   <% } else { %>
-  <p>Account <strong><%= created.username %></strong> was created as an admin for the <%= created.office %> office.</p>
+  <p>Account <strong><%= created.username %></strong> was created as an admin for the <%= created.office %> branch.</p>
   <% } %>
   <p>Give them this temporary password. It is shown only this once, and they choose their own the first time they sign in.</p>
   <p class="code"><%= created.password %></p>
@@ -16,11 +16,11 @@
 
 <h2 id="corporate">Corporate admins and managers</h2>
 <div class="card stack">
-  <p class="plain">Corporate admins see and manage every office: its people, logs, stock and settings. They add offices and appoint the people who run them. Corporate managers see and run every office day to day, without managing people or access.</p>
+  <p class="plain">Corporate admins see and manage every branch: its people, logs, stock and settings. They add branches and appoint the people who run them. Corporate managers see and run every branch day to day, without managing people or access.</p>
   <ul class="plain-list">
     <% corporate.forEach(function (c) { %>
-    <li><span class="who-row"><%- include('partials/avatar', { who: c }) %><span><strong><%= c.display_name %></strong><span class="meta"><%= c.is_master ? 'Master account' : c.profile %><%= c.branch ? ' · ' + c.branch + ' office' : '' %><%= c.active ? '' : ' · sign-in off' %></span></span></span>
-      <% if (!c.is_master && c.id !== user.id) { %><form method="post" action="/admin/corporate/admins/<%= c.id %>/remove" data-confirm="Stand <%= c.display_name %> down from corporate? They will only see their own office."><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Stand down</button></form><% } %></li>
+    <li><span class="who-row"><%- include('partials/avatar', { who: c }) %><span><strong><%= c.display_name %></strong><span class="meta"><%= c.is_master ? 'Master account' : c.profile %><%= c.branch ? ' · ' + c.branch + ' branch' : '' %><%= c.active ? '' : ' · sign-in off' %></span></span></span>
+      <% if (!c.is_master && c.id !== user.id) { %><form method="post" action="/admin/corporate/admins/<%= c.id %>/remove" data-confirm="Stand <%= c.display_name %> down from corporate? They will only see their own branch."><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Stand down</button></form><% } %></li>
     <% }) %>
   </ul>
   <% if (corporateProfiles.length && everyone.length) { %>
@@ -36,14 +36,14 @@
   <% } %>
 </div>
 
-<h2 id="offices">Offices in use</h2>
-<p class="meta">Offices that have people on the site. <%= totalOffices %> offices in all.</p>
+<h2 id="offices">Branches in use</h2>
+<p class="meta">Branches that have people on the site. <%= totalOffices %> branches in all.</p>
 <ul class="records">
   <% rows.forEach(function (b) { %>
   <li class="card stack" id="o<%= b.id %>">
-    <div class="rec-head"><strong class="office-name"><% if (b.number) { %><span class="office-no"><%= b.number %></span> <% } %><%= b.name %> office</strong><time><%= b.people %> <%= b.people === 1 ? 'person' : 'people' %> signed up<%= b.off ? ', ' + b.off + ' without sign-in' : '' %></time></div>
-    <p class="plain"><strong>Admins and managers</strong> <span class="meta">run this office on the site: parts, trucks, tasks, training and announcements. An admin also manages its people.</span></p>
-    <% if (!b.admins.length) { %><p class="flash warn">This office has no admin of its own yet. Until it does, only corporate admins can run it.</p><% } %>
+    <div class="rec-head"><strong class="office-name"><% if (b.number) { %><span class="office-no"><%= b.number %></span> <% } %><%= b.name %> branch</strong><time><%= b.people %> <%= b.people === 1 ? 'person' : 'people' %> signed up<%= b.off ? ', ' + b.off + ' without sign-in' : '' %></time></div>
+    <p class="plain"><strong>Admins and managers</strong> <span class="meta">run this branch on the site: parts, trucks, tasks, training and announcements. An admin also manages its people.</span></p>
+    <% if (!b.admins.length) { %><p class="flash warn">This branch has no admin of its own yet. Until it does, only corporate admins can run it.</p><% } %>
     <ul class="plain-list">
       <% b.admins.forEach(function (a) { %>
       <li><span class="who-row"><%- include('partials/avatar', { who: a }) %><span><strong><%= a.display_name %></strong><span class="meta"><%= a.profile %><%= !a.active ? ' · sign-in off' : a.must_change_password ? ' · has not signed in yet' : '' %></span></span></span>
@@ -58,33 +58,33 @@
         <% if (officeProfiles.length > 1) { %><label>Role <select name="profile_id"><% officeProfiles.forEach(function (p) { %><option value="<%= p.id %>"><%= p.name %></option><% }) %></select></label>
         <% } else { %><input type="hidden" name="profile_id" value="<%= officeProfiles[0].id %>"><% } %>
         <% if (b.others.length) { %>
-        <label>Who? <span class="hint">Start typing a name. People already listed in the <%= b.name %> office.</span>
+        <label>Who? <span class="hint">Start typing a name. People already listed in the <%= b.name %> branch.</span>
           <input name="person" list="office-people-<%= b.id %>" value="<%= values.office === b.id ? values.person || '' : '' %>" required maxlength="80" autocomplete="off" placeholder="Search by name" data-picks-person></label>
         <input type="hidden" name="user_id" value="">
         <datalist id="office-people-<%= b.id %>"><% b.others.forEach(function (p) { %><option value="<%= p.display_name %>" data-id="<%= p.id %>"></option><% }) %></datalist>
         <button class="btn primary" type="submit">Appoint</button>
         <% } else { %>
-        <p class="hint">Nobody is listed in the <%= b.name %> office yet. Add its people first: choose <%= b.name %> in the office box beside your name, then open Users and add them (or load the contact list under Import). Then come back and pick the admin here.</p>
+        <p class="hint">Nobody is listed in the <%= b.name %> branch yet. Add its people first: choose <%= b.name %> in the branch box beside your name, then open Users and add them (or load the contact list under Import). Then come back and pick the admin here.</p>
         <% } %>
       </form>
     </details>
     <% } %>
     <form method="post" action="/admin/branches/<%= b.id %>" class="filters">
       <input type="hidden" name="_csrf" value="<%= csrf %>">
-      <label class="grow">Office name<input name="name" value="<%= b.name %>" maxlength="60" required autocomplete="off"></label>
+      <label class="grow">Branch name<input name="name" value="<%= b.name %>" maxlength="60" required autocomplete="off"></label>
       <div class="filter-actions"><button class="btn small" type="submit">Rename</button><a class="btn small" href="/branches/<%= b.id %>">Its page</a><a class="btn small" href="/people?branch=<%= b.id %>">Its people</a></div>
     </form>
   </li>
   <% }) %>
 </ul>
 
-<h2 id="others">Other offices</h2>
+<h2 id="others">Other branches</h2>
 <form method="get" action="/admin/branches#others" class="filters">
-  <label class="grow">Find an office <input name="oq" value="<%= oq %>" maxlength="40" placeholder="Town, state, region or number" autocomplete="off"></label>
+  <label class="grow">Find a branch <input name="oq" value="<%= oq %>" maxlength="40" placeholder="Town, state, region or number" autocomplete="off"></label>
   <div class="filter-actions"><button class="btn" type="submit">Search</button><% if (oq) { %><a class="btn" href="/admin/branches#others">Clear</a><% } %></div>
 </form>
-<% if (!others.length) { %><p class="card empty"><%= oq ? 'No office matches that.' : 'Every office is in use.' %></p><% } else { %>
-<p class="meta"><%= others.length %> <%= others.length === 1 ? 'office has' : 'offices have' %> nobody on the site yet. Open one to appoint its admin.</p>
+<% if (!others.length) { %><p class="card empty"><%= oq ? 'No branch matches that.' : 'Every branch is in use.' %></p><% } else { %>
+<p class="meta"><%= others.length %> <%= others.length === 1 ? 'branch has' : 'branches have' %> nobody on the site yet. Open one to appoint its admin.</p>
 <ul class="office-links">
   <% others.slice(0, 400).forEach(function (b) { %><li><a href="/admin/branches?office=<%= b.id %>#o<%= b.id %>"><% if (b.number) { %><span class="office-no"><%= b.number %></span> <% } %><%= b.name %><% if (b.state) { %> <span class="meta"><%= b.state %></span><% } %></a></li><% }) %>
 </ul>
@@ -92,24 +92,24 @@
 
 <h2 id="company">Company information</h2>
 <div class="card stack">
-  <p class="plain"><strong>Office list.</strong> <% if (list.missing.length) { %><%= list.missing.length %> of the company's <%= listOptions.length %> offices are not on the site yet.<% } else { %>All <%= listOptions.length %> offices on the company list are on the site.<% } %></p>
-  <% if (!list.missing.length) { %><form method="post" action="/admin/company/offices"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn small" type="submit">Fill in any missing office details from the list</button></form><% } %>
+  <p class="plain"><strong>Branch list.</strong> <% if (list.missing.length) { %><%= list.missing.length %> of the company's <%= listOptions.length %> branches are not on the site yet.<% } else { %>All <%= listOptions.length %> branches on the company list are on the site.<% } %></p>
+  <% if (!list.missing.length) { %><form method="post" action="/admin/company/offices"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn small" type="submit">Fill in any missing branch details from the list</button></form><% } %>
   <% if (list.missing.length) { %>
-  <form method="post" action="/admin/company/offices" class="stack" data-confirm="Add <%= list.missing.length %> offices to the site?">
+  <form method="post" action="/admin/company/offices" class="stack" data-confirm="Add <%= list.missing.length %> branches to the site?">
     <input type="hidden" name="_csrf" value="<%= csrf %>">
     <% list.unnumbered.forEach(function (u) { %>
-    <label>"<%= u.name %>" is already here. Which office on the company list is it? <span class="hint">So it is not added a second time. It keeps its name and everything in it.</span>
+    <label>"<%= u.name %>" is already here. Which branch on the company list is it? <span class="hint">So it is not added a second time. It keeps its name and everything in it.</span>
       <select name="is_<%= u.id %>"><option value="">It is not on the list</option><% list.missing.forEach(function (o) { %><option value="<%= o.number %>" <%= u.guess === o.number ? 'selected' : '' %>><%= o.number %> · <%= o.labelCity %>, <%= o.labelState %> · <%= o.street %><%= o.division ? ' · ' + o.division : '' %><%= o.marketing ? ' (known as ' + o.marketing + ')' : '' %></option><% }) %></select></label>
     <% }) %>
-    <button class="btn primary" type="submit">Add the <%= list.missing.length %> offices</button>
+    <button class="btn primary" type="submit">Add the <%= list.missing.length %> branches</button>
   </form>
   <% } %>
   <hr>
   <form method="post" action="/admin/company/details" enctype="multipart/form-data" class="stack">
     <input type="hidden" name="_csrf" value="<%= csrf %>">
-    <label><strong>Office details in bulk.</strong> <span class="hint">A CSV with a Number column and any of Services, Address, Phone, About. Services can be codes or names, separated by commas: "FE, KH". Each office's admin can also set these on the office's own page.</span>
+    <label><strong>Branch details in bulk.</strong> <span class="hint">A CSV with a Number column and any of Services, Address, Phone, About. Services can be codes or names, separated by commas: "FE, KH". Each branch's admin can also set these on the branch's own page.</span>
       <input type="file" name="file" accept=".csv,text/csv" required></label>
-    <button class="btn" type="submit">Upload office details</button>
+    <button class="btn" type="submit">Upload branch details</button>
   </form>
   <hr>
   <form method="post" action="/admin/company/contacts" enctype="multipart/form-data" class="stack">
@@ -120,15 +120,15 @@
   </form>
 </div>
 
-<h2 id="services">Services offices can offer</h2>
+<h2 id="services">Services branches can offer</h2>
 <div class="card stack">
-  <p class="plain">The list every office picks from. People search offices by these.</p>
+  <p class="plain">The list every branch picks from. People search branches by these.</p>
   <ul class="plain-list">
     <% services.forEach(function (s) { %>
     <li><form method="post" action="/admin/company/services/<%= s.id %>" class="svc-row"><input type="hidden" name="_csrf" value="<%= csrf %>">
       <span class="office-no"><%= s.code %></span><label class="grow"><span class="sr">Name</span><input name="name" value="<%= s.name %>" maxlength="60" required autocomplete="off"></label>
-      <span class="meta"><%= s.offices %> <%= s.offices === 1 ? 'office' : 'offices' %></span>
-      <button class="btn small" type="submit">Rename</button><button class="link danger" type="submit" name="remove" value="1" data-confirm-button="Remove <%= s.name %> from the list and from every office?">Remove</button></form></li>
+      <span class="meta"><%= s.offices %> <%= s.offices === 1 ? 'branch' : 'branches' %></span>
+      <button class="btn small" type="submit">Rename</button><button class="link danger" type="submit" name="remove" value="1" data-confirm-button="Remove <%= s.name %> from the list and from every branch?">Remove</button></form></li>
     <% }) %>
   </ul>
   <form method="post" action="/admin/company/services" class="filters">
@@ -139,16 +139,16 @@
   </form>
 </div>
 
-<h2>Add an office</h2>
+<h2>Add a branch</h2>
 <form method="post" action="/admin/branches" class="card stack">
   <input type="hidden" name="_csrf" value="<%= csrf %>">
-  <label>Name <span class="hint">Usually the town, for example Ephrata. "Office" is added for you.</span><input name="name" value="<%= values.name || '' %>" maxlength="60" required autocomplete="off"></label>
-  <button class="btn primary" type="submit">Add office</button>
+  <label>Name <span class="hint">Usually the town, for example Ephrata. "Branch" is added for you.</span><input name="name" value="<%= values.name || '' %>" maxlength="60" required autocomplete="off"></label>
+  <button class="btn primary" type="submit">Add branch</button>
 </form>
 <div class="notice">
   <p><strong>Who can do what</strong></p>
-  <p><strong>Corporate admins</strong> see every office. Use the office box beside your name to choose which one the logs, stock and other pages show, or "Corporate" to see them together.</p>
-  <p><strong>Office admins</strong> do everything an admin can, inside their own office only. They add and manage that office's people themselves.</p>
+  <p><strong>Corporate admins</strong> see every branch. Use the branch box beside your name to choose which one the logs, stock and other pages show, or "Corporate" to see them together.</p>
+  <p><strong>Branch admins</strong> do everything an admin can, inside their own branch only. They add and manage that branch's people themselves.</p>
   <p><strong>Everyone</strong> shares the community side: people, discussions, shout-outs, photos, events and the daily question.</p>
 </div>
 <%- include('partials/footer') %>

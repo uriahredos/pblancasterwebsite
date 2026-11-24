@@ -5,7 +5,7 @@
 <% var phoneHref = lead.phone ? 'tel:' + lead.phone.replace(/[^0-9+]/g, '') : ''; %>
 <div class="card office-card">
   <dl class="facts">
-    <dt>Owner</dt><dd><%= lead.owner || 'Nobody yet' %><%= lead.office ? ' · ' + lead.office + ' office' : '' %></dd>
+    <dt>Owner</dt><dd><%= lead.owner || 'Nobody yet' %><%= lead.office ? ' · ' + lead.office + ' branch' : '' %></dd>
     <% if (lead.contact_name) { %><dt>Contact</dt><dd><%= lead.contact_name %></dd><% } %>
     <% if (lead.phone) { %><dt>Phone</dt><dd><a href="<%= phoneHref %>"><%= lead.phone %></a></dd><% } %>
     <% if (lead.email) { %><dt>Email</dt><dd><a href="mailto:<%= lead.email %>"><%= lead.email %></a></dd><% } %>
@@ -16,7 +16,7 @@
     <% if (lead.open) { %><dt>Follow up</dt><dd class="<%= lead.due ? 'due-text' : '' %>"><%= lead.next_on ? fmtDate(lead.next_on) + (lead.overdue ? ' (overdue)' : lead.due ? ' (today)' : '') : 'No date set' %></dd><% } %>
     <% if (lead.quote_amount) { %><dt>Quoted</dt><dd>$<%= money(lead.quote_amount) %><%= lead.quoted_on ? ' on ' + fmtDate(lead.quoted_on) : '' %></dd><% } %>
     <% if (lead.stage === 'won' && lead.renew_on) { %><dt>Due again</dt><dd><%= fmtDate(lead.renew_on) %><%= lead.renewed_as ? ' (new lead started)' : '' %></dd><% } %>
-    <% if (lead.referrer) { %><dt>Passed on by</dt><dd><%= lead.referrer %><%= lead.referrer_office ? ' · ' + lead.referrer_office + ' office' : '' %></dd><% } %>
+    <% if (lead.referrer) { %><dt>Passed on by</dt><dd><%= lead.referrer %><%= lead.referrer_office ? ' · ' + lead.referrer_office + ' branch' : '' %></dd><% } %>
     <% if (lead.lost_reason) { %><dt>Why lost</dt><dd><%= lead.lost_reason %></dd><% } %>
   </dl>
   <div class="filter-actions">
@@ -95,15 +95,15 @@
       </label>
       <div class="filter-actions"><button class="btn small" type="submit">Hand over</button></div>
     </form>
-    <form method="post" action="/sales/<%= lead.id %>/refer" class="filters" data-confirm="Pass this lead to the other office? It leaves your office's list.">
+    <form method="post" action="/sales/<%= lead.id %>/refer" class="filters" data-confirm="Pass this lead to the other branch? It leaves your branch's list.">
       <input type="hidden" name="_csrf" value="<%= csrf %>">
-      <label>Pass to another office
-        <select name="office"><option value="">Choose the office</option><% offices.forEach(function (o) { %><option value="<%= o.id %>"><%= o.name %><%= o.number ? ' (' + o.number + ')' : '' %></option><% }) %></select>
+      <label>Pass to another branch
+        <select name="office"><option value="">Choose the branch</option><% offices.forEach(function (o) { %><option value="<%= o.id %>"><%= o.name %><%= o.number ? ' (' + o.number + ')' : '' %></option><% }) %></select>
       </label>
       <label class="grow">Why <span class="hint">Optional</span><input name="why" maxlength="300" autocomplete="off" placeholder="e.g. They need sprinkler work"></label>
       <div class="filter-actions"><button class="btn small" type="submit">Pass it on</button></div>
     </form>
-    <p class="hint">Not sure who does it? <a href="/branches">Find an office by service</a>.</p>
+    <p class="hint">Not sure who does it? <a href="/branches">Find a branch by service</a>.</p>
   </div>
 </details>
 <% } %>

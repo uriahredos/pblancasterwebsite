@@ -1,7 +1,7 @@
 <%- include('partials/header') %>
 <p class="back"><a class="back-link" href="/sales">Sales</a></p>
 <h1>Sales library</h1>
-<p class="lede">Brochures, service sheets and standard answers, so everyone sends the same material. Shared by the sales teams in every office.</p>
+<p class="lede">Brochures, service sheets and standard answers, so everyone sends the same material. Shared by the sales teams in every branch.</p>
 <% if (!files.length) { %><p class="card empty">Nothing here yet.<%= canManage ? ' Add the first item below.' : ' A sales manager can add files.' %></p><% } %>
 <ul class="records">
   <% files.forEach(function (f) { %>

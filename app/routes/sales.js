@@ -76,7 +76,7 @@ function board(req, res, extra = {}) {
   const summary = [
     { label: 'My open leads', value: mineOpen.length, sub: 'being worked by you', url: '/sales' },
     { label: 'Follow-ups due', value: mineOpen.filter((l) => l.due).length, sub: 'today or overdue', url: '/sales?show=due', warn: mineOpen.some((l) => l.due) },
-    { label: 'Open in the office', value: all.filter((l) => l.open).length, sub: `$${fmtMoney(all.filter((l) => l.open).reduce((n, l) => n + (l.value || 0), 0))} estimated`, url: '/sales?show=all' },
+    { label: 'Open in the branch', value: all.filter((l) => l.open).length, sub: `$${fmtMoney(all.filter((l) => l.open).reduce((n, l) => n + (l.value || 0), 0))} estimated`, url: '/sales?show=all' },
     { label: 'Won this month', value: wonThisMonth.length, sub: `$${fmtMoney(wonThisMonth.reduce((n, l) => n + (l.value || 0), 0))} estimated`, url: '/sales?show=closed' },
   ];
   let rows = all.filter((l) => (show === 'closed' ? !l.open : show === 'all' ? l.open : show === 'due' ? l.open && l.owner_id === req.user.id && l.due : l.open && l.owner_id === req.user.id));
@@ -173,7 +173,7 @@ router.get('/sales.csv', requirePerm('sales.manage'), (req, res) => {
   if (!require('./auth').provedRecently(req)) return res.redirect('/sales/export');
   const office = officeOf(req.user);
   const rows = db.prepare(`${LEAD} ${office === null ? '' : 'WHERE l.branch_id = ?'} ORDER BY l.id`).all(...(office === null ? [] : [office]));
-  sendCsv(res, `sales-leads-${localDate()}.csv`, ['Lead', 'Office', 'Customer', 'Contact', 'Phone', 'Email', 'Address', 'Interested in', 'Source', 'Estimated value', 'Stage', 'Owner', 'Follow up on', 'Added', 'Closed', 'Why lost'],
+  sendCsv(res, `sales-leads-${localDate()}.csv`, ['Lead', 'Branch', 'Customer', 'Contact', 'Phone', 'Email', 'Address', 'Interested in', 'Source', 'Estimated value', 'Stage', 'Owner', 'Follow up on', 'Added', 'Closed', 'Why lost'],
     rows.map((l) => [l.id, l.office, l.company, l.contact_name, l.phone, l.email, l.address, l.interest, l.source, l.value, sales.stageName(l.stage), l.owner, l.next_on, (l.created_at || '').slice(0, 10), (l.closed_at || '').slice(0, 10), l.lost_reason]));
 });
 
@@ -323,8 +323,8 @@ router.post('/sales/:id/stage', use, (req, res) => {
   if (quote && Number(quote) !== lead.quote_amount) log(lead, req.user, 'stage', `Quoted $${fmtMoney(Number(quote))}`);
   // Credit where it is due: the person in another office who passed this lead on hears that it was won.
   if (stage === 'won' && lead.stage !== 'won' && lead.referred_by) {
-    log(lead, req.user, 'refer', `Won. Thank you to ${lead.referrer || 'the colleague'}${lead.referrer_office ? ' in the ' + lead.referrer_office + ' office' : ''} for passing it on.`);
-    push.notify([lead.referred_by], 'task_assigned', { title: `Your referral was won: ${lead.company}`, body: `${req.user.display_name} in the ${lead.office} office closed it. Thank you for passing it on.`, url: '/sales' });
+    log(lead, req.user, 'refer', `Won. Thank you to ${lead.referrer || 'the colleague'}${lead.referrer_office ? ' in the ' + lead.referrer_office + ' branch' : ''} for passing it on.`);
+    push.notify([lead.referred_by], 'task_assigned', { title: `Your referral was won: ${lead.company}`, body: `${req.user.display_name} in the ${lead.office} branch closed it. Thank you for passing it on.`, url: '/sales' });
   }
   if (stage !== lead.stage) log(lead, req.user, 'stage', `Moved to ${sales.stageName(stage)}${stage === 'lost' && reason ? ': ' + reason : ''}`);
   else if ((next || '') !== (lead.next_on || '')) log(lead, req.user, 'stage', next ? `Follow up on ${fmtDate(next)}` : 'Follow-up date cleared');
@@ -367,13 +367,13 @@ router.post('/sales/:id/refer', use, (req, res) => {
   const lead = editable(req, res);
   if (!lead) return;
   const office = isId(req.body.office) ? db.prepare('SELECT id, name FROM branches WHERE id = ? AND id <> ?').get(req.body.office, lead.branch_id) : null;
-  if (!office) return page(req, res, lead, { errors: ['Choose the office to pass it to.'] });
+  if (!office) return page(req, res, lead, { errors: ['Choose the branch to pass it to.'] });
   const why = clean(req.body.why, 300);
-  db.prepare("UPDATE leads SET branch_id = ?, owner_id = NULL, source = COALESCE(source, 'Another office'), referred_by = ?, referred_from = ?, updated_at = ? WHERE id = ?").run(office.id, req.user.id, lead.branch_id, new Date().toISOString(), lead.id);
-  log(lead, req.user, 'refer', `Passed from the ${lead.office} office to the ${office.name} office${why ? ': ' + why : ''}`);
-  activity.log(req.user, 'Lead passed to another office', `${lead.company} to ${office.name}`);
-  push.notify(salesPeople(office.id).map((u) => u.id), 'task_assigned', { title: `New lead from the ${lead.office} office`, body: `${lead.company}${why ? ': ' + why : ''}`, url: `/sales/${lead.id}` });
-  flash(req, 'ok', `Passed to the ${office.name} office.`);
+  db.prepare("UPDATE leads SET branch_id = ?, owner_id = NULL, source = COALESCE(source, 'Another branch'), referred_by = ?, referred_from = ?, updated_at = ? WHERE id = ?").run(office.id, req.user.id, lead.branch_id, new Date().toISOString(), lead.id);
+  log(lead, req.user, 'refer', `Passed from the ${lead.office} branch to the ${office.name} branch${why ? ': ' + why : ''}`);
+  activity.log(req.user, 'Lead passed to another branch', `${lead.company} to ${office.name}`);
+  push.notify(salesPeople(office.id).map((u) => u.id), 'task_assigned', { title: `New lead from the ${lead.office} branch`, body: `${lead.company}${why ? ': ' + why : ''}`, url: `/sales/${lead.id}` });
+  flash(req, 'ok', `Passed to the ${office.name} branch.`);
   res.redirect('/sales');
 });
 
@@ -403,7 +403,7 @@ router.post('/sales/:id/delete', requirePerm('sales.manage'), (req, res) => {
   db.prepare('DELETE FROM lead_notes WHERE lead_id = ?').run(lead.id);
   db.prepare('DELETE FROM leads WHERE id = ?').run(lead.id);
   // By number and office only: a customer who asked to be removed should not have their name left in the log by the removal.
-  activity.log(req.user, 'Lead removed', `Lead ${lead.id}, ${lead.office} office`);
+  activity.log(req.user, 'Lead removed', `Lead ${lead.id}, ${lead.office} branch`);
   flash(req, 'ok', 'Lead removed.');
   res.redirect('/sales');
 });

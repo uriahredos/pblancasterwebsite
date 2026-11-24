@@ -6,7 +6,7 @@
   <div class="panel-head"><h2 id="now-h">On call now</h2></div>
   <% if (!current.length) { %><p class="empty">Nobody is listed as on call today.<%= canManage ? ' Add the schedule below.' : '' %></p><% } %>
   <% current.forEach(function (g) { %>
-  <% if (many || g.market_id) { %><h3 class="sub-h"><%= g.market_id ? g.office : g.office + ' office' %></h3><% } %>
+  <% if (many || g.market_id) { %><h3 class="sub-h"><%= g.market_id ? g.office : g.office + ' branch' %></h3><% } %>
   <p class="meta oncall-range"><% if (canPick(g)) { %><input type="checkbox" class="oncall-pick" form="oncall-clear" name="ids" value="<%= g.tech.concat(g.backup).map(function (p) { return p.id; }).join(',') %>" aria-label="Select <%= g.office %>, <%= g.label %>"> <% } %><%= g.label %><%= g.note ? ' · ' + g.note : '' %></p>
   <ul class="oncall-people">
     <% g.tech.concat(g.backup).forEach(function (p) { %>
@@ -18,15 +18,15 @@
   </ul>
   <% }) %>
   <% if (many && missing.length && current.length) { %>
-  <p class="hint oncall-missing"><strong>Nobody is listed today for <%= missing.length %> of the <%= officeCount %> offices in this market:</strong>
+  <p class="hint oncall-missing"><strong>Nobody is listed today for <%= missing.length %> of the <%= officeCount %> branches in this market:</strong>
     <% missing.forEach(function (o, i) { %><%= i ? ', ' : '' %><a href="/branches/<%= o.id %>"><%= o.name %></a><% }) %>.
-    Each office loads its own schedule; until they do, call that office directly.</p>
+    Each branch loads its own schedule; until they do, call that branch directly.</p>
   <% } %>
 </section>
 
 <% if (rates.length || canManage) { %>
 <h2 id="rates">On-call rates</h2>
-<p class="hint">For the <%= rateOffice %> office. Only its own people see these.</p>
+<p class="hint">For the <%= rateOffice %> branch. Only its own people see these.</p>
 <% if (rates.length) { %>
 <div class="table-wrap">
 <table class="rates-table">
@@ -52,7 +52,7 @@
   </tbody>
 </table>
 </div>
-<% } else { %><p class="card empty">No rates have been added for this office yet.</p><% } %>
+<% } else { %><p class="card empty">No rates have been added for this branch yet.</p><% } %>
 <% if (canManage) { %>
 <form method="post" action="/admin/oncall/rates" class="filters card" data-no-live>
   <input type="hidden" name="_csrf" value="<%= csrf %>">
@@ -77,13 +77,13 @@
 <% if (!upcoming.length) { %><p class="card empty">Nothing scheduled after the current shift.</p><% } else { %>
 <div class="table-wrap">
 <table class="oncall-table">
-  <thead><tr><th>Days</th><% if (many) { %><th>Office</th><% } %><th>On call</th><th>Backup</th><th>Holiday</th></tr></thead>
+  <thead><tr><th>Days</th><% if (many) { %><th>Branch</th><% } %><th>On call</th><th>Backup</th><th>Holiday</th></tr></thead>
   <tbody>
   <% var lastYear = ''; upcoming.forEach(function (g) { %>
   <% if (g.year !== lastYear) { lastYear = g.year; %><tr class="year-row<%= g.later ? ' later' : '' %>"><td colspan="<%= many ? 5 : 4 %>"><%= g.year %></td></tr><% } %>
   <tr<%- g.later ? ' class="later"' : '' %>>
     <td class="nowrap" data-label="Days"><% if (canPick(g)) { %><input type="checkbox" class="oncall-pick" form="oncall-clear" name="ids" value="<%= g.tech.concat(g.backup).map(function (p) { return p.id; }).join(',') %>" aria-label="Select <%= g.office %>, <%= g.label %>"> <% } %><strong><%= g.label %></strong></td>
-    <% if (many) { %><td data-label="Office"><%= g.office %></td><% } %>
+    <% if (many) { %><td data-label="Branch"><%= g.office %></td><% } %>
     <% ['tech', 'backup'].forEach(function (role) { %>
     <td data-label="<%= roles[role] %>">
       <% g[role].forEach(function (p) { %>
@@ -129,7 +129,7 @@
       <label class="w3">Covers <input name="covers" value="<%= values.covers || '' %>" maxlength="60" autocomplete="off" placeholder="Optional, like Sprinkler"></label>
       <label class="w3">Holiday <input name="note" value="<%= values.note || '' %>" maxlength="120" autocomplete="off" placeholder="Optional"></label>
     </div>
-    <p class="hint">Handed on is the day the next person takes over.<%= widePick ? ' Someone from another office goes on their own office\'s schedule.' : '' %> Add as many people as you need for the same days.</p>
+    <p class="hint">Handed on is the day the next person takes over.<%= widePick ? ' Someone from another branch goes on their own branch\'s schedule.' : '' %> Add as many people as you need for the same days.</p>
     <button class="btn primary" type="submit">Add to the schedule</button>
   </form>
 </details>
@@ -137,7 +137,7 @@
   <summary>Load the year from the spreadsheet</summary>
   <form method="post" action="/admin/oncall/import" enctype="multipart/form-data" class="stack thread-tools" data-confirm="Load this file? It replaces the schedule for the days it covers.">
     <input type="hidden" name="_csrf" value="<%= csrf %>">
-    <p>Upload the on-call schedule saved as CSV (in Excel: File &gt; Save As &gt; CSV). A file with one line per person (columns Start, End, Office, Covers, Role, Name, Phone, Holiday) is read too, and can fill several offices and the whole market at once.</p>
+    <p>Upload the on-call schedule saved as CSV (in Excel: File &gt; Save As &gt; CSV). A file with one line per person (columns Start, End, Branch, Covers, Role, Name, Phone, Holiday) is read too, and can fill several branches and the whole market at once.</p>
     <p>For the sheet as it is kept today: The year goes on the first line; then one line per shift with the month, the days, the technician and the manager, as the sheet is kept today.</p>
     <p class="hint">Extra columns of people are read too. A column headed "Backup" or "Manager" is a backup; any other is on call. Uploading again replaces the schedule for the days in the file.</p>
     <label>File <input type="file" name="file" accept=".csv,text/csv" required></label>

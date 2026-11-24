@@ -31,7 +31,7 @@
       <% if (!reasons.length) { %><p class="empty">Nothing lost in the last 90 days.</p><% } %>
       <ul class="plain-rows"><% reasons.forEach(function (r) { %><li><span><%= r[0] %></span><strong><%= r[1] %></strong></li><% }) %></ul>
     </section>
-    <section class="panel"><div class="panel-head"><h2>Passed between offices</h2></div>
+    <section class="panel"><div class="panel-head"><h2>Passed between branches</h2></div>
       <% if (!referrals.length) { %><p class="empty">None in the last 90 days.</p><% } %>
       <ul class="plain-rows"><% referrals.forEach(function (l) { %><li><span><a href="/sales/<%= l.id %>"><strong><%= l.company %></strong></a> <span class="meta">· from <%= l.referrer %><%= l.referrer_office ? ', ' + l.referrer_office : '' %></span></span><span class="tag st-lead-<%= l.stage %>"><%= l.stageName %></span></li><% }) %></ul>
     </section>

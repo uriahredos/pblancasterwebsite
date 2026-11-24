@@ -1,10 +1,10 @@
 <!doctype html>
 <% var isLocked = typeof locked !== 'undefined' && locked; var signedIn = Boolean(user) && !isLocked;
-   var officeLabel = typeof branchName !== 'undefined' && branchName ? branchName + ' Office' : '';
+   var officeLabel = typeof branchName !== 'undefined' && branchName ? branchName + ' Branch' : '';
    // Someone who chooses which office they look at sees that office named at the top, not their own.
    if (user && typeof branchChoices !== 'undefined' && branchChoices.length) {
      var lookingAt = user.viewBranch === null ? null : branchChoices.filter(function (b) { return b.id === user.viewBranch; })[0];
-     officeLabel = user.viewBranch === null ? 'Corporate' : lookingAt ? lookingAt.name + ' Office' : officeLabel;
+     officeLabel = user.viewBranch === null ? 'Corporate' : lookingAt ? lookingAt.name + ' Branch' : officeLabel;
    } %><html lang="en"<%- signedIn ? ' data-in data-lock-after="' + lockAfterMs + '"' : '' %><%- signedIn && typeof fresh !== 'undefined' && fresh ? ' data-fresh' : '' %>>
 <head>
 <meta charset="utf-8">
@@ -35,11 +35,11 @@
       <div class="who">
         <% var viewingOffice = user && branchChoices.length ? (user.viewBranch === null ? 'Corporate' : (branchChoices.filter(function (b) { return b.id === user.viewBranch; })[0] || {}).name || '') : ''; %>
         <% if (user && !isLocked && branchChoices.length) { %>
-      <datalist id="office-list"><% if (user.allBranches) { %><option value="Corporate" data-id="all" data-find="all offices every office everything overview" label="Every office together"></option><% } %><% branchChoices.forEach(function (b) { %><option value="<%= b.name %>" data-id="<%= b.id %>" data-find="<%= b.find %>" label="<%= [b.number ? '#' + b.number : '', b.city && b.city !== b.name ? b.city : '', b.state].filter(Boolean).join(' · ') %>"></option><% }) %></datalist>
+      <datalist id="office-list"><% if (user.allBranches) { %><option value="Corporate" data-id="all" data-find="all branches every branch all offices every office everything overview" label="Every branch together"></option><% } %><% branchChoices.forEach(function (b) { %><option value="<%= b.name %>" data-id="<%= b.id %>" data-find="<%= b.find %>" label="<%= [b.number ? '#' + b.number : '', b.city && b.city !== b.name ? b.city : '', b.state].filter(Boolean).join(' · ') %>"></option><% }) %></datalist>
       <form method="post" action="/branch/view" class="nav-branch in-banner">
         <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="back" value="<%= path %>">
-        <label><span class="sr">Office you are looking at. Type a town, state or number to find another.</span>
-          <input name="office" list="office-list" value="<%= viewingOffice %>" data-current="<%= viewingOffice %>" data-office-pick autocomplete="off" placeholder="Search offices" title="Type to find an office"></label>
+        <label><span class="sr">Branch you are looking at. Type a town, state or number to find another.</span>
+          <input name="office" list="office-list" value="<%= viewingOffice %>" data-current="<%= viewingOffice %>" data-office-pick autocomplete="off" placeholder="Search branches" title="Type to find a branch"></label>
         <input type="hidden" name="branch" value="">
         <noscript><button type="submit">Go</button></noscript>
       </form>
@@ -102,7 +102,7 @@
     var groups = [
       { name: 'Community', items: [
         ['', '/company', 'Company', is('/company')],
-        ['', '/branches', 'Offices', is('/branches')],
+        ['', '/branches', 'Branches', is('/branches')],
         ['', '/contacts', 'Who to contact', is('/contacts')],
         'divider',
         ['', '/feed', 'Activity feed', is('/feed')],
@@ -164,7 +164,7 @@
         [user.scope === 'all' ? 'users.manage' : 'no.such.permission', '/admin/import', 'Import', is('/admin/import')]
       ] },
       { name: 'Corporate', items: user.allBranches ? [
-        ['users.manage', '/admin/branches', 'Offices and admins', is('/admin/branches')],
+        ['users.manage', '/admin/branches', 'Branches and admins', is('/admin/branches')],
         ['users.manage', '/admin/markets', 'Markets', is('/admin/markets')],
         ['profiles.manage', '/admin/profiles', 'Profiles', is('/admin/profiles')],
         ['backups', '/admin/backups', 'Backups', is('/admin/backups')],
@@ -203,8 +203,8 @@
       <% if (branchChoices.length) { %>
       <form method="post" action="/branch/view" class="nav-branch in-menu">
         <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="back" value="<%= path %>">
-        <label><span class="sr">Office you are looking at. Type a town, state or number to find another.</span>
-          <input name="office" list="office-list" value="<%= viewingOffice %>" data-current="<%= viewingOffice %>" data-office-pick autocomplete="off" placeholder="Search offices" title="Type to find an office"></label>
+        <label><span class="sr">Branch you are looking at. Type a town, state or number to find another.</span>
+          <input name="office" list="office-list" value="<%= viewingOffice %>" data-current="<%= viewingOffice %>" data-office-pick autocomplete="off" placeholder="Search branches" title="Type to find a branch"></label>
         <input type="hidden" name="branch" value="">
         <noscript><button type="submit">Go</button></noscript>
       </form>

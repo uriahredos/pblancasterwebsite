@@ -39,7 +39,7 @@ function whole(officeId) {
   const pl = places();
   const steps = [{ key: 'company', label: 'Corporate', people: leaders(pl, 'company', '1 = 1', []) }];
   if (office.market_id) steps.push({ key: 'market', label: `${office.market} market`, people: leaders(pl, 'market', 'u.branch_id IN (SELECT id FROM branches WHERE market_id = ?)', [office.market_id]) });
-  steps.push({ key: 'office', label: `${office.name} office`, people: leaders(pl, 'office', 'u.branch_id = ?', [office.id]) });
+  steps.push({ key: 'office', label: `${office.name} branch`, people: leaders(pl, 'office', 'u.branch_id = ?', [office.id]) });
   return steps;
 }
 

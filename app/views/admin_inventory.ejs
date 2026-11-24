@@ -1,8 +1,8 @@
 <%- include('partials/header', { wide: true }) %>
 <h1>Inventory</h1>
 <% var inUse = locations.filter(function (l) { return l.active; }); var away = locations.filter(function (l) { return !l.active; }); %>
-<p class="lede">Where the <%= office ? office.name : '' %> office's parts are: the main warehouse, each technician's vehicle, and anything else you add.</p>
-<p class="filter-actions"><% if (can('inventory.export')) { %><a class="btn small" href="/admin/inventory/export.csv">Export by location</a> <a class="btn small" href="/admin/inventory/export.csv?view=totals">Export totals</a><% if (user.allBranches) { %> <a class="btn small" href="/admin/inventory/export.csv?office=all">Export every office</a><% } %> <% } %></p>
+<p class="lede">Where the <%= office ? office.name : '' %> branch's parts are: the main warehouse, each technician's vehicle, and anything else you add.</p>
+<p class="filter-actions"><% if (can('inventory.export')) { %><a class="btn small" href="/admin/inventory/export.csv">Export by location</a> <a class="btn small" href="/admin/inventory/export.csv?view=totals">Export totals</a><% if (user.allBranches) { %> <a class="btn small" href="/admin/inventory/export.csv?office=all">Export every branch</a><% } %> <% } %></p>
 <div class="table-wrap">
 <table>
   <thead><tr><th>Location</th><th>Kind</th><th>Technician</th><th class="num">Different parts</th><th class="num">Items</th><th>To check</th><th></th></tr></thead>
@@ -45,7 +45,7 @@
   <label class="grow">Whose it is <select name="user_id" required><option value="">Choose a person</option><% free.forEach(function (p) { %><option value="<%= p.id %>"><%= p.display_name %></option><% }) %></select></label>
   <div class="filter-actions"><button class="btn primary small" type="submit">Add vehicle</button></div>
 </form>
-<% } else { %><p class="hint thread-tools">Everyone in this office already has a vehicle.</p><% } %>
+<% } else { %><p class="hint thread-tools">Everyone in this branch already has a vehicle.</p><% } %>
 </details>
 
 <details class="mod-tools">

@@ -44,7 +44,7 @@ function setManager(userId, managerId) {
   if (!managerId) { db.prepare('DELETE FROM user_managers WHERE user_id = ?').run(userId); return null; }
   if (managerId === userId) return 'nobody reports to themselves';
   const pair = db.prepare('SELECT (SELECT branch_id FROM users WHERE id = ?) AS a, (SELECT branch_id FROM users WHERE id = ?) AS b').get(userId, managerId);
-  if (!pair.b || pair.a !== pair.b) return 'they are in different offices';
+  if (!pair.b || pair.a !== pair.b) return 'they are in different branches';
   if (everyoneUnder(userId).includes(managerId)) return 'that person already reports to them';
   db.prepare('DELETE FROM user_managers WHERE user_id = ?').run(userId);
   db.prepare('INSERT OR IGNORE INTO user_managers (manager_id, user_id) VALUES (?, ?)').run(managerId, userId);

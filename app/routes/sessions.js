@@ -95,7 +95,7 @@ function listPage(req, res, extra = {}) {
   }
   res.status(extra.errors ? 400 : 200).render('admin_sessions', {
     title: 'Training sessions', sessions, users, person, values, canManage: access.can(req.user, 'training.manage'),
-    errors: wrongOffice ? [`That request is from the ${wrongOffice.name} office. Choose that office first, then schedule the session from the request.`] : [], ...extra,
+    errors: wrongOffice ? [`That request is from the ${wrongOffice.name} branch. Choose that branch first, then schedule the session from the request.`] : [], ...extra,
   });
 }
 

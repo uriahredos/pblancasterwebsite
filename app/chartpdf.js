@@ -40,12 +40,12 @@ function write(stream, { office, teamChart, when }) {
   const height = tops.length ? Math.max(...tops.map(bottom)) : 0;
   const rest = teamChart.rest; const restH = rest.length ? 30 + LINE * Math.ceil(rest.length / 4) : 0;
   const pageW = Math.max(792, width + MARGIN * 2), pageH = Math.max(612, HEADER + height + restH + MARGIN * 2);
-  const doc = new PDFDocument({ size: [pageW, pageH], margin: 0, info: { Title: `${office.name} office organization chart`, Author: 'PB Portal' } });
+  const doc = new PDFDocument({ size: [pageW, pageH], margin: 0, info: { Title: `${office.name} branch organization chart`, Author: 'PB Portal' } });
   doc.pipe(stream);
 
   // Header: the logo as it is, the office, the date.
   try { doc.image(path.join(__dirname, '..', 'public', 'logo.png'), MARGIN, 24, { height: 34 }); } catch (e) { /* the chart still prints without it */ }
-  doc.font('Helvetica-Bold').fontSize(16).fillColor(NAVY).text(`${office.name} office`, MARGIN + 150, 26, { lineBreak: false });
+  doc.font('Helvetica-Bold').fontSize(16).fillColor(NAVY).text(`${office.name} branch`, MARGIN + 150, 26, { lineBreak: false });
   doc.font('Helvetica').fontSize(10).fillColor(GRAY).text(`Organization chart · ${when}`, MARGIN + 150, 46, { lineBreak: false });
   doc.moveTo(MARGIN, 68).lineTo(pageW - MARGIN, 68).lineWidth(1).strokeColor(GREEN).stroke();
 
@@ -76,7 +76,7 @@ function write(stream, { office, teamChart, when }) {
     n.kids.forEach(draw);
   };
   tops.forEach(draw);
-  if (!tops.length) doc.font('Helvetica').fontSize(12).fillColor(INK).text('No chart yet: nobody in this office has a role that others report to.', MARGIN, oy);
+  if (!tops.length) doc.font('Helvetica').fontSize(12).fillColor(INK).text('No chart yet: nobody in this branch has a role that others report to.', MARGIN, oy);
 
   if (rest.length) {
     const ry = oy + height + 26, colW = (pageW - MARGIN * 2) / 4;

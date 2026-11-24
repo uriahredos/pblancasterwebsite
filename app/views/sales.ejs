@@ -1,11 +1,11 @@
 <%- include('partials/header', { wide: true }) %>
 <div class="title-row"><h1>Sales</h1><span class="filter-actions"><a class="btn primary small" href="#add">Add a lead</a></span></div>
-<p class="lede">Every lead in the office<%= allOffices ? 's' : '' %>, who is working it and where it stands. Only sales staff and admins can see this.</p>
+<p class="lede">Every lead in the branch<%= allOffices ? 's' : '' %>, who is working it and where it stands. Only sales staff and admins can see this.</p>
 
 <p class="presets tools">
   <a href="/sales/library">Library</a>
   <% if (canExport) { %><a href="/sales/summary">Team summary</a><a href="/sales.csv" data-full>Export</a><% } %>
-  <a href="/branches">Find an office by service</a>
+  <a href="/branches">Find a branch by service</a>
 </p>
 <div class="branch-stats sales-stats">
   <% summary.forEach(function (s) { %>
@@ -60,7 +60,7 @@
 <div class="card dupes">
   <p class="plain"><strong>Already being worked?</strong></p>
   <ul class="plain-rows">
-    <% matches.forEach(function (m) { %><li><span><strong><%= m.elsewhere ? "Another office's customer" : m.company %></strong> <span class="meta">· <%= m.why %></span></span><span><%= m.owner || 'Nobody yet' %> · <%= m.office %><%= m.elsewhere ? '' : ' · ' + m.stageName %></span></li><% }) %>
+    <% matches.forEach(function (m) { %><li><span><strong><%= m.elsewhere ? "Another branch's customer" : m.company %></strong> <span class="meta">· <%= m.why %></span></span><span><%= m.owner || 'Nobody yet' %> · <%= m.office %><%= m.elsewhere ? '' : ' · ' + m.stageName %></span></li><% }) %>
   </ul>
 </div>
 <% } %>
@@ -89,7 +89,7 @@
   <label>First note <span class="hint">Optional</span><textarea name="note" rows="2" maxlength="1000"><%= values.note || '' %></textarea></label>
   <% if (matches.length) { %><label class="choice"><input type="checkbox" name="anyway" value="1"> This is a different customer, or I have agreed it with them. Add it anyway.</label><% } %>
   <button class="btn primary" type="submit">Add lead</button>
-  <p class="hint">The lead is yours until you hand it over. Need an office that does something we don't? <a href="/branches">Find an office by service</a>.</p>
+  <p class="hint">The lead is yours until you hand it over. Need a branch that does something we don't? <a href="/branches">Find a branch by service</a>.</p>
 </form>
 <script src="/sales.js?v=<%= assetV %>" defer></script>
 <%- include('partials/footer') %>

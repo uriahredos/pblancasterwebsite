@@ -11,7 +11,7 @@
       <div class="event-text">
         <strong><%= e.title %></strong>
         <span class="meta"><%= e.weekday %>, <%= e.month %> <%= e.day %><%= e.time ? ' at ' + e.time : '' %><%= e.location ? ' · ' + e.location : '' %></span>
-        <span class="meta"><%= e.when %><%= e.when ? ' · ' : '' %><%= e.market ? e.market + ' market' : e.branch ? e.branch + ' office' : 'Whole company' %> · posted by <%= e.by_name %></span>
+        <span class="meta"><%= e.when %><%= e.when ? ' · ' : '' %><%= e.market ? e.market + ' market' : e.branch ? e.branch + ' branch' : 'Whole company' %> · posted by <%= e.by_name %></span>
       </div>
     </div>
     <% if (e.details) { %><p class="pre"><%= e.details %></p><% } %>

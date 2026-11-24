@@ -58,7 +58,12 @@ CREATE INDEX IF NOT EXISTS lead_notes_lead ON lead_notes(lead_id, id);
 
 const STAGES = [['new', 'New'], ['contacted', 'Contacted'], ['quoted', 'Quote sent'], ['won', 'Won'], ['lost', 'Lost']];
 const OPEN = ['new', 'contacted', 'quoted'];
-const SOURCES = ['Referral', 'Existing customer', 'Cold call', 'Walk-in or phone-in', 'Website', 'Another office', 'Other'];
+// Once: leads passed on before the site said "branch" carry the same source as the ones passed on since.
+if (!db.prepare("SELECT 1 FROM meta WHERE key = 'lead_source_branch_1'").get()) {
+  db.prepare("UPDATE leads SET source = 'Another branch' WHERE source = 'Another office'").run();
+  db.prepare("INSERT INTO meta (key, value) VALUES ('lead_source_branch_1', '1')").run();
+}
+const SOURCES = ['Referral', 'Existing customer', 'Cold call', 'Walk-in or phone-in', 'Website', 'Another branch', 'Other'];
 const stageName = (key) => (STAGES.find((s) => s[0] === key) || STAGES[0])[1];
 
 const STALE_DAYS = 14;        // an open lead nobody has touched for this long is flagged to its owner

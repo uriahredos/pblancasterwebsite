@@ -156,7 +156,7 @@ router.get('/', requireLogin, (req, res) => {
   const office = at.office ? db.prepare('SELECT id, name FROM branches WHERE id = ?').get(at.office) : null;
   const inOffice = at.corporate ? db.prepare('SELECT COUNT(*) AS n FROM users WHERE active = 1 OR in_directory = 1').get().n
     : db.prepare('SELECT COUNT(*) AS n FROM users WHERE branch_id = ? AND (active = 1 OR in_directory = 1)').get(at.office).n;
-  branch.push({ label: 'People', value: inOffice, sub: at.corporate ? 'across every office' : office ? `in the ${office.name} office` : 'in your office', level: '', url: office ? `/branches/${office.id}` : '/people' });
+  branch.push({ label: 'People', value: inOffice, sub: at.corporate ? 'across every branch' : office ? `in the ${office.name} branch` : 'in your branch', level: '', url: office ? `/branches/${office.id}` : '/people' });
   const unread = res.locals.badges.notices;
   branch.push({ label: 'Announcements', value: unread, sub: unread ? 'for you to read' : 'all read', level: unread ? 'warn' : '', url: '/notices' });
   const homeWeek = social.thisWeek(req.user, today);   // worked out once, used here and for the panel further down
@@ -206,7 +206,7 @@ router.get('/', requireLogin, (req, res) => {
     shouts: homeShouts, thisWeek: homeWeek, wallPhotos: social.recentPhotos(me, 4),
     dailyCard: require('../daily').card(me), welcomes: require('./community').recentWelcomes(me),
     profileEmpty: !welcome && !req.user.photo_path && !req.user.about && !req.user.skills, welcome,
-    title: 'Home', wide: true, hasPasskey: hasPasskey || Boolean(welcome), branch, branchTitle: 'Office at a glance', officeId: office ? office.id : null, critical, notices, board, replies, talk, myCerts, issue: issues[0] || null, issueIsNew, upcoming, mine, dateLine,
+    title: 'Home', wide: true, hasPasskey: hasPasskey || Boolean(welcome), branch, branchTitle: 'Branch at a glance', officeId: office ? office.id : null, critical, notices, board, replies, talk, myCerts, issue: issues[0] || null, issueIsNew, upcoming, mine, dateLine,
     categories: require('./announcements').CATEGORIES,
   });
 });

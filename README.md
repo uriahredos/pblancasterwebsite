@@ -337,6 +337,8 @@ The company's own feed, in the bar beside Tasks. Everyone in every office sees e
 - After an update, posting is given once to every profile that can send parts forms, and moderating to profiles that manage people.
 - Photos live in `/data/uploads` with the others.
 
+> **Wording.** Every screen, message and guide says **branch**. This document and the code say "office" and "branch" for the same thing; table and route names (`branches`, `/branches`) are unchanged.
+
 ## Office, market, company (`app/reach.js`)
 
 Every post that belongs somewhere has a reach: **one office**, **a market** (a group of offices) or **the whole company**.

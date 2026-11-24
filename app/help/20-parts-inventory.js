@@ -232,7 +232,7 @@ module.exports = [
     group: GROUP,
     perms: ['inventory.manage', 'parts.view', 'stock.manage'],
     pages: ['/admin/inventory'],
-    intro: 'The Inventory page shows where your office\'s parts are: the main warehouse, each technician\'s vehicle, and any other place you have added.',
+    intro: 'The Inventory page shows where your branch\'s parts are: the main warehouse, each technician\'s vehicle, and any other place you have added.',
     where: 'Main menu: Parts, then Inventory.',
     steps: [
       'Open **Parts** in the main menu and choose **Inventory**.',
@@ -318,7 +318,7 @@ module.exports = [
       'Choose **entry** on a row to open the parts log entry that caused the movement.',
     ],
     tips: [
-      'The list shows the latest 60 movements for that place. There is no single page that lists every movement in the office.',
+      'The list shows the latest 60 movements for that place. There is no single page that lists every movement in the branch.',
       'A **To check** tag on a row means the place did not have that many on record when they were taken.',
       'For one warehouse part, the **Warehouse stock and minimums** tab, then **Update**, shows what has happened to it under **Since the last count**.',
     ],
@@ -379,11 +379,11 @@ module.exports = [
 
   {
     slug: 'inventory-export',
-    title: 'Export the office\'s inventory as a spreadsheet',
+    title: 'Export the branch\'s inventory as a spreadsheet',
     group: GROUP,
     perms: ['inventory.export'],
     pages: [],
-    intro: 'You can save what the office holds right now as a spreadsheet file: every place, the totals for each part, or one vehicle by itself.',
+    intro: 'You can save what the branch holds right now as a spreadsheet file: every place, the totals for each part, or one vehicle by itself.',
     where: 'Main menu: Parts, then Inventory. The export buttons are at the top.',
     steps: [
       'Open **Parts** in the main menu and choose **Inventory**.',
@@ -396,7 +396,7 @@ module.exports = [
     tips: [
       'Each file is a CSV file with today\'s date in its name. It holds the part number, description, how many are on hand, the cost each and the value.',
       'The **Value** column is empty for any part with no cost in the catalog.',
-      'The exports cover the office you are looking at. **Export every office** appears only for people who can see all offices.',
+      'The exports cover the branch you are looking at. **Export every branch** appears only for people who can see all branches.',
       'A closed count\'s export shows the figures as they stood when it was closed, not as they are today.',
     ],
     related: ['inventory-overview', 'inventory-count-start-close'],

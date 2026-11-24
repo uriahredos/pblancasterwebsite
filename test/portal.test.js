@@ -1278,7 +1278,7 @@ test('activity log records admin-side changes and never anything about complaint
   assert.deepEqual(log.map((r) => r.action), ['Person added', 'Person edited', 'Password reset', 'Account disabled', 'Profile changed', 'Stock count']);
   assert.ok(log.every((r) => r.username === 'owner'));
   assert.match(log[1].detail, /name Log Me → Logan Me, profile → Warehouse/);
-  assert.match(log[4].detail, /now runs their own team \(was their office\); added: parts\.view; removed: training\.view/);
+  assert.match(log[4].detail, /now runs their own team \(was their branch\); added: parts\.view; removed: training\.view/);
   assert.ok(!/complaint|secrecy/i.test(JSON.stringify(log)));
   assert.ok(!JSON.stringify(log).includes('correct horse')); // never a password
 
@@ -2042,7 +2042,7 @@ test('newsletters: uploaded by people allowed to, shown on the home page, readab
 });
 
 test('newsletter permission is given once to profiles that manage people, and is its own tick-box', async () => {
-  const pid = access.createProfile('Office', 'all', [...access.SUBMIT, 'users.manage']);
+  const pid = access.createProfile('Branch', 'all', [...access.SUBMIT, 'users.manage']);
   db.prepare("DELETE FROM meta WHERE key = 'perm_granted:newsletters.manage'").run();
   access.migrate();
   assert.ok(access.permsOf(pid).has('newsletters.manage'));
@@ -2096,7 +2096,7 @@ test('home dashboard: announcements with labels and pins, coming up, and my stat
   // My status counts this person's own open requests.
   const open = () => db.prepare("SELECT COUNT(*) n FROM parts_submissions WHERE user_id = ? AND action = 'request' AND cancelled_at IS NULL AND status IN ('new','ordered')").get(userId('tech2')).n;
   const before = open();
-  assert.match(home, before ? new RegExp(`<span class="mini-num">${before}</span><span class="mini-label">My parts requests<`) : /Office at a glance/);
+  assert.match(home, before ? new RegExp(`<span class="mini-num">${before}</span><span class="mini-label">My parts requests<`) : /Branch at a glance/);
   await t2.post('/parts', [['action', 'request'], ['part_name', 'SIGA-PS'], ['quantity', '2'], ['source', 'van'], ['needed_by', '2027-03-01']], { page: '/parts', multipart: true });
   assert.equal(open(), before + 1);
   assert.match((await t2.get('/')).text, new RegExp(`<span class="mini-num">${before + 1}</span><span class="mini-label">My parts requests</span><span class="mini-sub">open request`));
@@ -2708,7 +2708,7 @@ test('phone bottom bar: Home, Social, Parts, Tasks and More; alerts are the bell
   db.prepare('DELETE FROM tasks').run();
 });
 
-test('home page: announcements, newsletter and shout-outs first; office at a glance fits the person looking', async () => {
+test('home page: announcements, newsletter and shout-outs first; branch at a glance fits the person looking', async () => {
   const flat = async (c) => (await c.get('/')).text.replace(/\s+/g, ' ');
   const order = (html, ...marks) => marks.map((m) => html.indexOf(m));
   const rising = (list) => list.every((n, i) => n >= 0 && (i === 0 || n > list[i - 1]));
@@ -2730,9 +2730,9 @@ test('home page: announcements, newsletter and shout-outs first; office at a gla
   assert.deepEqual(order(home, 'class="dash-hello', 'class="panel p-board"', 'p-shouts"', 'class="panel p-around"', 'class="panel p-tasks"', 'class="panel branch-panel', 'id="act-h"').map((n, i, l) => n >= 0 && (i === 0 || n > l[i - 1])), [true, true, true, true, true, true, true]);
   // Office at a glance for someone who runs nothing: facts about the office, and none of the parts, stock or truck numbers.
   const tGlance = /<section class="panel branch-panel[\s\S]*?<\/section>/.exec(home)[0];
-  assert.match(tGlance, /<span class="mini-num">\d+<\/span><span class="mini-label">People<\/span><span class="mini-sub">in the Lancaster office/);
+  assert.match(tGlance, /<span class="mini-num">\d+<\/span><span class="mini-label">People<\/span><span class="mini-sub">in the Lancaster branch/);
   assert.match(tGlance, /class="warn"><span class="mini-num">\d+<\/span><span class="mini-label">Announcements<\/span><span class="mini-sub">for you to read/);
-  assert.match(tGlance, /This week<\/span>/); assert.match(tGlance, /Coming up<\/span>/); assert.match(tGlance, /href="\/branches\/1">Office page/);
+  assert.match(tGlance, /This week<\/span>/); assert.match(tGlance, /Coming up<\/span>/); assert.match(tGlance, /href="\/branches\/1">Branch page/);
   assert.doesNotMatch(tGlance, /Parts requests|Low stock|Truck problems|Overdue tasks|Certifications|Audit/);
   assert.doesNotMatch(home, /href="\/admin\//);
 
@@ -2746,7 +2746,7 @@ test('home page: announcements, newsletter and shout-outs first; office at a gla
   db.prepare('UPDATE parts_submissions SET needed_by = ? WHERE id = ?').run(ymdFromNow(-3), reqId);
   const oh = await flat(owner);
   const branch = /<section class="panel branch-panel[\s\S]*?<\/section>/.exec(oh)[0];
-  assert.match(branch, /Office at a glance/);
+  assert.match(branch, /Branch at a glance/);
   assert.match(branch, /People<\/span>/);
   const tile = (html, label) => { const m = new RegExp(`<a href="([^"]+)" class="([a-z]*)"><span class="mini-num">(\\d+)</span><span class="mini-label">${label}</span><span class="mini-sub">([^<]*)`).exec(html); return m ? { url: m[1], level: m[2], n: Number(m[3]), sub: m[4] } : null; };
   for (const label of ['Parts requests', 'Overdue tasks', 'Audit']) assert.ok(tile(branch, label), label);
@@ -2771,7 +2771,7 @@ test('home page: announcements, newsletter and shout-outs first; office at a gla
   // A manager sees their own people only: Terry Tech's request counts, Uma Tech's does not.
   const mh = await flat(await loggedIn('mgr1'));
   const team = /<section class="panel branch-panel[\s\S]*?<\/section>/.exec(mh)[0];
-  assert.match(team, /Office at a glance/);
+  assert.match(team, /Branch at a glance/);
   const before = (tile(team, 'Parts requests') || { n: 0 }).n;
   const t1 = await loggedIn('tech1');
   await t1.post('/parts', [['action', 'request'], ['part_name', 'HOME-TEAM'], ['quantity', '1'], ['source', 'van'], ['needed_by', '2031-09-01']], { multipart: true });
@@ -3049,7 +3049,7 @@ test('profiles: people fill in their own, others find them by name, job or skill
   assert.equal(row.skills, 'Viking, backflow, fire pumps');                              // tidied, repeats dropped
   assert.match(row.photo_path, /^[0-9a-f]{32}\.png$/);
   const page = (await quinn.get(`/people/${pid}`)).text;
-  assert.match(page, /Sprinkler Fitter · <a href="\/branches\/\d+">Lancaster office<\/a>/); assert.match(page, /\d+ years with us · started 2\/3\/2020/);
+  assert.match(page, /Sprinkler Fitter · <a href="\/branches\/\d+">Lancaster branch<\/a>/); assert.match(page, /\d+ years with us · started 2\/3\/2020/);
   assert.match(page, /From Lititz\.\n&lt;b&gt;Likes&lt;\/b&gt; fishing\./);                 // typed text is shown as text, never run as code
   assert.match(page, /<a class="skill" href="\/people\?q=backflow">backflow<\/a>/);
   assert.match(page, new RegExp(`src="/people/photo/${pid}\\?v=`));
@@ -3104,7 +3104,7 @@ test('new hires: announced on everyone\'s home page for two weeks, and people sa
 
   const home = (await t1.get('/')).text.replace(/\s+/g, ' ');
   const panel = /<section class="panel p-around"[\s\S]*?<\/section>/.exec(home)[0];
-  assert.match(panel, /<li class="feed-hire in-banner" id="welcome">[\s\S]*Nora Newhire joined the Lancaster office<\/strong>/); assert.match(panel, /Nora is joining the alarm team\./);
+  assert.match(panel, /<li class="feed-hire in-banner" id="welcome">[\s\S]*Nora Newhire joined the Lancaster branch<\/strong>/); assert.match(panel, /Nora is joining the alarm team\./);
   assert.match(panel, /Be the first to say welcome/); assert.match(panel, /Say welcome<\/button>/);
 
   // A wave from the home page, then a message from her profile. One note per person: the message updates it.
@@ -3255,7 +3255,7 @@ test('branches: each branch sees only its own parts, stock, trucks, tasks, train
   assert.equal((await tech1.post('/admin/branches', { name: 'Sneaky' }, { page: '/' })).status, 403);
   await owner.post('/admin/branches', { name: 'Harrisburg Branch' }, { page: '/admin/branches' });
   const hbg = db.prepare("SELECT id FROM branches WHERE name = 'Harrisburg'").get().id;
-  assert.match((await owner.post('/admin/branches', { name: 'harrisburg' }, { page: '/admin/branches' })).text, /already an office with that name/);
+  assert.match((await owner.post('/admin/branches', { name: 'harrisburg' }, { page: '/admin/branches' })).text, /already a branch with that name/);
   assert.equal(db.prepare('SELECT COUNT(*) n FROM inspection_items WHERE branch_id = ? AND active = 1').get(hbg).n, db.prepare('SELECT COUNT(*) n FROM inspection_items WHERE branch_id = ? AND active = 1').get(lanc).n);
 
   // The branch box: looking at Harrisburg, a new person joins Harrisburg.
@@ -3274,8 +3274,8 @@ test('branches: each branch sees only its own parts, stock, trucks, tasks, train
   await owner.post('/branch/view', { branch: String(lanc) }, { page: '/' });
 
   const hadmin = await loggedIn('hbg.admin'); const htech = await loggedIn('hbg.tech');
-  assert.match((await htech.get('/')).text, /<span class="branch">Harrisburg Office<\/span>/);
-  assert.match((await tech1.get('/')).text, /<span class="branch">Lancaster Office<\/span>/);
+  assert.match((await htech.get('/')).text, /<span class="branch">Harrisburg Branch<\/span>/);
+  assert.match((await tech1.get('/')).text, /<span class="branch">Lancaster Branch<\/span>/);
 
   // --- Lancaster does some work ---
   await tech1.post('/parts', [['action', 'request'], ['part_name', 'LANC-ONLY-PART'], ['quantity', '2'], ['source', 'van'], ['needed_by', '2031-01-01']], { multipart: true });
@@ -3335,7 +3335,7 @@ test('branches: each branch sees only its own parts, stock, trucks, tasks, train
   await htech.post('/parts', [['action', 'take'], ['part_name', 'BR-STOCK'], ['quantity', '2'], ['source', 'van']], { multipart: true });
   assert.deepEqual([on(lanc), on(hbg)], [10, 1]);
   assert.match((await hadmin.get('/admin/stock')).text, /BR-STOCK/);
-  assert.match((await hadmin.get('/')).text.replace(/\s+/g, ' '), /Office at a glance/);
+  assert.match((await hadmin.get('/')).text.replace(/\s+/g, ' '), /Branch at a glance/);
 
   // The checklist is each branch's own.
   await hadmin.post('/admin/inspections/checklist', { label: 'HBG-ONLY check' }, { page: '/admin/inspections/checklist' });
@@ -3355,7 +3355,7 @@ test('branches: each branch sees only its own parts, stock, trucks, tasks, train
   await owner.post('/branch/view', { branch: 'all' }, { page: '/' });
   const both = (await owner.get('/admin/complaints')).text;
   assert.match(both, /HBG-ONLY complaint/); assert.match(both, /LANC-ONLY complaint/);
-  assert.match((await owner.get('/')).text, /Office at a glance/);
+  assert.match((await owner.get('/')).text, /Branch at a glance/);
   assert.match((await owner.get('/admin/users')).text, /Holly Harrisburg\s*<\/td>\s*<td>Harrisburg<\/td>/);
   await owner.post('/branch/view', { branch: String(lanc) }, { page: '/' });
 
@@ -3495,7 +3495,7 @@ test('events: posted by those allowed, everyone signs up, potlucks collect what 
   // An event for the market reaches every office in it, and only those.
   const evMarket = db.prepare("INSERT INTO markets (name, created_at) VALUES ('Event Valley', ?)").run(new Date().toISOString()).lastInsertRowid;
   db.prepare('UPDATE branches SET market_id = ? WHERE id IN (1, ?)').run(evMarket, other);
-  assert.match((await owner.get('/events')).text, /<select name="reach"><option value="office" >Lancaster office only<\/option><option value="market" >The Event Valley market<\/option><option value="company" >The whole company<\/option>/);
+  assert.match((await owner.get('/events')).text, /<select name="reach"><option value="office" >Lancaster branch only<\/option><option value="market" >The Event Valley market<\/option><option value="company" >The whole company<\/option>/);
   await owner.post('/events', { title: 'Market mixer', event_date: ymdFromNow(12), reach: 'market' }, { page: '/events' });
   const mixer = db.prepare("SELECT * FROM events WHERE title = 'Market mixer'").get();
   assert.equal(mixer.market_id, evMarket); assert.equal(mixer.branch_id, 1);
@@ -3565,7 +3565,7 @@ test('photo wall and branch pages: photos posted and liked, a branch page with i
   const list = await t1.get('/branches');                                               // one branch goes straight to it; several are listed
   assert.ok(list.location === '/branches/1' || /href="\/branches\/1"/.test(list.text));
   let page = (await t1.get('/branches/1')).text.replace(/\s+/g, ' ');
-  assert.match(page, /Lancaster office<\/h1>/); assert.match(page, /Terry Tech<\/strong><span class="meta">Lead Tech/);
+  assert.match(page, /Lancaster branch<\/h1>/); assert.match(page, /Terry Tech<\/strong><span class="meta">Lead Tech/);
   assert.match(page, /Branch page shout-out/); assert.match(page, /\/wall\/photo\//); assert.doesNotMatch(page, /Edit this page/);
   assert.equal((await t1.post('/branches/1', [['about', 'hacked']], { multipart: true, page: '/branches/1' })).status, 403);
   assert.match((await owner.post('/branches/1', [['phone', 'nope']], { multipart: true, page: '/branches/1?edit=1' })).text, /phone number does not look right/);
@@ -3573,7 +3573,7 @@ test('photo wall and branch pages: photos posted and liked, a branch page with i
   page = (await t1.get('/branches/1')).text;
   assert.match(page, /1 Main St, Lancaster/); assert.match(page, /href="tel:7175550199"/); assert.match(page, /Serving the &lt;county&gt;\./); assert.match(page, /class="branch-hero" src="\/branches\/photo\/1\?v=/);
   assert.equal((await t1.get('/branches/photo/1')).headers.get('content-type'), 'image/png');
-  assert.match((await t1.get(`/people/${userId('tech1')}`)).text, /<a href="\/branches\/1">Lancaster office<\/a>/);
+  assert.match((await t1.get(`/people/${userId('tech1')}`)).text, /<a href="\/branches\/1">Lancaster branch<\/a>/);
   assert.equal((await t1.get('/branches/999')).status, 404);
 
   // The owner removes someone else's post (moderator). Its pictures' files go too.
@@ -3588,25 +3588,25 @@ test('photo wall and branch pages: photos posted and liked, a branch page with i
   db.prepare('UPDATE branches SET address = NULL, phone = NULL, about = NULL, photo_path = NULL WHERE id = 1').run();
 });
 
-test('corporate: corporate admins appoint an admin for each office; office admins stay inside their own office', async () => {
+test('corporate: corporate admins appoint an admin for each branch; branch admins stay inside their own branch', async () => {
   const owner = await loggedIn('owner');                                      // sees every office
   const tech1 = await loggedIn('tech1');
   assert.equal((await tech1.get('/admin/branches')).status, 403);
   assert.ok(profileId('Corporate admin'));
   assert.ok(access.permsOf(profileId('Corporate admin')).has('branches.all'));
 
-  await owner.post('/admin/branches', { name: 'Ephrata office' }, { page: '/admin/branches' });
+  await owner.post('/admin/branches', { name: 'Ephrata branch' }, { page: '/admin/branches' });
   const eph = db.prepare("SELECT id FROM branches WHERE name = 'Ephrata'").get().id;      // "office" is not doubled up
   let page = (await owner.get(`/admin/branches?office=${eph}`)).text.replace(/\s+/g, ' ');   // a new, empty office is opened from the list of other offices
   assert.match((await owner.get('/admin/branches')).text, new RegExp(`href="/admin/branches\\?office=${eph}#o${eph}"`));
-  assert.match(page, /<h1>Corporate<\/h1>/); assert.match(page, /Ephrata office<\/strong>[\s\S]*This office has no admin of its own yet/);
+  assert.match(page, /<h1>Corporate<\/h1>/); assert.match(page, /Ephrata branch<\/strong>[\s\S]*This branch has no admin of its own yet/);
 
   // An office's admin is always someone already on the site in that office: here Ed, listed in Ephrata with his sign-in off.
   // (In these checks the profile called Admin can see every office, so an office's admin gets a profile that cannot.)
-  const adminProfile = access.ensureProfile('Office admin', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'market.all'));
+  const adminProfile = access.ensureProfile('Branch admin', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'market.all'));
   const noNew = await owner.post(`/admin/branches/${eph}/admins`, { profile_id: String(adminProfile), display_name: 'Nell New', username: 'nell.new' }, { page: '/admin/branches' });
-  assert.match(noNew.text, /Choose someone from that office/); assert.equal(db.prepare("SELECT COUNT(*) n FROM users WHERE username = 'nell.new'").get().n, 0);   // no account is made here any more
-  assert.match(noNew.text.replace(/\s+/g, ' '), /Nobody is listed in the Ephrata office yet\. Add its people first/);
+  assert.match(noNew.text, /Choose someone from that branch/); assert.equal(db.prepare("SELECT COUNT(*) n FROM users WHERE username = 'nell.new'").get().n, 0);   // no account is made here any more
+  assert.match(noNew.text.replace(/\s+/g, ' '), /Nobody is listed in the Ephrata branch yet\. Add its people first/);
   const edId = auth.createUser({ username: 'ed.ephrata', displayName: 'Ed Ephrata', email: 'ed@example.com', password: 'not used until appointed', profile: profileId('Technician'), branchId: eph });
   db.prepare('UPDATE users SET active = 0, in_directory = 1 WHERE id = ?').run(edId);
   const pick = (await owner.get(`/admin/branches?office=${eph}`)).text.replace(/\s+/g, ' ');
@@ -3617,16 +3617,16 @@ test('corporate: corporate admins appoint an admin for each office; office admin
   const ed = db.prepare("SELECT * FROM users WHERE username = 'ed.ephrata'").get();
   assert.deepEqual([ed.branch_id, ed.profile_id, ed.must_change_password, ed.active], [eph, adminProfile, 1, 1]);   // his sign-in is switched on with a temporary password
   page = (await owner.get('/admin/branches')).text.replace(/\s+/g, ' ');
-  const temp = /<strong>Ed Ephrata<\/strong> is now an admin for the Ephrata office[\s\S]*?<p class="code">([a-z0-9-]+)<\/p>/.exec(page)[1];
+  const temp = /<strong>Ed Ephrata<\/strong> is now an admin for the Ephrata branch[\s\S]*?<p class="code">([a-z0-9-]+)<\/p>/.exec(page)[1];
   assert.doesNotMatch((await owner.get('/admin/branches')).text, new RegExp(temp));                // once only
-  assert.match(page, /Ed Ephrata<\/strong><span class="meta">Office admin · has not signed in yet/);
+  assert.match(page, /Ed Ephrata<\/strong><span class="meta">Branch admin · has not signed in yet/);
 
   // Ed signs in, chooses a password, and runs Ephrata: adds his own people, sees nothing of Lancaster, has no Corporate menu.
   const edc = new Client();
   await edc.login('ed.ephrata', temp);
   await edc.post('/account/password', { current: temp, password: 'orchard admin password', confirm: 'orchard admin password' });
   const home = (await edc.get('/')).text;
-  assert.match(home, /<span class="branch">Ephrata Office<\/span>/); assert.doesNotMatch(home, /Corporate<|\/admin\/branches|\/admin\/profiles|data-office-pick/);
+  assert.match(home, /<span class="branch">Ephrata Branch<\/span>/); assert.doesNotMatch(home, /Corporate<|\/admin\/branches|\/admin\/profiles|data-office-pick/);
   await edc.post('/admin/users', { username: 'eph.tech', display_name: 'Tess Ephrata', profile_id: String(profileId('Technician')) }, { page: '/admin/users' });
   assert.equal(db.prepare("SELECT branch_id FROM users WHERE username = 'eph.tech'").get().branch_id, eph);
   const edUsers = (await edc.get('/admin/users')).text;
@@ -3639,14 +3639,14 @@ test('corporate: corporate admins appoint an admin for each office; office admin
   // Someone already in the office can be appointed, and stood down again.
   await owner.post(`/admin/branches/${eph}/admins`, { profile_id: String(adminProfile), user_id: String(userId('eph.tech')) }, { page: '/admin/branches' });
   assert.equal(db.prepare("SELECT profile_id FROM users WHERE username = 'eph.tech'").get().profile_id, adminProfile);
-  assert.match((await owner.post(`/admin/branches/${eph}/admins`, { profile_id: String(adminProfile), user_id: String(userId('tech1')) }, { page: '/admin/branches' })).text, /Choose someone from that office/);   // Lancaster's Terry cannot be Ephrata's admin
+  assert.match((await owner.post(`/admin/branches/${eph}/admins`, { profile_id: String(adminProfile), user_id: String(userId('tech1')) }, { page: '/admin/branches' })).text, /Choose someone from that branch/);   // Lancaster's Terry cannot be Ephrata's admin
   await owner.post(`/admin/branches/${eph}/admins/${userId('eph.tech')}/remove`, {}, { page: '/admin/branches' });
   assert.equal(db.prepare("SELECT profile_id FROM users WHERE username = 'eph.tech'").get().profile_id, profileId('Technician'));
 
   // Corporate admins: appointed from existing people; they then see every office. Standing down ends it at once.
   await owner.post('/admin/corporate/admins', { user_id: String(ed.id), profile_id: String(profileId('Corporate admin')) }, { page: '/admin/branches' });
   page = (await owner.get('/admin/branches')).text.replace(/\s+/g, ' ');
-  assert.match(page, /Corporate admins and managers<\/h2>[\s\S]*Ed Ephrata<\/strong><span class="meta">Corporate admin · Ephrata office/);
+  assert.match(page, /Corporate admins and managers<\/h2>[\s\S]*Ed Ephrata<\/strong><span class="meta">Corporate admin · Ephrata branch/);
   assert.equal((await edc.get('/admin/branches')).status, 200);
   assert.match((await edc.get('/')).text, /data-office-pick/);
   await edc.post('/branch/view', { branch: 'all' }, { page: '/' });
@@ -3656,12 +3656,12 @@ test('corporate: corporate admins appoint an admin for each office; office admin
   await owner.post(`/admin/corporate/admins/${ed.id}/remove`, {}, { page: '/admin/branches' });
   assert.notEqual(db.prepare('SELECT profile_id FROM users WHERE id = ?').get(ed.id).profile_id, profileId('Corporate admin'));
   assert.equal((await edc.get('/admin/branches')).status, 302);                                    // signed out, and an office admin again when he returns
-  assert.match(db.prepare("SELECT GROUP_CONCAT(action, '|') a FROM activity_log WHERE action LIKE '%admin%'").get().a, /Office admin appointed[\s\S]*Corporate admin appointed[\s\S]*Corporate admin stood down/);
+  assert.match(db.prepare("SELECT GROUP_CONCAT(action, '|') a FROM activity_log WHERE action LIKE '%admin%'").get().a, /Branch admin appointed[\s\S]*Corporate admin appointed[\s\S]*Corporate admin stood down/);
 
   db.prepare('UPDATE users SET active = 0, in_directory = 0 WHERE branch_id = ?').run(eph);
 });
 
-test('company: the office list loads once, offices say what they do, and anyone can find an office by service, state or region', async () => {
+test('company: the branch list loads once, branches say what they do, and anyone can find a branch by service, state or region', async () => {
   const officeList = require('../app/offices');
   const list = officeList.all();
   assert.equal(list.length, 233);                                             // the internal "Project" lines are not offices
@@ -3677,11 +3677,11 @@ test('company: the office list loads once, offices say what they do, and anyone 
 
   const owner = await loggedIn('owner'); const t1 = await loggedIn('tech1');
   // Before anything is loaded the page says so rather than showing an empty company.
-  assert.match((await t1.get('/company')).text, /office list has not been loaded yet/);
+  assert.match((await t1.get('/company')).text, /branch list has not been loaded yet/);
   assert.equal((await t1.post('/admin/company/offices', {}, { page: '/' })).status, 403);
   const before = db.prepare('SELECT COUNT(*) n FROM branches').get().n;
   const corp = (await owner.get('/admin/branches')).text;
-  assert.match(corp, /233 of the company's 233 offices are not on the site yet/); assert.match(corp, /"Lancaster" is already here\. Which office on the company list is it\?/);
+  assert.match(corp, /233 of the company's 233 branches are not on the site yet/); assert.match(corp, /"Lancaster" is already here\. Which branch on the company list is it\?/);
   assert.match(corp, /<option value="2054" selected>2054 · Ephrata, PA · Oregon Pike \(known as Lancaster\)/);   // offered as the office that goes by its name
   // Lancaster is the office the list calls Ephrata: it is matched, not added again, and keeps its name and people.
   await owner.post('/admin/company/offices', { is_1: '2054' }, { page: '/admin/branches' });
@@ -3690,7 +3690,7 @@ test('company: the office list loads once, offices say what they do, and anyone 
   assert.equal(db.prepare("SELECT COUNT(*) n FROM branches WHERE name = 'Ephrata' AND number = '2054'").get().n, 0);
   await owner.post('/admin/company/offices', {}, { page: '/admin/branches' });                              // loading again adds nothing
   assert.equal(db.prepare('SELECT COUNT(*) n FROM branches').get().n, before + 232);
-  assert.match((await owner.get('/admin/branches')).text, /All 233 offices on the company list are on the site/);
+  assert.match((await owner.get('/admin/branches')).text, /All 233 branches on the company list are on the site/);
   const boise = db.prepare("SELECT id FROM branches WHERE number = '2104'").get().id;
   assert.deepEqual(db.prepare('SELECT s.code FROM branch_services bs JOIN services s ON s.id = bs.service_id WHERE bs.branch_id = ? ORDER BY s.sort').all(boise), [{ code: 'FA' }, { code: 'SEC' }]);
   assert.deepEqual(db.prepare('SELECT address, phone, market, marketing_name FROM branches WHERE id = 1').get(), { address: '4139 Oregon Pike, Ste 301, Ephrata, PA 17522', phone: '717-399-3900', market: 'NJ/PA/DE', marketing_name: 'Lancaster' });
@@ -3706,7 +3706,7 @@ test('company: the office list loads once, offices say what they do, and anyone 
   assert.equal((await t1.post('/branches/1', [['services_form', '1'], ['services', String(svc('MN'))]], { multipart: true, page: '/branches/1' })).status, 403);
   await owner.post('/branches/1', [['services_form', '1'], ['services', String(svc('FA'))], ['services', String(svc('FE'))], ['services', '999999'], ['address', '1 Oregon Pike'], ['phone', '717-399-3900']], { multipart: true, page: '/branches/1?edit=1' });
   const office = (await t1.get('/branches/1')).text.replace(/\s+/g, ' ');
-  assert.match(office, /What this office does<\/strong>[\s\S]*Fire Alarms &amp; Detection <span class="meta">FA<\/span>[\s\S]*Fire Extinguishers/); assert.match(office, /<span class="office-no">2054<\/span>/); assert.match(office, /<dt>Office<\/dt><dd><span class="office-no">2054<\/span> Ephrata, Pennsylvania<\/dd>/); assert.match(office, /<dt>Market<\/dt><dd>NJ\/PA\/DE<\/dd> <dt>Region<\/dt><dd>Northeast<\/dd>/); assert.match(office, /class="btn primary" href="tel:\d+">Call<\/a>/); assert.match(office, />Map<\/a>/);
+  assert.match(office, /What this branch does<\/strong>[\s\S]*Fire Alarms &amp; Detection <span class="meta">FA<\/span>[\s\S]*Fire Extinguishers/); assert.match(office, /<span class="office-no">2054<\/span>/); assert.match(office, /<dt>Branch<\/dt><dd><span class="office-no">2054<\/span> Ephrata, Pennsylvania<\/dd>/); assert.match(office, /<dt>Market<\/dt><dd>NJ\/PA\/DE<\/dd> <dt>Region<\/dt><dd>Northeast<\/dd>/); assert.match(office, /class="btn primary" href="tel:\d+">Call<\/a>/); assert.match(office, />Map<\/a>/);
   assert.match(office, /<dt>Address<\/dt><dd>1 Oregon Pike<\/dd> <dt>Phone<\/dt><dd><a href="tel:7173993900">717-399-3900<\/a><\/dd>/); assert.match(office, /href="https:\/\/www\.google\.com\/maps\/search\/\?api=1&amp;query=1%20Oregon%20Pike"[^>]*>Map<\/a>/);
   await owner.post('/branches/1', [['address', '1 Oregon Pike'], ['phone', '717-399-3900']], { multipart: true, page: '/branches/1?edit=1' });   // saving without the service boxes leaves them alone
   assert.equal(db.prepare('SELECT COUNT(*) n FROM branch_services WHERE branch_id = 1').get().n, 2);
@@ -3728,11 +3728,11 @@ test('company: the office list loads once, offices say what they do, and anyone 
   assert.equal((await t1.post('/admin/company/services', { code: 'X', name: 'Nope' }, { page: '/' })).status, 403);
   await owner.post('/admin/company/services', { code: 'gen', name: 'Generators' }, { page: '/admin/branches' });
   assert.ok(svc('GEN'));
-  assert.match((await t1.get(`/branches?service=${svc('GEN')}`)).text, /No office has listed Generators yet/);
+  assert.match((await t1.get(`/branches?service=${svc('GEN')}`)).text, /No branch has listed Generators yet/);
   const csv = 'Branch,Services,Phone,About\r\n2102,"FE; Generators",(610) 555-0100,Serves the Lehigh Valley\r\n2085,Unicorns,,\r\n9999,FA,,\r\n';
   await owner.post('/admin/company/details', [['file', new File([csv], 'offices.csv', { type: 'text/csv' })]], { multipart: true, page: '/admin/branches' });
   const note = (await owner.get('/admin/branches')).text;
-  assert.match(note, /2 offices updated\. Not recognised as services[^<]*Unicorns[^<]*No office with number: 9999/);
+  assert.match(note, /2 branches updated\. Not recognised as services[^<]*Unicorns[^<]*No branch with number: 9999/);
   assert.deepEqual(await names(`?service=${svc('GEN')}`), ['Allentown']);
   assert.deepEqual(db.prepare("SELECT phone, about FROM branches WHERE number = '2102'").get(), { phone: '(610) 555-0100', about: 'Serves the Lehigh Valley' });
   await owner.post(`/admin/company/services/${svc('GEN')}`, { remove: '1' }, { page: '/admin/branches' });
@@ -3755,10 +3755,10 @@ test('company: the office list loads once, offices say what they do, and anyone 
   assert.match((await t1.get('/contacts?q=fleet')).text, /Marv/); assert.doesNotMatch((await t1.get('/contacts?q=fleet')).text, /askhr@example/);
   // The main page pulls it together: numbers, services with how many offices, regions with their leaders.
   const main = (await t1.get('/company')).text.replace(/\s+/g, ' ');
-  assert.match(main, /<span class="mini-num">\d{3}<\/span><span class="mini-label">Offices<\/span><span class="mini-sub">in 46 states/);
-  assert.match(main, /My office<\/span><span class="mini-sub">Lancaster · Northeast/);
-  assert.match(main, new RegExp(`href="/branches\\?service=${svc('FE')}"><span class="office-no">FE</span><span class="svc-name">Fire Extinguishers</span><span class="meta">\\d+ offices`));
-  assert.match(main, /Northeast<\/strong><time>\d+ offices<\/time>[\s\S]*?Regional Vice President<\/span><br><strong>Robin Vale<\/strong>[\s\S]*?1 regional director[\s\S]*?Sam Carter<\/strong> <span class="meta">NJ \| PA \| DE/);
+  assert.match(main, /<span class="mini-num">\d{3}<\/span><span class="mini-label">Branches<\/span><span class="mini-sub">in 46 states/);
+  assert.match(main, /My branch<\/span><span class="mini-sub">Lancaster · Northeast/);
+  assert.match(main, new RegExp(`href="/branches\\?service=${svc('FE')}"><span class="office-no">FE</span><span class="svc-name">Fire Extinguishers</span><span class="meta">\\d+ branches`));
+  assert.match(main, /Northeast<\/strong><time>\d+ branches<\/time>[\s\S]*?Regional Vice President<\/span><br><strong>Robin Vale<\/strong>[\s\S]*?1 regional director[\s\S]*?Sam Carter<\/strong> <span class="meta">NJ \| PA \| DE/);
   assert.match(main, /href="\/contacts#health-safety-fleet"/);
 
   // Put things back for anything that runs after.
@@ -3769,16 +3769,16 @@ test('company: the office list loads once, offices say what they do, and anyone 
   db.prepare("DELETE FROM services WHERE code = 'GEN'").run();
 });
 
-test('your office name sits beside the logo on every page once you are signed in', async () => {
+test('your branch name sits beside the logo on every page once you are signed in', async () => {
   const t1 = await loggedIn('tech1');
   const label = async (url) => { const m = /<span class="branch">([^<]*)<\/span>/.exec((await t1.get(url)).text); return m ? m[1] : null; };
-  for (const url of ['/', '/parts', '/tasks', '/my', '/notices', '/training', '/inspection', '/alerts']) assert.equal(await label(url), 'Lancaster Office', url);
-  for (const url of ['/company', '/branches', '/branches/1', '/contacts', '/people', `/people/${userId('tech1')}`, '/profile', '/shoutouts', '/events', '/social', '/discussions', '/daily', '/newsletters']) assert.equal(await label(url), 'Lancaster Office', url);
-  assert.match((await t1.get('/company')).text, /<title>Company · Pye-Barker Lancaster Office<\/title>/);
-  assert.match((await t1.get('/parts')).text, /<title>Parts · Pye-Barker Lancaster Office<\/title>/);
+  for (const url of ['/', '/parts', '/tasks', '/my', '/notices', '/training', '/inspection', '/alerts']) assert.equal(await label(url), 'Lancaster Branch', url);
+  for (const url of ['/company', '/branches', '/branches/1', '/contacts', '/people', `/people/${userId('tech1')}`, '/profile', '/shoutouts', '/events', '/social', '/discussions', '/daily', '/newsletters']) assert.equal(await label(url), 'Lancaster Branch', url);
+  assert.match((await t1.get('/company')).text, /<title>Company · Pye-Barker Lancaster Branch<\/title>/);
+  assert.match((await t1.get('/parts')).text, /<title>Parts · Pye-Barker Lancaster Branch<\/title>/);
   const owner = await loggedIn('owner');
-  assert.match((await owner.get('/admin/branches')).text, /<span class="branch">Lancaster Office<\/span>/);
-  assert.match((await owner.get('/admin/users')).text, /<span class="branch">Lancaster Office<\/span>/);
+  assert.match((await owner.get('/admin/branches')).text, /<span class="branch">Lancaster Branch<\/span>/);
+  assert.match((await owner.get('/admin/users')).text, /<span class="branch">Lancaster Branch<\/span>/);
   assert.match((await new Client().get('/login')).text, /<span class="branch">Employee Portal<\/span>/);
 });
 
@@ -4026,7 +4026,7 @@ test('bell: a discussion with new replies is listed by name and opens at the new
 
 test('sales: leads seen only by sales, owned by one person, guarded against doubling up, and followed up', async () => {
   const mk = (username, name, profile, branch) => { const id = makeUser(username, name); db.prepare('UPDATE users SET profile_id = ?, branch_id = ? WHERE id = ?').run(profileId(profile), branch, id); return id; };
-  const other = db.prepare('SELECT id, name FROM branches WHERE id <> 1 ORDER BY id LIMIT 1').get() || { id: db.prepare("INSERT INTO branches (name, created_at) VALUES ('Sales Test Office', ?)").run(new Date().toISOString()).lastInsertRowid, name: 'Sales Test Office' };
+  const other = db.prepare('SELECT id, name FROM branches WHERE id <> 1 ORDER BY id LIMIT 1').get() || { id: db.prepare("INSERT INTO branches (name, created_at) VALUES ('Sales Test Office', ?)").run(new Date().toISOString()).lastInsertRowid, name: 'Sales Test Branch' };
   const sam = mk('sales1', 'Sam Seller', 'Sales', 1); mk('sales2', 'Sally Seller', 'Sales', 1); mk('salesmgr', 'Mona Salesmanager', 'Sales manager', 1); mk('sales3', 'Otto Otheroffice', 'Sales', other.id);
   const s1 = await loggedIn('sales1'); const s2 = await loggedIn('sales2'); const mgr = await loggedIn('salesmgr'); const s3 = await loggedIn('sales3');
   const t1 = await loggedIn('tech1');
@@ -4086,7 +4086,7 @@ test('sales: leads seen only by sales, owned by one person, guarded against doub
   await s1.post(`/sales/${sj}/refer`, { office: String(other.id), why: 'They need sprinkler work' }, { page: `/sales/${sj}` });
   assert.deepEqual(db.prepare('SELECT branch_id, owner_id FROM leads WHERE id = ?').get(sj), { branch_id: other.id, owner_id: null });
   assert.equal((await s1.get(`/sales/${sj}`)).status, 403);
-  assert.match((await s3.get(`/sales/${sj}`)).text, /Nobody is on this lead yet[\s\S]*Passed from the Lancaster office/);
+  assert.match((await s3.get(`/sales/${sj}`)).text, /Nobody is on this lead yet[\s\S]*Passed from the Lancaster branch/);
   await s3.post(`/sales/${sj}/owner`, { owner: 'me' }, { page: `/sales/${sj}` });
   assert.equal(db.prepare('SELECT owner_id FROM leads WHERE id = ?').get(sj).owner_id, userId('sales3'));
 
@@ -4139,7 +4139,7 @@ test('sales: leads seen only by sales, owned by one person, guarded against doub
   // --- Referral credit: the lead passed to the other office is won there, and the person who passed it is named.
   await s3.post(`/sales/${sj}/stage`, { stage: 'won' }, { page: `/sales/${sj}` });
   const credit = (await s3.get(`/sales/${sj}`)).text;
-  assert.match(credit, /<dt>Passed on by<\/dt><dd>Sam Seller · Lancaster office<\/dd>/); assert.match(credit, /Thank you to Sam Seller in the Lancaster office for passing it on/);
+  assert.match(credit, /<dt>Passed on by<\/dt><dd>Sam Seller · Lancaster branch<\/dd>/); assert.match(credit, /Thank you to Sam Seller in the Lancaster branch for passing it on/);
 
   // --- The manager's summary.
   assert.equal((await s1.get('/sales/summary')).status, 403);
@@ -4238,21 +4238,21 @@ test('on call: the rota is loaded from the spreadsheet, everyone sees who is on 
   db.prepare('DELETE FROM oncall_shifts').run();
 });
 
-test('community first: the company in numbers, one list of what people across the offices are doing, and comments on announcements', async () => {
+test('community first: the company in numbers, one list of what people across the branches are doing, and comments on announcements', async () => {
   const owner = await loggedIn('owner'); const t1 = await loggedIn('tech1'); const t2 = await loggedIn('tech2');
   // The strip under the greeting: how big the company is, each number a link.
   const home = (await t1.get('/')).text.replace(/\s+/g, ' ');
   const strip = /<section class="company-strip"[\s\S]*?<\/section>/.exec(home)[0];
   const offices = db.prepare('SELECT COUNT(*) n FROM branches').get().n;
-  assert.match(strip, new RegExp(`<a href="/branches"><strong>${offices.toLocaleString('en-US')}</strong><span>Offices</span></a>`));
+  assert.match(strip, new RegExp(`<a href="/branches"><strong>${offices.toLocaleString('en-US')}</strong><span>Branches</span></a>`));
   assert.match(strip, /<a href="\/people"><strong>[\d,]+<\/strong><span>People Here<\/span>/); assert.match(strip, /Shout-Outs? This Month/);
   // The activity feed sits straight after shout-outs in the main column, and each item names the office it came from.
   const sec = db.prepare('SELECT id FROM forum_sections ORDER BY sort_order LIMIT 1').get().id;
   await t2.post('/discussions/new', { section_id: String(sec), title: 'FEED-TEST best ladder rack?', body: 'Asking for the van.' }, { page: '/discussions/new', multipart: true });
   const feed = /<section class="panel p-around"[\s\S]*?<\/section>/.exec((await t1.get('/')).text.replace(/\s+/g, ' '))[0];
-  assert.match(feed, /<li class="feed-talk"[\s\S]*?FEED-TEST best ladder rack\?<\/strong>[\s\S]*?Uma Tech started a discussion[\s\S]*?<span class="pill ">Lancaster office<\/span> <span>just now<\/span> · <span>Be the first to reply/);
+  assert.match(feed, /<li class="feed-talk"[\s\S]*?FEED-TEST best ladder rack\?<\/strong>[\s\S]*?Uma Tech started a discussion[\s\S]*?<span class="pill ">Lancaster branch<\/span> <span>just now<\/span> · <span>Be the first to reply/);
   const other = db.prepare("SELECT u.username FROM users u WHERE u.branch_id IS NOT NULL AND u.branch_id <> 1 AND u.active = 1 LIMIT 1").get();
-  if (other) assert.match((await (await loggedIn(other.username)).get('/')).text.replace(/\s+/g, ' '), /FEED-TEST best ladder rack\?[\s\S]*?<span class="pill away">Lancaster office<\/span>/);   // from another office: marked as such
+  if (other) assert.match((await (await loggedIn(other.username)).get('/')).text.replace(/\s+/g, ' '), /FEED-TEST best ladder rack\?[\s\S]*?<span class="pill away">Lancaster branch<\/span>/);   // from another office: marked as such
 
   // Announcements are a conversation: anyone it is for can comment, the poster is not the only voice.
   await owner.post('/admin/announcements', { title: 'COMMENT-TEST new vans', body: 'Two vans arrive Friday.', audience: 'all', category: 'general' }, { page: '/admin/announcements' });
@@ -4310,7 +4310,7 @@ test('sign-in details: a manager picks a few people who have not signed in and g
   assert.equal((await t1.get(page)).status, 403); assert.equal((await t1.post(page, [['who', String(b)]], { page: '/' })).status, 403);
 });
 
-test('reports to: set on the Positions page, it draws the office team chart, fills Managed by, and lets a manager see everyone under them', async () => {
+test('reports to: set on the Positions page, it draws the branch team chart, fills Managed by, and lets a manager see everyone under them', async () => {
   const owner = await loggedIn('owner');
   const office = db.prepare("INSERT INTO branches (name, created_at) VALUES ('Chartville', ?)").run(new Date().toISOString()).lastInsertRowid;
   const mk = (username, name, profile, job) => { const id = makeUser(username, name); db.prepare('UPDATE users SET profile_id = ?, branch_id = ?, job_title = ? WHERE id = ?').run(profileId(profile), office, job, id); return id; };
@@ -4338,7 +4338,7 @@ test('reports to: set on the Positions page, it draws the office team chart, fil
   assert.equal((await owner.get('/admin/positions?who=5')).location, '/admin/users/positions?who=5');
   const tabs = (await owner.get('/admin/users')).text;
   assert.match(tabs, /href="\/admin\/users\/positions"[^>]*>Positions and reporting<\/a>\s*<a href="\/admin\/users\/chart"[^>]*>Organization chart/);
-  assert.match((await owner.get('/admin/users/chart')).text, /Chartville office<\/h2>[\s\S]*class="org-box lvl1"[^>]*><strong>General Manager/);
+  assert.match((await owner.get('/admin/users/chart')).text, /Chartville branch<\/h2>[\s\S]*class="org-box lvl1"[^>]*><strong>General Manager/);
   assert.match(officePage, /Everyone else<\/h3>[\s\S]*Lou Loner/);
   assert.match((await owner.get(`/people/${t1}`)).text, /Reports to<\/span> <a href="\/people\/\d+"><strong>Sam Service/);
   assert.match((await owner.get(`/people/${sm}`)).text, /2 people report to Sam/);
@@ -4424,7 +4424,7 @@ test('roles: a role can give a profile, be chosen when adding a person, and be m
   await owner.post('/branch/view', { branch: '1', back: '/' }, { page: '/' });
 });
 
-test('duplicates: the same person twice in one office is found, and the disabled or roleless extra is folded into the account kept', async () => {
+test('duplicates: the same person twice in one branch is found, and the disabled or roleless extra is folded into the account kept', async () => {
   const owner = await loggedIn('owner');
   const office = db.prepare("INSERT INTO branches (name, created_at) VALUES ('Dupeton', ?)").run(new Date().toISOString()).lastInsertRowid;
   const mk = (username, name, o) => { const id = makeUser(username, name); db.prepare('UPDATE users SET branch_id = ? WHERE id = ?').run(o, id); return id; };
@@ -4463,7 +4463,7 @@ test('duplicates: the same person twice in one office is found, and the disabled
   await owner.post('/branch/view', { branch: '1', back: '/' }, { page: '/' });
 });
 
-test('removing people: one at a time or every disabled account; sign-in and details go, office records keep the name', async () => {
+test('removing people: one at a time or every disabled account; sign-in and details go, branch records keep the name', async () => {
   const owner = await loggedIn('owner');
   const office = db.prepare("INSERT INTO branches (name, created_at) VALUES ('Removia', ?)").run(new Date().toISOString()).lastInsertRowid;
   const mk = (username, name) => { const id = makeUser(username, name); db.prepare('UPDATE users SET branch_id = ? WHERE id = ?').run(office, id); return id; };
@@ -4475,7 +4475,7 @@ test('removing people: one at a time or every disabled account; sign-in and deta
   await owner.post('/branch/view', { branch: String(office), back: '/admin/users' }, { page: '/admin/users' });
   const page = (await owner.get('/admin/users')).text;
   assert.match(page, new RegExp(`action="/admin/users/${clean}/remove"[^>]*data-confirm="Remove Cleo Clean for good\\?`));
-  assert.match(page, /2 disabled accounts<\/strong>/); assert.match(page, /2 of these are people<\/strong>|<strong>2 of these are people from the office contact list/);
+  assert.match(page, /2 disabled accounts<\/strong>/); assert.match(page, /2 of these are people<\/strong>|<strong>2 of these are people from the branch contact list/);
   // Who may: not a technician, never yourself, never the master account.
   assert.equal((await (await loggedIn('tech1')).post(`/admin/users/${clean}/remove`, {}, { page: '/' })).status, 403);
   await owner.post(`/admin/users/${userId('owner')}/remove`, {}, { page: '/admin/users' });
@@ -4491,7 +4491,7 @@ test('removing people: one at a time or every disabled account; sign-in and deta
   assert.equal(db.prepare("SELECT COUNT(*) n FROM tasks WHERE title = 'Unstarted'").get().n, 0);
   assert.equal(db.prepare('SELECT user_id FROM parts_submissions WHERE id = ?').get(sub).user_id, busy);
   const after = (await owner.get('/admin/users')).text;
-  assert.doesNotMatch(after, /Bea Busy\s*<\/td>|Cleo Clean/); assert.match(after, /Bea Busy was removed\. What they recorded for the office is kept/);
+  assert.doesNotMatch(after, /Bea Busy\s*<\/td>|Cleo Clean/); assert.match(after, /Bea Busy was removed\. What they recorded for the branch is kept/);
   assert.doesNotMatch((await owner.get('/people')).text, /Bea Busy/);
   assert.match((await owner.get('/admin/parts')).text, /Bea Busy/);                                                  // the log still says who took the parts
   const login = await new Client().post('/login', { username: 'rem.busy', password: 'whatever it was 123' }, { page: '/login' });
@@ -4507,7 +4507,7 @@ test('removing people: one at a time or every disabled account; sign-in and deta
   await owner.post('/branch/view', { branch: '1', back: '/' }, { page: '/' });
 });
 
-test('organization chart: people who manage users can download an office chart as a PDF', async () => {
+test('organization chart: people who manage users can download a branch chart as a PDF', async () => {
   const owner = await loggedIn('owner'); const t1 = await loggedIn('tech1');
   const office = db.prepare("SELECT id FROM branches WHERE name = 'Chartville'").get().id;
   const pdf = await owner.get(`/branches/${office}/chart.pdf`);
@@ -4527,7 +4527,7 @@ test('organization chart: people who manage users can download an office chart a
   await owner.post('/branch/view', { branch: '1', back: '/' }, { page: '/' });
 });
 
-test('new-hire welcome: an admin takes it down from the person\'s page; the daily question sits above the office numbers', async () => {
+test('new-hire welcome: an admin takes it down from the person\'s page; the daily question sits above the branch numbers', async () => {
   const owner = await loggedIn('owner'); const t1 = await loggedIn('tech1');
   const id = makeUser('oops.hire', 'Oops Hire'); db.prepare('UPDATE users SET branch_id = 1 WHERE id = ?').run(id);
   await owner.post(`/admin/users/${id}/welcome`, { intro: 'Announced by accident' }, { page: `/admin/users/${id}/edit` });
@@ -4805,18 +4805,18 @@ test('security: hostile input cannot crash a page, and the security check page i
   delete process.env.RENDER;
 });
 
-test('on call across a market: your own office first, each person tagged with their office, and offices with nobody listed are named', async () => {
+test('on call across a market: your own branch first, each person tagged with their branch, and branches with nobody listed are named', async () => {
   const t1 = await loggedIn('tech1');
   const mk = (name) => db.prepare("INSERT INTO branches (name, market, created_at) VALUES (?, 'Test Market', ?)").run(name, new Date().toISOString()).lastInsertRowid;
   db.prepare("UPDATE branches SET market = 'Test Market' WHERE id = 1").run();
-  const near = mk('Nearby Office'), quiet = mk('Quiet Office');
+  const near = mk('Nearby Branch'), quiet = mk('Quiet Branch');
   const shift = (office, name, role) => db.prepare("INSERT INTO oncall_shifts (branch_id, start_on, end_on, role, name, phone, created_at) VALUES (?, date('now', '-1 day'), date('now', '+6 day'), ?, ?, '717-555-0142', ?)").run(office, role, name, new Date().toISOString());
   db.prepare('DELETE FROM oncall_shifts').run();
   shift(near, 'Nell Nearby', 'tech'); shift(1, 'Owen Ownoffice', 'tech'); shift(1, 'Bea Backup', 'backup');
   const page = (await t1.get('/oncall')).text;
   assert.match(page, /in the Test Market market/);
-  assert.ok(page.indexOf('Owen Ownoffice') < page.indexOf('Nell Nearby'), 'own office comes first');
-  assert.match(page, /Nobody is listed today for 1 of the 3 offices in this market:<\/strong>\s*<a href="\/branches\/\d+">Quiet Office<\/a>/);
+  assert.ok(page.indexOf('Owen Ownoffice') < page.indexOf('Nell Nearby'), 'own branch comes first');
+  assert.match(page, /Nobody is listed today for 1 of the 3 branches in this market:<\/strong>\s*<a href="\/branches\/\d+">Quiet Branch<\/a>/);
   const home = /<section class="panel p-oncall"[\s\S]*?<\/section>/.exec((await t1.get('/')).text)[0];
   // The home page shows only the office being looked at; the rest of the market is on the On call page.
   assert.match(home, /Owen Ownoffice/); assert.doesNotMatch(home, /Nell Nearby/);
@@ -4826,18 +4826,18 @@ test('on call across a market: your own office first, each person tagged with th
   db.prepare('DELETE FROM oncall_shifts').run(); db.prepare('UPDATE branches SET market = NULL WHERE id = 1').run();
 });
 
-test('moderation stays inside the office: an office admin removes only what their own people wrote; a corporate admin removes anything', async () => {
+test('moderation stays inside the branch: a branch admin removes only what their own people wrote; a corporate admin removes anything', async () => {
   const owner = await loggedIn('owner');                                                   // corporate: sees every office
   const office = db.prepare("INSERT INTO branches (name, created_at) VALUES ('Modville', ?)").run(new Date().toISOString()).lastInsertRowid;
-  access.ensureProfile('Office moderator', 'all', [...access.SUBMIT, 'forum.use', 'forum.moderate', 'announcements.post', 'users.manage']);
+  access.ensureProfile('Branch moderator', 'all', [...access.SUBMIT, 'forum.use', 'forum.moderate', 'announcements.post', 'users.manage']);
   const mk = (username, name, profile, branch) => { const id = makeUser(username, name); db.prepare('UPDATE users SET profile_id = ?, branch_id = ? WHERE id = ?').run(profileId(profile), branch, id); return id; };
-  mk('mod.admin', 'Mona Modville', 'Office moderator', office); const local = mk('mod.local', 'Lars Local', 'Technician', office);
+  mk('mod.admin', 'Mona Modville', 'Branch moderator', office); const local = mk('mod.local', 'Lars Local', 'Technician', office);
   const mod = await loggedIn('mod.admin'); const lars = await loggedIn('mod.local'); const t1 = await loggedIn('tech1');   // tech1 is in another office
   const sec = db.prepare('SELECT id FROM forum_sections ORDER BY id LIMIT 1').get().id;
   const start = async (c, title) => Number(/\/discussions\/t\/(\d+)/.exec((await c.post('/discussions/new', [['section_id', String(sec)], ['title', title], ['body', 'Hello']], { multipart: true, page: '/discussions/new' })).location)[1]);
-  const far = await start(t1, 'Thread from another office'); const near = await start(lars, 'Thread from Modville');
+  const far = await start(t1, 'Thread from another branch'); const near = await start(lars, 'Thread from Modville');
   await lars.post(`/discussions/t/${far}/reply`, [['body', 'Modville reply']], { multipart: true, page: `/discussions/t/${far}` });
-  await t1.post(`/discussions/t/${near}/reply`, [['body', 'Other office reply']], { multipart: true, page: `/discussions/t/${near}` });
+  await t1.post(`/discussions/t/${near}/reply`, [['body', 'Other branch reply']], { multipart: true, page: `/discussions/t/${near}` });
   const post = (thread, uid) => db.prepare('SELECT id FROM forum_posts WHERE thread_id = ? AND user_id = ? ORDER BY id DESC LIMIT 1').get(thread, uid).id;
   const farReplyByLars = post(far, local), nearReplyByTech = post(near, userId('tech1'));
   // Another office's thread: no moderator tools, and the actions are refused.
@@ -4856,9 +4856,9 @@ test('moderation stays inside the office: an office admin removes only what thei
   assert.equal(db.prepare('SELECT 1 FROM forum_posts WHERE id = ?').get(farReplyByLars), undefined);
   assert.equal((await mod.post(`/discussions/t/${near}/pin`, {}, { page: `/discussions/t/${near}` })).status, 302);
   // Shout-outs and photos follow the same rule.
-  await t1.post('/shoutouts', { to_user: String(userId('tech2')), message: 'From another office' }, { page: '/shoutouts' });
+  await t1.post('/shoutouts', { to_user: String(userId('tech2')), message: 'From another branch' }, { page: '/shoutouts' });
   await lars.post('/shoutouts', { to_user: String(userId('mod.admin')), message: 'From Modville' }, { page: '/shoutouts' });
-  const farShout = db.prepare("SELECT id FROM shoutouts WHERE message = 'From another office'").get().id, nearShout = db.prepare("SELECT id FROM shoutouts WHERE message = 'From Modville'").get().id;
+  const farShout = db.prepare("SELECT id FROM shoutouts WHERE message = 'From another branch'").get().id, nearShout = db.prepare("SELECT id FROM shoutouts WHERE message = 'From Modville'").get().id;
   const shouts = (await mod.get('/shoutouts')).text;
   assert.match(shouts, new RegExp(`action="/shoutouts/${nearShout}/delete"`)); assert.doesNotMatch(shouts, new RegExp(`action="/shoutouts/${farShout}/delete"`));
   assert.equal((await mod.post(`/shoutouts/${farShout}/delete`, {}, { page: '/shoutouts' })).status, 403);
@@ -4872,8 +4872,8 @@ test('moderation stays inside the office: an office admin removes only what thei
   await owner.post('/admin/announcements', { title: 'Company-wide moderation notice', body: 'For everyone', audience: 'all' }, { page: '/admin/announcements' });
   const nid = db.prepare("SELECT id FROM announcements WHERE title = 'Company-wide moderation notice'").get().id;
   db.prepare('UPDATE announcements SET branch_id = NULL WHERE id = ?').run(nid);
-  await t1.post(`/notices/${nid}/comment`, { body: 'Comment from another office' }, { page: '/notices' }); await lars.post(`/notices/${nid}/comment`, { body: 'Comment from Modville' }, { page: '/notices' });
-  const farC = db.prepare("SELECT id FROM announcement_comments WHERE body = 'Comment from another office'").get().id, nearC = db.prepare("SELECT id FROM announcement_comments WHERE body = 'Comment from Modville'").get().id;
+  await t1.post(`/notices/${nid}/comment`, { body: 'Comment from another branch' }, { page: '/notices' }); await lars.post(`/notices/${nid}/comment`, { body: 'Comment from Modville' }, { page: '/notices' });
+  const farC = db.prepare("SELECT id FROM announcement_comments WHERE body = 'Comment from another branch'").get().id, nearC = db.prepare("SELECT id FROM announcement_comments WHERE body = 'Comment from Modville'").get().id;
   assert.equal((await mod.post(`/notices/comment/${farC}/delete`, {}, { page: '/notices' })).status, 403);
   assert.equal((await mod.post(`/notices/comment/${nearC}/delete`, {}, { page: '/notices' })).status, 302);
   // The corporate admin can remove anything, anywhere; whoever posted the announcement can clear comments under it.
@@ -5196,9 +5196,9 @@ test('sign-in history: sign-ins, wrong passwords and pauses are recorded for cor
   const authRoutes = require('../app/routes/auth'); authRoutes.clearLoginFailures();
   const office = db.prepare("INSERT INTO branches (name, created_at) VALUES ('Auditville', ?)").run(new Date().toISOString()).lastInsertRowid;
   access.ensureProfile('Corporate admin', 'all', access.ALL);
-  access.ensureProfile('Office admin (one office)', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'market.all'));   // everything an office admin has, and one office only
+  access.ensureProfile('Branch admin (one branch)', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'market.all'));   // everything an office admin has, and one office only
   const mk = (username, name, profile) => { const id = makeUser(username, name); db.prepare('UPDATE users SET profile_id = ?, branch_id = ? WHERE id = ?').run(profileId(profile), office, id); return id; };
-  const tid = mk('aud.tech', 'Tessa Trail', 'Technician'); mk('aud.admin', 'Adam Auditville', 'Office admin (one office)'); mk('aud.corp', 'Cora Auditville', 'Corporate admin');
+  const tid = mk('aud.tech', 'Tessa Trail', 'Technician'); mk('aud.admin', 'Adam Auditville', 'Branch admin (one branch)'); mk('aud.corp', 'Cora Auditville', 'Corporate admin');
   db.prepare('DELETE FROM activity_log').run();
   const mine = () => db.prepare('SELECT action, detail FROM activity_log WHERE user_id = ? ORDER BY id').all(tid);
   const PHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
@@ -5474,7 +5474,7 @@ test('the Feed page: the activity feed in full, with shout-outs and past events,
 // -- review: accounts and access --
 const accessChecks = {
   /** A profile with everything an office admin has, for one office only (in these checks the profile called Admin sees every office). */
-  oneOffice: () => access.ensureProfile('Office admin (one office)', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'market.all')),
+  oneOffice: () => access.ensureProfile('Branch admin (one branch)', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'market.all')),
   office: (name) => db.prepare('INSERT INTO branches (name, created_at) VALUES (?, ?)').run(name, new Date().toISOString()).lastInsertRowid,
   person: (username, name, profile, office) => {
     const id = makeUser(username, name);
@@ -5543,7 +5543,7 @@ test('contact list: an upload changes only accounts the uploader could edit by h
   require('../app/removal').remove(brand.id);
 });
 
-test('training sessions: a request from another office or team cannot be scheduled, shown or marked done, and a private request does not become a session title the office sees', async () => {
+test('training sessions: a request from another branch or team cannot be scheduled, shown or marked done, and a private request does not become a session title the branch sees', async () => {
   const R = accessChecks;
   const here = R.office('Trainford'); const there = R.office('Elsewhere Falls');
   const tech = R.person('trn.tech', 'Tara Trainford', 'Technician', here);
@@ -5562,7 +5562,7 @@ test('training sessions: a request from another office or team cannot be schedul
   // Naming it on a new session used to show its wording and move it along; now that is refused too.
   for (const c of [far, mgr]) {
     assert.equal((await c.get(`/admin/training/${priv}`)).status, 403);
-    assert.doesNotMatch((await c.get(`${list}?request=${priv}`)).text, /TRNPRIV|name="request_id"|Trainford office/);
+    assert.doesNotMatch((await c.get(`${list}?request=${priv}`)).text, /TRNPRIV|name="request_id"|Trainford branch/);
     assert.equal((await c.post(list, { title: 'anything', session_date: '2031-08-01', request_id: String(priv) }, { page: list })).status, 403);
   }
   assert.equal(db.prepare('SELECT COUNT(*) n FROM training_sessions WHERE request_id = ?').get(priv).n, 0);
@@ -5580,7 +5580,7 @@ test('training sessions: a request from another office or team cannot be schedul
   const owner = await loggedIn('owner');
   await owner.post('/branch/view', { branch: 'all', back: '/' }, { page: '/' });
   const afar = (await owner.get(`${list}?request=${open}`)).text;
-  assert.match(afar, /That request is from the Trainford office\. Choose that office first/); assert.doesNotMatch(afar, /name="request_id"|value="TRNOPEN/);
+  assert.match(afar, /That request is from the Trainford branch\. Choose that branch first/); assert.doesNotMatch(afar, /name="request_id"|value="TRNOPEN/);
   assert.equal((await owner.post(list, { title: 'From afar', session_date: '2031-08-05', request_id: String(open) }, { page: list })).status, 403);
   assert.deepEqual({ ...db.prepare('SELECT status FROM training_requests WHERE id = ?').get(open) }, { status: 'new' });
 
@@ -5606,7 +5606,7 @@ test('training sessions: a request from another office or team cannot be schedul
   db.prepare('DELETE FROM training_sessions WHERE branch_id = ?').run(here);
 });
 
-test('sales: the "already on this customer" check answers a part of a name only inside the office, says only who to ask about another office\'s customer, and pauses after 60 lookups', async () => {
+test('sales: the "already on this customer" check answers a part of a name only inside the branch, says only who to ask about another branch\'s customer, and pauses after 60 lookups', async () => {
   const R = accessChecks;
   const here = R.office('Lookupville'); const there = R.office('Farfield');
   R.person('lk.sam', 'Sam Lookup', 'Sales', here); R.person('lk.busy', 'Bo Busy', 'Sales', here); R.person('lk.harry', 'Harry Farfield', 'Sales', there);
@@ -5632,7 +5632,7 @@ test('sales: the "already on this customer" check answers a part of a name only 
   assert.equal((await sam.post('/sales', { company: 'Cold Storage' }, { page: '/sales' })).status, 302);       // part of another office's customer name: nothing to warn about
   const dup = await sam.post('/sales', { company: 'Susquehanna Cold Storage', phone: '717 555 0199' }, { page: '/sales' });
   assert.equal(dup.status, 400);
-  assert.match(dup.text, /<strong>Another office&#39;s customer<\/strong> <span class="meta">· same name, same phone number<\/span><\/span><span>Harry Farfield · Farfield<\/span>/);
+  assert.match(dup.text, /<strong>Another branch&#39;s customer<\/strong> <span class="meta">· same name, same phone number<\/span><\/span><span>Harry Farfield · Farfield<\/span>/);
   assert.doesNotMatch(dup.text, /Cold Storage LLC|susqcold|River Road/);
   // The page asks in the body of a request, so what is typed about a customer is not left in a web address.
   const posted = await sam.post('/sales/check', { company: 'Lititz Storage Barn' }, { page: '/sales' });
@@ -5648,7 +5648,7 @@ test('sales: the "already on this customer" check answers a part of a name only 
   const type = async (box, text) => { for (const ch of text) { typing[box] += ch; assert.equal(await look(typing), 200, `${box}: ${typing[box]}`); asked += 1; } };
   await type('company', 'Conestoga Valley Dentl');
   typing.company = typing.company.slice(0, -1); assert.equal(await look(typing), 200);
-  await type('company', 'al'); await type('phone', '(717) 555-0123 x45'); await type('email', 'office@cvdental.example'); await type('address', '1200 Lititz Pike, Lancaster');
+  await type('company', 'al'); await type('phone', '(717) 555-0123 x45'); await type('email', 'branch@cvdental.example'); await type('address', '1200 Lititz Pike, Lancaster');
   assert.ok(asked > 80, String(asked));
   assert.equal(db.prepare("SELECT COUNT(*) n FROM activity_log WHERE action = 'Customer lookups paused'").get().n, 0);
   // Sixty different customers in fifteen minutes is plenty for adding leads. After that the answer is empty until the time is up, and the log says so once.
@@ -5674,7 +5674,7 @@ test('sales: the "already on this customer" check answers a part of a name only 
   db.prepare('DELETE FROM leads WHERE branch_id IN (?, ?)').run(here, there);
 });
 
-test('sales: removing a lead is logged by its number and office, not the customer\'s name, and the name is not the page title', async () => {
+test('sales: removing a lead is logged by its number and branch, not the customer\'s name, and the name is not the page title', async () => {
   const R = accessChecks;
   const office = R.office('Forgetford');
   R.person('fg.mgr', 'Mia Forgetford', 'Sales manager', office);
@@ -5686,11 +5686,11 @@ test('sales: removing a lead is logged by its number and office, not the custome
   assert.match(page, /<h1>Homer Forgetme<\/h1>/); assert.match(page, /<title>Lead · /); assert.doesNotMatch(page, /<title>[^<]*Forgetme/);
   await mgr.post(`/sales/${lead}/delete`, {}, { page: `/sales/${lead}` });
   assert.equal(db.prepare('SELECT COUNT(*) n FROM leads WHERE id = ?').get(lead).n, 0);
-  assert.equal(db.prepare("SELECT detail FROM activity_log WHERE action = 'Lead removed' ORDER BY id DESC").get().detail, `Lead ${lead}, Forgetford office`);
+  assert.equal(db.prepare("SELECT detail FROM activity_log WHERE action = 'Lead removed' ORDER BY id DESC").get().detail, `Lead ${lead}, Forgetford branch`);
   assert.equal(db.prepare("SELECT COUNT(*) n FROM activity_log WHERE detail LIKE '%Forgetme%'").get().n, 0);
 });
 
-test('activity log: an office admin does not see when people changed a password, a reset address or Face ID; people who look after every office do', async () => {
+test('activity log: a branch admin does not see when people changed a password, a reset address or Face ID; people who look after every branch do', async () => {
   const R = accessChecks;
   const office = R.office('Logford');
   const tid = R.person('log.tech', 'Lena Logford', 'Technician', office); const aid = R.person('log.admin', 'Alan Logford', R.oneOffice(), office); R.person('log.corp', 'Cora Logford', 'Corporate admin', office);
@@ -6128,26 +6128,26 @@ test('sign-in history: a successful sign-in records the address it came from, wi
   assert.equal((await sendJson(fresh, '/passkey/auth/verify', { response: phone.get(opts) }, '/login')).status, 200);
   assert.match(mine().pop(), /^With Face ID or a fingerprint \(Ivy iPhone \(Safari\)\), on a phone or tablet, from [0-9a-f.:]+$/);
   // Still for corporate admins only: an office admin sees no sign-in entries, with or without an address.
-  access.ensureProfile('Office admin (one office)', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'market.all'));
-  db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(profileId('Office admin (one office)'), makeUser('ip.office', 'Olga Office'));
+  access.ensureProfile('Branch admin (one branch)', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'market.all'));
+  db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(profileId('Branch admin (one branch)'), makeUser('ip.office', 'Olga Branch'));
   const office = await loggedIn('ip.office');
   for (const url of ['/admin/activity', '/admin/activity?show=signins', '/admin/activity?q=Ivy', '/admin/activity?q=from']) assert.doesNotMatch((await office.get(url)).text, /Signed in|With a password|Wrong password, from/, url);
   const corp = await loggedIn('owner');
   assert.match((await corp.get('/admin/activity?show=signins&q=Ivy')).text, /Signed in<\/td><td>With a password, on a computer, from /);
 });
 
-test('complaint notice: every office with new complaints is counted and told, once a day, by date, with nothing about the complaints in the email', async () => {
+test('complaint notice: every branch with new complaints is counted and told, once a day, by date, with nothing about the complaints in the email', async () => {
   const was = db.prepare("SELECT value FROM meta WHERE key = 'complaint_digest_date'").get();
   const home = db.prepare('SELECT MIN(id) AS id FROM branches').get().id;
   const office = (name) => db.prepare('INSERT INTO branches (name, created_at) VALUES (?, ?)').run(name, new Date().toISOString()).lastInsertRowid;
   const north = office('Noticeville North'), south = office('Noticeville South');
-  access.ensureProfile('Office admin (one office)', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'market.all'));
+  access.ensureProfile('Branch admin (one branch)', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'market.all'));
   access.ensureProfile('Corporate admin', 'all', access.ALL);
   const person = (username, profile, branch, email, active = 1) => db.prepare('UPDATE users SET profile_id = ?, branch_id = ?, email = ?, active = ? WHERE id = ?').run(profileId(profile), branch, email, active, makeUser(username, username));
-  person('cn.north', 'Office admin (one office)', north, 'north@example.com');
-  person('cn.south', 'Office admin (one office)', south, 'south@example.com');
+  person('cn.north', 'Branch admin (one branch)', north, 'north@example.com');
+  person('cn.south', 'Branch admin (one branch)', south, 'south@example.com');
   person('cn.corp', 'Corporate admin', home, 'corp@example.com');
-  person('cn.left', 'Office admin (one office)', north, 'left@example.com', 0);       // disabled: told nothing
+  person('cn.left', 'Branch admin (one branch)', north, 'left@example.com', 0);       // disabled: told nothing
   person('cn.tech', 'Technician', north, 'tech@example.com');                         // cannot read complaints: told nothing
   const add = (branch, date, text) => db.prepare("INSERT INTO complaints (id, category, description, tracking_code_hash, created_date, branch_id, notified) VALUES (?, 'other', ?, ?, ?, ?, 1)")
     .run(nodeCrypto.randomBytes(8).toString('hex'), text, nodeCrypto.randomBytes(16).toString('hex'), date, branch);
@@ -6189,7 +6189,7 @@ test('complaint notice: every office with new complaints is counted and told, on
   db.prepare("UPDATE users SET email = NULL WHERE username LIKE 'cn.%'").run();
 });
 
-test('complaint trail: capitals in the address, the lock screen, the Back button and switching office leave no trace of the form either', async () => {
+test('complaint trail: capitals in the address, the lock screen, the Back button and switching branch leave no trace of the form either', async () => {
   makeUser('ct.tess', 'Tess Trail'); makeUser('ct.ida', 'Ida Idle');
   const pw = 'correct horse battery';
   const sidOf = (client) => decodeURIComponent(/portal\.sid=([^;]+)/.exec(client.cookie)[1]).slice(2).split('.')[0];
@@ -6999,7 +6999,7 @@ async function uplForms(c) {
     { what: 'parts return', url: '/parts', fields: () => [['action', 'return'], ['part_name', 'UPL-PART'], ['quantity', '1'], ['source', 'van']], wrong: () => [['action', 'return'], ['part_name', 'UPL-PART'], ['quantity', '0'], ['source', 'van']], field: 'photo' },
     { what: 'parts entry edited', url: `/parts/${entry}/edit`, fields: () => [['part_name', 'UPL-EDIT'], ['quantity', '2'], ['source', 'van']], wrong: () => [['part_name', 'UPL-EDIT'], ['quantity', '0'], ['source', 'van']], field: 'photo' },
     { what: 'profile photo', url: '/profile', fields: () => [['about', 'upload check']], wrong: () => [['phone', 'not a number']], field: 'photo' },
-    { what: 'office photo', url: `/branches/${me.branch_id}`, fields: () => officeFields, wrong: () => [['phone', 'not a number']], field: 'photo' },
+    { what: 'branch photo', url: `/branches/${me.branch_id}`, fields: () => officeFields, wrong: () => [['phone', 'not a number']], field: 'photo' },
     { what: 'newsletter', url: '/admin/newsletters', fields: () => [['issue_month', '2031-05'], ['title', `Upload check ${tag()}`]], wrong: () => [['issue_month', 'May']], field: 'pdf', pdf: true },
     { what: 'sales library', url: '/sales/library', fields: () => [['title', `Upload check ${tag()}`]], wrong: () => [['title', '']], field: 'file', doc: true },
   ];
@@ -7368,9 +7368,9 @@ function speedOffice() {
   const have = db.prepare("SELECT id FROM branches WHERE name = 'Speedville'").get();
   if (have) return have.id;
   const office = db.prepare("INSERT INTO branches (name, created_at) VALUES ('Speedville', ?)").run(new Date().toISOString()).lastInsertRowid;
-  access.ensureProfile('Office lead', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'market.all'));
+  access.ensureProfile('Branch lead', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'market.all'));
   const mk = (username, name, profile) => { const id = makeUser(username, name); db.prepare('UPDATE users SET profile_id = ?, branch_id = ? WHERE id = ?').run(profileId(profile), office, id); return id; };
-  const boss = mk('sp.admin', 'Sasha Speedville', 'Office lead'); const mgr = mk('sp.mgr', 'Morgan Speedville', 'Manager'); const sub = mk('sp.sub', 'Sidney Speedville', 'Manager');
+  const boss = mk('sp.admin', 'Sasha Speedville', 'Branch lead'); const mgr = mk('sp.mgr', 'Morgan Speedville', 'Manager'); const sub = mk('sp.sub', 'Sidney Speedville', 'Manager');
   const t1 = mk('sp.tech1', 'Tatum Speedville', 'Technician'); mk('sp.tech2', 'Uri Speedville', 'Technician');
   db.prepare('INSERT INTO user_managers (manager_id, user_id) VALUES (?, ?), (?, ?)').run(mgr, sub, sub, t1);
   db.prepare("UPDATE users SET default_truck = 'SPD-1' WHERE id = ?").run(t1);
@@ -7400,7 +7400,7 @@ test('speed: the look-ups made on nearly every page have an index to use', () =>
   assert.doesNotMatch(stockPlan, /SCAN m\b/);
 });
 
-test('speed: a page for one office reads that office\'s people and tasks, not the whole company\'s, and shows the same thing', async () => {
+test('speed: a page for one branch reads that branch\'s people and tasks, not the whole company\'s, and shows the same thing', async () => {
   const office = speedOffice(); const boss = await loggedIn('sp.admin');
   const far = db.prepare("INSERT INTO branches (name, created_at) VALUES ('Speed Farville', ?)").run(new Date().toISOString()).lastInsertRowid;
   const now = new Date().toISOString(); const today = now.slice(0, 10);
@@ -7462,7 +7462,7 @@ test('speed: a page for one office reads that office\'s people and tasks, not th
   assert.ok(office);
 });
 
-test('stock: one office\'s figures come from its own entries only, whatever another office does with the same part', () => {
+test('stock: one branch\'s figures come from its own entries only, whatever another branch does with the same part', () => {
   const stock = require('../app/stock'); const office = speedOffice();
   const other = db.prepare("INSERT INTO branches (name, created_at) VALUES ('Speed Stockton', ?)").run(new Date().toISOString()).lastInsertRowid;
   const away = makeUser('stock.away', 'Avery Away'); db.prepare('UPDATE users SET branch_id = ? WHERE id = ?').run(other, away);
@@ -7502,7 +7502,7 @@ test('alerts: who is told about a parts request or a truck problem is unchanged,
   const far = db.prepare("INSERT INTO branches (name, created_at) VALUES ('Speed Alertville', ?)").run(new Date().toISOString()).lastInsertRowid;
   const now = new Date().toISOString();
   const addUser = db.prepare("INSERT INTO users (username, display_name, password_hash, must_change_password, active, created_at, profile_id, branch_id) VALUES (?, ?, 'x', 0, 1, ?, ?, ?)");
-  const farIds = []; for (let i = 0; i < 50; i++) farIds.push(addUser.run(`spdalert${i}`, `Alex Alertville ${i}`, now, profileId(i === 0 ? 'Office lead' : i === 1 ? 'Manager' : 'Technician'), far).lastInsertRowid);
+  const farIds = []; for (let i = 0; i < 50; i++) farIds.push(addUser.run(`spdalert${i}`, `Alex Alertville ${i}`, now, profileId(i === 0 ? 'Branch lead' : i === 1 ? 'Manager' : 'Technician'), far).lastInsertRowid);
   const sub = db.prepare("INSERT OR IGNORE INTO push_subscriptions (user_id, endpoint, p256dh, auth, device, created_at) VALUES (?, ?, 'k', 'a', 'Phone', ?)");
   const mine = ['sp.admin', 'sp.mgr', 'sp.sub', 'sp.tech1', 'sp.tech2'].map(userId);
   for (const id of [...farIds, ...mine]) sub.run(id, `https://push.invalid/speed/${id}`, now);
@@ -7568,11 +7568,11 @@ test('People: past 500 the page says how many there are and goes on to the next 
   const give = (html) => /<select name="to_user"[\s\S]*?<\/label>/.exec(html)[0];
   const picker = give((await t.get('/shoutouts')).text);
   assert.match(picker, /Morgan Speedville/); assert.match(picker, /Uri Speedville/); assert.doesNotMatch(picker, /Tatum Speedville|Zz Bulk|Terry Tech|optgroup/);
-  assert.match(picker, /For someone in another office of your market, open their page from <a href="\/people">People<\/a> and choose Give a shout-out there\./);
+  assert.match(picker, /For someone in another branch of your market, open their page from <a href="\/people">People<\/a> and choose Give a shout-out there\./);
   const one = db.prepare("SELECT id FROM users WHERE username = 'spdbulk7'").get().id;
   assert.match((await t.get(`/people/${one}`)).text, new RegExp(`href="/shoutouts\\?to=${one}#give"`));
   const chosen = give((await t.get(`/shoutouts?to=${one}`)).text);
-  assert.match(chosen, new RegExp(`<optgroup label="Other offices in your market"><option value="${one}" selected>Zz Bulk 0007 · Speed Bulkton</option></optgroup>`)); assert.equal((chosen.match(/Zz Bulk/g) || []).length, 1);
+  assert.match(chosen, new RegExp(`<optgroup label="Other branches in your market"><option value="${one}" selected>Zz Bulk 0007 · Speed Bulkton</option></optgroup>`)); assert.equal((chosen.match(/Zz Bulk/g) || []).length, 1);
   assert.equal((await t.post('/shoutouts', { to_user: String(one), message: 'BULKSHOUT thanks for the loan of the lift' }, { page: '/shoutouts' })).status, 302);
   assert.equal(db.prepare("SELECT to_user FROM shoutouts WHERE message LIKE 'BULKSHOUT%'").get().to_user, one);
   // A form sent back with a mistake still shows who was picked.
@@ -7581,14 +7581,14 @@ test('People: past 500 the page says how many there are and goes on to the next 
   // Someone outside the market is not offered, on their page or through the form.
   assert.doesNotMatch((await t.get(`/people/${userId('tech1')}`)).text, /Give a shout-out/);
   const outside = await t.post('/shoutouts', { to_user: String(userId('tech1')), message: 'BULKSHOUT too far' }, { page: '/shoutouts' });
-  assert.equal(outside.status, 400); assert.match(outside.text, /Shout-outs are for people in your own office or your market\./);
+  assert.equal(outside.status, 400); assert.match(outside.text, /Shout-outs are for people in your own branch or your market\./);
   db.prepare('UPDATE branches SET market_id = NULL WHERE market_id = ?').run(spMarket); db.prepare('DELETE FROM markets WHERE id = ?').run(spMarket);
 
   // Positions for every office at once: the table stops at 1,000 and says so; one office is shown whole, with no notice.
   const owner = await loggedIn('owner');
   await owner.post('/branch/view', { branch: 'all', back: '/' }, { page: '/' });
   const all = (await owner.get('/admin/users/positions')).text;
-  assert.match(all, /Only the first 1000 people are listed here\. To work on everyone in one office, choose that office instead of Corporate\./);
+  assert.match(all, /Only the first 1000 people are listed here\. To work on everyone in one branch, choose that branch instead of Corporate\./);
   assert.equal((all.match(/<tr id="p\d+"/g) || []).length, 1000);
   await owner.post('/branch/view', { branch: String(town), back: '/' }, { page: '/' });
   const oneOffice = (await owner.get('/admin/users/positions')).text;
@@ -7607,8 +7607,8 @@ test('People: past 500 the page says how many there are and goes on to the next 
   const smMarket = db.prepare("INSERT INTO markets (name, created_at) VALUES ('Speed Small Valley', ?)").run(now).lastInsertRowid;
   db.prepare('UPDATE branches SET market_id = ? WHERE id IN (1, ?)').run(smMarket, db.prepare("SELECT branch_id FROM users WHERE username = 'sp.tech1'").get().branch_id);
   const small2 = give((await t.get('/shoutouts')).text);
-  assert.match(small2, /<optgroup label="Your office">[\s\S]*Morgan Speedville · Speedville[\s\S]*<\/optgroup><optgroup label="Other offices in your market">[\s\S]*Terry Tech/);
-  assert.doesNotMatch(small2, /For someone in another office/);
+  assert.match(small2, /<optgroup label="Your branch">[\s\S]*Morgan Speedville · Speedville[\s\S]*<\/optgroup><optgroup label="Other branches in your market">[\s\S]*Terry Tech/);
+  assert.doesNotMatch(small2, /For someone in another branch/);
   db.prepare('UPDATE branches SET market_id = NULL WHERE market_id = ?').run(smMarket); db.prepare('DELETE FROM markets WHERE id = ?').run(smMarket);
   const alone = give((await t.get('/shoutouts')).text);
   assert.doesNotMatch(alone, /Terry Tech|optgroup/); assert.match(alone, /Morgan Speedville/);
@@ -7805,10 +7805,10 @@ test('complaint trail: the page asks the site for nothing of its own, and neithe
 });
 
 test('Positions and welcomes follow the Edit person rule; forms that answer with a new page are sent the ordinary way', async () => {
-  access.ensureProfile('Office admin (one office)', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'market.all' && p !== 'backups'));
+  access.ensureProfile('Branch admin (one branch)', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'market.all' && p !== 'backups'));
   const boss = makeUser('seam.master', 'Sam Master', { profile: 'Corporate admin', master: false });
   db.prepare("UPDATE users SET is_master = 0 WHERE id = ?").run(boss);
-  const office = auth.createUser({ username: 'seam.office', displayName: 'Olly Office', password: 'correct horse battery', profile: 'Office admin (one office)' });
+  const office = auth.createUser({ username: 'seam.office', displayName: 'Olly Branch', password: 'correct horse battery', profile: 'Branch admin (one branch)' });
   db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?').run(office);
   const tech = makeUser('seam.tech', 'Tia Tech');
   const title = db.prepare('SELECT name FROM job_titles ORDER BY id LIMIT 1').get().name;
@@ -7882,12 +7882,12 @@ test('reset addresses and keys: a duplicate entry never supplies an admin\'s ema
 });
 
 // -- inventory --
-test('inventory: each office has a main warehouse, a vehicle per technician and its own other locations; another office\'s are out of reach', async () => {
+test('inventory: each branch has a main warehouse, a vehicle per technician and its own other locations; another branch\'s are out of reach', async () => {
   const inv = require('../app/inventory');
   const home = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id;
   const other = db.prepare("INSERT INTO branches (name, created_at) VALUES ('Invtown', ?)").run(new Date().toISOString()).lastInsertRowid;
-  access.ensureProfile('Office admin (one office)', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'market.all' && p !== 'backups'));
-  const away = auth.createUser({ username: 'inv.away', displayName: 'Avery Away', password: 'correct horse battery', profile: 'Office admin (one office)' });
+  access.ensureProfile('Branch admin (one branch)', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'market.all' && p !== 'backups'));
+  const away = auth.createUser({ username: 'inv.away', displayName: 'Avery Away', password: 'correct horse battery', profile: 'Branch admin (one branch)' });
   db.prepare('UPDATE users SET must_change_password = 0, branch_id = ? WHERE id = ?').run(other, away);
   const driver = makeUser('inv.driver', 'Dee Driver'); const walker = makeUser('inv.walker', 'Wes Walker');
   db.prepare("UPDATE users SET default_truck = '14' WHERE id = ?").run(driver);
@@ -8031,7 +8031,7 @@ test('inventory: taking and returning parts moves them between the warehouse and
   await owner.post('/branch/view', { branch: 'all' }, { page: '/' });
 });
 
-test('inventory: what the Stock page showed on the shelf becomes each office\'s opening warehouse stock, once', () => {
+test('inventory: what the Stock page showed on the shelf becomes each branch\'s opening warehouse stock, once', () => {
   const L = encryptionLab();
   try {
     // An office as it stood before movements: a count, a delivery, a take and a return since, and a part that had run out.
@@ -8168,7 +8168,7 @@ test('inventory: a count sets what was counted against the records, closing corr
   await owner.post('/branch/view', { branch: 'all' }, { page: '/' });
 });
 
-test('inventory: the office\'s inventory can be exported as it stands: by location, as totals, one location by itself, and every office for corporate', async () => {
+test('inventory: the branch\'s inventory can be exported as it stands: by location, as totals, one location by itself, and every branch for corporate', async () => {
   const inv = require('../app/inventory');
   const home = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id;
   const other = db.prepare("SELECT id FROM branches WHERE name = 'Invtown'").get().id;
@@ -8187,7 +8187,7 @@ test('inventory: the office\'s inventory can be exported as it stands: by locati
 
   // By location: one line per part in each place, with what one costs and what the lot is worth.
   const byPlace = await lines(owner, '/admin/inventory/export.csv');
-  assert.equal(byPlace[0], 'Office,Location,Kind,Technician,Part number,Description,On hand,Cost each,Value');
+  assert.equal(byPlace[0], 'Branch,Location,Kind,Technician,Part number,Description,On hand,Cost each,Value');
   const office = db.prepare('SELECT name FROM branches WHERE id = ?').get(home).name;
   assert.deepEqual(mine(byPlace), [
     `${office},Main warehouse,Main warehouse,,EXP-1,"Export test, ""quoted""",10,12.50,125.00`,
@@ -8197,7 +8197,7 @@ test('inventory: the office\'s inventory can be exported as it stands: by locati
     `${office},Export trailer,Other,,EXP-1,"Export test, ""quoted""",2,12.50,25.00`]);
   // Totals: one line per part, split between the warehouse, the vehicles and anywhere else.
   const totals = await lines(owner, '/admin/inventory/export.csv?view=totals');
-  assert.equal(totals[0], 'Office,Part number,Description,On hand in all,Main warehouse,Vehicles,Other locations,Cost each,Value');
+  assert.equal(totals[0], 'Branch,Part number,Description,On hand in all,Main warehouse,Vehicles,Other locations,Cost each,Value');
   assert.deepEqual(mine(totals), [`${office},EXP-1,"Export test, ""quoted""",15,10,3,2,12.50,187.50`, `${office},EXP-2,No cost on file,3,4,-1,0,,`]);
   // One location by itself.
   assert.deepEqual(mine(await lines(owner, `/admin/inventory/locations/${truck}/export.csv`)).map((l) => l.split(',')[1]), ['Truck 55', 'Truck 55']);
@@ -8307,7 +8307,7 @@ test('inventory: each location opens with its figures at a glance, and every way
   db.prepare('DELETE FROM inv_moves WHERE catalog_id IN (?, ?)').run(a, b);
 });
 
-test('on call: each office keeps its own on-call rates on the On call page; whoever keeps the schedule edits them, and another office never sees them', async () => {
+test('on call: each branch keeps its own on-call rates on the On call page; whoever keeps the schedule edits them, and another branch never sees them', async () => {
   const home = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id;
   const owner = await loggedIn('owner'); const tech = await loggedIn('tech1'); const outsider = await loggedIn('inv.away');
   await owner.post('/branch/view', { branch: String(home) }, { page: '/' });
@@ -8315,7 +8315,7 @@ test('on call: each office keeps its own on-call rates on the On call page; whoe
   const rows = (b) => db.prepare('SELECT id, label, rate FROM oncall_rates WHERE branch_id = ? ORDER BY position, id').all(b).map((r) => ({ ...r }));
   // Nothing yet: a technician sees no rates section; whoever keeps the schedule sees where to add them.
   assert.doesNotMatch((await tech.get('/oncall')).text, /On-call rates/);
-  assert.match((await owner.get('/oncall')).text, /<h2 id="rates">On-call rates<\/h2>[\s\S]*?No rates have been added for this office yet/);
+  assert.match((await owner.get('/oncall')).text, /<h2 id="rates">On-call rates<\/h2>[\s\S]*?No rates have been added for this branch yet/);
   assert.equal((await tech.post(url, { label: 'Sneaky', rate: '$1' }, P)).status, 403);
   await owner.post(url, { label: 'Weeknight', rate: '$50' }, P);
   await owner.post(url, { label: 'Holiday <b>', rate: '$200 a day' }, P);
@@ -8505,14 +8505,14 @@ test('Social page: a prompt to post beside your picture opens into the full form
   db.prepare("DELETE FROM social_posts WHERE body LIKE 'DAYS %'").run();
 });
 
-test('on call: the picker holds the people of every office the person runs, and someone picked goes on their own office\'s schedule', async () => {
+test('on call: the picker holds the people of every branch the person runs, and someone picked goes on their own branch\'s schedule', async () => {
   const home = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id;
   const owner = await loggedIn('owner'); const tech = await loggedIn('tech1'); const now = new Date().toISOString();
   await owner.post('/branch/view', { branch: String(home) }, { page: '/' });
   const far = db.prepare('INSERT INTO branches (name, state, created_at) VALUES (?, ?, ?)').run('Pick Faraway', 'OH', now).lastInsertRowid;
   const put = (username, name, office, profile) => { const id = auth.createUser({ username, displayName: name, password: 'correct horse battery', profile, branchId: office }); db.prepare("UPDATE users SET must_change_password = 0, phone = ? WHERE id = ?").run(`717-555-${String(id).padStart(4, '0')}`, id); return id; };
   const near = put('pick.near', 'Nell Nearby', home, profileId('Technician')); const away = put('pick.away', 'Abe Away', far, profileId('Technician'));
-  const lead = put('pick.lead', 'Lena Lead', home, access.ensureProfile('Office admin (one office)', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'market.all')));
+  const lead = put('pick.lead', 'Lena Lead', home, access.ensureProfile('Branch admin (one branch)', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'market.all')));
   const listOf = async (c) => (/<datalist id="oncall-people">([\s\S]*?)<\/datalist>/.exec((await c.get('/oncall')).text) || [])[1] || '';
   // Someone who sees every office is offered everyone, each labelled with their office; an office's own admin only their office.
   const wide = await listOf(owner); const homeName = db.prepare('SELECT name FROM branches WHERE id = ?').get(home).name;
@@ -8521,7 +8521,7 @@ test('on call: the picker holds the people of every office the person runs, and 
   const lc = await loggedIn('pick.lead'); const narrow = await listOf(lc);
   assert.ok(narrow.includes('value="Nell Nearby"')); assert.ok(!narrow.includes('Abe Away'));
   assert.match((await owner.get('/oncall')).text, /<input name="name"[^>]*list="oncall-people" data-fills-phone data-picks-person/);
-  assert.match((await owner.get('/oncall')).text, /Someone from another office goes on their own/); assert.doesNotMatch((await lc.get('/oncall')).text, /Someone from another office goes on their own/);
+  assert.match((await owner.get('/oncall')).text, /Someone from another branch goes on their own/); assert.doesNotMatch((await lc.get('/oncall')).text, /Someone from another branch goes on their own/);
   // Someone who does not keep the schedule is sent no list of names and numbers.
   assert.doesNotMatch((await tech.get('/oncall')).text, /oncall-people/);
   // Picked from another office: the shift goes on that office's schedule, with what they cover. Typed by hand: the office being looked at.
@@ -8539,7 +8539,7 @@ test('on call: the picker holds the people of every office the person runs, and 
   db.prepare("DELETE FROM oncall_shifts WHERE name IN ('Abe Away', 'Walk-in Contractor', 'Somebody Else')").run();
 });
 
-test('on call: one file can fill several offices and the whole market, saying what each person covers, with phones taken from accounts', async () => {
+test('on call: one file can fill several branches and the whole market, saying what each person covers, with phones taken from accounts', async () => {
   const owner = await loggedIn('owner'); const now = new Date().toISOString(); const page = '/oncall';
   const mk = (name) => { const id = db.prepare('INSERT INTO branches (name, state, created_at) VALUES (?, ?, ?)').run(name, 'PA', now).lastInsertRowid; require('../app/branches').setUp(id); return id; };
   const a = mk('Call Alpha'); const b = mk('Call Beta'); const out = mk('Call Outside');
@@ -8549,14 +8549,14 @@ test('on call: one file can fill several offices and the whole market, saying wh
   put('call.sue', 'Sue Supervisor', a, '610-555-0101'); put('call.sam', 'Sam Sprinkler', b, '610-555-0202'); put('call.al', 'Al Alpha', a, null);
   const day = (n) => { const d = new Date(`${require('../app/util').localDate()}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
   const us = (ymd) => `${Number(ymd.slice(5, 7))}/${Number(ymd.slice(8))}/${ymd.slice(0, 4)}`;
-  const file = (lines) => new File([['Start,End,Office,Covers,Role,Name,Phone,Holiday', ...lines].join('\n')], 'q4.csv', { type: 'text/csv' });
+  const file = (lines) => new File([['Start,End,Branch,Covers,Role,Name,Phone,Holiday', ...lines].join('\n')], 'q4.csv', { type: 'text/csv' });
   const sheet = file([
     `${day(-1)},${day(6)},Market,Supervisor,On call,Sue Supervisor,,`,
     `${day(-1)},${day(6)},Market,"Security: access, video",Backup,Typed Number,610-555-0909,`,
     `${us(day(-1))}*,${us(day(6))},Call Beta,Sprinkler,On call,Sam Sprinkler,,`,                 // dates as the sheet writes them, star and all
     `${day(-1)},${day(6)},Call Alpha,Sprinkler,On call,Al Alpha,,`,
     `${day(2)},${day(3)},Market,Supervisor,On call,Sue Supervisor,,Thanksgiving`,
-    `${day(-1)},${day(6)},No Such Office,Sprinkler,On call,Lost Soul,,`,
+    `${day(-1)},${day(6)},No Such Branch,Sprinkler,On call,Lost Soul,,`,
     `not a date,${day(6)},Call Alpha,Sprinkler,On call,Bad Line,,`,
   ]);
   await owner.post('/branch/view', { branch: String(a), back: '/' }, { page: '/' });
@@ -8571,11 +8571,11 @@ test('on call: one file can fill several offices and the whole market, saying wh
     { branch_id: a, market_id: m, role: 'tech', name: 'Sue Supervisor', phone: '610-555-0101', covers: 'Supervisor', note: 'Thanksgiving' },
   ]);
   const said = (await owner.get(page)).text.replace(/\s+/g, ' ');
-  assert.match(said, /Schedule loaded: 5 entries\. Skipped lines for: No Such Office[^<]*No phone number on file for 1: Al Alpha\. 1 line\(s\) could not be read\./);
+  assert.match(said, /Schedule loaded: 5 entries\. Skipped lines for: No Such Branch[^<]*No phone number on file for 1: Al Alpha\. 1 line\(s\) could not be read\./);
   // Everyone in the market sees the market-wide people under the market's name, and each office's own under that office.
   const shown = (await owner.get(page)).text.replace(/\s+/g, ' ');
   assert.match(shown, /<h3 class="sub-h">Call Valley market<\/h3>[\s\S]*?<span class="oncall-covers">Supervisor<\/span><strong>Sue Supervisor<\/strong>/);
-  assert.match(shown, /<h3 class="sub-h">Call Beta office<\/h3>[\s\S]*?<span class="oncall-covers">Sprinkler<\/span><strong>Sam Sprinkler<\/strong>/);
+  assert.match(shown, /<h3 class="sub-h">Call Beta branch<\/h3>[\s\S]*?<span class="oncall-covers">Sprinkler<\/span><strong>Sam Sprinkler<\/strong>/);
   assert.equal((shown.match(/<strong>Sue Supervisor<\/strong>/g) || []).length, 1);                    // once, not once per office
   const bob = auth.createUser({ username: 'call.bob', displayName: 'Bob Beta', password: 'correct horse battery', profile: profileId('Technician'), branchId: b }); db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?').run(bob);
   const bc = await loggedIn('call.bob'); const his = (await bc.get(page)).text;
@@ -8601,7 +8601,7 @@ test('on call: one file can fill several offices and the whole market, saying wh
   assert.ok(!rows().some((r) => r.market_id));
   await owner.post('/branch/view', { branch: String(a), back: '/' }, { page: '/' });
   // An office's own admin cannot write to another office through a file: those lines are skipped.
-  const lead = auth.createUser({ username: 'call.lead', displayName: 'Lou Lead', password: 'correct horse battery', profile: access.ensureProfile('Office admin (one office)', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'market.all')), branchId: a });
+  const lead = auth.createUser({ username: 'call.lead', displayName: 'Lou Lead', password: 'correct horse battery', profile: access.ensureProfile('Branch admin (one branch)', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'market.all')), branchId: a });
   db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?').run(lead);
   const lc = await loggedIn('call.lead');
   await lc.post('/admin/oncall/import', { file: file([`${day(10)},${day(17)},Call Beta,Sprinkler,On call,Sneaky Entry,,`, `${day(10)},${day(17)},Call Alpha,Sprinkler,On call,Fair Entry,,`]) }, { page, multipart: true });
@@ -8666,7 +8666,7 @@ test('Help: how-to guides for the jobs a person can do, a "?" on the page each o
   assert.equal((await new Client().get('/help')).status, 302);                                // signed-in people only
 });
 
-test('search: one box finds pages, guides, people, offices and parts, and only what the person may open', async () => {
+test('search: one box finds pages, guides, people, branches and parts, and only what the person may open', async () => {
   const search = require('../app/search');
   // Every link in the menu can be found by search.
   const header = fs.readFileSync(path.join(__dirname, '..', 'app', 'views', 'partials', 'header.ejs'), 'utf8');
@@ -8690,7 +8690,7 @@ test('search: one box finds pages, guides, people, offices and parts, and only w
   // People by name, an office by name.
   assert.ok(urls(await find(t, 'uma'), 'People').includes(`/people/${userId('tech2')}`));
   const office = db.prepare('SELECT b.id, b.name FROM branches b JOIN users u ON u.branch_id = b.id WHERE u.id = ?').get(userId('tech1'));
-  assert.ok(urls(await find(t, office.name), 'Offices').includes(`/branches/${office.id}`));
+  assert.ok(urls(await find(t, office.name), 'Branches').includes(`/branches/${office.id}`));
   // A part: the technician lands on the parts form with it filled in; someone who runs stock lands on Stock.
   db.prepare("INSERT OR IGNORE INTO parts_catalog (part_number, description, active, created_at) VALUES ('SRCH-100', 'Searchable smoke detector', 1, ?)").run(new Date().toISOString());
   assert.deepEqual(urls(await find(t, 'srch-100'), 'Parts'), ['/parts?action=take&part=SRCH-100']);
@@ -8849,7 +8849,7 @@ test('warehouse stock: levels without a count, a maximum to order up to, figures
   db.prepare('DELETE FROM inv_locations WHERE id = ?').run(truck);
 });
 
-test('fleet: the office\'s trucks, trailers, lifts and other equipment in one list, and a lift signed out for a time and a place', async () => {
+test('fleet: the branch\'s trucks, trailers, lifts and other equipment in one list, and a lift signed out for a time and a place', async () => {
   const owner = await loggedIn('owner'); const t1 = await loggedIn('tech1'); const t2 = await loggedIn('tech2'); const outsider = await loggedIn('inv.away');
   const home = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id;
   await owner.post('/branch/view', { branch: String(home) }, { page: '/' });
@@ -8910,7 +8910,7 @@ test('fleet: the office\'s trucks, trailers, lifts and other equipment in one li
   db.prepare("DELETE FROM fleet_items WHERE branch_id = ?").run(home);
 });
 
-test('office box: a corporate admin can find and switch to any office by typing, including one with nobody in it', async () => {
+test('branch box: a corporate admin can find and switch to any branch by typing, including one with nobody in it', async () => {
   const owner = await loggedIn('owner');
   const empty = db.prepare("INSERT INTO branches (name, number, state, created_at) VALUES ('Quietville', '9876', 'OH', ?)").run(new Date().toISOString()).lastInsertRowid;
   const total = db.prepare('SELECT COUNT(*) n FROM branches').get().n;
@@ -8925,22 +8925,22 @@ test('office box: a corporate admin can find and switch to any office by typing,
   const viewing = async () => (/<input name="office" list="office-list" value="([^"]*)"/.exec((await owner.get('/')).text) || [])[1];
   // Picked from the list (its id is sent), typed in full, by its number, or back to all of them.
   await owner.post('/branch/view', { branch: String(empty), office: 'Quietville', back: '/' }, { page: '/' }); assert.equal(await viewing(), 'Quietville');
-  await owner.post('/branch/view', { branch: '', office: 'all offices', back: '/' }, { page: '/' }); assert.equal(await viewing(), 'Corporate');   // the old name still works when typed
+  await owner.post('/branch/view', { branch: '', office: 'all branches', back: '/' }, { page: '/' }); assert.equal(await viewing(), 'Corporate');   // the old name still works when typed
   await owner.post('/branch/view', { branch: String(empty), back: '/' }, { page: '/' }); await owner.post('/branch/view', { branch: '', office: 'corporate', back: '/' }, { page: '/' }); assert.equal(await viewing(), 'Corporate');
   await owner.post('/branch/view', { branch: '', office: 'quietville', back: '/' }, { page: '/' }); assert.equal(await viewing(), 'Quietville');
   await owner.post('/branch/view', { branch: 'all', back: '/' }, { page: '/' });
   await owner.post('/branch/view', { branch: '', office: '#9876', back: '/' }, { page: '/' }); assert.equal(await viewing(), 'Quietville');
   // The name at the top of every page follows the office being looked at, and says so when it is all of them.
   const top = async (url) => (/<span class="branch">([^<]*)<\/span>/.exec((await owner.get(url)).text) || [])[1];
-  assert.equal(await top('/'), 'Quietville Office'); assert.equal(await top('/admin/users'), 'Quietville Office');
-  assert.match((await owner.get('/')).text, /<p class="hero-sub">Quietville Office<\/p>/);
-  assert.match((await owner.get('/parts')).text, /<title>Parts · Pye-Barker Quietville Office<\/title>/);
+  assert.equal(await top('/'), 'Quietville Branch'); assert.equal(await top('/admin/users'), 'Quietville Branch');
+  assert.match((await owner.get('/')).text, /<p class="hero-sub">Quietville Branch<\/p>/);
+  assert.match((await owner.get('/parts')).text, /<title>Parts · Pye-Barker Quietville Branch<\/title>/);
   await owner.post('/branch/view', { branch: 'all', back: '/' }, { page: '/' }); assert.equal(await top('/'), 'Corporate');
   assert.match((await owner.get('/')).text, /<p class="hero-sub">Corporate<\/p>/);                    // and under the greeting on the home page
   await owner.post('/branch/view', { branch: String(empty), back: '/' }, { page: '/' });
   // Something that is no office changes nothing and says so.
   await owner.post('/branch/view', { branch: '', office: 'Nowhereville', back: '/' }, { page: '/' });
-  assert.match((await owner.get('/')).text, /No single office matches/); assert.equal(await viewing(), 'Quietville');
+  assert.match((await owner.get('/')).text, /No single branch matches/); assert.equal(await viewing(), 'Quietville');
   // Still only for people who see every office.
   assert.equal((await (await loggedIn('tech1')).post('/branch/view', { branch: String(empty) }, { page: '/' })).status, 403);
   const home1 = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id;
@@ -8948,7 +8948,7 @@ test('office box: a corporate admin can find and switch to any office by typing,
   db.prepare('DELETE FROM inv_locations WHERE branch_id = ?').run(empty); db.prepare('DELETE FROM branches WHERE id = ?').run(empty);
 });
 
-test('markets: corporate admins group offices into markets and appoint market admins, who run each office of their market and nothing outside it', async () => {
+test('markets: corporate admins group branches into markets and appoint market admins, who run each branch of their market and nothing outside it', async () => {
   const owner = await loggedIn('owner'); const now = new Date().toISOString();
   const mk = (name, state) => { const id = db.prepare('INSERT INTO branches (name, state, created_at) VALUES (?, ?, ?)').run(name, state, now).lastInsertRowid; require('../app/branches').setUp(id); return id; };
   const a = mk('Mkt Alpha', 'PA'); const b = mk('Mkt Beta', 'DE'); const outside = mk('Mkt Outside', 'OH');
@@ -8965,7 +8965,7 @@ test('markets: corporate admins group offices into markets and appoint market ad
   const inMarket = () => db.prepare('SELECT name FROM branches WHERE market_id = ? ORDER BY name').all(m).map((r) => r.name);
   assert.deepEqual(inMarket(), ['Mkt Alpha', 'Mkt Beta']);
   const page = (await owner.get('/admin/markets')).text.replace(/\s+/g, ' ');
-  assert.match(page, /No single office matches/); assert.match(page, /<h2>Test Valley <span class="meta">2 offices<\/span>/);
+  assert.match(page, /No single branch matches/); assert.match(page, /<h2>Test Valley <span class="meta">2 branches<\/span>/);
   assert.match(page, new RegExp(`<option value="Mkt Outside" data-id="${outside}" data-find="Ohio" label="OH · no market yet">`)); assert.match(page, /label="PA · in Test Valley"/);
   // An office belongs to one market: adding it to another moves it. Taking it out leaves it in none.
   await owner.post('/admin/markets', { name: 'Other Side' }, { page: '/admin/markets' });
@@ -9007,7 +9007,7 @@ test('markets: corporate admins group offices into markets and appoint market ad
   assert.equal(access.moderates(miaAcc, 'forum.moderate', userId('mkt.bea')), true); assert.equal(access.moderates(miaAcc, 'forum.moderate', otto), false);
   await mc.post('/branch/view', { branch: String(outside), back: '/' }, { page: '/' });
   assert.match(await sees(), /Bea Beta/); assert.doesNotMatch(await sees(), /Otto Outside/);                    // refused: still looking at Beta
-  await mc.post('/branch/view', { branch: 'all', back: '/' }, { page: '/' }); await mc.post('/branch/view', { branch: '', office: 'All offices', back: '/' }, { page: '/' });
+  await mc.post('/branch/view', { branch: 'all', back: '/' }, { page: '/' }); await mc.post('/branch/view', { branch: '', office: 'All branches', back: '/' }, { page: '/' });
   assert.match(await sees(), /Bea Beta/); assert.doesNotMatch(await sees(), /Otto Outside|Terry Tech/);
   await mc.post('/branch/view', { branch: '', office: 'mkt alpha', back: '/' }, { page: '/' }); assert.match(await sees(), /Mia Market/);
   // On call is shared across the market's offices.
@@ -9025,7 +9025,7 @@ test('markets: corporate admins group offices into markets and appoint market ad
   assert.match(asMkt, /looking at the site as <strong>Market admin<\/strong>/);
   assert.deepEqual([...((/<datalist id="office-list">([\s\S]*?)<\/datalist>/.exec(asMkt) || [])[1] || '').matchAll(/<option value="([^"]+)"/g)].map((x) => x[1]), ['Mkt Alpha', 'Mkt Beta']);
   await owner.post('/branch/view', { branch: String(b), back: '/' }, { page: '/' });
-  assert.match((await owner.get('/')).text, /<span class="branch">Mkt Beta Office<\/span>/);
+  assert.match((await owner.get('/')).text, /<span class="branch">Mkt Beta Branch<\/span>/);
   await owner.post('/view-as', { profile: '' }, { page: '/' });
   await owner.post(`/admin/markets/${m}/offices/${b}/remove`, {}, { page: '/admin/markets' });
   // Stood down, she is a technician again and is signed out; renaming and removing a market keep its offices.
@@ -9054,7 +9054,7 @@ test('on call: the Call button carries the number so a computer can show it; a p
   db.prepare("DELETE FROM oncall_shifts WHERE name = 'Cal Caller'").run();
 });
 
-test('each office its own, each market together: shout-outs, events, newsletters, announcements, birthdays and the home page follow the office being looked at', async () => {
+test('each branch its own, each market together: shout-outs, events, newsletters, announcements, birthdays and the home page follow the branch being looked at', async () => {
   const owner = await loggedIn('owner'); const now = new Date().toISOString();
   const mk = (name) => { const id = db.prepare('INSERT INTO branches (name, state, created_at) VALUES (?, ?, ?)').run(name, 'PA', now).lastInsertRowid; require('../app/branches').setUp(id); return id; };
   const a = mk('Reach Alpha'); const b = mk('Reach Beta'); const c = mk('Reach Gamma');
@@ -9073,7 +9073,7 @@ test('each office its own, each market together: shout-outs, events, newsletters
   await al.post('/shoutouts', { to_user: String(amy), message: 'REACH inside Alpha' }, { page: '/shoutouts' });
   await al.post('/shoutouts', { to_user: String(bo), message: 'REACH Alpha to Beta' }, { page: '/shoutouts' });
   const far = await al.post('/shoutouts', { to_user: String(cy), message: 'REACH out of the market' }, { page: '/shoutouts' });
-  assert.equal(far.status, 400); assert.match(far.text, /Shout-outs are for people in your own office or your market\./);
+  assert.equal(far.status, 400); assert.match(far.text, /Shout-outs are for people in your own branch or your market\./);
   for (const url of ['/', '/shoutouts']) {
     await has(al, url, /REACH inside Alpha/); await has(al, url, /REACH Alpha to Beta/);
     await has(boC, url, /REACH Alpha to Beta/); await hasNot(boC, url, /REACH inside Alpha/);
@@ -9102,7 +9102,7 @@ test('each office its own, each market together: shout-outs, events, newsletters
   // A market admin posts for an office of their market or for the market, never for the company, and runs what is theirs.
   await view(mara, b);
   const maraForm = (await mara.get('/events')).text;
-  assert.match(maraForm, /<option value="office" >Reach Beta office only<\/option><option value="market" >The Reach Valley market<\/option><\/select>/);
+  assert.match(maraForm, /<option value="office" >Reach Beta branch only<\/option><option value="market" >The Reach Valley market<\/option><\/select>/);
   await mara.post('/events', { title: 'REACH Beta cookout', event_date: soon(8), reach: 'company' }, { page: '/events' });   // not theirs to choose: it stays with the office
   assert.deepEqual([ev('REACH Beta cookout').branch_id, ev('REACH Beta cookout').market_id], [b, null]);
   await has(boC, '/events', /REACH Beta cookout/); await hasNot(al, '/events', /REACH Beta cookout/);
@@ -9123,7 +9123,7 @@ test('each office its own, each market together: shout-outs, events, newsletters
   }
   const who = (await owner.get('/admin/announcements')).text.replace(/\s+/g, ' ');
   assert.match(who, /REACH Valley notice[\s\S]*?<td>Reach Valley market<\/td>\s*<td><strong>\d of 4<\/strong>/);          // everyone in the market's two offices
-  assert.match(who, /REACH Alpha notice[\s\S]*?<td>Reach Alpha office<\/td>\s*<td><strong>\d of 3<\/strong>/);
+  assert.match(who, /REACH Alpha notice[\s\S]*?<td>Reach Alpha branch<\/td>\s*<td><strong>\d of 3<\/strong>/);
 
   // ---- Newsletters: each office has its own; a market or the company can have one too.
   const issue = (month, title, reach) => owner.post('/admin/newsletters', { issue_month: month, title, reach, pdf: new Blob([tinyPdf()], { type: 'application/pdf' }) }, { page: '/admin/newsletters', multipart: true });
@@ -9153,15 +9153,15 @@ test('each office its own, each market together: shout-outs, events, newsletters
   // ---- Someone who runs several offices sees each one as its own people do; the Corporate view has the company's own.
   await view(owner, b);
   const atBeta = (await owner.get('/')).text;
-  assert.match(atBeta, /in the Reach Beta office/); assert.match(atBeta, /REACH Valley notice/); assert.match(atBeta, /REACH Alpha to Beta/);
+  assert.match(atBeta, /in the Reach Beta branch/); assert.match(atBeta, /REACH Valley notice/); assert.match(atBeta, /REACH Alpha to Beta/);
   assert.doesNotMatch(atBeta, /REACH Alpha notice|REACH inside Alpha|REACH Alpha lunch/);
   await view(owner, c);
   assert.doesNotMatch((await owner.get('/')).text, /REACH Alpha|REACH Valley|REACH inside/);
   await owner.post('/branch/view', { branch: 'all', back: '/' }, { page: '/' });
   const corp = (await owner.get('/')).text;
-  assert.match(corp, /across every office/); assert.match(corp, /REACH Company notice/); assert.match(corp, /REACH Company day/);
+  assert.match(corp, /across every branch/); assert.match(corp, /REACH Company notice/); assert.match(corp, /REACH Company day/);
   assert.doesNotMatch(corp, /REACH Alpha notice|REACH Valley notice|REACH Alpha lunch|REACH Beta cookout/);
-  await has(owner, '/events', /REACH Beta cookout[\s\S]*Reach Beta office/);                    // the full pages list every office's, each marked
+  await has(owner, '/events', /REACH Beta cookout[\s\S]*Reach Beta branch/);                    // the full pages list every office's, each marked
   await has(owner, '/shoutouts', /REACH inside Alpha/);
   assert.deepEqual((await titles(owner)).filter((t) => /^REACH/.test(t)), ['REACH Company Barker', 'REACH Valley Barker', 'REACH Alpha Barker']);
 
@@ -9197,7 +9197,7 @@ test('six roles: a level on each profile, a manager at every level who runs the 
   await save('office'); assert.deepEqual(state(), ['all', false, false, true]);
   const list = (await owner.get('/admin/profiles')).text.replace(/\s+/g, ' ');
   assert.match(list, /<strong>Corporate manager<\/strong><\/a><\/td> <td>The whole company <span class="tag">Manager<\/span><\/td>/);
-  assert.match(list, /<strong>Level Check<\/strong><\/a><\/td> <td>Their office <span class="tag">Manager<\/span><\/td>/);
+  assert.match(list, /<strong>Level Check<\/strong><\/a><\/td> <td>Their branch <span class="tag">Manager<\/span><\/td>/);
   assert.ok(list.indexOf('<strong>Corporate admin</strong>') < list.indexOf('<strong>Corporate manager</strong>') && list.indexOf('<strong>Corporate manager</strong>') < list.indexOf('<strong>Branch manager</strong>'));   // top of the ladder first
   db.prepare('DELETE FROM profile_permissions WHERE profile_id = ?').run(pid); db.prepare('DELETE FROM profiles WHERE id = ?').run(pid);
 
@@ -9218,7 +9218,7 @@ test('six roles: a level on each profile, a manager at every level who runs the 
   for (const url of ['/admin/branches', '/admin/markets', '/admin/profiles', '/admin/users', '/admin/backups', '/admin/activity', '/admin/complaints', '/admin/security']) assert.equal((await cora.get(url)).status, 403, url);
   for (const url of ['/admin/requests', '/admin/tasks', '/admin/stock', '/fleet', '/oncall', '/admin/announcements']) assert.equal((await cora.get(url)).status, 200, url);
   await cora.post('/branch/view', { branch: String(b), back: '/' }, { page: '/' });
-  assert.match((await cora.get('/')).text, /<span class="branch">Role Beta Office<\/span>/);
+  assert.match((await cora.get('/')).text, /<span class="branch">Role Beta Branch<\/span>/);
   assert.match((await cora.get('/events')).text, /<option value="company" >The whole company<\/option>/);                 // posts for the company
   assert.equal((await cora.post(`/branches/${b}`, [['address', 'Not for a manager'], ['phone', ''], ['about', '']], { page: `/branches/${b}`, multipart: true })).status, 403);   // office pages are kept by admins
   assert.equal((await cora.post('/admin/markets', { name: 'Sneaky Market' }, { page: '/' })).status, 403);
@@ -9229,12 +9229,12 @@ test('six roles: a level on each profile, a manager at every level who runs the 
   assert.deepEqual(offices((await mack.get('/')).text), ['Role Alpha', 'Role Beta']);
   assert.equal((await mack.get('/admin/users')).status, 403); assert.equal((await mack.get('/admin/requests')).status, 200);
   await mack.post('/branch/view', { branch: String(out), back: '/' }, { page: '/' });
-  assert.match((await mack.get('/')).text, /<span class="branch">Role Alpha Office<\/span>/);                           // refused: still at Alpha
+  assert.match((await mack.get('/')).text, /<span class="branch">Role Alpha Branch<\/span>/);                           // refused: still at Alpha
   assert.match((await mack.get('/events')).text, /<option value="market" >The Role Valley market<\/option><\/select>/);   // the market, not the company
 
   // ---- A branch manager is appointed on the Offices page beside the office's admins, and stood down the same way.
   const pick = /<details class="appoint"[\s\S]*?<\/details>/.exec((await owner.get(`/admin/branches?office=${a}`)).text)[0];
-  assert.match(pick, /<label>Role <select name="profile_id">[\s\S]*>Office admin \(one office\)<\/option>[\s\S]*>Branch manager<\/option>/);   // admins first, then managers assert.doesNotMatch(pick, />Market manager<|>Corporate manager<|>Technician</);
+  assert.match(pick, /<label>Role <select name="profile_id">[\s\S]*>Branch admin \(one branch\)<\/option>[\s\S]*>Branch manager<\/option>/);   // admins first, then managers assert.doesNotMatch(pick, />Market manager<|>Corporate manager<|>Technician</);
   await owner.post(`/admin/branches/${a}/admins`, { profile_id: String(profileId('Branch manager')), user_id: String(brad) }, { page: '/admin/branches' });
   assert.equal(db.prepare('SELECT profile_id FROM users WHERE id = ?').get(brad).profile_id, profileId('Branch manager'));
   assert.match((await owner.get(`/admin/branches?office=${a}`)).text.replace(/\s+/g, ' '), /<strong>Brad Branchman<\/strong><span class="meta">Branch manager/);
@@ -9246,7 +9246,7 @@ test('six roles: a level on each profile, a manager at every level who runs the 
   // ---- Admins appoint the level below: a market admin can make someone in their market an office admin or manager, and nothing above their own reach.
   const mia = await loggedIn('role.ma');
   const choices = /<select name="profile_id" required>[\s\S]*?<\/select>/.exec((await mia.get(`/admin/users/${tess}/edit`)).text)[0];
-  for (const n of ['Office admin \\(one office\\)', 'Branch manager', 'Market manager', 'Manager', 'Technician']) assert.match(choices, new RegExp(`>${n}</option>`), n);
+  for (const n of ['Branch admin \\(one branch\\)', 'Branch manager', 'Market manager', 'Manager', 'Technician']) assert.match(choices, new RegExp(`>${n}</option>`), n);
   assert.doesNotMatch(choices, />Corporate admin<|>Corporate manager</);
   // A branch manager cannot hand out anything: the Users page is not theirs.
   assert.equal((await bradC.get(`/admin/users/${tess}/edit`)).status, 403);
@@ -9259,14 +9259,14 @@ test('six roles: a level on each profile, a manager at every level who runs the 
   })();
 });
 
-test('chain of command: an office answers to its market and the market to corporate, shown on the office page and on each person', async () => {
+test('chain of command: a branch answers to its market and the market to corporate, shown on the branch page and on each person', async () => {
   const now = new Date().toISOString(); const chain = require('../app/chain');
   const mk = (name) => { const id = db.prepare('INSERT INTO branches (name, state, created_at) VALUES (?, ?, ?)').run(name, 'PA', now).lastInsertRowid; require('../app/branches').setUp(id); return id; };
   const a = mk('Chain Alpha'); const b = mk('Chain Beta'); const solo = mk('Chain Solo');
   const m = db.prepare("INSERT INTO markets (name, created_at) VALUES ('Chain Valley', ?)").run(now).lastInsertRowid;
   db.prepare('UPDATE branches SET market_id = ? WHERE id IN (?, ?)').run(m, a, b);
   access.ensureProfile('Market admin', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'backups'));
-  const officeAdmin = access.ensureProfile('Office admin (one office)', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'market.all'));
+  const officeAdmin = access.ensureProfile('Branch admin (one branch)', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'market.all'));
   const put = (username, name, office, profile) => { const id = auth.createUser({ username, displayName: name, password: 'correct horse battery', profile, branchId: office }); db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?').run(id); return id; };
   const tech = put('chain.tech', 'Tia Chaintech', a, profileId('Technician'));
   const bm = put('chain.bm', 'Bram Chainmanager', a, profileId('Branch manager'));
@@ -9278,9 +9278,9 @@ test('chain of command: an office answers to its market and the market to corpor
 
   // The office's chain, top first. Each level lists its admins before its managers.
   const steps = chain.forOffice(a);
-  assert.deepEqual(steps.map((s) => s.label), ['Corporate', 'Chain Valley market', 'Chain Alpha office']);
+  assert.deepEqual(steps.map((s) => s.label), ['Corporate', 'Chain Valley market', 'Chain Alpha branch']);
   assert.deepEqual(steps[1].people.map((p) => [p.display_name, p.role]), [['Mae Chainmarket', 'Market admin'], ['Mo Chainmarket', 'Market manager']]);
-  assert.deepEqual(steps[2].people.map((p) => [p.display_name, p.role]), [['Ada Chainadmin', 'Office admin (one office)'], ['Bram Chainmanager', 'Branch manager']]);
+  assert.deepEqual(steps[2].people.map((p) => [p.display_name, p.role]), [['Ada Chainadmin', 'Branch admin (one branch)'], ['Bram Chainmanager', 'Branch manager']]);
   // Corporate lists its admins first and stops at a dozen names, saying how many more there are.
   assert.ok(steps[0].people.length <= 12 && steps[0].people.every((p) => p.kind === 'admin' || steps[0].more === 0));
   const others = db.prepare("SELECT id FROM users WHERE active = 1 AND id <> ? AND is_master = 0 AND username NOT LIKE 'chain.%' AND profile_id IN (SELECT profile_id FROM profile_permissions WHERE permission = 'branches.all')").all(userId('owner')).map((r) => r.id);
@@ -9290,12 +9290,12 @@ test('chain of command: an office answers to its market and the market to corpor
   assert.equal(corp.people[corp.people.length - 1].display_name, 'Cy Chaincorp');                                  // a manager comes after the admins
   assert.ok(!steps.some((s) => s.people.some((p) => p.display_name === 'Tia Chaintech')));                        // staff are not in it
   // An office in no market answers straight to corporate; with nobody of its own yet, it says so.
-  assert.deepEqual(chain.forOffice(solo).map((s) => [s.label, s.key === 'office' ? s.people.length : null]), [['Corporate', null], ['Chain Solo office', 0]]);
+  assert.deepEqual(chain.forOffice(solo).map((s) => [s.label, s.key === 'office' ? s.people.length : null]), [['Corporate', null], ['Chain Solo branch', 0]]);
 
   // Who is above one person, nearest first. A manager answers to the admins of their own level before the next one up.
   const up = (id) => chain.above(id).map((s) => [s.label, s.people.map((p) => p.display_name).filter((n) => /Chain/.test(n))]);
-  assert.deepEqual(up(tech).slice(0, 2), [['Chain Alpha office', ['Ada Chainadmin', 'Bram Chainmanager']], ['Chain Valley market', ['Mae Chainmarket', 'Mo Chainmarket']]]);
-  assert.deepEqual(up(bm).slice(0, 2), [['Chain Alpha office', ['Ada Chainadmin']], ['Chain Valley market', ['Mae Chainmarket', 'Mo Chainmarket']]]);
+  assert.deepEqual(up(tech).slice(0, 2), [['Chain Alpha branch', ['Ada Chainadmin', 'Bram Chainmanager']], ['Chain Valley market', ['Mae Chainmarket', 'Mo Chainmarket']]]);
+  assert.deepEqual(up(bm).slice(0, 2), [['Chain Alpha branch', ['Ada Chainadmin']], ['Chain Valley market', ['Mae Chainmarket', 'Mo Chainmarket']]]);
   assert.deepEqual(up(ba)[0], ['Chain Valley market', ['Mae Chainmarket', 'Mo Chainmarket']]);
   assert.deepEqual(up(mm)[0], ['Chain Valley market', ['Mae Chainmarket']]);
   assert.equal(up(ma)[0][0], 'Corporate'); assert.equal(up(ma).length, 1);
@@ -9309,10 +9309,10 @@ test('chain of command: an office answers to its market and the market to corpor
   // On the pages: the office page shows the whole chain; a person's page shows who is above them.
   const t = await loggedIn('chain.tech');
   const office = (/<ol class="chain">[\s\S]*?<\/ol>/.exec((await t.get(`/branches/${a}`)).text) || [''])[0].replace(/\s+/g, ' ');
-  assert.match(office, /Corporate<\/span>[\s\S]*Chain Valley market<\/span>[\s\S]*Mae Chainmarket<\/strong><\/a> <span class="meta">Market admin<\/span>[\s\S]*Chain Alpha office<\/span>[\s\S]*Ada Chainadmin[\s\S]*Bram Chainmanager<\/strong><\/a> <span class="meta">Branch manager<\/span>/);
-  assert.match((await t.get(`/branches/${solo}`)).text.replace(/\s+/g, ' '), /Chain Solo office<\/span> <span class="meta">Nobody appointed yet<\/span>/);
+  assert.match(office, /Corporate<\/span>[\s\S]*Chain Valley market<\/span>[\s\S]*Mae Chainmarket<\/strong><\/a> <span class="meta">Market admin<\/span>[\s\S]*Chain Alpha branch<\/span>[\s\S]*Ada Chainadmin[\s\S]*Bram Chainmanager<\/strong><\/a> <span class="meta">Branch manager<\/span>/);
+  assert.match((await t.get(`/branches/${solo}`)).text.replace(/\s+/g, ' '), /Chain Solo branch<\/span> <span class="meta">Nobody appointed yet<\/span>/);
   const mine = (/<ol class="chain">[\s\S]*?<\/ol>/.exec((await t.get(`/people/${tech}`)).text) || [''])[0].replace(/\s+/g, ' ');
-  assert.match(mine, /Chain Alpha office<\/span>[\s\S]*Ada Chainadmin[\s\S]*Chain Valley market<\/span>[\s\S]*Corporate<\/span>/);     // nearest first
+  assert.match(mine, /Chain Alpha branch<\/span>[\s\S]*Ada Chainadmin[\s\S]*Chain Valley market<\/span>[\s\S]*Corporate<\/span>/);     // nearest first
   assert.match((await t.get(`/people/${tech}`)).text, /Above Tia in the chain of command, nearest first/);
 
   db.transaction(() => {
@@ -9320,4 +9320,31 @@ test('chain of command: an office answers to its market and the market to corpor
     db.prepare("UPDATE users SET active = 0, profile_id = ? WHERE username LIKE 'chain.%'").run(profileId('Technician'));
     db.prepare('UPDATE branches SET market_id = NULL WHERE market_id = ?').run(m); db.prepare('DELETE FROM markets WHERE id = ?').run(m);
   })();
+});
+
+test('wording: the site says branch; old habits still work (typing "all offices", an Office column in a file, the Admin profile by its first name)', async () => {
+  const owner = await loggedIn('owner');
+  // No screen a person reaches from the menu still says "office" in its text.
+  const text = (html) => html.replace(/<script[\s\S]*?<\/script>/g, ' ').replace(/<[^>]*>/g, ' ');
+  for (const url of ['/', '/branches', '/people', '/oncall', '/events', '/shoutouts', '/newsletters', '/notices', '/help', '/admin/branches', '/admin/markets', '/admin/profiles', '/admin/users', '/admin/announcements', '/admin/inventory', '/fleet', '/sales']) {
+    const r = await owner.get(url); assert.equal(r.status, 200, url);
+    // (A job title, a note someone typed, and the made-up usernames in these checks are not the site's own wording.)
+    const names = /\b[a-z0-9]+\.office\b/g;
+    assert.deepEqual((text(r.text).replace(names, ' ').match(/[^.>]{0,40}\boffices?\b[^.<]{0,40}/gi) || []).filter((s) => !/Office Manager|site office/i.test(s)), [], url);
+  }
+  // Typing the old words in the box still switches to every branch at once.
+  await owner.post('/branch/view', { branch: '', office: 'All offices', back: '/' }, { page: '/' });
+  assert.match((await owner.get('/')).text, /<span class="branch">Corporate<\/span>/);
+  await owner.post('/branch/view', { branch: String(db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id), back: '/' }, { page: '/' });
+  await owner.post('/branch/view', { branch: '', office: 'all branches', back: '/' }, { page: '/' });
+  assert.match((await owner.get('/')).text, /<span class="branch">Corporate<\/span>/);
+  await owner.post('/branch/view', { branch: String(db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id), back: '/' }, { page: '/' });
+  // An on-call file may head the column Office or Branch.
+  const oncall = require('../app/oncall');
+  const rows = (head) => [['Start', 'End', head, 'Covers', 'Role', 'Name', 'Phone', 'Holiday'], ['2031-01-05', '2031-01-12', 'Somewhere', 'Sprinkler', 'On call', 'Pat Example', '', '']];
+  for (const head of ['Office', 'Branch']) assert.equal(oncall.parseLong(rows(head)).shifts[0].office, 'Somewhere', head);
+  // The branch admin profile is found by the name it started with.
+  db.prepare("INSERT INTO profiles (name, scope, created_at) VALUES ('Branch admin (renamed check)', 'all', ?)").run(new Date().toISOString());
+  assert.equal(access.profileByName('admin').name, 'Admin');                       // here it still has its first name
+  db.prepare("DELETE FROM profiles WHERE name = 'Branch admin (renamed check)'").run();
 });

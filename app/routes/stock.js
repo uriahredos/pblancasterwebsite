@@ -52,7 +52,7 @@ router.get('/admin/stock/reorder.csv', requireLogin, (req, res) => {
   const rows = stock.list(req.user.workBranch, { low: true });
   activity.log(req.user, 'Export downloaded', `Reorder list, ${rows.length} parts`);
   require('../csv').sendCsv(res, `reorder-${office.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${require('../util').localDate()}.csv`,
-    ['Office', 'Part number', 'Description', 'On hand', 'Minimum', 'Maximum', `Used in ${stock.USE_DAYS} days`, 'Order'],
+    ['Branch', 'Part number', 'Description', 'On hand', 'Minimum', 'Maximum', `Used in ${stock.USE_DAYS} days`, 'Order'],
     rows.map((r) => [office, r.part_number, r.description, r.on_hand, r.min_level, r.max_level === null ? '' : r.max_level, r.used, r.order]));
 });
 

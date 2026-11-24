@@ -34,14 +34,14 @@
     </tbody>
   </table>
   </div>
-  <p class="filter-actions"><button class="btn primary" type="submit">Save roles</button><span class="hint">The same roles are used by every office. If an office has nobody in a role, the next one up is used. A role's profile is given to people when they are put in the role from now on; people already in it keep the profile they have. Merging moves everyone to the role you pick.</span></p>
+  <p class="filter-actions"><button class="btn primary" type="submit">Save roles</button><span class="hint">The same roles are used by every branch. If a branch has nobody in a role, the next one up is used. A role's profile is given to people when they are put in the role from now on; people already in it keep the profile they have. Merging moves everyone to the role you pick.</span></p>
 </form>
-<% } else { %><p class="hint">Roles are the same for every office and are set by corporate. Need one that is not here? Ask a corporate admin.</p><% } %>
+<% } else { %><p class="hint">Roles are the same for every branch and are set by corporate. Need one that is not here? Ask a corporate admin.</p><% } %>
 
 <h2>2. People</h2>
 <p class="lede">Pick each person's role. Who they report to follows from it, and so does their profile when the role gives one.</p>
 <% if (!people.length) { %><p class="empty">Nobody to show yet.</p><% } else { %><% if (cutAt) { %>
-<p class="hint">Only the first <%= cutAt %> people are listed here.<% if (showOffice) { %> To work on everyone in one office, choose that office instead of Corporate.<% } %></p><% } %>
+<p class="hint">Only the first <%= cutAt %> people are listed here.<% if (showOffice) { %> To work on everyone in one branch, choose that branch instead of Corporate.<% } %></p><% } %>
 <label class="grow pos-find">Find a person <input type="search" id="pos-find" placeholder="Start typing a name or role" autocomplete="off"></label>
 <form method="post" action="/admin/users/positions" id="pos-form">
   <input type="hidden" name="_csrf" value="<%= csrf %>">

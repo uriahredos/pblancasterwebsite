@@ -13,7 +13,7 @@ const PAGES = [
   ['', '/', 'Home', 'start front page dashboard'],
   ['', '/tasks', 'Tasks', 'my tasks to do jobs todo'],
   ['', '/social', 'Social', 'feed post photos pictures wall'],
-  ['', '/branches', 'Offices', 'branches locations office list'],
+  ['', '/branches', 'Branches', 'branches locations branch list offices office'],
   ['', '/company', 'Company', 'about'],
   ['', '/contacts', 'Who to contact', 'contacts payroll hr human resources safety it help desk phone numbers'],
   ['', '/feed', 'Activity feed', 'recent news whats new'],
@@ -56,8 +56,8 @@ const PAGES = [
   ['users.manage', '/poster', 'QR code sign', 'poster sign qr code print'],
   ['activity.view', '/admin/activity', 'Activity log', 'who changed what history audit trail'],
   [(u) => u.scope === 'all' && access.can(u, 'users.manage'), '/admin/import', 'Import', 'upload contact list many people spreadsheet'],
-  [(u) => everyOffice(u) && access.can(u, 'users.manage'), '/admin/markets', 'Markets', 'market groups of offices market admin region'],
-  [(u) => everyOffice(u) && access.can(u, 'users.manage'), '/admin/branches', 'Offices and admins', 'add an office corporate branches'],
+  [(u) => everyOffice(u) && access.can(u, 'users.manage'), '/admin/markets', 'Markets', 'market groups of branches market admin region'],
+  [(u) => everyOffice(u) && access.can(u, 'users.manage'), '/admin/branches', 'Branches and admins', 'add a branch corporate branches offices office admins'],
   [(u) => everyOffice(u) && access.can(u, 'profiles.manage'), '/admin/profiles', 'Profiles', 'permissions roles what people can do'],
   [(u) => everyOffice(u) && access.can(u, 'backups'), '/admin/backups', 'Backups', 'download backup copy restore'],
   [(u) => everyOffice(u) && access.can(u, 'users.manage'), '/admin/security', 'Security check', 'security sign everyone out'],
@@ -100,9 +100,9 @@ function find(user, typed) {
      WHERE (u.active = 1 OR u.in_directory = 1) AND ${where(['u.display_name', "COALESCE(u.job_title, '')"])} ORDER BY u.display_name COLLATE NOCASE LIMIT 6`).all(...args(2))
     .map((p) => ({ label: p.display_name, sub: [p.job_title, p.office].filter(Boolean).join(' · ') || 'Person', url: `/people/${p.id}` })));
 
-  add('Offices', db.prepare(
+  add('Branches', db.prepare(
     `SELECT b.id, b.name FROM branches b WHERE ${where(['b.name'])} AND EXISTS (SELECT 1 FROM users u WHERE u.branch_id = b.id AND (u.active = 1 OR u.in_directory = 1))
-     ORDER BY b.name COLLATE NOCASE LIMIT 4`).all(...args(1)).map((b) => ({ label: b.name, sub: 'Office', url: `/branches/${b.id}` })));
+     ORDER BY b.name COLLATE NOCASE LIMIT 4`).all(...args(1)).map((b) => ({ label: b.name, sub: 'Branch', url: `/branches/${b.id}` })));
 
   // Parts from the catalog, for people who work with parts: managers land on Stock, everyone else on the parts form.
   const stock = access.can(user, 'parts.view');

@@ -4,7 +4,7 @@
 <p class="lede">Say which lift or piece of equipment you are taking, when, where it is going and when it will be back.</p>
 <%- include('partials/errors') %>
 <% if (!choices.length) { %>
-<p class="flash err">Nothing in this office is set up to be signed out yet.<%= mayManage ? ' Add a lift on the Fleet page and tick "People sign it out before using it".' : ' Ask whoever runs the fleet to add the lift.' %></p>
+<p class="flash err">Nothing in this branch is set up to be signed out yet.<%= mayManage ? ' Add a lift on the Fleet page and tick "People sign it out before using it".' : ' Ask whoever runs the fleet to add the lift.' %></p>
 <% } else { %>
 <form method="post" action="/fleet/signout" class="card stack signout-form" data-no-live data-once>
   <input type="hidden" name="_csrf" value="<%= csrf %>">

@@ -154,8 +154,8 @@ router.post('/admin/company/offices', everyOffice, (req, res) => {
       hint(id, o); result.added++;
     }
   })();
-  activity.log(req.user, 'Office list loaded', `${result.added} offices added, ${result.linked} matched to offices already here`);
-  flash(req, 'ok', `${result.added} offices added${result.linked ? `, ${result.linked} matched to an office already here` : ''}, each with its services, address and phone from the company list. An office's own admin can correct them on the office's page.`);
+  activity.log(req.user, 'Branch list loaded', `${result.added} branches added, ${result.linked} matched to branches already here`);
+  flash(req, 'ok', `${result.added} branches added${result.linked ? `, ${result.linked} matched to a branch already here` : ''}, each with its services, address and phone from the company list. A branch's own admin can correct them on the branch's page.`);
   res.redirect('/admin/branches#company');
 });
 
@@ -163,14 +163,14 @@ router.post('/admin/company/offices', everyOffice, (req, res) => {
 // Services are codes or names separated by commas, slashes or semicolons ("FE, KH" or "Fire Alarm; Backflow").
 router.post('/admin/company/details', everyOffice, (req, res, next) => upload(req, res, (err) => { req.body = req.body || {}; req.uploadFailed = Boolean(err); next(); }), verifyCsrf, (req, res) => {
   const fail = (msg) => { flash(req, 'err', msg); res.redirect('/admin/branches#company'); };
-  if (req.uploadFailed || !req.file) return fail('Choose the office details file (up to 2 MB).');
+  if (req.uploadFailed || !req.file) return fail('Choose the branch details file (up to 2 MB).');
   if (req.file.buffer.subarray(0, 2).toString('latin1') === 'PK') return fail('That is an Excel workbook. In Excel choose File > Save As > CSV, then upload the CSV file.');
   const rows = require('./catalog').parseCsv(req.file.buffer.toString('utf8'));
-  if (rows.length < 2) return fail('The file needs a header row and at least one office.');
+  if (rows.length < 2) return fail('The file needs a header row and at least one branch.');
   const h = rows[0].map((c) => c.trim().toLowerCase());
   const col = (re) => h.findIndex((c) => re.test(c));
   const cNum = col(/number|branch|office|code|#/), cSvc = col(/service|does|capabil|line/), cAddr = col(/address|street/), cPhone = col(/phone/), cAbout = col(/about|note|descr/);
-  if (cNum < 0) return fail('The file needs a column with each office\'s number. Services, Address, Phone and About are optional.');
+  if (cNum < 0) return fail('The file needs a column with each branch\'s number. Services, Address, Phone and About are optional.');
   const svc = db.prepare('SELECT id, code, name FROM services').all();
   const result = { updated: 0, unknownOffices: [], unknownServices: new Set() };
   db.transaction(() => {
@@ -191,10 +191,10 @@ router.post('/admin/company/details', everyOffice, (req, res, next) => upload(re
       result.updated++;
     }
   })();
-  activity.log(req.user, 'Office details loaded', `${result.updated} offices updated`);
-  flash(req, result.updated ? 'ok' : 'err', `${result.updated} offices updated.` +
+  activity.log(req.user, 'Branch details loaded', `${result.updated} branches updated`);
+  flash(req, result.updated ? 'ok' : 'err', `${result.updated} branches updated.` +
     (result.unknownServices.size ? ` Not recognised as services (add them to the list first): ${[...result.unknownServices].slice(0, 12).join(', ')}.` : '') +
-    (result.unknownOffices.length ? ` No office with number: ${result.unknownOffices.slice(0, 12).join(', ')}.` : ''));
+    (result.unknownOffices.length ? ` No branch with number: ${result.unknownOffices.slice(0, 12).join(', ')}.` : ''));
   res.redirect('/admin/branches#company');
 });
 
@@ -215,7 +215,7 @@ router.post('/admin/company/services/:id', everyOffice, (req, res) => {
   const s = isId(req.params.id) ? db.prepare('SELECT * FROM services WHERE id = ?').get(req.params.id) : null;
   if (s && req.body.remove === '1') {
     db.prepare('DELETE FROM services WHERE id = ?').run(s.id);
-    activity.log(req.user, 'Service removed', `${s.code}: ${s.name}`); flash(req, 'ok', `${s.name} removed from the list and from every office.`);
+    activity.log(req.user, 'Service removed', `${s.code}: ${s.name}`); flash(req, 'ok', `${s.name} removed from the list and from every branch.`);
   } else if (s) {
     const name = clean(req.body.name, 60);
     if (name) { db.prepare('UPDATE services SET name = ? WHERE id = ?').run(name, s.id); flash(req, 'ok', 'Service renamed.'); }

@@ -397,13 +397,13 @@ router.post('/branch/view', requireLogin, (req, res) => {
   // The search box sends the office's id once one is picked; a name typed in full (or an office number) is taken too.
   const typed = clean(req.body.office, 80);
   if (b === null && typed) {
-    if (/^(corporate|all offices)$/i.test(typed)) b = 'all';
+    if (/^(corporate|all branches|all offices)$/i.test(typed)) b = 'all';
     else {
       const hit = db.prepare('SELECT id FROM branches WHERE name = ? COLLATE NOCASE OR number = ? LIMIT 2').all(typed, typed.replace(/^#/, ''));
-      if (hit.length === 1) b = hit[0].id; else flash(req, 'err', `No single office matches "${typed}". Pick one from the list as you type.`);
+      if (hit.length === 1) b = hit[0].id; else flash(req, 'err', `No single branch matches "${typed}". Pick one from the list as you type.`);
     }
   }
-  if (!req.user.allBranches && b !== null && !within.includes(b)) { b = null; flash(req, 'err', 'That office is not in your market.'); }
+  if (!req.user.allBranches && b !== null && !within.includes(b)) { b = null; flash(req, 'err', 'That branch is not in your market.'); }
   if (b !== null) req.session.viewBranch = b;
   const back = String(req.body.back || '/');
   // Back to the page they were on. From a complaint page that is by way of the home page, as after signing in (see landing).
@@ -468,13 +468,13 @@ router.get('/admin/branches', everyBranch, (req, res) => branchPage(req, res));
 router.post('/admin/branches', everyBranch, (req, res) => {
   const name = clean(req.body.name, 60).replace(/\s+(branch|office)$/i, '');
   const errors = [];
-  if (!name) errors.push('Give the office a name, such as the town it is in.');
-  else if (db.prepare('SELECT 1 FROM branches WHERE name = ?').get(name)) errors.push('There is already an office with that name.');
+  if (!name) errors.push('Give the branch a name, such as the town it is in.');
+  else if (db.prepare('SELECT 1 FROM branches WHERE name = ?').get(name)) errors.push('There is already a branch with that name.');
   if (errors.length) return branchPage(req, res, { errors, values: { name } });
   const id = db.prepare('INSERT INTO branches (name, created_at) VALUES (?, ?)').run(name, new Date().toISOString()).lastInsertRowid;
   require('../branches').setUp(id);
-  activity.log(req.user, 'Office added', name);
-  flash(req, 'ok', `${name} office added. Appoint its admin below; they can then add its people.`);
+  activity.log(req.user, 'Branch added', name);
+  flash(req, 'ok', `${name} branch added. Appoint its admin below; they can then add its people.`);
   res.redirect(`/admin/branches?office=${id}#o${id}`);
 });
 
@@ -485,8 +485,8 @@ router.post('/admin/branches/:id', everyBranch, (req, res) => {
   if (!name || db.prepare('SELECT 1 FROM branches WHERE name = ? AND id <> ?').get(name, b.id)) flash(req, 'err', 'That name is empty or already used.');
   else {
     db.prepare('UPDATE branches SET name = ? WHERE id = ?').run(name, b.id);
-    activity.log(req.user, 'Office renamed', `${b.name} to ${name}`);
-    flash(req, 'ok', 'Office renamed.');
+    activity.log(req.user, 'Branch renamed', `${b.name} to ${name}`);
+    flash(req, 'ok', 'Branch renamed.');
   }
   res.redirect('/admin/branches');
 });
@@ -508,17 +508,17 @@ router.post('/admin/branches/:id/admins', everyBranch, (req, res) => {
     if (same.length === 1) u = same[0];
     else if (same.length > 1) return branchPage(req, res, { errors: [`More than one person in ${b.name} is called ${typed}. Pick the one you mean from the list.`], values: { office: b.id, person: typed } });
   }
-  if (!u || u.id === req.user.id) return branchPage(req, res, { errors: [`Choose someone from that office. A person who is not on the site yet is added under Users first, with ${b.name} chosen as the office.`], values: { office: b.id, person: typed } });
+  if (!u || u.id === req.user.id) return branchPage(req, res, { errors: [`Choose someone from that branch. A person who is not on the site yet is added under Users first, with ${b.name} chosen as the branch.`], values: { office: b.id, person: typed } });
   db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(profile.id, u.id);
   const what = access.kindOf(profile.perms) === 'admin' ? 'admin' : 'manager';
-  activity.log(req.user, `Office ${what} appointed`, `${u.display_name} for ${b.name} (${profile.name})`);
+  activity.log(req.user, `Branch ${what} appointed`, `${u.display_name} for ${b.name} (${profile.name})`);
   if (!u.active) {
     // Listed but never able to sign in: their sign-in is switched on with a temporary password, shown once.
     db.prepare('UPDATE users SET active = 1 WHERE id = ?').run(u.id);
     req.session.created = { username: u.username, name: u.display_name, password: auth.issueTemp(u.id), what: 'appointed', office: b.name, role: what };
     return res.redirect('/admin/branches');
   }
-  flash(req, 'ok', `${u.display_name} is now ${what === 'admin' ? 'an admin' : 'a manager'} for the ${b.name} office.`);
+  flash(req, 'ok', `${u.display_name} is now ${what === 'admin' ? 'an admin' : 'a manager'} for the ${b.name} branch.`);
   res.redirect(`/admin/branches#o${b.id}`);
 });
 
@@ -528,8 +528,8 @@ router.post('/admin/branches/:id/admins/:uid/remove', everyBranch, (req, res) =>
   const tech = access.profileByName('Technician');
   if (u && tech && officeAdminProfiles().some((p) => p.id === u.profile_id) && access.canGrant(req.user, access.permsOf(u.profile_id))) {
     db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(tech.id, u.id);
-    activity.log(req.user, 'Office admin stood down', u.display_name);
-    flash(req, 'ok', `${u.display_name} no longer runs that office. They are on the Technician profile now; change it under Users if needed.`);
+    activity.log(req.user, 'Branch admin stood down', u.display_name);
+    flash(req, 'ok', `${u.display_name} no longer runs that branch. They are on the Technician profile now; change it under Users if needed.`);
   }
   res.redirect(`/admin/branches#o${req.params.id}`);
 });
@@ -542,7 +542,7 @@ router.post('/admin/corporate/admins', everyBranch, (req, res) => {
   db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(profile.id, u.id);
   const corpAdmin = access.kindOf(profile.perms) === 'admin';
   activity.log(req.user, corpAdmin ? 'Corporate admin appointed' : 'Corporate manager appointed', `${u.display_name} (${profile.name})`);
-  flash(req, 'ok', corpAdmin ? `${u.display_name} is now a corporate admin and can see and manage every office.` : `${u.display_name} is now a corporate manager and can see and run every office.`);
+  flash(req, 'ok', corpAdmin ? `${u.display_name} is now a corporate admin and can see and manage every branch.` : `${u.display_name} is now a corporate manager and can see and run every branch.`);
   res.redirect('/admin/branches#corporate');
 });
 
@@ -554,7 +554,7 @@ router.post('/admin/corporate/admins/:uid/remove', everyBranch, (req, res) => {
     db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(to.id, u.id);
     db.prepare("DELETE FROM sessions WHERE json_extract(data, '$.userId') = ?").run(u.id);   // their wider view ends at once
     activity.log(req.user, 'Corporate admin stood down', `${u.display_name}, now ${to.name}`);
-    flash(req, 'ok', `${u.display_name} is no longer a corporate admin. They are on the ${to.name} profile for their own office.`);
+    flash(req, 'ok', `${u.display_name} is no longer a corporate admin. They are on the ${to.name} profile for their own branch.`);
   }
   res.redirect('/admin/branches#corporate');
 });

@@ -136,7 +136,7 @@ function parseLong(rows) {
   const at = rows.findIndex((r) => { const h = r.map((c) => String(c || '').trim().toLowerCase()); return h.includes('start') && h.includes('name'); });
   const head = rows[at].map((c) => String(c || '').trim().toLowerCase());
   const col = (...names) => head.findIndex((h) => names.includes(h));
-  const c = { start: col('start'), end: col('end'), office: col('office'), covers: col('covers', 'cover', 'trade', 'type'), role: col('role'), name: col('name'), phone: col('phone'), note: col('holiday', 'note') };
+  const c = { start: col('start'), end: col('end'), office: col('branch', 'office'), covers: col('covers', 'cover', 'trade', 'type'), role: col('role'), name: col('name'), phone: col('phone'), note: col('holiday', 'note') };
   const shifts = []; const problems = [];
   rows.forEach((r, i) => {
     if (i <= at || !r.some((x) => String(x || '').trim())) return;

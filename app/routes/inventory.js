@@ -28,7 +28,7 @@ router.get('/admin/inventory', requireLogin, (req, res) => {
 router.get('/admin/inventory/locations/:id', requireLogin, (req, res) => {
   if (!maySee(req.user)) return forbidden(res);
   const place = mine(req);
-  if (!place) return res.status(404).render('error', { title: 'Not found', message: 'That location is not in this office.' });
+  if (!place) return res.status(404).render('error', { title: 'Not found', message: 'That location is not in this branch.' });
   const mayManage = access.can(req.user, 'inventory.manage');
   res.render('admin_inventory_location', {
     title: place.name, place, kinds: inv.KINDS, rows: inv.contents(place.id), mayManage, dollars: inv.dollars, history: inv.history(place.id), stats: inv.stats(place.id),
@@ -43,7 +43,7 @@ router.post('/admin/inventory/locations', manage, (req, res) => {
   const kind = req.body.kind === 'vehicle' ? 'vehicle' : 'custom';
   if (!name) { flash(req, 'err', 'Give the location a name.'); return res.redirect('/admin/inventory'); }
   if (db.prepare('SELECT 1 FROM inv_locations WHERE branch_id = ? AND active = 1 AND name = ? COLLATE NOCASE').get(req.user.workBranch, name)) {
-    flash(req, 'err', `This office already has a location called ${name}.`); return res.redirect('/admin/inventory');
+    flash(req, 'err', `This branch already has a location called ${name}.`); return res.redirect('/admin/inventory');
   }
   if (kind === 'vehicle') {
     const person = personOf(req, req.body.user_id);
@@ -92,7 +92,7 @@ router.post('/admin/inventory/locations/:id', manage, (req, res) => {
   const name = clean(req.body.name, 60);
   if (!name) { flash(req, 'err', 'Give the location a name.'); return res.redirect(back); }
   if (db.prepare('SELECT 1 FROM inv_locations WHERE branch_id = ? AND active = 1 AND id <> ? AND name = ? COLLATE NOCASE').get(place.branch_id, place.id, name)) {
-    flash(req, 'err', `This office already has a location called ${name}.`); return res.redirect(back);
+    flash(req, 'err', `This branch already has a location called ${name}.`); return res.redirect(back);
   }
   let userId = place.user_id;
   if (place.kind === 'vehicle' && req.body.user_id !== undefined && String(req.body.user_id) !== String(place.user_id)) {
@@ -137,14 +137,14 @@ const exporter = requirePerm('inventory.export');
 const money = (cents) => (cents === null || cents === undefined ? '' : (cents / 100).toFixed(2));
 const today = () => require('../util').localDate();
 const slug = (name) => String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'office';
-const BY_PLACE = ['Office', 'Location', 'Kind', 'Technician', 'Part number', 'Description', 'On hand', 'Cost each', 'Value'];
+const BY_PLACE = ['Branch', 'Location', 'Kind', 'Technician', 'Part number', 'Description', 'On hand', 'Cost each', 'Value'];
 const placeRow = (r) => [r.office, r.location, inv.KINDS[r.kind], r.technician || '', r.part_number, r.description, r.on_hand, money(r.cost_cents), r.cost_cents === null ? '' : money(r.cost_cents * r.on_hand)];
 
 // One office (the one being looked at), or every office for someone who sees them all.
 router.get('/admin/inventory/export.csv', exporter, (req, res) => {
   const every = req.query.office === 'all' && req.user.allBranches;
   const rows = inv.holdings({ branchId: every ? null : req.user.workBranch });
-  const office = every ? 'all-offices' : slug((db.prepare('SELECT name FROM branches WHERE id = ?').get(req.user.workBranch) || {}).name);
+  const office = every ? 'all-branches' : slug((db.prepare('SELECT name FROM branches WHERE id = ?').get(req.user.workBranch) || {}).name);
   if (req.query.view !== 'totals') return sendCsv(res, `inventory-${office}-by-location-${today()}.csv`, BY_PLACE, rows.map(placeRow));
   // Totals: one line per part per office, with how it splits between the warehouse, the vehicles and anywhere else.
   const parts = new Map();
@@ -153,7 +153,7 @@ router.get('/admin/inventory/export.csv', exporter, (req, res) => {
     const t = parts.get(key) || { office: r.office, part_number: r.part_number, description: r.description, cost_cents: r.cost_cents, warehouse: 0, vehicle: 0, custom: 0 };
     t[r.kind] += r.on_hand; parts.set(key, t);
   }
-  sendCsv(res, `inventory-${office}-totals-${today()}.csv`, ['Office', 'Part number', 'Description', 'On hand in all', 'Main warehouse', 'Vehicles', 'Other locations', 'Cost each', 'Value'],
+  sendCsv(res, `inventory-${office}-totals-${today()}.csv`, ['Branch', 'Part number', 'Description', 'On hand in all', 'Main warehouse', 'Vehicles', 'Other locations', 'Cost each', 'Value'],
     [...parts.values()].map((t) => { const all = t.warehouse + t.vehicle + t.custom; return [t.office, t.part_number, t.description, all, t.warehouse, t.vehicle, t.custom, money(t.cost_cents), t.cost_cents === null ? '' : money(t.cost_cents * all)]; }));
 });
 
@@ -191,7 +191,7 @@ router.get('/admin/inventory/count/:id/export.csv', exporter, (req, res) => {
   const audit = auditOf(req);
   if (!audit || audit.branch_id !== req.user.workBranch || audit.status !== 'closed') return forbidden(res);
   const office = (db.prepare('SELECT name FROM branches WHERE id = ?').get(audit.branch_id) || {}).name;
-  sendCsv(res, `inventory-${slug(office)}-count-${audit.month}.csv`, ['Office', 'Location', 'Kind', 'Part number', 'Description', 'On hand', 'Cost each', 'Value'],
+  sendCsv(res, `inventory-${slug(office)}-count-${audit.month}.csv`, ['Branch', 'Location', 'Kind', 'Part number', 'Description', 'On hand', 'Cost each', 'Value'],
     counts.closedFigures(audit.id).map((r) => [office, r.location, inv.KINDS[r.kind], r.part_number, r.description, r.quantity, money(r.cost_cents), r.cost_cents === null ? '' : money(r.cost_cents * r.quantity)]));
 });
 

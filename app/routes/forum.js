@@ -17,7 +17,7 @@ const isId = (v) => /^\d+$/.test(String(v));
 const isMod = (user) => access.can(user, 'forum.moderate');
 // Moderating a particular thread or message: corporate admins anywhere, office admins only what their own people wrote.
 const modOf = (user, authorId) => access.moderates(user, 'forum.moderate', authorId);
-const notYours = (res) => res.status(403).render('error', { title: 'Not allowed', message: 'This was posted by another office. A corporate admin can moderate it.' });
+const notYours = (res) => res.status(403).render('error', { title: 'Not allowed', message: 'This was posted by another branch. A corporate admin can moderate it.' });
 const notFound = (res) => res.status(404).render('error', { title: 'Page not found', message: 'That discussion is not here. It may have been removed.' });
 
 const sections = () => db.prepare(
@@ -284,7 +284,7 @@ router.post('/discussions/t/:id/delete', use, (req, res) => {
   const t = loadThread(req.params.id);
   if (!t) return notFound(res);
   const own = t.user_id === req.user.id && t.reply_count === 0;
-  if (!own && !modOf(req.user, t.user_id)) return res.status(403).render('error', { title: 'Not allowed', message: isMod(req.user) ? 'This thread was started by another office. A corporate admin can remove it.' : 'You cannot remove this thread.' });
+  if (!own && !modOf(req.user, t.user_id)) return res.status(403).render('error', { title: 'Not allowed', message: isMod(req.user) ? 'This thread was started by another branch. A corporate admin can remove it.' : 'You cannot remove this thread.' });
   removePhotosOf('p.thread_id = ?', t.id);
   db.prepare("DELETE FROM reactions WHERE kind = 'post' AND target_id IN (SELECT id FROM forum_posts WHERE thread_id = ?)").run(t.id);
   db.prepare('DELETE FROM forum_threads WHERE id = ?').run(t.id);
@@ -326,7 +326,7 @@ router.post('/discussions/p/:id/delete', use, (req, res) => {
     flash(req, 'ok', 'Your message was removed. The replies are still here.');
     return res.redirect(`/discussions/t/${p.thread_id}`);
   }
-  if (p.user_id !== req.user.id && !modOf(req.user, p.user_id)) return res.status(403).render('error', { title: 'Not allowed', message: isMod(req.user) ? 'This reply was written by another office. A corporate admin can remove it.' : 'You cannot remove this reply.' });
+  if (p.user_id !== req.user.id && !modOf(req.user, p.user_id)) return res.status(403).render('error', { title: 'Not allowed', message: isMod(req.user) ? 'This reply was written by another branch. A corporate admin can remove it.' : 'You cannot remove this reply.' });
   const t = loadThread(p.thread_id);
   db.transaction(() => {
     removePhotosOf('p.id = ?', p.id);

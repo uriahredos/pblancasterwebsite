@@ -24,7 +24,7 @@
           var li = document.createElement('li');
           var left = document.createElement('span');
           // A customer of another office comes without a name or a stage: only that office and who to ask.
-          if (m.url) { var a = text('a', m.company); a.href = m.url; a.style.fontWeight = '700'; left.appendChild(a); } else left.appendChild(text('strong', m.company || "Another office's customer"));
+          if (m.url) { var a = text('a', m.company); a.href = m.url; a.style.fontWeight = '700'; left.appendChild(a); } else left.appendChild(text('strong', m.company || "Another branch's customer"));
           left.appendChild(text('span', ' · ' + m.why, 'meta'));
           li.appendChild(left); li.appendChild(text('span', [m.owner, m.office, m.stage].filter(Boolean).join(' · ')));
           ul.appendChild(li);

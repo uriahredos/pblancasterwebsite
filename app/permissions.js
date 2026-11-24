@@ -58,8 +58,8 @@ const GROUPS = [
     ['digest.weekly', 'Get the weekly parts email'],
   ] },
   { title: 'Sensitive', items: [
-    ['market.all', 'See and manage every office in their own market'],
-    ['branches.all', 'See and manage every office'],
+    ['market.all', 'See and manage every branch in their own market'],
+    ['branches.all', 'See and manage every branch'],
     ['complaints.review', 'Read and answer anonymous complaints'],
     ['backups', 'Download backups (a backup holds everything, complaints included)'],
     ['records.delete', 'Permanently delete records'],
@@ -72,9 +72,9 @@ const ALL = GROUPS.flatMap((g) => g.items.map((i) => i[0]));
 // what every check in the site reads; the profile page shows it as one choice so the three can never disagree.
 const LEVELS = [
   ['team', 'Their own team', 'Only the people assigned to them. You choose their people on the Users page.'],
-  ['office', 'Their office', 'Everyone in their own office.'],
-  ['market', 'Their market', 'Every office in their market, one at a time.'],
-  ['company', 'The whole company', 'Every office, and the Corporate view of all of them together.'],
+  ['office', 'Their branch', 'Everyone in their own branch.'],
+  ['market', 'Their market', 'Every branch in their market, one at a time.'],
+  ['company', 'The whole company', 'Every branch, and the Corporate view of all of them together.'],
 ];
 const LEVEL_PERMS = ['market.all', 'branches.all'];
 const levelOf = (scope, perms) => (scope === 'team' ? 'team' : perms.has('branches.all') ? 'company' : perms.has('market.all') ? 'market' : 'office');
@@ -82,7 +82,7 @@ const levelOf = (scope, perms) => (scope === 'team' ? 'team' : perms.has('branch
 const forLevel = (level) => ({ scope: level === 'team' ? 'team' : 'all', perms: level === 'company' ? ['market.all', 'branches.all'] : level === 'market' ? ['market.all'] : [] });
 /** An admin adds people and changes access; a manager runs the day-to-day; anyone else is staff. */
 const kindOf = (perms) => (perms.has('users.manage') ? 'admin' : perms.has('tasks.assign') ? 'manager' : 'staff');
-const LEVEL_WORD = { company: 'Corporate', market: 'Market', office: 'Office', team: 'Team' };
+const LEVEL_WORD = { company: 'Corporate', market: 'Market', office: 'Branch', team: 'Team' };
 /** Where a profile sits in the chain of command: { level, kind, label, rank }. A higher rank is further up. */
 function position(scope, perms) {
   const level = levelOf(scope, perms); const kind = kindOf(perms);
@@ -129,7 +129,9 @@ for (const [col, type] of [['profile_id', 'INTEGER'], ['is_master', 'INTEGER NOT
   if (!db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = ?").get(col)) db.exec(`ALTER TABLE users ADD COLUMN ${col} ${type}`);
 }
 
-const profileByName = (name) => db.prepare('SELECT * FROM profiles WHERE name = ?').get(name);
+// "Admin" is the branch admin's first name on the site: asked for by that name, it is still found after being renamed.
+const profileByName = (name) => db.prepare('SELECT * FROM profiles WHERE name = ?').get(name)
+  || (String(name).toLowerCase() === 'admin' ? db.prepare("SELECT * FROM profiles WHERE name = 'Branch admin'").get() : undefined);
 
 function setPermissions(profileId, perms) {
   db.prepare('DELETE FROM profile_permissions WHERE profile_id = ?').run(profileId);
@@ -219,6 +221,18 @@ function migrate() {
       db.prepare(`INSERT OR IGNORE INTO profile_permissions (profile_id, permission)
                   SELECT profile_id, 'market.all' FROM profile_permissions WHERE permission = 'branches.all'`).run();
       db.prepare("INSERT INTO meta (key, value) VALUES ('company_holds_market_1', '1')").run();
+    }
+    // The six roles by name: the branch's admin profile, first called just "Admin", becomes "Branch admin" beside
+    // "Branch manager". Once, and only on a site that already groups branches into markets (so a brand-new site
+    // keeps the names it starts with).
+    if (!db.prepare("SELECT 1 FROM meta WHERE key = 'branch_admin_name_1'").get()) {
+      const inUse = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'markets'").get() && db.prepare('SELECT 1 FROM markets').get();
+      const admin = db.prepare("SELECT id, scope FROM profiles WHERE name = 'Admin'").get();
+      const wider = admin && db.prepare("SELECT 1 FROM profile_permissions WHERE profile_id = ? AND permission IN ('branches.all', 'market.all')").get(admin.id);
+      if (inUse && admin && admin.scope === 'all' && !wider && !db.prepare("SELECT 1 FROM profiles WHERE name = 'Branch admin'").get()) {
+        db.prepare("UPDATE profiles SET name = 'Branch admin' WHERE id = ?").run(admin.id);
+      }
+      db.prepare("INSERT INTO meta (key, value) VALUES ('branch_admin_name_1', '1')").run();
     }
     // Sales: two profiles made once, for the sales side of the site.
     if (!db.prepare("SELECT 1 FROM meta WHERE key = 'sales_profiles_1'").get()) {

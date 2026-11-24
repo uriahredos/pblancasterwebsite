@@ -41,7 +41,7 @@ function recent(user, limit = 8, { full = false } = {}) {
       EXISTS (SELECT 1 FROM welcome_notes n WHERE n.welcome_id = x.id AND n.user_id = @me) AS waved,
       (SELECT COUNT(*) FROM welcome_notes n JOIN users nu ON nu.id = n.user_id WHERE n.welcome_id = x.id AND nu.active = 1) AS waves
       FROM welcomes x ${from.replace('USER', 'user_id')} WHERE u.active = 1 AND ${nearby} AND x.created_at >= @since ORDER BY x.created_at DESC LIMIT ${each}`).all({ me: user.id, since: full ? since : new Date(Date.now() - 14 * 86400000).toISOString() })) {
-    items.push({ kind: 'hire', at: w.created_at, who: w, title: `${w.display_name} joined${w.office ? ' the ' + w.office + ' office' : ''}`, text: w.intro || w.job_title || '', url: `/people/${w.user_id}`,
+    items.push({ kind: 'hire', at: w.created_at, who: w, title: `${w.display_name} joined${w.office ? ' the ' + w.office + ' branch' : ''}`, text: w.intro || w.job_title || '', url: `/people/${w.user_id}`,
       action: w.user_id === user.id || w.waved ? null : { url: `/welcome/${w.id}/wave`, label: '👋 Say welcome' }, done: w.waved ? 'You said welcome ✓' : '',
       extra: w.waves ? `${w.waves} ${w.waves === 1 ? 'welcome' : 'welcomes'}` : 'Be the first to say welcome', link: w.user_id === user.id ? { url: `/people/${w.user_id}#welcome`, label: 'See your messages' } : null });
   }
@@ -75,7 +75,7 @@ function company(user, today = localDate()) {
   const at = require('./reach').place(user);
   const month = `${today.slice(0, 7)}-01`;
   const stats = [
-    { value: n('SELECT COUNT(*) AS n FROM branches'), label: 'Offices', url: '/branches' },
+    { value: n('SELECT COUNT(*) AS n FROM branches'), label: 'Branches', url: '/branches' },
     { value: n('SELECT COUNT(*) AS n FROM users WHERE active = 1 OR in_directory = 1'), label: 'People Here', url: '/people' },
     // Counted the way the Shout-outs page lists them: the ones the office being looked at gave or received.
     { value: at.corporate ? n('SELECT COUNT(*) AS n FROM shoutouts WHERE created_at >= ?', month)
@@ -115,7 +115,7 @@ function slides(user, { around, shouts, week, spot }) {
   for (const i of around.filter((x) => x.kind === 'talk').slice(0, 1)) out.push({ kind: 'talk', label: 'New discussion', title: i.text, text: `${i.who.display_name} is asking. ${i.extra}.`, url: i.url, who: i.who, office: i.who.office, cta: 'Join in' });
   for (const i of around.filter((x) => x.kind === 'event').slice(0, 1)) out.push({ kind: 'event', label: 'Coming up', title: i.text, text: `Posted by ${i.who.display_name}`, url: i.url, who: i.who, office: i.who.office, cta: "I'm in" });
   if (spot) {
-    out.push({ kind: 'office', label: 'Meet an office this week', title: `${spot.name}${spot.city && spot.state ? ' · ' + spot.city + ', ' + spot.state : ''}`,
+    out.push({ kind: 'office', label: 'Meet a branch this week', title: `${spot.name}${spot.city && spot.state ? ' · ' + spot.city + ', ' + spot.state : ''}`,
       text: spot.services || (spot.people ? `${spot.people} ${spot.people === 1 ? 'person' : 'people'} on this site` : 'See what they do'), url: `/branches/${spot.id}`, cta: 'Visit their page' });
   }
   return out.slice(0, 8).map((x) => ({ ...x, away: Boolean(x.who && x.who.office_id && x.who.office_id !== user.branch_id) }));

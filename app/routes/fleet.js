@@ -159,7 +159,7 @@ router.post('/fleet/signout/:id/return', requireLogin, (req, res) => {
 
 router.get('/fleet/:id', requireLogin, (req, res) => {
   const it = item(req.params.id, req.user.workBranch);
-  if (!it) return res.status(404).render('error', { title: 'Page not found', message: 'That is not in this office\'s fleet.' });
+  if (!it) return res.status(404).render('error', { title: 'Page not found', message: 'That is not in this branch\'s fleet.' });
   const history = db.prepare(`${OUT} WHERE s.item_id = ? ORDER BY s.start_at DESC LIMIT 40`).all(it.id)
     .map((s) => ({ ...s, from: when(s.start_at), until: when(s.end_at), length: howLong(s.start_at, s.end_at), back: s.returned_at ? when(s.returned_at) : '' }));
   res.render('fleet_item', { title: it.name, item: it, history, kinds: KIND_NAME, mayManage: mayManage(req.user), maySign: access.can(req.user, 'fleet.signout'),

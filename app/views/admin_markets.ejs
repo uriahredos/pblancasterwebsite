@@ -1,6 +1,6 @@
 <%- include('partials/header', { wide: true }) %>
 <h1>Markets</h1>
-<p class="lede">A market is a group of offices. Each market can have its own admins and managers, who run every office in it.</p>
+<p class="lede">A market is a group of branches. Each market can have its own admins and managers, who run every branch in it.</p>
 <%- include('partials/errors') %>
 <% if (created) { %>
 <div class="card stack created">
@@ -13,9 +13,9 @@
 
 <% markets.forEach(function (m) { %>
 <section class="card market-card" id="m<%= m.id %>">
-  <h2><%= m.name %> <span class="meta"><%= m.offices.length %> <%= m.offices.length === 1 ? 'office' : 'offices' %></span></h2>
+  <h2><%= m.name %> <span class="meta"><%= m.offices.length %> <%= m.offices.length === 1 ? 'branch' : 'branches' %></span></h2>
 
-  <h3 class="sub-h">Offices</h3>
+  <h3 class="sub-h">Branches</h3>
   <% if (m.offices.length) { %>
   <ul class="market-offices">
     <% m.offices.forEach(function (o) { %>
@@ -23,11 +23,11 @@
       <form method="post" action="/admin/markets/<%= m.id %>/offices/<%= o.id %>/remove" data-no-live data-confirm="Take <%= o.name %> out of the <%= m.name %> market?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Take out</button></form></li>
     <% }) %>
   </ul>
-  <% } else { %><p class="hint">No offices yet. Add the first one below.</p><% } %>
+  <% } else { %><p class="hint">No branches yet. Add the first one below.</p><% } %>
   <form method="post" action="/admin/markets/<%= m.id %>/offices" class="filters" data-no-live>
     <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="branch" value="">
-    <label class="grow">Add an office <span class="hint">Type a town, state or office number</span>
-      <input name="office" list="market-offices" required maxlength="80" autocomplete="off" placeholder="Search offices" data-picks-office></label>
+    <label class="grow">Add a branch <span class="hint">Type a town, state or branch number</span>
+      <input name="office" list="market-offices" required maxlength="80" autocomplete="off" placeholder="Search branches" data-picks-office></label>
     <div class="filter-actions"><button class="btn primary small" type="submit">Add to <%= m.name %></button></div>
   </form>
 
@@ -39,11 +39,11 @@
       <form method="post" action="/admin/markets/<%= m.id %>/admins/<%= a.id %>/remove" data-no-live data-confirm="Stand <%= a.display_name %> down for the <%= m.name %> market?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Stand down</button></form></li>
     <% }) %>
   </ul>
-  <% } else { %><p class="hint">This market has no admin of its own yet. Corporate admins and each office's own admin run its offices until it does.</p><% } %>
+  <% } else { %><p class="hint">This market has no admin of its own yet. Corporate admins and each branch's own admin run its branches until it does.</p><% } %>
   <% if (adminProfiles.length && m.people.length) { %>
   <form method="post" action="/admin/markets/<%= m.id %>/admins" class="filters" data-no-live>
     <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="user_id" value="">
-    <label class="grow">Add a market admin or manager <span class="hint">Start typing a name. People already listed in this market's offices.</span>
+    <label class="grow">Add a market admin or manager <span class="hint">Start typing a name. People already listed in this market's branches.</span>
       <input name="person" list="market-people-<%= m.id %>" required maxlength="80" autocomplete="off" placeholder="Search by name" data-picks-person></label>
     <datalist id="market-people-<%= m.id %>"><% m.people.forEach(function (p) { %><option value="<%= p.display_name %>" data-id="<%= p.id %>" label="<%= p.office %>"></option><% }) %></datalist>
     <% if (adminProfiles.length > 1) { %><label>Profile <select name="profile_id"><% adminProfiles.forEach(function (p) { %><option value="<%= p.id %>"><%= p.name %></option><% }) %></select></label>
@@ -51,7 +51,7 @@
     <div class="filter-actions"><button class="btn primary small" type="submit">Appoint</button></div>
   </form>
   <% } else if (!adminProfiles.length) { %><p class="hint">No profile is set to the market level yet. Choose "Their market" as the level of a profile under Profiles to be able to appoint market admins.</p>
-  <% } else if (m.offices.length) { %><p class="hint">Nobody is listed in this market's offices yet. Add people under Users first.</p><% } %>
+  <% } else if (m.offices.length) { %><p class="hint">Nobody is listed in this market's branches yet. Add people under Users first.</p><% } %>
 
   <details class="mod-tools spaced">
     <summary>Rename or remove this market</summary>
@@ -61,7 +61,7 @@
         <label class="grow">Name <input name="name" value="<%= m.name %>" required maxlength="60" autocomplete="off"></label>
         <div class="filter-actions"><button class="btn small" type="submit">Rename</button></div>
       </form>
-      <form method="post" action="/admin/markets/<%= m.id %>" data-no-live data-confirm="Remove the <%= m.name %> market? Its offices stay on the site, in no market.">
+      <form method="post" action="/admin/markets/<%= m.id %>" data-no-live data-confirm="Remove the <%= m.name %> market? Its branches stay on the site, in no market.">
         <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="op" value="remove"><button class="link danger" type="submit">Remove this market</button>
       </form>
     </div>
@@ -76,5 +76,5 @@
   <label class="grow">Name <span class="hint">For example NJ/PA/DE</span> <input name="name" value="<%= values.name || '' %>" required maxlength="60" autocomplete="off"></label>
   <div class="filter-actions"><button class="btn primary small" type="submit">Add market</button></div>
 </form>
-<p class="meta"><%= loose %> <%= loose === 1 ? 'office is' : 'offices are' %> in no market yet.</p>
+<p class="meta"><%= loose %> <%= loose === 1 ? 'branch is' : 'branches are' %> in no market yet.</p>
 <%- include('partials/footer') %>

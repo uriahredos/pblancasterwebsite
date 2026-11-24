@@ -71,7 +71,7 @@ router.post('/shoutouts', requireLogin, (req, res) => {
   const errors = [];
   if (!target) errors.push('Choose who the shout-out is for.');
   else if (target.id === req.user.id) errors.push('A shout-out is for someone else.');
-  else if (!mayShout(req.user, target.branch_id)) errors.push('Shout-outs are for people in your own office or your market.');
+  else if (!mayShout(req.user, target.branch_id)) errors.push('Shout-outs are for people in your own branch or your market.');
   if (!values.message) errors.push('Say what they did.');
   if (!errors.length && db.prepare('SELECT COUNT(*) AS n FROM shoutouts WHERE from_user = ? AND created_at > ?').get(req.user.id, new Date(Date.now() - 86400000).toISOString()).n >= 20) errors.push('That is a lot of shout-outs for one day. Save some for tomorrow.');
   if (errors.length) return shoutPage(req, res, { errors, values });
@@ -233,7 +233,7 @@ router.get('/branches', requireLogin, (req, res) => {
   const everything = company.findOffices();
   const rows = company.findOffices({ q: f.q, region: f.region, state: f.state, service: f.service ? f.service.id : null });
   res.render('branches', {
-    title: 'Offices', wide: true, rows, f, services, total: everything.length, stateNames: company.STATES,
+    title: 'Branches', wide: true, rows, f, services, total: everything.length, stateNames: company.STATES,
     regions: [...new Set(everything.map((b) => b.region).filter(Boolean))].sort(), states: [...new Set(everything.map((b) => b.state).filter(Boolean))].sort(),
   });
 });
@@ -258,7 +258,7 @@ function branchPage(req, res, b, extra = {}) {
   // Management first, then the rest by name; people with no department last.
   const order = [...groups.keys()].sort((x, y) => (x === 'Management' ? -1 : y === 'Management' ? 1 : x === 'Team' ? 1 : y === 'Team' ? -1 : x.localeCompare(y)));
   res.status(extra.errors ? 400 : 200).render('branch', {
-    title: `${b.name} office`, wide: true, b, people, teamChart, chain: require('../chain').forOffice(b.id), groups: order.map((k) => ({ name: k, people: groups.get(k) })), canEdit: mayEditBranch(req.user, b), errors: [], editing: false,
+    title: `${b.name} branch`, wide: true, b, people, teamChart, chain: require('../chain').forOffice(b.id), groups: order.map((k) => ({ name: k, people: groups.get(k) })), canEdit: mayEditBranch(req.user, b), errors: [], editing: false,
     services: require('./company').servicesOf(b.id), allServices: require('./company').allServices(), stateNames: require('./company').STATES,
     many: db.prepare('SELECT COUNT(*) AS n FROM branches').get().n > 1,
     // An office's shout-outs and events are its own: shown to whoever is looking at that office or runs it, not to visitors.
@@ -310,8 +310,8 @@ router.post('/branches/:id', requireLogin, uploads.photos('photo', 1), verifyCsr
     }
   })();
   if (b.photo_path && b.photo_path !== photo) uploads.remove(b.photo_path);
-  activity.log(req.user, 'Office page edited', b.name);
-  flash(req, 'ok', 'Office page saved.');
+  activity.log(req.user, 'Branch page edited', b.name);
+  flash(req, 'ok', 'Branch page saved.');
   res.redirect(`/branches/${b.id}`);
 });
 
