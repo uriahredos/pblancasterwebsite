@@ -7,6 +7,7 @@
   <a class="issue-card" href="/newsletters/<%= n.id %>">
     <% if (n.pages.length) { %><img src="/newsletters/<%= n.id %>/page/1" alt="" <%- i > 3 ? 'loading="lazy"' : '' %> width="1100" height="1424"><% } else { %><span class="cover-blank"><span><%= n.month.split(' ')[0] %></span><%= n.month.split(' ')[1] %></span><% } %>
     <strong><%= n.month %></strong>
+    <% if (labelled) { %><span class="meta"><%= n.for %></span><% } %>
     <% if (i === 0) { %><span class="tag new">Latest</span><% } %>
   </a>
   <% }) %>

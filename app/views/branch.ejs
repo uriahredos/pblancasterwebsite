@@ -78,11 +78,13 @@
       <ul class="agenda"><% events.forEach(function (e) { %><li><span class="cal" aria-hidden="true"><span><%= e.month %></span><%= e.day %></span><span class="agenda-body"><strong><%= e.title %></strong><span class="meta"><%= e.weekday %><%= e.time ? ' at ' + e.time : '' %><%= e.location ? ' · ' + e.location : '' %></span></span></li><% }) %></ul>
     </section>
     <% } %>
+    <% if (inside) { %>
     <section class="panel" aria-labelledby="bsh-h">
       <div class="panel-head"><h2 id="bsh-h">Shout-outs</h2><a href="/shoutouts">All</a></div>
       <% if (!shouts.length) { %><div class="one-line"><p class="empty">None yet for this office.</p><a class="btn small" href="/shoutouts#give">👏 Give one</a></div><% } %>
       <ul class="shouts"><% shouts.forEach(function (s) { %><%- include('partials/shout', { s: s, back: '' }) %><% }) %></ul>
     </section>
+    <% } %>
     <% if (photos.length) { %>
     <section class="panel" aria-labelledby="bph-h">
       <div class="panel-head"><h2 id="bph-h">Photos</h2><a href="/social">All</a></div>

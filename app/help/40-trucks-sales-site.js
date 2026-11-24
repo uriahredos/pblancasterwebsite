@@ -277,7 +277,7 @@ module.exports = [
     group: 'Running the site',
     perms: ['branches.all'],
     pages: [],
-    intro: 'If you can see every office, choose which one the logs, stock, trucks, training and sales pages show.',
+    intro: 'If you run more than one office, choose which one the site shows: its home page, news, logs, stock, trucks, training and sales.',
     where: 'The office box is at the top of every page, beside your name. On a phone it is in the main menu.',
     steps: [
       'Find the box at the top of the page that shows an office name.',
@@ -289,6 +289,8 @@ module.exports = [
       'Your choice stays until you change it or sign out, so check the box before you trust what a list is showing.',
       'Choose one office, not **Corporate**, before you add something that belongs to an office, such as a training session, a checklist item or a lead.',
       'Every office is in the list, including ones with nobody on the site yet.',
+      'The home page follows the box too: announcements, events, shout-outs, the newsletter and who is on call are the ones for that office.',
+      '**Corporate** shows the posts made for the whole company and the totals across every office.',
     ],
     related: ['add-an-office', 'view-site-as-profile'],
   },

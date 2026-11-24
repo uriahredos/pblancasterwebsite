@@ -96,7 +96,7 @@ function loadUser(req, res, next) {
     res.locals.badges.updates =
       db.prepare('SELECT COUNT(*) AS n FROM parts_submissions WHERE user_id = ? AND unseen = 1').get(req.user.id).n +
       db.prepare('SELECT COUNT(*) AS n FROM training_requests WHERE user_id = ? AND unseen = 1').get(req.user.id).n;
-    res.locals.badges.notices = require('./routes/announcements').unreadCount(req.user.id);
+    res.locals.badges.notices = require('./routes/announcements').unreadCount(req.user);
     // Discussions: threads this person follows that someone else has replied to since they last looked.
     if (access.can(req.user, 'forum.use')) {
       res.locals.badges.forum = db.prepare(

@@ -337,11 +337,29 @@ The company's own feed, in the bar beside Tasks. Everyone in every office sees e
 - After an update, posting is given once to every profile that can send parts forms, and moderating to profiles that manage people.
 - Photos live in `/data/uploads` with the others.
 
+## Office, market, company (`app/reach.js`)
+
+Every post that belongs somewhere has a reach: **one office**, **a market** (a group of offices) or **the whole company**.
+What a person sees follows the office they are looking at (the box at the top): that office's posts, its market's and the company's.
+
+| | Who sees it |
+| --- | --- |
+| Announcements, events, newsletters | The office, market or company chosen when posting. Anyone posts for the office in view; a market needs a market admin; the company a corporate admin. |
+| Shout-outs | The giver's office and the receiver's office. They can be given to anyone in the giver's own market. |
+| Birthdays, anniversaries, new faces | The office in view and the rest of its market. |
+| On call now, people count, training on the home page | The office in view. |
+| Social, Discussions, the daily question, People, the office list | The whole company. |
+| Another office's page | Its people, services and details. Its shout-outs and events only for whoever runs or is looking at that office. |
+
+The **Corporate** view (every office at once) shows the company's own posts and totals on the home page, and every office's posts, each marked, on the Events, Shout-outs and Newsletters pages.
+
+A market admin runs each office of their market: they keep its office page and can take down what its people posted.
+
 ## Newsletters (`/newsletters`, `/admin/newsletters`)
 
 - Anyone with **Upload and remove the monthly newsletters** uploads a PDF (up to 25 MB) under **Team > Newsletters**, choosing its month. A title and up to four highlight lines are optional.
 - Each page (up to 12) is turned into a picture so it reads well on a phone; **Open the PDF** gives the original. This uses `pdftoppm` from poppler-utils, which the `Dockerfile` installs. Without it, people open the PDF itself. The tool is started without any of the site's settings, so it cannot see the database key.
-- Everyone signed in can read every issue at `/newsletters`. Nothing is visible signed out.
+- Each issue belongs to one office, a market or the whole company. People read the issues for the office they are looking at; another office's issue answers 404. Nothing is visible signed out.
 - After an update, the permission is given once to profiles that already manage people. Tick it on any other profile that should have it.
 - The files live in `/data/uploads` with the photos, so **Download all photos** on the Backups page includes them.
 

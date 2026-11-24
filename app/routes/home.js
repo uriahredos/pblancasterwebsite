@@ -47,7 +47,10 @@ router.get('/', requireLogin, (req, res) => {
   const me = req.user.id;
   const can = (perm) => access.can(req.user, perm);
   const today = localDate();
-  const all = require('./announcements').forUser(me);
+  // Everything on this page that belongs to an office follows the office being looked at (see reach.js). In the
+  // Corporate view, which is every office at once, that means the company's own posts and totals across the offices.
+  const at = require('../reach').place(req.user);
+  const all = require('./announcements').forUser(req.user);
   // Unread announcements lead the Announcements panel until read; after that the latest few stay listed.
   // Critical ones are always first on the page, read or not.
   const critical = all.filter((n) => n.critical).sort((x, y) => y.id - x.id);
@@ -56,7 +59,7 @@ router.get('/', requireLogin, (req, res) => {
   const myCerts = db.prepare('SELECT * FROM certifications WHERE user_id = ? AND expires_on IS NOT NULL').all(me)
     .map((c) => certs.decorate(c, today)).filter((c) => c.status === 'expired' || (c.status === 'soon' && c.days <= 30));
 
-  const issues = newsletters.latest(4);
+  const issues = newsletters.latest(req.user, 4);
   // Discussions: replies to threads this person follows, and the latest activity.
   const forum = can('forum.use') ? require('./forum') : null;
   const replies = forum ? forum.repliesFor(me) : [];
@@ -68,7 +71,7 @@ router.get('/', requireLogin, (req, res) => {
     `SELECT s.title, s.session_date, s.session_time, s.location FROM training_sessions s
      LEFT JOIN training_requests t ON t.id = s.request_id
      WHERE s.completed_at IS NULL AND s.session_date >= ? AND (t.id IS NULL OR t.is_private = 0) AND s.branch_id = ?
-     ORDER BY s.session_date, s.session_time LIMIT 4`).all(today, req.user.branch_id).map((s) => {
+     ORDER BY s.session_date, s.session_time LIMIT 4`).all(today, at.office).map((s) => {
     const d = ymdDate(s.session_date);
     const days = daysBetween(today, s.session_date);
     return { ...s, date: s.session_date, kind: 'Training', weekday: WEEKDAYS[d.getUTCDay()], month: MONTHS[d.getUTCMonth()], day: d.getUTCDate(), time: clock(s.session_time),
@@ -122,7 +125,7 @@ router.get('/', requireLogin, (req, res) => {
   if (can('inspections.view')) {
     branch.push({ label: 'Truck problems', value: b.inspections, sub: b.inspections ? 'not fixed yet' : 'none waiting', level: b.inspections ? 'bad' : '', url: '/admin/inspections?show=open' });
   }
-  if (can('stock.manage') || can('parts.view')) {
+  if (!at.corporate && (can('stock.manage') || can('parts.view'))) {
     const low = require('../stock').lowCount(req.user.workBranch);
     branch.push({ label: 'Low stock', value: low, sub: low === 1 ? 'part at or below its minimum' : 'parts at or below their minimum', level: low ? 'warn' : '', url: '/admin/stock?low=1' });
   }
@@ -150,17 +153,18 @@ router.get('/', requireLogin, (req, res) => {
   // so someone who never touches parts or trucks is not shown empty parts and truck boxes.
   const waiting = branch.filter((t) => Number(t.value) > 0);
   branch.length = 0;
-  const office = db.prepare('SELECT id, name FROM branches WHERE id = ?').get(req.user.branch_id);
-  const inOffice = db.prepare('SELECT COUNT(*) AS n FROM users WHERE branch_id = ? AND (active = 1 OR in_directory = 1)').get(req.user.branch_id).n;
-  branch.push({ label: 'People', value: inOffice, sub: office ? `in the ${office.name} office` : 'in your office', level: '', url: office ? `/branches/${office.id}` : '/people' });
+  const office = at.office ? db.prepare('SELECT id, name FROM branches WHERE id = ?').get(at.office) : null;
+  const inOffice = at.corporate ? db.prepare('SELECT COUNT(*) AS n FROM users WHERE active = 1 OR in_directory = 1').get().n
+    : db.prepare('SELECT COUNT(*) AS n FROM users WHERE branch_id = ? AND (active = 1 OR in_directory = 1)').get(at.office).n;
+  branch.push({ label: 'People', value: inOffice, sub: at.corporate ? 'across every office' : office ? `in the ${office.name} office` : 'in your office', level: '', url: office ? `/branches/${office.id}` : '/people' });
   const unread = res.locals.badges.notices;
   branch.push({ label: 'Announcements', value: unread, sub: unread ? 'for you to read' : 'all read', level: unread ? 'warn' : '', url: '/notices' });
   const homeWeek = social.thisWeek(req.user, today);   // worked out once, used here and for the panel further down
-  const mineWeek = homeWeek.filter((o) => o.branch_id === req.user.branch_id);
+  const mineWeek = at.corporate ? homeWeek : homeWeek.filter((o) => o.branch_id === at.office);
   branch.push({ label: 'This week', value: mineWeek.length, sub: mineWeek.length === 1 ? 'birthday or anniversary here' : 'birthdays and anniversaries here', level: '', url: '/#thisweek' });
   const soon = upcoming.length;
   branch.push({ label: 'Coming up', value: soon, sub: soon === 1 ? 'event or training session' : 'events and training sessions', level: '', url: '/events' });
-  const newFaces = db.prepare('SELECT COUNT(*) AS n FROM welcomes w JOIN users u ON u.id = w.user_id WHERE u.branch_id = ? AND u.active = 1 AND w.created_at >= ?').get(req.user.branch_id, new Date(Date.now() - 14 * 86400000).toISOString()).n;
+  const newFaces = db.prepare(`SELECT COUNT(*) AS n FROM welcomes w JOIN users u ON u.id = w.user_id WHERE ${at.corporate ? '1 = 1' : 'u.branch_id = @office'} AND u.active = 1 AND w.created_at >= @since`).get({ office: at.office, since: new Date(Date.now() - 14 * 86400000).toISOString() }).n;
   if (newFaces) branch.push({ label: 'New faces', value: newFaces, sub: newFaces === 1 ? 'person to welcome' : 'people to welcome', level: '', url: '/#welcome' });
   branch.push(...waiting);
 
@@ -192,11 +196,11 @@ router.get('/', requireLogin, (req, res) => {
   const now = new Date();
   const dateLine = new Intl.DateTimeFormat('en-US', { timeZone: config.timezone, weekday: 'long', month: 'long', day: 'numeric' }).format(now);
   // Only the office being looked at: its own people on call today. The rest of the market is on the On call page.
-  const onCall = require('../oncall').covering([req.user.workBranch].filter(Boolean), today).map((p) => ({ ...p, tel: String(p.phone || '').replace(/[^0-9+]/g, '') }));
-  onCall.sort((x, y) => (y.branch_id === req.user.branch_id) - (x.branch_id === req.user.branch_id) || (x.role === 'backup') - (y.role === 'backup'));   // your own office first, then the rest of the market
+  const onCall = require('../oncall').covering([at.office].filter(Boolean), today).map((p) => ({ ...p, tel: String(p.phone || '').replace(/[^0-9+]/g, '') }));
+  onCall.sort((x, y) => (x.role === 'backup') - (y.role === 'backup'));
   const feed = require('../feed');
   const around = feed.recent(req.user, 8); const company = feed.company(req.user, today);
-  const homeShouts = social.recentShoutouts(me, 3);
+  const homeShouts = social.recentShoutouts(req.user, 3);
   res.render('home', {
     onCall, onCallOffices: new Set(onCall.map((p) => p.branch_id)).size, around, company, slides: feed.slides(req.user, { around, shouts: homeShouts, week: homeWeek, spot: company.spot }),
     shouts: homeShouts, thisWeek: homeWeek, wallPhotos: social.recentPhotos(me, 4),

@@ -386,7 +386,7 @@ module.exports = [
     group: 'Everyday',
     perms: [],
     pages: ['/shoutouts'],
-    intro: 'Thank a coworker for a job well done, where everyone can see it.',
+    intro: 'Thank a coworker for a job well done, where your office can see it.',
     where: 'On a phone: **More**, then **Community**, then **Shout-outs**. On a computer: **Community** in the menu, then **Shout-outs**.',
     steps: [
       'Open **Shout-outs**.',
@@ -396,8 +396,9 @@ module.exports = [
       'To cheer for someone else\'s shout-out, tap the clapping hands under it.',
     ],
     tips: [
-      'Everyone at the company can see a shout-out, and it stays on the person\'s profile.',
-      'Cannot find someone from another office in the list? Open their page from **People** and tap **Give a shout-out** there.',
+      'Your office sees the shout-out. If the person is in another office of your market, their office sees it too. Nobody else does.',
+      'You can give one to anyone in your own office or your market.',
+      'Cannot find someone from another office of your market in the list? Open their page from **People** and tap **Give a shout-out** there.',
       'To take back one you gave, tap **Remove the one above** under it.',
     ],
     related: ['post-on-social', 'find-people-and-offices'],

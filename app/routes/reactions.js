@@ -17,7 +17,7 @@ router.post('/react', requireLogin, (req, res) => {
     if (!p) return res.redirect('/discussions');
     back = `/discussions/t/${p.thread_id}#p${p.id}`;
   } else if (kind === 'notice') {
-    if (!require('./announcements').forUser(req.user.id).some((n) => n.id === id)) return forbidden(res);
+    if (!require('./announcements').forUser(req.user).some((n) => n.id === id)) return forbidden(res);
     back = req.body.back === 'home' ? '/' : `/notices#n${id}`;
   } else if (kind === 'social') {
     if (!db.prepare('SELECT 1 FROM social_posts WHERE id = ?').get(id)) return res.redirect('/social');

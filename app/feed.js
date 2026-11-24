@@ -30,13 +30,17 @@ function recent(user, limit = 8, { full = false } = {}) {
   const since = new Date(Date.now() - (full ? 90 : 30) * 86400000).toISOString();
   const each = full ? 100 : 6;
   const items = [];
+  // New faces come from the office being looked at and the rest of its market; events and shout-outs follow the same
+  // rule as their own pages. Photos and discussions are for the whole company.
+  const reach = require('./reach'); const at = reach.place(user);
+  const nearby = at.corporate ? '1 = 1' : `u.branch_id IN (${reach.marketOffices(at.office).map(Number).join(',') || 0})`;
   const person = 'u.id AS user_id, u.display_name, u.photo_path, b.name AS office, b.id AS office_id';
   const from = 'JOIN users u ON u.id = x.USER LEFT JOIN branches b ON b.id = u.branch_id';
 
   for (const w of db.prepare(`SELECT x.id, x.intro, x.created_at, u.job_title, ${person},
       EXISTS (SELECT 1 FROM welcome_notes n WHERE n.welcome_id = x.id AND n.user_id = @me) AS waved,
       (SELECT COUNT(*) FROM welcome_notes n JOIN users nu ON nu.id = n.user_id WHERE n.welcome_id = x.id AND nu.active = 1) AS waves
-      FROM welcomes x ${from.replace('USER', 'user_id')} WHERE u.active = 1 AND x.created_at >= @since ORDER BY x.created_at DESC LIMIT ${each}`).all({ me: user.id, since: full ? since : new Date(Date.now() - 14 * 86400000).toISOString() })) {
+      FROM welcomes x ${from.replace('USER', 'user_id')} WHERE u.active = 1 AND ${nearby} AND x.created_at >= @since ORDER BY x.created_at DESC LIMIT ${each}`).all({ me: user.id, since: full ? since : new Date(Date.now() - 14 * 86400000).toISOString() })) {
     items.push({ kind: 'hire', at: w.created_at, who: w, title: `${w.display_name} joined${w.office ? ' the ' + w.office + ' office' : ''}`, text: w.intro || w.job_title || '', url: `/people/${w.user_id}`,
       action: w.user_id === user.id || w.waved ? null : { url: `/welcome/${w.id}/wave`, label: '👋 Say welcome' }, done: w.waved ? 'You said welcome ✓' : '',
       extra: w.waves ? `${w.waves} ${w.waves === 1 ? 'welcome' : 'welcomes'}` : 'Be the first to say welcome', link: w.user_id === user.id ? { url: `/people/${w.user_id}#welcome`, label: 'See your messages' } : null });
@@ -51,28 +55,32 @@ function recent(user, limit = 8, { full = false } = {}) {
       items.push({ kind: 'talk', at: t.created_at, who: t, title: `${t.display_name} started a discussion`, text: t.title, url: `/discussions/t/${t.id}`, extra: t.reply_count ? `${t.reply_count} ${t.reply_count === 1 ? 'reply' : 'replies'}` : 'Be the first to reply' });
     }
   }
-  for (const e of db.prepare(`SELECT x.id, x.title, x.event_date, x.created_at, eb.name AS host, ${person} FROM events x ${from.replace('USER', 'created_by')}
-      LEFT JOIN branches eb ON eb.id = x.branch_id WHERE x.created_at >= @since AND x.event_date >= @today ORDER BY x.created_at DESC LIMIT ${full ? each : 4}`).all({ since, today: full ? '0000-00-00' : localDate() })) {
-    items.push({ kind: 'event', at: e.created_at, who: e, title: `${e.display_name} posted an event`, text: `${e.title}, ${MONTHS[Number(e.event_date.slice(5, 7)) - 1]} ${Number(e.event_date.slice(8))}${e.host ? '' : ' (whole company)'}`, url: `/events#e${e.id}` });
+  for (const e of db.prepare(`SELECT x.id, x.title, x.event_date, x.created_at, x.market_id, eb.name AS host, ${person} FROM events x ${from.replace('USER', 'created_by')}
+      LEFT JOIN branches eb ON eb.id = x.branch_id WHERE ${reach.shown('x')} AND x.created_at >= @since AND x.event_date >= @today ORDER BY x.created_at DESC LIMIT ${full ? each : 4}`).all({ ...reach.params(user), since, today: full ? '0000-00-00' : localDate() })) {
+    items.push({ kind: 'event', at: e.created_at, who: e, title: `${e.display_name} posted an event`, text: `${e.title}, ${MONTHS[Number(e.event_date.slice(5, 7)) - 1]} ${Number(e.event_date.slice(8))}${e.market_id ? ' (whole market)' : e.host ? '' : ' (whole company)'}`, url: `/events#e${e.id}` });
   }
   if (full) {
     for (const s of db.prepare(`SELECT x.id, x.message, x.created_at, t.display_name AS to_name, ${person} FROM shoutouts x ${from.replace('USER', 'from_user')}
-        JOIN users t ON t.id = x.to_user WHERE x.created_at >= @since ORDER BY x.created_at DESC LIMIT ${each}`).all({ since })) {
+        JOIN users t ON t.id = x.to_user WHERE ${at.corporate ? '1 = 1' : '(u.branch_id = @office OR t.branch_id = @office)'} AND x.created_at >= @since ORDER BY x.created_at DESC LIMIT ${each}`).all({ office: at.office, since })) {
       items.push({ kind: 'shout', at: s.created_at, who: s, title: `${s.display_name} gave ${s.to_name} a shout-out`, text: s.message, url: `/shoutouts#s${s.id}` });
     }
   }
   items.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
-  return items.slice(0, limit).map((i) => ({ ...i, when: ago(i.at), away: Boolean(i.who.office_id && i.who.office_id !== user.branch_id) }));
+  return items.slice(0, limit).map((i) => ({ ...i, when: ago(i.at), away: Boolean(i.who.office_id && i.who.office_id !== (at.office || user.branch_id)) }));
 }
 
 /** A few numbers for the top of the home page, and one office to get to know this week. */
 function company(user, today = localDate()) {
   const n = (sql, ...args) => db.prepare(sql).get(...args).n;
+  const at = require('./reach').place(user);
   const month = `${today.slice(0, 7)}-01`;
   const stats = [
     { value: n('SELECT COUNT(*) AS n FROM branches'), label: 'Offices', url: '/branches' },
     { value: n('SELECT COUNT(*) AS n FROM users WHERE active = 1 OR in_directory = 1'), label: 'People Here', url: '/people' },
-    { value: n('SELECT COUNT(*) AS n FROM shoutouts WHERE created_at >= ?', month), label: 'Shout-Outs This Month', one: 'Shout-Out This Month', url: '/shoutouts' },
+    // Counted the way the Shout-outs page lists them: the ones the office being looked at gave or received.
+    { value: at.corporate ? n('SELECT COUNT(*) AS n FROM shoutouts WHERE created_at >= ?', month)
+      : n('SELECT COUNT(*) AS n FROM shoutouts s JOIN users f ON f.id = s.from_user JOIN users t ON t.id = s.to_user WHERE s.created_at >= ? AND (f.branch_id = ? OR t.branch_id = ?)', month, at.office, at.office),
+      label: 'Shout-Outs This Month', one: 'Shout-Out This Month', url: '/shoutouts' },
     // Discussions only for people who can open them; everyone else sees how many photos were shared.
     user.perms && user.perms.has('forum.use')
       ? { value: n('SELECT COUNT(*) AS n FROM forum_threads WHERE created_at >= ?', new Date(Date.now() - 30 * 86400000).toISOString()), label: 'New Discussions', one: 'New Discussion', url: '/discussions' }
@@ -82,7 +90,7 @@ function company(user, today = localDate()) {
   const offices = db.prepare(`SELECT b.id, b.name, b.city, b.state, b.about,
       (SELECT group_concat(s.name, ', ') FROM branch_services bs JOIN services s ON s.id = bs.service_id WHERE bs.branch_id = b.id) AS services,
       (SELECT COUNT(*) FROM users u WHERE u.branch_id = b.id AND (u.active = 1 OR u.in_directory = 1)) AS people
-      FROM branches b WHERE b.id <> ? ORDER BY b.id`).all(user.branch_id || 0).filter((o) => o.services || o.about || o.people);
+      FROM branches b WHERE b.id <> ? ORDER BY b.id`).all(at.office || 0).filter((o) => o.services || o.about || o.people);
   const week = Math.floor(new Date(`${today}T12:00:00Z`).getTime() / (7 * 86400000));
   const spot = offices.length ? offices[week % offices.length] : null;
   for (const s of stats) if (s.value === 1 && s.one) s.label = s.one;

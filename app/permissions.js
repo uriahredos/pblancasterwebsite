@@ -278,7 +278,9 @@ function moderates(user, perm, authorId) {
   if (user.allBranches) return true;
   if (user.scope === 'team') return canSee(user, authorId);
   const row = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(authorId);
-  return Boolean(row && row.branch_id && row.branch_id === user.branch_id);
+  // Their own office, or (for a market admin) any office of their market.
+  const mine = user.marketBranches && user.marketBranches.length ? user.marketBranches : [user.branch_id];
+  return Boolean(row && row.branch_id && mine.includes(row.branch_id));
 }
 
 /** May `actor` hand out (or edit) a profile holding these permissions? Only ones they hold themselves. */

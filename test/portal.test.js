@@ -3416,8 +3416,17 @@ test('birthdays and anniversaries: this week on the home page for the branch, wi
   const viewer = { id: userId('tech1'), branch_id: 1 };
   const week = social.thisWeek(viewer, today).filter((o) => ['Bea Birthday', 'Andy Anniversary', 'Fran Faraway'].includes(o.display_name));
   assert.deepEqual(week.map((o) => [o.display_name, o.kind, o.when, o.text]), [['Bea Birthday', 'birthday', 'Today', 'Birthday'], ['Andy Anniversary', 'anniversary', 'Mon, Nov 16', '5 years with us']]);
-  // Every office sees them; someone from another office is shown which office each person is in.
-  assert.ok(social.thisWeek({ id: 0, branch_id: 999 }, today).some((o) => o.display_name === 'Bea Birthday' && o.branch === 'Lancaster'));
+  // Another office of the same market sees them too, and is shown which office each person is in. An office outside the market does not.
+  const bNow = new Date().toISOString();
+  const bMarket = db.prepare("INSERT INTO markets (name, created_at) VALUES ('Birthday Valley', ?)").run(bNow).lastInsertRowid;
+  const bNear = db.prepare("INSERT INTO branches (name, created_at, market_id) VALUES ('Birthday Nearby', ?, ?)").run(bNow, bMarket).lastInsertRowid;
+  const bFar = db.prepare("INSERT INTO branches (name, created_at) VALUES ('Birthday Faraway', ?)").run(bNow).lastInsertRowid;
+  db.prepare('UPDATE branches SET market_id = ? WHERE id = 1').run(bMarket);
+  assert.ok(social.thisWeek({ id: 0, branch_id: bNear }, today).some((o) => o.display_name === 'Bea Birthday' && o.branch === 'Lancaster'));
+  assert.deepEqual(social.thisWeek({ id: 0, branch_id: bFar }, today), []);
+  // The Corporate view, every office at once, has them all.
+  assert.ok(social.thisWeek({ id: 0, branch_id: bFar, allBranches: true, viewBranch: null }, today).some((o) => o.display_name === 'Bea Birthday'));
+  db.prepare('UPDATE branches SET market_id = NULL WHERE id = 1').run(); db.prepare('DELETE FROM branches WHERE id IN (?, ?)').run(bNear, bFar); db.prepare('DELETE FROM markets WHERE id = ?').run(bMarket);
 
   // The profile form: a month and a day, never a year; both or neither.
   const bea = await loggedIn('bday1');
@@ -3468,16 +3477,35 @@ test('events: posted by those allowed, everyone signs up, potlucks collect what 
   await t2.post(`/events/${eid}/signup`, { out: '1' }, { page: '/events' });
   assert.equal(db.prepare('SELECT COUNT(*) n FROM event_signups WHERE event_id = ?').get(eid).n, 1);
 
-  // Another office sees and can join every event.
+  // Another office sees the company's events, not this office's.
   const other = db.prepare("INSERT INTO branches (name, created_at) VALUES ('Eventville', ?)").run(new Date().toISOString()).lastInsertRowid;
   makeUser('ev1', 'Eve Elsewhere'); db.prepare('UPDATE users SET branch_id = ? WHERE username = ?').run(other, 'ev1');
   await owner.post('/events', { title: 'Company picnic', event_date: ymdFromNow(30), reach: 'everyone' }, { page: '/events' });
   const eve = await loggedIn('ev1');
   const hers = (await eve.get('/events')).text;
-  assert.match(hers, /Company picnic[\s\S]*Whole company/); assert.match(hers, /Chili[\s\S]*Lancaster office/);   // every office sees every event
-  assert.equal((await eve.post(`/events/${eid}/signup`, {}, { page: '/events' })).status, 302);
-  assert.equal(db.prepare('SELECT COUNT(*) n FROM event_signups WHERE event_id = ? AND user_id = ?').get(eid, userId('ev1')).n, 1);
-  assert.equal((await eve.post(`/events/${eid}/delete`, {}, { page: '/events' })).status, 403);                 // but cannot remove another office's
+  assert.match(hers, /Company picnic[\s\S]*Whole company/); assert.doesNotMatch(hers, /Chili|Toy drive/);
+  assert.doesNotMatch((await eve.get('/')).text, /Chili/);                                                       // nor on her home page
+  assert.equal((await eve.post(`/events/${eid}/signup`, {}, { page: '/events' })).status, 404);                 // and it is not hers to join
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM event_signups WHERE event_id = ? AND user_id = ?').get(eid, userId('ev1')).n, 0);
+  // An event for the market reaches every office in it, and only those.
+  const evMarket = db.prepare("INSERT INTO markets (name, created_at) VALUES ('Event Valley', ?)").run(new Date().toISOString()).lastInsertRowid;
+  db.prepare('UPDATE branches SET market_id = ? WHERE id IN (1, ?)').run(evMarket, other);
+  assert.match((await owner.get('/events')).text, /<select name="reach"><option value="office" >Lancaster office only<\/option><option value="market" >The Event Valley market<\/option><option value="company" >The whole company<\/option>/);
+  await owner.post('/events', { title: 'Market mixer', event_date: ymdFromNow(12), reach: 'market' }, { page: '/events' });
+  const mixer = db.prepare("SELECT * FROM events WHERE title = 'Market mixer'").get();
+  assert.equal(mixer.market_id, evMarket); assert.equal(mixer.branch_id, 1);
+  assert.match((await eve.get('/events')).text, /Market mixer[\s\S]*Event Valley market/);
+  assert.equal((await eve.post(`/events/${mixer.id}/signup`, {}, { page: '/events' })).status, 302);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM event_signups WHERE event_id = ? AND user_id = ?').get(mixer.id, userId('ev1')).n, 1);
+  assert.equal((await eve.post(`/events/${mixer.id}/delete`, {}, { page: '/events' })).status, 403);            // but cannot remove one she did not post
+  const outsider = db.prepare("INSERT INTO branches (name, created_at) VALUES ('Event Outside', ?)").run(new Date().toISOString()).lastInsertRowid;
+  db.prepare('UPDATE users SET branch_id = ? WHERE username = ?').run(outsider, 'ev1');
+  assert.doesNotMatch((await eve.get('/events')).text, /Market mixer/);
+  db.prepare('UPDATE users SET branch_id = ? WHERE username = ?').run(other, 'ev1');
+  // Someone without the market or the company to post for is not asked; their event is for their own office.
+  assert.doesNotMatch((await t1.get('/events')).text, /name="reach"/);
+  await owner.post(`/events/${mixer.id}/delete`, {}, { page: '/events' });
+  db.prepare('UPDATE branches SET market_id = NULL WHERE market_id = ?').run(evMarket); db.prepare('DELETE FROM markets WHERE id = ?').run(evMarket); db.prepare('DELETE FROM branches WHERE id = ?').run(outsider);
 
   // Only the organiser (or someone who posts events for that branch) removes one.
   assert.equal((await t1.post(`/events/${eid}/delete`, {}, { page: '/events' })).status, 403);
@@ -4824,7 +4852,7 @@ test('moderation stays inside the office: an office admin removes only what thei
   assert.equal((await mod.post(`/discussions/t/${near}/pin`, {}, { page: `/discussions/t/${near}` })).status, 302);
   // Shout-outs and photos follow the same rule.
   await t1.post('/shoutouts', { to_user: String(userId('tech2')), message: 'From another office' }, { page: '/shoutouts' });
-  await lars.post('/shoutouts', { to_user: String(userId('tech2')), message: 'From Modville' }, { page: '/shoutouts' });
+  await lars.post('/shoutouts', { to_user: String(userId('mod.admin')), message: 'From Modville' }, { page: '/shoutouts' });
   const farShout = db.prepare("SELECT id FROM shoutouts WHERE message = 'From another office'").get().id, nearShout = db.prepare("SELECT id FROM shoutouts WHERE message = 'From Modville'").get().id;
   const shouts = (await mod.get('/shoutouts')).text;
   assert.match(shouts, new RegExp(`action="/shoutouts/${nearShout}/delete"`)); assert.doesNotMatch(shouts, new RegExp(`action="/shoutouts/${farShout}/delete"`));
@@ -7529,20 +7557,27 @@ test('People: past 500 the page says how many there are and goes on to the next 
   // A short list reads as it always did.
   assert.match((await t.get('/people?q=Tatum+Speedville')).text, new RegExp(`<p class="meta">1 person found, of ${total}</p>`));
 
-  // Shout-outs: in a company this size the list is the person's own office; anyone else is reached from their own page.
+  // Shout-outs: in a market this size the list is the person's own office; anyone else in the market is reached from their own page.
+  const spMarket = db.prepare("INSERT INTO markets (name, created_at) VALUES ('Speed Valley', ?)").run(now).lastInsertRowid;
+  db.prepare('UPDATE branches SET market_id = ? WHERE id IN (?, ?)').run(spMarket, db.prepare("SELECT branch_id FROM users WHERE username = 'sp.tech1'").get().branch_id, town);
   const give = (html) => /<select name="to_user"[\s\S]*?<\/label>/.exec(html)[0];
   const picker = give((await t.get('/shoutouts')).text);
   assert.match(picker, /Morgan Speedville/); assert.match(picker, /Uri Speedville/); assert.doesNotMatch(picker, /Tatum Speedville|Zz Bulk|Terry Tech|optgroup/);
-  assert.match(picker, /For someone in another office, open their page from <a href="\/people">People<\/a> and choose Give a shout-out there\./);
+  assert.match(picker, /For someone in another office of your market, open their page from <a href="\/people">People<\/a> and choose Give a shout-out there\./);
   const one = db.prepare("SELECT id FROM users WHERE username = 'spdbulk7'").get().id;
   assert.match((await t.get(`/people/${one}`)).text, new RegExp(`href="/shoutouts\\?to=${one}#give"`));
   const chosen = give((await t.get(`/shoutouts?to=${one}`)).text);
-  assert.match(chosen, new RegExp(`<optgroup label="Other offices"><option value="${one}" selected>Zz Bulk 0007 · Speed Bulkton</option></optgroup>`)); assert.equal((chosen.match(/Zz Bulk/g) || []).length, 1);
+  assert.match(chosen, new RegExp(`<optgroup label="Other offices in your market"><option value="${one}" selected>Zz Bulk 0007 · Speed Bulkton</option></optgroup>`)); assert.equal((chosen.match(/Zz Bulk/g) || []).length, 1);
   assert.equal((await t.post('/shoutouts', { to_user: String(one), message: 'BULKSHOUT thanks for the loan of the lift' }, { page: '/shoutouts' })).status, 302);
   assert.equal(db.prepare("SELECT to_user FROM shoutouts WHERE message LIKE 'BULKSHOUT%'").get().to_user, one);
   // A form sent back with a mistake still shows who was picked.
   const again = await t.post('/shoutouts', { to_user: String(one), message: '' }, { page: '/shoutouts' });
   assert.equal(again.status, 400); assert.match(give(again.text), new RegExp(`<option value="${one}" selected>`));
+  // Someone outside the market is not offered, on their page or through the form.
+  assert.doesNotMatch((await t.get(`/people/${userId('tech1')}`)).text, /Give a shout-out/);
+  const outside = await t.post('/shoutouts', { to_user: String(userId('tech1')), message: 'BULKSHOUT too far' }, { page: '/shoutouts' });
+  assert.equal(outside.status, 400); assert.match(outside.text, /Shout-outs are for people in your own office or your market\./);
+  db.prepare('UPDATE branches SET market_id = NULL WHERE market_id = ?').run(spMarket); db.prepare('DELETE FROM markets WHERE id = ?').run(spMarket);
 
   // Positions for every office at once: the table stops at 1,000 and says so; one office is shown whole, with no notice.
   const owner = await loggedIn('owner');
@@ -7562,11 +7597,16 @@ test('People: past 500 the page says how many there are and goes on to the next 
     db.prepare('DELETE FROM inv_locations WHERE branch_id = ?').run(town);
     db.prepare('DELETE FROM users WHERE branch_id = ?').run(town); db.prepare('DELETE FROM branches WHERE id = ?').run(town);
   })();
-  // Back to a company small enough for one list: the person's own office first, then everyone else, as two groups.
-  assert.ok(db.prepare('SELECT COUNT(*) n FROM users WHERE active = 1 OR in_directory = 1').get().n <= 500);
+  // A market small enough for one list: the person's own office first, then the market's other offices, as two groups.
+  // People outside the market are not in it at all.
+  const smMarket = db.prepare("INSERT INTO markets (name, created_at) VALUES ('Speed Small Valley', ?)").run(now).lastInsertRowid;
+  db.prepare('UPDATE branches SET market_id = ? WHERE id IN (1, ?)').run(smMarket, db.prepare("SELECT branch_id FROM users WHERE username = 'sp.tech1'").get().branch_id);
   const small2 = give((await t.get('/shoutouts')).text);
-  assert.match(small2, /<optgroup label="Your office">[\s\S]*Morgan Speedville · Speedville[\s\S]*<\/optgroup><optgroup label="Other offices">[\s\S]*Terry Tech/);
+  assert.match(small2, /<optgroup label="Your office">[\s\S]*Morgan Speedville · Speedville[\s\S]*<\/optgroup><optgroup label="Other offices in your market">[\s\S]*Terry Tech/);
   assert.doesNotMatch(small2, /For someone in another office/);
+  db.prepare('UPDATE branches SET market_id = NULL WHERE market_id = ?').run(smMarket); db.prepare('DELETE FROM markets WHERE id = ?').run(smMarket);
+  const alone = give((await t.get('/shoutouts')).text);
+  assert.doesNotMatch(alone, /Terry Tech|optgroup/); assert.match(alone, /Morgan Speedville/);
   assert.match((await t.get('/people')).text, /<p class="meta">\d+ people<\/p>/);
 });
 
@@ -8954,6 +8994,12 @@ test('markets: corporate admins group offices into markets and appoint market ad
   assert.match(await sees(), /Mia Market/); assert.doesNotMatch(await sees(), /Bea Beta|Otto Outside|Terry Tech/);
   await mc.post('/branch/view', { branch: String(b), back: '/' }, { page: '/' });
   assert.match(await sees(), /Bea Beta/); assert.doesNotMatch(await sees(), /Otto Outside|Terry Tech/);
+  // She keeps the office page of any office in her market, and takes down what its people posted; nothing outside it.
+  assert.equal((await mc.post(`/branches/${b}`, [['address', '9 Market Row'], ['phone', '302-555-0100'], ['about', 'Kept by the market admin.']], { page: `/branches/${b}`, multipart: true })).status, 302);
+  assert.equal(db.prepare('SELECT address FROM branches WHERE id = ?').get(b).address, '9 Market Row');
+  assert.equal((await mc.post(`/branches/${outside}`, [['address', 'Not hers'], ['phone', ''], ['about', '']], { page: `/branches/${outside}`, multipart: true })).status, 403);
+  const miaAcc = access.loadAccess(db.prepare('SELECT * FROM users WHERE id = ?').get(mia));
+  assert.equal(access.moderates(miaAcc, 'forum.moderate', userId('mkt.bea')), true); assert.equal(access.moderates(miaAcc, 'forum.moderate', otto), false);
   await mc.post('/branch/view', { branch: String(outside), back: '/' }, { page: '/' });
   assert.match(await sees(), /Bea Beta/); assert.doesNotMatch(await sees(), /Otto Outside/);                    // refused: still looking at Beta
   await mc.post('/branch/view', { branch: 'all', back: '/' }, { page: '/' }); await mc.post('/branch/view', { branch: '', office: 'All offices', back: '/' }, { page: '/' });
@@ -9001,4 +9047,126 @@ test('on call: the Call button carries the number so a computer can show it; a p
   const js = (await owner.get('/site.js')).text;
   assert.match(js, /a\[data-call-number\]/); assert.match(js, /\(hover: hover\) and \(pointer: fine\)/); assert.match(js, /if \(!desk\) return;/);   // only a computer gets the pop-up
   db.prepare("DELETE FROM oncall_shifts WHERE name = 'Cal Caller'").run();
+});
+
+test('each office its own, each market together: shout-outs, events, newsletters, announcements, birthdays and the home page follow the office being looked at', async () => {
+  const owner = await loggedIn('owner'); const now = new Date().toISOString();
+  const mk = (name) => { const id = db.prepare('INSERT INTO branches (name, state, created_at) VALUES (?, ?, ?)').run(name, 'PA', now).lastInsertRowid; require('../app/branches').setUp(id); return id; };
+  const a = mk('Reach Alpha'); const b = mk('Reach Beta'); const c = mk('Reach Gamma');
+  const m = db.prepare("INSERT INTO markets (name, created_at) VALUES ('Reach Valley', ?)").run(now).lastInsertRowid;
+  db.prepare('UPDATE branches SET market_id = ? WHERE id IN (?, ?)').run(m, a, b);
+  access.ensureProfile('Market admin', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'backups'));
+  const put = (username, name, office, profile = 'Technician') => { const id = auth.createUser({ username, displayName: name, password: 'correct horse battery', profile: profileId(profile), branchId: office }); db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?').run(id); return id; };
+  const amy = put('reach.amy', 'Amy Alphason', a); const bo = put('reach.bo', 'Bo Betason', b); const cy = put('reach.cy', 'Cy Gammason', c);
+  put('reach.al', 'Al Alphason', a); put('reach.mk', 'Mara Market', a, 'Market admin');
+  const al = await loggedIn('reach.al'); const boC = await loggedIn('reach.bo'); const cyC = await loggedIn('reach.cy'); const mara = await loggedIn('reach.mk');
+  const view = (who, office) => who.post('/branch/view', { branch: String(office), back: '/' }, { page: '/' });
+  const has = async (who, url, re) => assert.match((await who.get(url)).text, re);
+  const hasNot = async (who, url, re) => assert.doesNotMatch((await who.get(url)).text, re);
+
+  // ---- Shout-outs: the giver's office and the receiver's office see one, nobody else. They are given within the market.
+  await al.post('/shoutouts', { to_user: String(amy), message: 'REACH inside Alpha' }, { page: '/shoutouts' });
+  await al.post('/shoutouts', { to_user: String(bo), message: 'REACH Alpha to Beta' }, { page: '/shoutouts' });
+  const far = await al.post('/shoutouts', { to_user: String(cy), message: 'REACH out of the market' }, { page: '/shoutouts' });
+  assert.equal(far.status, 400); assert.match(far.text, /Shout-outs are for people in your own office or your market\./);
+  for (const url of ['/', '/shoutouts']) {
+    await has(al, url, /REACH inside Alpha/); await has(al, url, /REACH Alpha to Beta/);
+    await has(boC, url, /REACH Alpha to Beta/); await hasNot(boC, url, /REACH inside Alpha/);
+    await hasNot(cyC, url, /REACH/);
+  }
+  await hasNot(boC, `/people/${amy}`, /REACH inside Alpha/);                                   // nor on her page, seen from another office
+  await has(al, `/people/${amy}`, /REACH inside Alpha/);
+  await hasNot(cyC, `/people/${bo}`, /Give a shout-out/); await has(al, `/people/${bo}`, /Give a shout-out/);
+  // Another office's page keeps its people and details, and leaves out its shout-outs and events.
+  await has(al, `/branches/${a}`, /id="bsh-h"/); await hasNot(boC, `/branches/${a}`, /id="bsh-h"|REACH inside Alpha/);
+  await has(boC, `/branches/${a}`, /Amy Alphason/);
+
+  // ---- Events: for one office, for the market, or for the whole company. An event goes to the office being looked at.
+  await view(owner, a);
+  const soon = (n) => { const d = new Date(Date.now() + n * 86400000); return d.toISOString().slice(0, 10); };
+  await owner.post('/events', { title: 'REACH Alpha lunch', event_date: soon(5), reach: 'office' }, { page: '/events' });
+  await owner.post('/events', { title: 'REACH Valley picnic', event_date: soon(6), reach: 'market' }, { page: '/events' });
+  await owner.post('/events', { title: 'REACH Company day', event_date: soon(7), reach: 'company' }, { page: '/events' });
+  const ev = (title) => db.prepare('SELECT * FROM events WHERE title = ?').get(title);
+  assert.deepEqual([ev('REACH Alpha lunch'), ev('REACH Valley picnic'), ev('REACH Company day')].map((e) => [e.branch_id, e.market_id]), [[a, null], [a, m], [null, null]]);
+  for (const url of ['/', '/events']) {
+    await has(al, url, /REACH Alpha lunch/); await has(al, url, /REACH Valley picnic/); await has(al, url, /REACH Company day/);
+    await hasNot(boC, url, /REACH Alpha lunch/); await has(boC, url, /REACH Valley picnic/); await has(boC, url, /REACH Company day/);
+    await hasNot(cyC, url, /REACH Alpha lunch|REACH Valley picnic/); await has(cyC, url, /REACH Company day/);
+  }
+  // A market admin posts for an office of their market or for the market, never for the company, and runs what is theirs.
+  await view(mara, b);
+  const maraForm = (await mara.get('/events')).text;
+  assert.match(maraForm, /<option value="office" >Reach Beta office only<\/option><option value="market" >The Reach Valley market<\/option><\/select>/);
+  await mara.post('/events', { title: 'REACH Beta cookout', event_date: soon(8), reach: 'company' }, { page: '/events' });   // not theirs to choose: it stays with the office
+  assert.deepEqual([ev('REACH Beta cookout').branch_id, ev('REACH Beta cookout').market_id], [b, null]);
+  await has(boC, '/events', /REACH Beta cookout/); await hasNot(al, '/events', /REACH Beta cookout/);
+  assert.equal((await mara.post(`/events/${ev('REACH Company day').id}/delete`, {}, { page: '/events' })).status, 403);
+  assert.equal((await mara.post(`/events/${ev('REACH Valley picnic').id}/delete`, {}, { page: '/events' })).status, 302);
+  assert.equal(ev('REACH Valley picnic'), undefined); assert.ok(ev('REACH Company day'));
+  await view(mara, a);
+
+  // ---- Announcements: the same three reaches, and the home page shows the ones for the office being looked at.
+  const post = (title, reach) => owner.post('/admin/announcements', { title, body: `${title} body`, reach }, { page: '/admin/announcements' });
+  await post('REACH Alpha notice', 'office'); await post('REACH Valley notice', 'market'); await post('REACH Company notice', 'company');
+  const note = (title) => db.prepare('SELECT branch_id, market_id FROM announcements WHERE title = ?').get(title);
+  assert.deepEqual([note('REACH Alpha notice'), note('REACH Valley notice'), note('REACH Company notice')].map((n) => [n.branch_id, n.market_id]), [[a, null], [a, m], [null, null]]);
+  for (const url of ['/', '/notices']) {
+    await has(al, url, /REACH Alpha notice/); await has(al, url, /REACH Valley notice/); await has(al, url, /REACH Company notice/);
+    await hasNot(boC, url, /REACH Alpha notice/); await has(boC, url, /REACH Valley notice/);
+    await hasNot(cyC, url, /REACH Alpha notice|REACH Valley notice/); await has(cyC, url, /REACH Company notice/);
+  }
+  const who = (await owner.get('/admin/announcements')).text.replace(/\s+/g, ' ');
+  assert.match(who, /REACH Valley notice[\s\S]*?<td>Reach Valley market<\/td>\s*<td><strong>\d of 4<\/strong>/);          // everyone in the market's two offices
+  assert.match(who, /REACH Alpha notice[\s\S]*?<td>Reach Alpha office<\/td>\s*<td><strong>\d of 3<\/strong>/);
+
+  // ---- Newsletters: each office has its own; a market or the company can have one too.
+  const issue = (month, title, reach) => owner.post('/admin/newsletters', { issue_month: month, title, reach, pdf: new Blob([tinyPdf()], { type: 'application/pdf' }) }, { page: '/admin/newsletters', multipart: true });
+  await issue('2031-01', 'REACH Alpha Barker', 'office'); await issue('2031-02', 'REACH Valley Barker', 'market'); await issue('2031-03', 'REACH Company Barker', 'company');
+  const nl = (title) => db.prepare('SELECT * FROM newsletters WHERE title = ?').get(title);
+  assert.deepEqual([nl('REACH Alpha Barker'), nl('REACH Valley Barker'), nl('REACH Company Barker')].map((n) => [n.branch_id, n.market_id]), [[a, null], [a, m], [null, null]]);
+  const titles = async (who2) => [...(await who2.get('/newsletters')).text.matchAll(/href="\/newsletters\/(\d+)"/g)].map((x) => db.prepare('SELECT title FROM newsletters WHERE id = ?').get(x[1]).title);
+  assert.deepEqual(await titles(al), ['REACH Company Barker', 'REACH Valley Barker', 'REACH Alpha Barker']);            // none of another office's earlier issues
+  assert.deepEqual(await titles(boC), ['REACH Company Barker', 'REACH Valley Barker']);
+  assert.deepEqual(await titles(cyC), ['REACH Company Barker']);
+  for (const tail of ['', '/pdf']) {
+    assert.equal((await boC.get(`/newsletters/${nl('REACH Alpha Barker').id}${tail}`)).status, 404);                     // another office's issue is not there for them
+    assert.notEqual((await al.get(`/newsletters/${nl('REACH Alpha Barker').id}${tail}`)).status, 404);
+  }
+  // Whoever runs an office removes its issues; the company's are for corporate admins.
+  const maraList = (await mara.get('/admin/newsletters')).text;
+  assert.match(maraList, /REACH Alpha Barker/); assert.match(maraList, /REACH Valley Barker/); assert.doesNotMatch(maraList, /REACH Company Barker/);
+  assert.equal((await mara.post(`/admin/newsletters/${nl('REACH Company Barker').id}/delete`, {}, { page: '/admin/newsletters' })).status, 403);
+  assert.ok(nl('REACH Company Barker'));
+
+  // ---- Birthdays reach the market; the office tiles count the office being looked at.
+  const md = require('../app/util').localDate().slice(5);
+  db.prepare('UPDATE users SET birthday = ? WHERE id IN (?, ?)').run(md, amy, cy);
+  await has(boC, '/', /Amy Alphason/); await hasNot(boC, '/', /Cy Gammason/);
+  await has(cyC, '/', /Cy Gammason/); await hasNot(cyC, '/', /Amy Alphason/);
+
+  // ---- Someone who runs several offices sees each one as its own people do; the Corporate view has the company's own.
+  await view(owner, b);
+  const atBeta = (await owner.get('/')).text;
+  assert.match(atBeta, /in the Reach Beta office/); assert.match(atBeta, /REACH Valley notice/); assert.match(atBeta, /REACH Alpha to Beta/);
+  assert.doesNotMatch(atBeta, /REACH Alpha notice|REACH inside Alpha|REACH Alpha lunch/);
+  await view(owner, c);
+  assert.doesNotMatch((await owner.get('/')).text, /REACH Alpha|REACH Valley|REACH inside/);
+  await owner.post('/branch/view', { branch: 'all', back: '/' }, { page: '/' });
+  const corp = (await owner.get('/')).text;
+  assert.match(corp, /across every office/); assert.match(corp, /REACH Company notice/); assert.match(corp, /REACH Company day/);
+  assert.doesNotMatch(corp, /REACH Alpha notice|REACH Valley notice|REACH Alpha lunch|REACH Beta cookout/);
+  await has(owner, '/events', /REACH Beta cookout[\s\S]*Reach Beta office/);                    // the full pages list every office's, each marked
+  await has(owner, '/shoutouts', /REACH inside Alpha/);
+  assert.deepEqual((await titles(owner)).filter((t) => /^REACH/.test(t)), ['REACH Company Barker', 'REACH Valley Barker', 'REACH Alpha Barker']);
+
+  const homeId = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id;
+  await view(owner, homeId);
+  db.transaction(() => {
+    db.prepare("DELETE FROM shoutouts WHERE message LIKE 'REACH%'").run(); db.prepare("DELETE FROM events WHERE title LIKE 'REACH%'").run();
+    db.prepare("DELETE FROM announcement_reads WHERE announcement_id IN (SELECT id FROM announcements WHERE title LIKE 'REACH%')").run(); db.prepare("DELETE FROM announcements WHERE title LIKE 'REACH%'").run();
+    db.prepare("DELETE FROM newsletters WHERE title LIKE 'REACH%'").run();
+    db.prepare("UPDATE users SET active = 0, birthday = NULL WHERE username LIKE 'reach.%'").run();
+    db.prepare('UPDATE branches SET market_id = NULL WHERE market_id = ?').run(m); db.prepare('DELETE FROM markets WHERE id = ?').run(m);
+  })();
 });

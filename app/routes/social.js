@@ -26,8 +26,14 @@ const SHOUT = `SELECT s.*, f.display_name AS from_name, f.photo_path AS from_pho
     (SELECT COUNT(*) FROM shoutout_cheers c JOIN users x ON x.id = c.user_id WHERE c.shoutout_id = s.id AND x.active = 1) AS cheers,
     EXISTS (SELECT 1 FROM shoutout_cheers c WHERE c.shoutout_id = s.id AND c.user_id = @me) AS cheered
   FROM shoutouts s JOIN users f ON f.id = s.from_user JOIN users t ON t.id = s.to_user`;
-const recentShoutouts = (me, limit = 3) => db.prepare(`${SHOUT} ORDER BY s.id DESC LIMIT @limit`).all({ me, limit });
-const shoutoutsFor = (me, userId, limit = 20) => db.prepare(`${SHOUT} WHERE s.to_user = @u ORDER BY s.id DESC LIMIT @limit`).all({ me, u: userId, limit });
+// A shout-out belongs to the two offices involved: the giver's and the receiver's. Nobody else's home page carries it.
+// (The Corporate view, which is every office at once, lists them all.)
+const reach = require('../reach');
+const involved = (user) => (reach.place(user).corporate ? '1 = 1' : '(f.branch_id = @office OR t.branch_id = @office)');
+const recentShoutouts = (user, limit = 3) => db.prepare(`${SHOUT} WHERE ${involved(user)} ORDER BY s.id DESC LIMIT @limit`).all({ me: user.id, office: reach.place(user).office, limit });
+const shoutoutsFor = (user, userId, limit = 20) => db.prepare(`${SHOUT} WHERE s.to_user = @u AND ${involved(user)} ORDER BY s.id DESC LIMIT @limit`).all({ me: user.id, office: reach.place(user).office, u: userId, limit });
+/** May this person give `targetId` a shout-out? Anyone in their own office, or in another office of their market. */
+const mayShout = (user, targetBranch) => Boolean(targetBranch) && reach.marketOffices(user.branch_id).includes(targetBranch);
 const PICKER_MAX = 500;   // past this many people in the company, the "who is it for" list is your own office only
 
 /**
@@ -38,10 +44,13 @@ const PICKER_MAX = 500;   // past this many people in the company, the "who is i
 function shoutPicker(user, chosenId) {
   const pick = (where, ...args) => db.prepare(`SELECT u.id, u.display_name, b.name AS branch FROM users u LEFT JOIN branches b ON b.id = u.branch_id
      WHERE ${LISTED} AND u.id <> ? AND ${where} ORDER BY u.display_name COLLATE NOCASE, u.id`).all(user.id, ...args);
-  const short = db.prepare(`SELECT COUNT(*) AS n FROM users u WHERE ${LISTED}`).get().n <= PICKER_MAX;
+  // Other offices of the same market, never further: a shout-out stays between the offices that know each other.
+  const near = reach.marketOffices(user.branch_id).filter((id) => id !== user.branch_id).map(Number);
+  const inMarket = near.length ? `u.branch_id IN (${near.join(',')})` : '0 = 1';
+  const short = !near.length || db.prepare(`SELECT COUNT(*) AS n FROM users u WHERE ${LISTED} AND ${inMarket}`).get().n <= PICKER_MAX;
   return {
     people: pick('u.branch_id IS ?', user.branch_id),
-    away: short ? pick('u.branch_id IS NOT ?', user.branch_id) : chosenId ? pick('u.branch_id IS NOT ? AND u.id = ?', user.branch_id, chosenId) : [],
+    away: short ? pick(inMarket) : chosenId ? pick(`${inMarket} AND u.id = ?`, chosenId) : [],
     elsewhere: !short,
   };
 }
@@ -50,7 +59,7 @@ function shoutPage(req, res, extra = {}) {
   const to = isId(req.query.to) ? Number(req.query.to) : null;
   const values = extra.values || { to_user: to };
   res.status(extra.errors ? 400 : 200).render('shoutouts', {
-    title: 'Shout-outs', rows: db.prepare(`${SHOUT} ORDER BY s.id DESC LIMIT 60`).all({ me: req.user.id }), ...shoutPicker(req.user, values.to_user),
+    title: 'Shout-outs', rows: recentShoutouts(req.user, 60), ...shoutPicker(req.user, values.to_user),
     errors: [], values, modOf: (authorId) => access.moderates(req.user, 'forum.moderate', authorId), ...extra,
   });
 }
@@ -58,10 +67,11 @@ router.get('/shoutouts', requireLogin, (req, res) => shoutPage(req, res));
 
 router.post('/shoutouts', requireLogin, (req, res) => {
   const values = { to_user: isId(req.body.to_user) ? Number(req.body.to_user) : null, message: clean(req.body.message, 400) };
-  const target = values.to_user ? db.prepare(`SELECT u.id, u.display_name FROM users u WHERE u.id = ? AND ${LISTED}`).get(values.to_user) : null;
+  const target = values.to_user ? db.prepare(`SELECT u.id, u.display_name, u.branch_id FROM users u WHERE u.id = ? AND ${LISTED}`).get(values.to_user) : null;
   const errors = [];
   if (!target) errors.push('Choose who the shout-out is for.');
   else if (target.id === req.user.id) errors.push('A shout-out is for someone else.');
+  else if (!mayShout(req.user, target.branch_id)) errors.push('Shout-outs are for people in your own office or your market.');
   if (!values.message) errors.push('Say what they did.');
   if (!errors.length && db.prepare('SELECT COUNT(*) AS n FROM shoutouts WHERE from_user = ? AND created_at > ?').get(req.user.id, new Date(Date.now() - 86400000).toISOString()).n >= 20) errors.push('That is a lot of shout-outs for one day. Save some for tomorrow.');
   if (errors.length) return shoutPage(req, res, { errors, values });
@@ -94,14 +104,17 @@ router.post('/shoutouts/:id/delete', requireLogin, (req, res) => {
 // ---- Birthdays and work anniversaries -------------------------------------------------
 
 /**
- * Birthdays and work anniversaries across every office over the coming week (today first, own office first within a day).
+ * Birthdays and work anniversaries over the coming week for the office being looked at and the rest of its market
+ * (today first, that office first within a day). The Corporate view covers every office.
  * Birthdays are a day and month only; anniversaries come from the start date, from one year on.
  */
 function thisWeek(user, today = localDate()) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(today, i));
   const year = Number(today.slice(0, 4));
+  const at = reach.place(user);
   const people = db.prepare(`SELECT u.id, u.display_name, u.photo_path, u.birthday, u.started_on, u.branch_id, b.name AS branch FROM users u LEFT JOIN branches b ON b.id = u.branch_id WHERE ${LISTED} AND (u.birthday IS NOT NULL OR u.started_on IS NOT NULL)
-     ORDER BY (u.branch_id = ?) DESC, u.display_name COLLATE NOCASE`).all(user.branch_id);
+     ${at.corporate ? '' : `AND u.branch_id IN (${reach.marketOffices(at.office).map(Number).join(',') || 0})`}
+     ORDER BY (u.branch_id = ?) DESC, u.display_name COLLATE NOCASE`).all(at.office);
   const out = [];
   days.forEach((ymd, offset) => {
     const md = ymd.slice(5);
@@ -126,8 +139,10 @@ router.post('/celebrate', requireLogin, (req, res) => {
 
 // ---- Events ------------------------------------------------------------------------------
 
-// Every office sees every event. An event is hosted by one office, or is for the whole company; @branch only puts your own office's first on the same day.
-const FOR_BRANCH = '(@branch IS NOT NULL)';
+// An event is for one office, for a market, or for the whole company (see reach.js). People see the ones for the office
+// they are looking at. The Corporate view, on the Events page, lists every office's.
+const SEEN = reach.shown('e');
+const seenIn = (user, everything) => (everything && reach.place(user).corporate ? '1 = 1' : SEEN);
 function decorateEvent(e, me, today) {
   const d = new Date(`${e.event_date}T12:00:00Z`);
   const days = Math.round((d - new Date(`${today}T12:00:00Z`)) / 86400000);
@@ -135,18 +150,18 @@ function decorateEvent(e, me, today) {
   return { ...e, going, mine: going.find((g) => g.id === me) || null, time: clock(e.event_time), weekday: WEEKDAYS[d.getUTCDay()], month: MONTHS[d.getUTCMonth()].slice(0, 3), day: d.getUTCDate(),
     when: days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : days > 1 ? `In ${days} days` : '', past: days < 0 };
 }
-const EVENT = `SELECT e.*, u.display_name AS by_name, b.name AS branch FROM events e JOIN users u ON u.id = e.created_by LEFT JOIN branches b ON b.id = e.branch_id`;
-function upcomingEvents(user, limit = 50, today = localDate()) {
-  return db.prepare(`${EVENT} WHERE ${FOR_BRANCH} AND e.event_date >= @today ORDER BY e.event_date, (e.branch_id = @branch) DESC, e.event_time, e.id LIMIT @limit`).all({ branch: user.branch_id, today, limit }).map((e) => decorateEvent(e, user.id, today));
+const EVENT = `SELECT e.*, u.display_name AS by_name, b.name AS branch, m.name AS market FROM events e JOIN users u ON u.id = e.created_by LEFT JOIN branches b ON b.id = e.branch_id LEFT JOIN markets m ON m.id = e.market_id`;
+function upcomingEvents(user, limit = 50, today = localDate(), everything = false) {
+  return db.prepare(`${EVENT} WHERE ${seenIn(user, everything)} AND e.event_date >= @today ORDER BY e.event_date, (e.branch_id = @office AND e.market_id IS NULL) DESC, e.event_time, e.id LIMIT @limit`).all({ ...reach.params(user), today, limit }).map((e) => decorateEvent(e, user.id, today));
 }
-const mayRun = (user, e) => e.created_by === user.id || (access.can(user, 'events.post') && (e.branch_id === null ? user.allBranches : e.branch_id === user.branch_id || user.allBranches));
+const mayRun = (user, e) => e.created_by === user.id || (access.can(user, 'events.post') && reach.runs(user, e));
 
 function eventsPage(req, res, extra = {}) {
   const today = localDate();
-  const past = db.prepare(`${EVENT} WHERE ${FOR_BRANCH} AND e.event_date < @today ORDER BY e.event_date DESC LIMIT 6`).all({ branch: req.user.branch_id, today }).map((e) => decorateEvent(e, req.user.id, today));
+  const past = db.prepare(`${EVENT} WHERE ${seenIn(req.user, true)} AND e.event_date < @today ORDER BY e.event_date DESC LIMIT 6`).all({ ...reach.params(req.user), today }).map((e) => decorateEvent(e, req.user.id, today));
   res.status(extra.errors ? 400 : 200).render('events', {
-    title: 'Events', upcoming: upcomingEvents(req.user).map((e) => ({ ...e, mayRun: mayRun(req.user, e) })), past, errors: [], values: {},
-    canPost: access.can(req.user, 'events.post'), canReachAll: req.user.allBranches && db.prepare('SELECT COUNT(*) AS n FROM branches').get().n > 1, ...extra,
+    title: 'Events', upcoming: upcomingEvents(req.user, 50, today, true).map((e) => ({ ...e, mayRun: mayRun(req.user, e) })), past, errors: [], values: {},
+    canPost: access.can(req.user, 'events.post'), reaches: reach.choices(req.user), ...extra,
   });
 }
 router.get('/events', requireLogin, (req, res) => eventsPage(req, res));
@@ -159,15 +174,16 @@ router.post('/events', requirePerm('events.post'), (req, res) => {
   if (!isYmd(values.event_date) || values.event_date < localDate()) errors.push('Choose a date, today or later.');
   if (values.event_time && !/^\d{2}:\d{2}$/.test(values.event_time)) errors.push('The time does not look right.');
   if (errors.length) return eventsPage(req, res, { errors, values });
-  const branchId = req.user.allBranches && values.reach === 'everyone' ? null : req.user.branch_id;
-  db.prepare('INSERT INTO events (title, details, event_date, event_time, location, branch_id, potluck, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-    .run(values.title, values.details || null, values.event_date, values.event_time || null, values.location || null, branchId, values.potluck, req.user.id, new Date().toISOString());
+  // For the office being looked at, or (from someone who runs them) its market or the whole company.
+  const where = reach.target(req.user, values.reach);
+  db.prepare('INSERT INTO events (title, details, event_date, event_time, location, branch_id, market_id, potluck, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(values.title, values.details || null, values.event_date, values.event_time || null, values.location || null, where.branch_id, where.market_id, values.potluck, req.user.id, new Date().toISOString());
   activity.log(req.user, 'Event posted', values.title);
   flash(req, 'ok', 'Event posted.');
   res.redirect('/events');
 });
 
-const visibleEvent = (req) => (isId(req.params.id) ? db.prepare(`SELECT e.* FROM events e WHERE e.id = @id AND ${FOR_BRANCH}`).get({ id: req.params.id, branch: req.user.branch_id }) : null);
+const visibleEvent = (req) => (isId(req.params.id) ? db.prepare(`SELECT e.* FROM events e WHERE e.id = @id AND ${seenIn(req.user, true)}`).get({ id: req.params.id, ...reach.params(req.user) }) : null);
 
 // "I'm in" (with what you are bringing, for a potluck), or change it, or back out.
 router.post('/events/:id/signup', requireLogin, (req, res) => {
@@ -229,10 +245,12 @@ router.get('/branches/photo/:id', requireLogin, (req, res) => {
 });
 
 // The people who keep a branch's page: anyone who can see every branch, or whoever manages people in that branch.
-const mayEditBranch = (user, b) => user.allBranches || (user.branch_id === b.id && user.scope === 'all' && access.can(user, 'users.manage'));
+// Whoever runs the office: its own admin, an admin of its market, or a corporate admin.
+const mayEditBranch = (user, b) => user.allBranches || (user.scope === 'all' && access.can(user, 'users.manage') && (user.branch_id === b.id || (user.marketBranches || []).includes(b.id)));
 const getBranch = (id) => (isId(id) ? db.prepare('SELECT * FROM branches WHERE id = ?').get(id) : null);
 
 function branchPage(req, res, b, extra = {}) {
+  const inside = reach.place(req.user).office === b.id || req.user.allBranches || (req.user.marketBranches || []).includes(b.id);
   const people = db.prepare(`SELECT u.id, u.display_name, u.photo_path, u.job_title, u.department FROM users u WHERE u.branch_id = ? AND ${LISTED} ORDER BY u.display_name COLLATE NOCASE`).all(b.id);
   const teamChart = require('../team').chart(people);
   const groups = new Map();
@@ -243,9 +261,11 @@ function branchPage(req, res, b, extra = {}) {
     title: `${b.name} office`, wide: true, b, people, teamChart, groups: order.map((k) => ({ name: k, people: groups.get(k) })), canEdit: mayEditBranch(req.user, b), errors: [], editing: false,
     services: require('./company').servicesOf(b.id), allServices: require('./company').allServices(), stateNames: require('./company').STATES,
     many: db.prepare('SELECT COUNT(*) AS n FROM branches').get().n > 1,
-    shouts: db.prepare(`${SHOUT} WHERE t.branch_id = @b ORDER BY s.id DESC LIMIT 4`).all({ me: req.user.id, b: b.id }),
+    // An office's shout-outs and events are its own: shown to whoever is looking at that office or runs it, not to visitors.
+    inside,
+    shouts: inside ? db.prepare(`${SHOUT} WHERE t.branch_id = @b ORDER BY s.id DESC LIMIT 4`).all({ me: req.user.id, b: b.id }) : [],
     photos: db.prepare(`${WALL} WHERE u.branch_id = @b ORDER BY p.id DESC LIMIT 8`).all({ me: req.user.id, b: b.id }),
-    events: db.prepare(`${EVENT} WHERE (e.branch_id = @b OR e.branch_id IS NULL) AND e.event_date >= @today ORDER BY e.event_date LIMIT 4`).all({ b: b.id, today: localDate() }).map((e) => decorateEvent(e, req.user.id, localDate())),
+    events: inside ? db.prepare(`${EVENT} WHERE ${SEEN} AND e.event_date >= @today ORDER BY e.event_date LIMIT 4`).all({ office: b.id, market: b.market_id || null, today: localDate() }).map((e) => decorateEvent(e, req.user.id, localDate())) : [],
     ...extra,
   });
 }
@@ -296,4 +316,4 @@ router.post('/branches/:id', requireLogin, uploads.photos('photo', 1), verifyCsr
 });
 
 module.exports = router;
-Object.assign(module.exports, { recentShoutouts, shoutoutsFor, thisWeek, upcomingEvents, recentPhotos, MONTHS });
+Object.assign(module.exports, { recentShoutouts, shoutoutsFor, mayShout, thisWeek, upcomingEvents, recentPhotos, MONTHS });

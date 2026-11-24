@@ -611,6 +611,19 @@ addColumn('branches', 'product_lines', 'TEXT');
 // Markets: groups of offices that corporate admins make and fill. An office belongs to one market at most.
 db.exec(`CREATE TABLE IF NOT EXISTS markets (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE, created_at TEXT NOT NULL)`);
 addColumn('branches', 'market_id', 'INTEGER');
+// Who a post is for (see reach.js): one office (branch_id), a market (market_id), or the whole company (both empty).
+addColumn('announcements', 'market_id', 'INTEGER');
+addColumn('events', 'market_id', 'INTEGER');
+addColumn('newsletters', 'branch_id', 'INTEGER');
+addColumn('newsletters', 'market_id', 'INTEGER');
+// Once: the newsletters posted before each office had its own belong to the office that uploaded them.
+if (!db.prepare("SELECT 1 FROM meta WHERE key = 'newsletter_office_1'").get()) {
+  db.transaction(() => {
+    const first = db.prepare('SELECT MIN(id) AS id FROM branches').get().id;
+    db.prepare('UPDATE newsletters SET branch_id = COALESCE((SELECT u.branch_id FROM users u WHERE u.id = newsletters.created_by), ?) WHERE branch_id IS NULL AND market_id IS NULL').run(first);
+    db.prepare("INSERT INTO meta (key, value) VALUES ('newsletter_office_1', ?)").run(new Date().toISOString());
+  })();
+}
 addColumn('tasks', 'status', "TEXT NOT NULL DEFAULT 'new'");
 // A task can be a vehicle inspection: it is finished by sending the inspection, which is then linked here.
 addColumn('tasks', 'kind', "TEXT NOT NULL DEFAULT 'general'");
