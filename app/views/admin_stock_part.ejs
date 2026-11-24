@@ -3,11 +3,30 @@
 <h1><%= part.part_number %></h1>
 <p class="lede"><%= part.description %></p>
 <div class="stats">
+  <% if (part.assigned) { %>
+  <div class="stat <%= part.short ? 'request' : 'return' %>"><span class="stat-label">Available</span><span class="stat-num"><%= part.available %></span><span class="stat-sub"><%= part.available <= 0 ? 'All assigned to jobs' : part.low ? 'At or below minimum' : 'OK' %></span></div>
+  <a class="stat" href="#assigned"><span class="stat-label">Assigned to jobs</span><span class="stat-num"><%= part.assigned %></span><span class="stat-sub">of <%= part.on_hand %> on hand</span></a>
+  <% } else { %>
   <div class="stat <%= part.low ? 'request' : 'return' %>"><span class="stat-label">On hand</span><span class="stat-num"><%= part.on_hand %></span><span class="stat-sub"><%= part.on_hand <= 0 ? 'Out of stock' : part.low ? 'At or below minimum' : 'OK' %></span></div>
+  <% } %>
   <div class="stat"><span class="stat-label">Minimum</span><span class="stat-num"><%= part.min_level === null ? '–' : part.min_level %></span><span class="stat-sub">Maximum: <%= part.max_level === null ? 'none' : part.max_level %>. Last counted: <%= part.count_at ? part.count_qty : 'not yet' %><%= part.count_at ? ' on ' : '' %><%= fmtDateTime(part.count_at) %></span></div>
   <div class="stat"><span class="stat-label">Used in 30 days</span><span class="stat-num"><%= part.used %></span><span class="stat-sub"><%= part.days_left === null ? 'not enough use to say how long it lasts' : 'about ' + part.days_left + (part.days_left === 1 ? ' day' : ' days') + ' left at this pace' %></span></div>
   <% if (part.order) { %><div class="stat request"><span class="stat-label">To order</span><span class="stat-num"><%= part.order %></span><span class="stat-sub"><%= part.max_level === null ? 'to get back above the minimum' : 'to bring it back up to ' + part.max_level %></span></div><% } %>
 </div>
+
+<% if (holds.length || (mayAssign && part.available > 0)) { %>
+<h2 id="assigned">Assigned to jobs</h2>
+<% if (holds.length) { %><%- include('partials/assigned', { holds: holds, mayAssign: mayAssign, back: '/admin/stock/' + part.id, showWhere: false, showPart: false }) %><% } %>
+<% if (mayAssign && part.available > 0) { %>
+<form method="post" action="/admin/inventory/holds" class="filters card">
+  <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="back" value="/admin/stock/<%= part.id %>">
+  <input type="hidden" name="from" value="<%= warehouse.id %>"><input type="hidden" name="part_number" value="<%= part.part_number %>">
+  <label>How many <span class="hint"><%= part.available %> available</span> <input name="quantity" inputmode="numeric" required maxlength="5" autocomplete="off"></label>
+  <label class="grow">Job number <input name="job_number" required maxlength="60" autocomplete="off"></label>
+  <div class="filter-actions"><button class="btn primary small" type="submit">Assign to this job</button></div>
+</form>
+<% } %>
+<% } %>
 
 <% if (can('stock.manage')) { %>
 <h2>Delivery or correction</h2>

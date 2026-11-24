@@ -11,6 +11,8 @@ const { clean } = require('../util');
 const router = express.Router();
 const manage = requirePerm('inventory.manage');
 const maySee = (user) => access.can(user, 'parts.view') || access.can(user, 'inventory.manage') || access.can(user, 'stock.manage');
+// Assigning parts to a job moves nothing, so it is open to whoever looks after stock, locations or parts requests.
+const mayAssign = (user) => ['inventory.manage', 'stock.manage', 'parts.manage'].some((p) => access.can(user, p));
 // A location of the office being looked at, or nothing: another office's is never opened or changed.
 const mine = (req) => { const l = inv.location(req.params.id); return l && l.branch_id === req.user.workBranch ? l : null; };
 const personOf = (req, id) => (/^\d+$/.test(String(id || ''))
@@ -22,6 +24,7 @@ router.get('/admin/inventory', requireLogin, (req, res) => {
   res.render('admin_inventory', {
     title: 'Inventory', office, kinds: inv.KINDS, locations: inv.locations(req.user.workBranch, { withRetired: true }),
     free: inv.withoutVehicle(req.user.workBranch), mayManage: access.can(req.user, 'inventory.manage'),
+    holds: inv.holds({ branchId: req.user.workBranch }), mayAssign: mayAssign(req.user),
   });
 });
 
@@ -30,8 +33,17 @@ router.get('/admin/inventory/locations/:id', requireLogin, (req, res) => {
   const place = mine(req);
   if (!place) return res.status(404).render('error', { title: 'Not found', message: 'That location is not in this branch.' });
   const mayManage = access.can(req.user, 'inventory.manage');
+  const holds = inv.holds({ branchId: place.branch_id, locationId: place.id });
+  // Parts assigned from here that the records no longer show here are listed too, so the shortfall is seen.
+  const rows = inv.contents(place.id);
+  for (const h of holds) {
+    if (rows.some((r) => r.id === h.catalog_id)) continue;
+    const n = inv.assigned(place.id, h.catalog_id);
+    rows.push({ id: h.catalog_id, part_number: h.part_number, description: h.description, cost_cents: null, on_hand: 0, assigned: n, available: -n });
+  }
   res.render('admin_inventory_location', {
-    title: place.name, place, kinds: inv.KINDS, rows: inv.contents(place.id), mayManage, dollars: inv.dollars, history: inv.history(place.id), stats: inv.stats(place.id),
+    title: place.name, place, kinds: inv.KINDS, rows, mayManage, dollars: inv.dollars, history: inv.history(place.id), stats: inv.stats(place.id),
+    holds, mayAssign: mayAssign(req.user), assignedItems: holds.reduce((n, h) => n + h.remaining, 0),
     showCost: mayManage || access.can(req.user, 'catalog.manage'),
     technician: place.user_id ? db.prepare('SELECT display_name FROM users WHERE id = ?').get(place.user_id) : null,
     free: place.kind === 'vehicle' ? inv.withoutVehicle(req.user.workBranch) : [],
@@ -84,6 +96,47 @@ router.post('/admin/inventory/moves', manage, (req, res) => {
   res.redirect(back);
 });
 
+// ---- Parts assigned to a job: still on the shelf, no longer available ----
+const backFrom = (req) => (/^\/admin\/(inventory(\/locations\/\d+)?|stock(\/\d+)?)$/.test(String(req.body.back || '')) ? req.body.back : '/admin/inventory');
+
+router.post('/admin/inventory/holds', requireLogin, (req, res) => {
+  if (!mayAssign(req.user)) return forbidden(res);
+  const back = backFrom(req);
+  const fail = (msg) => { flash(req, 'err', msg); res.redirect(back); };
+  const place = inv.location(req.body.from);
+  const qty = /^\d{1,5}$/.test(String(req.body.quantity || '').trim()) ? Number(req.body.quantity) : 0;
+  const typed = clean(req.body.part_number, 100); const job = clean(req.body.job_number, 60);
+  if (!place || place.branch_id !== req.user.workBranch || !place.active) return fail('Choose where the parts are.');
+  if (!typed) return fail('Enter the part.');
+  if (qty < 1) return fail('Enter how many, as a whole number.');
+  if (!inv.jobKey(job)) return fail('Enter the job number.');
+  const part = db.prepare('SELECT id, part_number FROM parts_catalog WHERE part_number = ?').get(typed);
+  const free = part ? inv.available(place.id, part.id) : 0;
+  // Nobody can promise what is not there: an assignment never takes more than is available.
+  if (qty > free) {
+    const held = part ? inv.assigned(place.id, part.id) : 0;
+    return fail(free > 0 ? `Only ${free} of ${part.part_number} ${free === 1 ? 'is' : 'are'} available in ${place.name}${held ? ` (${held} already assigned to jobs)` : ''}.`
+      : `No ${part ? part.part_number : typed} is available in ${place.name}${held ? `: all ${held} are assigned to jobs` : ''}.`);
+  }
+  const stockLib = require('../stock'); const before = stockLib.levels(req.user.workBranch);
+  inv.hold({ branchId: req.user.workBranch, locationId: place.id, catalogId: part.id, quantity: qty, jobNumber: job, note: clean(req.body.note, 200) || null, userId: req.user.id });
+  stockLib.tellLow(req.user, req.user.workBranch, before);   // what is left for everyone else may now be low, or nothing
+  activity.log(req.user, 'Parts assigned to a job', `${qty} × ${part.part_number}: job ${job}, in ${place.name}`);
+  flash(req, 'ok', `${qty} × ${part.part_number} assigned to job ${job}. ${free - qty} still available in ${place.name}.`);
+  res.redirect(back);
+});
+
+router.post('/admin/inventory/holds/:id/release', requireLogin, (req, res) => {
+  if (!mayAssign(req.user)) return forbidden(res);
+  const h = inv.holdOf(req.params.id);
+  if (!h || h.branch_id !== req.user.workBranch) return forbidden(res);
+  if (!h.released_at && h.remaining > 0 && inv.release(h.id, req.user.id)) {
+    activity.log(req.user, 'Assigned parts released', `${h.remaining} × ${h.part_number}: job ${h.job_number}, in ${h.location}`);
+    flash(req, 'ok', `${h.remaining} × ${h.part_number} released from job ${h.job_number}. ${h.remaining === 1 ? 'It is' : 'They are'} available again.`);
+  }
+  res.redirect(backFrom(req));
+});
+
 // Rename a location, or hand a vehicle to someone else. What is in it stays in it.
 router.post('/admin/inventory/locations/:id', manage, (req, res) => {
   const place = mine(req);
@@ -117,6 +170,7 @@ router.post('/admin/inventory/locations/:id/:op', manage, (req, res) => {
   if (req.params.op === 'retire') {
     if (place.kind === 'warehouse') { flash(req, 'err', 'The main warehouse cannot be put away.'); return res.redirect('/admin/inventory'); }
     if (inv.contents(place.id).length) { flash(req, 'err', `${place.name} still holds parts. Move them out first.`); return res.redirect(`/admin/inventory/locations/${place.id}`); }
+    if (inv.holds({ branchId: place.branch_id, locationId: place.id }).length) { flash(req, 'err', `Parts in ${place.name} are still assigned to jobs. Release them first.`); return res.redirect(`/admin/inventory/locations/${place.id}`); }
     db.prepare('UPDATE inv_locations SET active = 0 WHERE id = ?').run(place.id);
     activity.log(req.user, 'Inventory location put away', place.name);
     flash(req, 'ok', `${place.name} was put away.`);

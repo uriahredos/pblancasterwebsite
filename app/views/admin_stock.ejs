@@ -4,6 +4,7 @@
 <%- include('partials/errors') %>
 <div class="stats stock-figures">
   <a class="stat" href="/admin/stock"><span class="stat-label">Parts</span><span class="stat-num"><%= figures.tracked %></span><span class="stat-sub"><%= figures.items %> <%= figures.items === 1 ? 'item' : 'items' %> on the shelf<%= figures.noLevel ? ', ' + figures.noLevel + ' with no minimum yet' : '' %></span></a>
+  <% if (figures.assigned) { %><a class="stat" href="/admin/inventory#assigned"><span class="stat-label">Assigned to jobs</span><span class="stat-num"><%= figures.assigned %></span><span class="stat-sub"><%= figures.assigned === 1 ? 'item' : 'items' %> across <%= figures.assignedParts %> <%= figures.assignedParts === 1 ? 'part' : 'parts' %>, not available</span></a><% } %>
   <a class="stat <%= figures.low || figures.out ? 'request' : 'return' %>" href="/admin/stock?low=1"><span class="stat-label">Low or out</span><span class="stat-num"><%= figures.low + figures.out %></span><span class="stat-sub"><%= figures.out ? figures.out + ' out, ' + figures.low + ' low' : figures.low ? 'at or below minimum' : 'nothing below its minimum' %></span></a>
   <a class="stat" href="/admin/stock?low=1"><span class="stat-label">To order</span><span class="stat-num"><%= figures.orderUnits %></span><span class="stat-sub"><%= figures.toOrder ? 'items across ' + figures.toOrder + (figures.toOrder === 1 ? ' part' : ' parts') : 'nothing to order' %></span></a>
   <div class="stat"><span class="stat-label">Used in <%= useDays %> days</span><span class="stat-num"><%= figures.used %></span><span class="stat-sub">items out of the warehouse</span></div>
@@ -12,7 +13,7 @@
 </div>
 <% if (figures.movers.length || figures.soonest.length) { %>
 <div class="stock-insights">
-  <% if (figures.movers.length) { %><div class="card"><h2>Most used, last <%= useDays %> days</h2><ol><% figures.movers.forEach(function (p) { %><li><a href="/admin/stock/<%= p.id %>"><strong><%= p.part_number %></strong></a> <span class="hint"><%= p.used %> used, <%= p.on_hand %> left</span></li><% }) %></ol></div><% } %>
+  <% if (figures.movers.length) { %><div class="card"><h2>Most used, last <%= useDays %> days</h2><ol><% figures.movers.forEach(function (p) { %><li><a href="/admin/stock/<%= p.id %>"><strong><%= p.part_number %></strong></a> <span class="hint"><%= p.used %> used, <%= p.available %> <%= p.assigned ? 'available' : 'left' %></span></li><% }) %></ol></div><% } %>
   <% if (figures.soonest.length) { %><div class="card"><h2>Running out soonest</h2><ol><% figures.soonest.forEach(function (p) { %><li><a href="/admin/stock/<%= p.id %>"><strong><%= p.part_number %></strong></a> <span class="hint">about <%= p.days_left %> <%= p.days_left === 1 ? 'day' : 'days' %> left at this pace</span></li><% }) %></ol></div><% } %>
 </div>
 <% } %>
@@ -23,22 +24,24 @@
 </form>
 <div class="table-wrap">
 <table>
-  <thead><tr><th>Part</th><th>Description</th><th class="num">On hand</th><th class="num">Minimum</th><th class="num">Maximum</th><th class="num">Used, <%= useDays %> days</th><th>Level</th><th class="num">Order</th><th></th></tr></thead>
+  <thead><tr><th>Part</th><th>Description</th><th class="num">On hand</th><th class="num">Assigned</th><th class="num">Available</th><th class="num">Minimum</th><th class="num">Maximum</th><th class="num">Used, <%= useDays %> days</th><th>Level</th><th class="num">Order</th><th></th></tr></thead>
   <tbody>
   <% rows.forEach(function (p) { %>
   <tr>
     <td><a href="/admin/stock/<%= p.id %>"><strong><%= p.part_number %></strong></a></td>
     <td><%= p.description %></td>
-    <td class="num"><strong><%= p.on_hand %></strong></td>
+    <td class="num"><%= p.on_hand %></td>
+    <td class="num"><% if (p.assigned) { %><a href="/admin/stock/<%= p.id %>#assigned" title="Assigned to jobs"><%= p.assigned %></a><% } %></td>
+    <td class="num"><strong<%- p.assigned && p.available <= 0 ? ' class="none-free"' : '' %>><%= p.available %></strong></td>
     <td class="num"><% if (p.min_level === null) { %><a class="hint" href="/admin/stock/<%= p.id %>#levels">Set</a><% } else { %><%= p.min_level %><% } %></td>
     <td class="num"><%= p.max_level === null ? '' : p.max_level %></td>
     <td class="num"><%= p.used || '' %></td>
-    <td><% if (p.on_hand <= 0) { %><span class="tag overdue">Out</span><% } else if (p.low) { %><span class="tag request">Low</span><% } else if (p.over) { %><span class="tag">Over</span><% } else { %><span class="tag return">OK</span><% } %></td>
+    <td><% if (p.on_hand <= 0) { %><span class="tag overdue">Out</span><% } else if (p.available <= 0) { %><span class="tag overdue" title="Every one on the shelf is assigned to a job.">All assigned</span><% } else if (p.low) { %><span class="tag request">Low</span><% } else if (p.over) { %><span class="tag">Over</span><% } else { %><span class="tag return">OK</span><% } %></td>
     <td class="num"><% if (p.order) { %><strong><%= p.order %></strong><% } %></td>
     <td><a href="/admin/stock/<%= p.id %>"><%= can('stock.manage') ? 'Update' : 'Open' %></a></td>
   </tr>
   <% }) %>
-  <% if (!rows.length) { %><tr><td colspan="9" class="empty"><%= total ? 'No parts match.' : 'Nothing is in the warehouse yet. Record a delivery or a count, or set a level below.' %></td></tr><% } %>
+  <% if (!rows.length) { %><tr><td colspan="11" class="empty"><%= total ? 'No parts match.' : 'Nothing is in the warehouse yet. Record a delivery or a count, or set a level below.' %></td></tr><% } %>
   </tbody>
 </table>
 </div>

@@ -111,7 +111,7 @@ function startComplaintDigest() {
 }
 
 function notifyLowStock(parts) {
-  const lines = parts.map((p) => `  ${p.part_number}  ${p.description || ''}  -  ${p.on_hand} on hand${p.min_level === null || p.min_level === undefined ? '' : ` (minimum ${p.min_level})`}`).join('\n');
+  const lines = parts.map((p) => `  ${p.part_number}  ${p.description || ''}  -  ${p.on_hand} on hand${p.assigned > 0 ? `, ${p.assigned} of them assigned to jobs` : ''}${p.min_level === null || p.min_level === undefined ? '' : ` (minimum ${p.min_level})`}`).join('\n');
   return send(config.notifyTo, parts.length === 1 ? `Low stock: ${parts[0].part_number}` : `Low stock: ${parts.length} parts`,
     `These parts are now low or out:\n\n${lines}\n\n${config.baseUrl}/admin/stock?low=1\n`);
 }

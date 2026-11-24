@@ -8889,10 +8889,10 @@ test('warehouse stock: levels without a count, a maximum to order up to, figures
   for (const label of ['Parts', 'Low or out', 'To order', 'Used in 30 days', 'Value on the shelf']) assert.ok(html.includes(`<span class="stat-label">${label}</span>`), label);
   assert.match(html, /Most used, last 30 days<\/h2>[\s\S]*?LVL-1<\/strong><\/a> <span class="hint">8 used, 4 left/);
   assert.match(html, /Running out soonest<\/h2>[\s\S]*?LVL-1<\/strong><\/a> <span class="hint">about 15 days left/);
-  assert.match(html, /<strong>LVL-1<\/strong><\/a><\/td> <td>Level test horn<\/td> <td class="num"><strong>4<\/strong><\/td> <td class="num">5<\/td> <td class="num">20<\/td> <td class="num">8<\/td> <td><span class="tag request">Low<\/span><\/td> <td class="num"><strong>16<\/strong>/);
+  assert.match(html, /<strong>LVL-1<\/strong><\/a><\/td> <td>Level test horn<\/td> <td class="num">4<\/td> <td class="num"><\/td> <td class="num"><strong>4<\/strong><\/td> <td class="num">5<\/td> <td class="num">20<\/td> <td class="num">8<\/td> <td><span class="tag request">Low<\/span><\/td> <td class="num"><strong>16<\/strong>/);
   // The list of what to order, as a spreadsheet.
   const csv = (await wh.get('/admin/stock/reorder.csv')).text;
-  assert.match(csv, /Part number,Description,On hand,Minimum,Maximum,Used in 30 days,Order/); assert.match(csv, /LVL-1,Level test horn,4,5,20,8,16/); assert.match(csv, /LVL-NEW,,0,2,6,0,6/);
+  assert.match(csv, /Part number,Description,On hand,Assigned to jobs,Available,Minimum,Maximum,Used in 30 days,Order/); assert.match(csv, /LVL-1,Level test horn,4,0,4,5,20,8,16/); assert.match(csv, /LVL-NEW,,0,0,0,2,6,0,6/);
   assert.equal((await (await loggedIn('tech1')).get('/admin/stock/reorder.csv')).status, 403);
   // The page and the Inventory page agree: a part that is in the warehouse shows here even though nobody set a level for it.
   const loose = db.prepare("INSERT INTO parts_catalog (part_number, description, active, created_at) VALUES ('LVL-LOOSE', 'No level set', 1, ?)").run(now).lastInsertRowid;
@@ -9630,4 +9630,136 @@ test('low or out: the branch\'s own warehouse people are told when a part runs l
   await owner.post('/branch/view', { branch: String(homeId), back: '/' }, { page: '/' });
   push.setSender(async () => {});
   db.prepare("UPDATE users SET active = 0 WHERE username LIKE 'alert.%'").run();
+});
+
+test('assigned to a job: parts stay on hand but stop being available, leave when they are signed out for that job, and can be released', async () => {
+  const push = require('../app/push'); const inv = require('../app/inventory'); const stockLib = require('../app/stock'); const now = new Date().toISOString();
+  const pushed = [];
+  push.setSender(async (sub, payload) => { pushed.push({ to: sub.user_id, ...JSON.parse(payload) }); });
+  const told = async () => { await new Promise((r) => setTimeout(r, 30)); return pushed.splice(0); };
+  const mk = (name) => { const id = db.prepare('INSERT INTO branches (name, state, created_at) VALUES (?, ?, ?)').run(name, 'PA', now).lastInsertRowid; require('../app/branches').setUp(id); return id; };
+  const a = mk('Hold Alpha'); const b = mk('Hold Beta');
+  const put = (username, name, office, profile) => { const id = auth.createUser({ username, displayName: name, password: 'correct horse battery', profile: profileId(profile), branchId: office }); db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?').run(id); return id; };
+  put('hold.wa', 'Wanda Holder', a, 'Warehouse'); put('hold.wb', 'Wes Elsewhere', b, 'Warehouse'); const tess = put('hold.ta', 'Tess Truck', a, 'Technician'); put('hold.tf', 'Fay Foot', a, 'Technician');
+  db.prepare("UPDATE users SET default_truck = '88' WHERE id = ?").run(tess);
+  const wa = await loggedIn('hold.wa'); const wb = await loggedIn('hold.wb'); const ta = await loggedIn('hold.ta'); const tf = await loggedIn('hold.tf');
+  assert.equal((await wa.post('/push/subscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/hold-wa', p256dh: 'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM', auth: 'tBHItJI5svbpez7KI4CCXg', device: 'Test phone' }, { page: '/settings/notifications' })).status, 200);
+  const page = '/admin/inventory';
+  const wh = inv.warehouseOf(a).id; const truck = inv.vehicleOf(tess).id;
+  const mv = (f) => wa.post('/admin/inventory/moves', f, { page });
+  await mv({ from: 'delivery', to: String(wh), part_number: 'HLD-1', quantity: '10' }); await mv({ from: 'delivery', to: String(wh), part_number: 'HLD-2', quantity: '4' });
+  const idOf = (pn) => db.prepare('SELECT id FROM parts_catalog WHERE part_number = ?').get(pn).id; const p1 = idOf('HLD-1');
+  await wa.post(`/admin/stock/${p1}/min`, { min_level: '5', max_level: '12' }, { page: '/admin/stock' });
+  await told();
+  const fig = (pn = 'HLD-1') => { const r = stockLib.forNames(a, [pn])[0]; return [r.on_hand, r.assigned, r.available]; };
+  const assign = (client, f) => client.post('/admin/inventory/holds', { from: String(wh), part_number: 'HLD-1', ...f }, { page: client === ta ? '/parts' : page });
+  const said = async (client, at = page) => { const m = /<p class="flash (?:ok|err)" role="status">([\s\S]*?)<\/p>/.exec((await client.get(at)).text); return m ? m[1].replace(/&#39;/g, "'") : ''; };
+  const flat = async (client, at) => (await client.get(at)).text.replace(/\s+/g, ' ');
+
+  // Whoever looks after stock, locations or parts requests can assign. A technician cannot.
+  assert.equal((await assign(ta, { quantity: '1', job_number: 'J-100' })).status, 403);
+  const empty = await flat(wa, page);
+  assert.match(empty, /<h2 id="assign-h">Assign parts to a job<\/h2>/); assert.doesNotMatch(empty, /id="assigned"/);
+  // It needs a job number and a whole number, and never takes more than is available.
+  await assign(wa, { quantity: '3', job_number: ' - ' });                         assert.equal(await said(wa), 'Enter the job number.');
+  await assign(wa, { quantity: 'three', job_number: 'J-100' });                   assert.equal(await said(wa), 'Enter how many, as a whole number.');
+  await assign(wa, { quantity: '11', job_number: 'J-100' });                      assert.equal(await said(wa), 'Only 10 of HLD-1 are available in Main warehouse.');
+  await assign(wa, { quantity: '1', job_number: 'J-100', part_number: 'NOPE-77' }); assert.equal(await said(wa), 'No NOPE-77 is available in Main warehouse.');
+  await assign(wb, { quantity: '1', job_number: 'J-100' });                       assert.equal(await said(wb), 'Choose where the parts are.');   // another branch's warehouse
+  assert.deepEqual(fig(), [10, 0, 10]); assert.equal(db.prepare('SELECT COUNT(*) n FROM inv_holds').get().n, 0);
+
+  // Assigning moves nothing: the parts are still on hand, and that many fewer are available.
+  await assign(wa, { quantity: '4', job_number: 'J-100', note: 'Riser room' });
+  assert.equal(await said(wa), '4 × HLD-1 assigned to job J-100. 6 still available in Main warehouse.');
+  assert.deepEqual(fig(), [10, 4, 6]); assert.equal(inv.onHand(wh, p1), 10); assert.equal(db.prepare('SELECT COUNT(*) n FROM inv_moves WHERE catalog_id = ?').get(p1).n, 1);
+  assert.deepEqual(await told(), []);                                             // 6 available: above the minimum of 5
+  // Low goes by what is available, so an assignment that brings it to the minimum is told to the stock people.
+  await assign(wa, { quantity: '1', job_number: 'J-200' });
+  let got = await told();
+  assert.deepEqual([got[0].title, got[0].body], ['Low stock: HLD-1', 'HLD-1: 5 available (minimum 5, 5 assigned to jobs)']);
+  await assign(wa, { quantity: '6', job_number: 'J-300' });                       assert.equal(await said(wa), 'Only 5 of HLD-1 are available in Main warehouse (5 already assigned to jobs).');
+
+  // Every stock screen says the three figures: on hand, assigned, available. What to order goes by available too.
+  const stockPage = await flat(wa, '/admin/stock');
+  assert.match(stockPage, /<th class="num">On hand<\/th><th class="num">Assigned<\/th><th class="num">Available<\/th>/);
+  assert.match(stockPage, new RegExp(`<strong>HLD-1</strong></a></td> <td></td> <td class="num">10</td> <td class="num"><a href="/admin/stock/${p1}#assigned" title="Assigned to jobs">5</a></td> <td class="num"><strong>5</strong></td> <td class="num">5</td> <td class="num">12</td> <td class="num"></td> <td><span class="tag request">Low</span></td> <td class="num"><strong>7</strong>`));
+  assert.match(stockPage, /Assigned to jobs<\/span><span class="stat-num">5<\/span><span class="stat-sub">items across 1 part, not available/);
+  const listed = await flat(wa, page);
+  assert.match(listed, /<h2 id="assigned">Assigned to jobs<\/h2>[\s\S]*?<strong>J-100<\/strong> <span class="hint">Riser room<\/span><\/td> <td><strong>HLD-1<\/strong><\/td><td><\/td> <td class="num"><strong>4<\/strong><\/td> <td><a href="\/admin\/inventory\/locations\/\d+">Main warehouse<\/a><\/td> <td>Wanda Holder /);
+  assert.match(await flat(wa, `/admin/inventory/locations/${wh}`), /<th class="num">On hand<\/th><th class="num">Assigned<\/th><th class="num">Available<\/th>[\s\S]*?<strong>HLD-1<\/strong><\/td><td><\/td><td class="num"><strong>10<\/strong><\/td> <td class="num">5<\/td><td class="num"><strong>5<\/strong><\/td>[\s\S]*?<h2 id="assigned">Assigned to jobs<\/h2>/);
+  assert.doesNotMatch(await flat(wa, `/admin/inventory/locations/${truck}`), /<th class="num">Assigned<\/th>/);          // a vehicle with nothing assigned from it shows the one figure
+  const partPage = await flat(wa, `/admin/stock/${p1}`);
+  assert.match(partPage, /Available<\/span><span class="stat-num">5<\/span>[\s\S]*?Assigned to jobs<\/span><span class="stat-num">5<\/span><span class="stat-sub">of 10 on hand/);
+  assert.match(partPage, /<strong>J-200<\/strong>[\s\S]*?Assign to this job<\/button>/);
+
+  // Signed out for that job on the Parts form, the parts leave the warehouse they were assigned in, not the technician's own
+  // truck, and the assignment shrinks. Dashes, spaces and capitals in the job number make no difference.
+  const send = (c, fields) => c.post('/parts', [['part_name', 'hld-1'], ...Object.entries(fields)], { multipart: true, page: '/parts' });
+  const last = () => db.prepare('SELECT id FROM parts_submissions ORDER BY id DESC').get().id;
+  await send(ta, { action: 'take', source: 'job', job_number: 'j 100', quantity: '3' });
+  assert.equal(await said(ta, '/my?sent=parts'), 'Parts signed out. 3 were assigned to job j 100. Thank you.');
+  assert.deepEqual(fig(), [7, 2, 5]); assert.equal(inv.onHand(truck, p1), 0);
+  assert.match(await flat(wa, page), /<strong>J-100<\/strong>[\s\S]*?<strong>1<\/strong> <span class="hint">of 4 left to collect<\/span>/);
+  assert.match(await flat(wa, `/admin/inventory/locations/${wh}`), /<strong>-3<\/strong><\/td> <td>Used <span class="hint">assigned to job J-100<\/span>/);
+  // More than was assigned: the rest comes out of the usual place, her truck, which has none on record and so is marked to check.
+  await send(ta, { action: 'take', source: 'job', job_number: 'J-100', quantity: '2' });
+  const second = last();
+  assert.deepEqual(db.prepare('SELECT from_id, quantity, hold_id IS NOT NULL AS held, flagged FROM inv_moves WHERE submission_id = ? ORDER BY id').all(second),
+    [{ from_id: wh, quantity: 1, held: 1, flagged: 0 }, { from_id: truck, quantity: 1, held: 0, flagged: 1 }]);
+  assert.deepEqual(fig(), [6, 1, 5]); assert.equal(inv.onHand(truck, p1), -1);
+  const collected = await flat(wa, page);
+  assert.doesNotMatch(collected, /<strong>J-100<\/strong>/); assert.match(collected, /<strong>J-200<\/strong>/);   // collected in full: off the list
+  // Cancelling that entry puts its parts back where they were, assigned to the job again.
+  await ta.post(`/parts/${second}/cancel`, {}, { page: '/my' });
+  assert.deepEqual(fig(), [7, 2, 5]); assert.equal(inv.onHand(truck, p1), 0);
+  // A take for some other job leaves the assignments alone. (Someone with no vehicle takes from the warehouse, as before.)
+  await send(tf, { action: 'take', source: 'job', job_number: 'J-999', quantity: '1' });
+  assert.deepEqual(fig(), [6, 2, 4]);
+  await told();
+
+  // Releasing an assignment makes what was not collected available again. Not for a technician, nor for another branch.
+  const h100 = db.prepare("SELECT id FROM inv_holds WHERE branch_id = ? AND job_key = 'J100'").get(a).id;
+  assert.equal((await wb.post(`/admin/inventory/holds/${h100}/release`, {}, { page })).status, 403);
+  assert.equal((await ta.post(`/admin/inventory/holds/${h100}/release`, {}, { page: '/parts' })).status, 403);
+  assert.deepEqual(fig(), [6, 2, 4]);
+  const freed = await wa.post(`/admin/inventory/holds/${h100}/release`, { back: `/admin/stock/${p1}` }, { page });
+  assert.equal(freed.location, `/admin/stock/${p1}`);
+  assert.equal(await said(wa, `/admin/stock/${p1}`), '1 × HLD-1 released from job J-100. It is available again.');
+  assert.deepEqual(fig(), [6, 1, 5]);
+  await send(ta, { action: 'take', source: 'job', job_number: 'J-100', quantity: '1' });        // nothing is assigned to it now: out of her truck, as ever
+  assert.deepEqual(fig(), [6, 1, 5]); assert.equal(inv.onHand(truck, p1), -1);
+
+  // Every one on the shelf assigned: nothing is available, the stock people are told, and it goes on the order list.
+  await told();
+  await assign(wa, { part_number: 'HLD-2', quantity: '4', job_number: 'J-400' });
+  got = await told();
+  assert.deepEqual([got[0].title, got[0].body], ['All assigned: HLD-2', 'HLD-2: none available (4 assigned to jobs)']);
+  assert.deepEqual(fig('HLD-2'), [4, 4, 0]);
+  const low = await flat(wa, '/admin/stock?low=1');
+  assert.match(low, /<strong>HLD-2<\/strong><\/a><\/td> <td><\/td> <td class="num">4<\/td> <td class="num"><a [^>]*>4<\/a><\/td> <td class="num"><strong class="none-free">0<\/strong><\/td>[\s\S]*?<span class="tag overdue" title="[^"]*">All assigned<\/span>/);
+  const csv = (await wa.get('/admin/stock/reorder.csv')).text;
+  assert.match(csv, /Hold Alpha,HLD-2,,4,4,0,,,0,1/); assert.match(csv, /Hold Alpha,HLD-1,,6,1,5,5,12,/);
+
+  // Parts assigned in a place that the records no longer show there are still listed, as a shortfall, and the place cannot be put away.
+  await wa.post('/admin/inventory/locations', { kind: 'custom', name: 'Cage' }, { page });
+  const cage = db.prepare("SELECT id FROM inv_locations WHERE branch_id = ? AND name = 'Cage'").get(a).id;
+  await mv({ from: String(wh), to: String(cage), part_number: 'HLD-1', quantity: '2' });
+  await assign(wa, { from: String(cage), quantity: '2', job_number: 'J-500' });
+  await mv({ from: String(cage), to: String(wh), part_number: 'HLD-1', quantity: '2' });
+  assert.match(await flat(wa, `/admin/inventory/locations/${cage}`), /<strong>HLD-1<\/strong><\/td><td><\/td><td class="num"><strong>0<\/strong><\/td> <td class="num">2<\/td><td class="num"><strong class="none-free">-2<\/strong><\/td>/);
+  await wa.post(`/admin/inventory/locations/${cage}/retire`, {}, { page });
+  assert.equal(await said(wa, `/admin/inventory/locations/${cage}`), 'Parts in Cage are still assigned to jobs. Release them first.');
+  assert.equal(inv.location(cage).active, 1);
+  assert.deepEqual(fig(), [6, 1, 5]);                                                               // the warehouse's own figures are untouched by another place's assignment
+
+  // Another branch sees none of it; both actions are in the activity log; and the guide is there for those who can do it.
+  assert.doesNotMatch(await flat(wb, page), /id="assigned"|J-200/);
+  const logged = db.prepare("SELECT action, detail FROM activity_log WHERE action IN ('Parts assigned to a job', 'Assigned parts released') ORDER BY id").all();
+  assert.deepEqual(logged[0], { action: 'Parts assigned to a job', detail: '4 × HLD-1: job J-100, in Main warehouse' });
+  assert.ok(logged.some((l) => l.action === 'Assigned parts released' && l.detail === '1 × HLD-1: job J-100, in Main warehouse'));
+  assert.match((await wa.get('/help/inventory-assign-job')).text, /Assign parts to a job/);
+  assert.equal((await ta.get('/help/inventory-assign-job')).status, 404);
+
+  push.setSender(async () => {});
+  db.prepare("UPDATE users SET active = 0 WHERE username LIKE 'hold.%'").run();
 });

@@ -1680,6 +1680,19 @@ td.reports-to .meta { display: block; }
   .inv-move-what { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); }
   .inv-move-part, .inv-move-what .btn { grid-column: 1 / -1; }
 }
+/* Assign parts to a job: the same panel, laid out for its own boxes */
+.inv-assign-what { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(5.5rem, .6fr) minmax(0, 1.2fr); gap: .75rem; align-items: end; }
+.inv-assign-where { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.6fr) auto; gap: .75rem; align-items: end; }
+.inv-assign-where .btn { min-width: 8rem; margin: 0; }
+.inv-assign-where select { margin-top: .3rem; }   /* the boxes beside it sit that far under their labels */
+@media (min-width: 1100px) { .stock-figures { grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr)); } }   /* six figures still make one row */
+.none-free { color: var(--err); }
+.assigned-table form { margin: 0; }
+@media (max-width: 720px) {
+  .inv-assign-what { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); }
+  .inv-assign-where { grid-template-columns: minmax(0, 1fr); }
+  .inv-assign-what .inv-move-part { grid-column: 1 / -1; }
+}
 
 /* Catalog: edit one part */
 .catalog-edit { display: grid; gap: 1rem; }

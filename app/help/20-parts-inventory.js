@@ -308,6 +308,33 @@ module.exports = [
   },
 
   {
+    slug: 'inventory-assign-job',
+    title: 'Assign parts to a job',
+    group: GROUP,
+    perms: ['inventory.manage', 'stock.manage', 'parts.manage'],
+    pages: [],
+    intro: 'Assign parts to a job so nobody else plans on them. They stay on the shelf and still count as on hand, but they no longer count as available.',
+    where: 'Main menu: Parts, then Inventory. The Assign parts to a job form is near the top of the page.',
+    steps: [
+      'Open **Parts** in the main menu and choose **Inventory**.',
+      'Find **Assign parts to a job**.',
+      'Pick the **Part**, type **How many**, and type the **Job number**.',
+      'In **From**, choose the place the parts are sitting. It starts on the main warehouse.',
+      'Choose **Assign**. The parts now show under **Assigned to jobs**, and **Available** drops by that many.',
+      'When the technician signs the parts out for that job number on the Parts form, they leave the place they were assigned in and the assignment clears.',
+      'If the job no longer needs them, choose **Release** beside the assignment. The parts are available again.',
+    ],
+    tips: [
+      '**On hand** is what is on the shelf. **Assigned** is promised to jobs. **Available** is what is left for anyone else.',
+      'You cannot assign more than is available.',
+      'Low and out go by what is available, so a part that is all assigned shows as **All assigned** and is put on the order list.',
+      'The job number on the Parts form must match the one on the assignment. Spaces, dashes and capitals do not matter.',
+      'You can also assign from a part\'s own page under **Warehouse stock**.',
+    ],
+    related: ['inventory-overview', 'inventory-move-parts', 'stock-update'],
+  },
+
+  {
     slug: 'inventory-movement-history',
     title: 'See where parts have moved',
     group: GROUP,

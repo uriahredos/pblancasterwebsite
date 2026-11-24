@@ -118,7 +118,7 @@ router.post('/parts', requirePerm('parts.submit'), parseUpload, verifyCsrf, (req
   const now = new Date();
   const isRequest = values.action === 'request';
   const names = [...new Set(values.items.map((it) => it.part_name.toUpperCase()))];
-  const before = new Map(values.action === 'take' ? stock.forNames(req.user.branch_id, names).map((p) => [p.id, p.on_hand]) : []);
+  const before = new Map(values.action === 'take' ? stock.forNames(req.user.branch_id, names).map((p) => [p.id, p.available]) : []);
   const id = db.transaction(() => {
     const info = db.prepare(
       `INSERT INTO parts_submissions
@@ -150,7 +150,9 @@ router.post('/parts', requirePerm('parts.submit'), parseUpload, verifyCsrf, (req
     });
   }
   const done = { take: 'Parts signed out.', return: 'Return recorded.', request: 'Parts request sent.' };
-  flash(req, 'ok', `${done[values.action]} Thank you.`);
+  // Parts that had been assigned to this job: say so, so the person knows they were the ones waiting for it.
+  const collected = db.prepare('SELECT COALESCE(SUM(quantity), 0) AS n FROM inv_moves WHERE submission_id = ? AND hold_id IS NOT NULL').get(id).n;
+  flash(req, 'ok', `${done[values.action]}${collected ? ` ${collected} ${collected === 1 ? 'was' : 'were'} assigned to job ${values.job_number}.` : ''} Thank you.`);
   res.redirect('/my?sent=parts');
 });
 

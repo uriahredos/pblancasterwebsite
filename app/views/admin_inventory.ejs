@@ -21,6 +21,28 @@
   </form>
 </section>
 <% } %>
+<% if (mayAssign) { %>
+<section class="panel inv-move inv-assign" aria-labelledby="assign-h" id="assign">
+  <div class="panel-head"><h2 id="assign-h">Assign parts to a job</h2></div>
+  <form method="post" action="/admin/inventory/holds" class="inv-move-form">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <div class="inv-assign-what">
+      <label class="inv-move-part">Part <input name="part_number" required maxlength="100" autocomplete="off" data-catalog placeholder="Pick from the catalog"></label>
+      <label class="inv-move-qty">How many <input name="quantity" required inputmode="numeric" maxlength="5" autocomplete="off"></label>
+      <label class="inv-assign-job">Job number <input name="job_number" required maxlength="60" autocomplete="off"></label>
+    </div>
+    <div class="inv-assign-where">
+      <label>From <select name="from" required><% inUse.forEach(function (l) { %><option value="<%= l.id %>"><%= l.name %></option><% }) %></select></label>
+      <label class="inv-move-note">Note <input name="note" maxlength="200" autocomplete="off" placeholder="Optional"></label>
+      <button class="btn primary" type="submit">Assign</button>
+    </div>
+  </form>
+</section>
+<% } %>
+<% if (holds.length) { %>
+<h2 id="assigned">Assigned to jobs</h2>
+<%- include('partials/assigned', { holds: holds, mayAssign: mayAssign, back: '/admin/inventory', showWhere: true, showPart: true }) %>
+<% } %>
 <p class="filter-actions"><% if (can('inventory.export')) { %><a class="btn small" href="/admin/inventory/export.csv">Export by location</a> <a class="btn small" href="/admin/inventory/export.csv?view=totals">Export totals</a><% if (user.allBranches) { %> <a class="btn small" href="/admin/inventory/export.csv?office=all">Export every branch</a><% } %> <% } %></p>
 <div class="table-wrap">
 <table>

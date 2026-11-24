@@ -52,8 +52,8 @@ router.get('/admin/stock/reorder.csv', requireLogin, (req, res) => {
   const rows = stock.list(req.user.workBranch, { low: true });
   activity.log(req.user, 'Export downloaded', `Reorder list, ${rows.length} parts`);
   require('../csv').sendCsv(res, `reorder-${office.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${require('../util').localDate()}.csv`,
-    ['Branch', 'Part number', 'Description', 'On hand', 'Minimum', 'Maximum', `Used in ${stock.USE_DAYS} days`, 'Order'],
-    rows.map((r) => [office, r.part_number, r.description, r.on_hand, r.min_level, r.max_level === null ? '' : r.max_level, r.used, r.order]));
+    ['Branch', 'Part number', 'Description', 'On hand', 'Assigned to jobs', 'Available', 'Minimum', 'Maximum', `Used in ${stock.USE_DAYS} days`, 'Order'],
+    rows.map((r) => [office, r.part_number, r.description, r.on_hand, r.assigned, r.available, r.min_level, r.max_level === null ? '' : r.max_level, r.used, r.order]));
 });
 
 router.post('/admin/stock', manage, (req, res) => {
@@ -144,7 +144,10 @@ router.get('/admin/stock/:id', requireLogin, (req, res) => {
      JOIN parts_submissions s ON s.id = i.submission_id JOIN users u ON u.id = s.user_id
      WHERE i.part_name = ? COLLATE NOCASE AND s.action IN ('take','return') AND s.cancelled_at IS NULL AND s.created_at > ? AND u.branch_id = ?
      ORDER BY s.id DESC LIMIT 50`).all(part.part_number, part.count_at, req.user.workBranch);
-  res.render('admin_stock_part', { title: `Stock: ${part.part_number}`, part, history, moves });
+  const warehouse = inv.warehouseOf(req.user.workBranch);
+  res.render('admin_stock_part', { title: `Stock: ${part.part_number}`, part, history, moves, warehouse,
+    holds: inv.holds({ branchId: req.user.workBranch, locationId: warehouse.id, catalogId: part.id }),
+    mayAssign: ['inventory.manage', 'stock.manage', 'parts.manage'].some((p) => access.can(req.user, p)) });
 });
 
 router.post('/admin/stock/:id/:op', manage, (req, res) => {

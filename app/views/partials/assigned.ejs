@@ -1,0 +1,19 @@
+<%# Parts assigned to jobs and not collected yet. Give it `holds`, `mayAssign`, `back`, and `showWhere` / `showPart` for the columns wanted. %>
+<div class="table-wrap">
+<table class="assigned-table">
+  <thead><tr><th>Job</th><% if (showPart) { %><th>Part</th><th>Description</th><% } %><th class="num">Assigned</th><% if (showWhere) { %><th>From</th><% } %><th>By</th><th></th></tr></thead>
+  <tbody>
+  <% holds.forEach(function (h) { %>
+  <tr>
+    <td><strong><%= h.job_number %></strong><% if (h.note) { %> <span class="hint"><%= h.note %></span><% } %></td>
+    <% if (showPart) { %><td><strong><%= h.part_number %></strong></td><td><%= h.description %></td><% } %>
+    <td class="num"><strong><%= h.remaining %></strong><% if (h.remaining < h.quantity) { %> <span class="hint">of <%= h.quantity %> left to collect</span><% } %></td>
+    <% if (showWhere) { %><td><a href="/admin/inventory/locations/<%= h.location_id %>"><%= h.location %></a></td><% } %>
+    <td><%= h.by_name || '' %> <span class="hint"><%= fmtDateTime(h.created_at) %></span></td>
+    <td><% if (mayAssign) { %><form method="post" action="/admin/inventory/holds/<%= h.id %>/release" data-confirm="Release <%= h.remaining %> × <%= h.part_number %> from job <%= h.job_number %>? They become available again.">
+      <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="back" value="<%= back %>"><button class="link" type="submit">Release</button></form><% } %></td>
+  </tr>
+  <% }) %>
+  </tbody>
+</table>
+</div>
