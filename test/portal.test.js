@@ -9258,3 +9258,66 @@ test('six roles: a level on each profile, a manager at every level who runs the 
     db.prepare('UPDATE branches SET market_id = NULL WHERE market_id = ?').run(m); db.prepare('DELETE FROM markets WHERE id = ?').run(m);
   })();
 });
+
+test('chain of command: an office answers to its market and the market to corporate, shown on the office page and on each person', async () => {
+  const now = new Date().toISOString(); const chain = require('../app/chain');
+  const mk = (name) => { const id = db.prepare('INSERT INTO branches (name, state, created_at) VALUES (?, ?, ?)').run(name, 'PA', now).lastInsertRowid; require('../app/branches').setUp(id); return id; };
+  const a = mk('Chain Alpha'); const b = mk('Chain Beta'); const solo = mk('Chain Solo');
+  const m = db.prepare("INSERT INTO markets (name, created_at) VALUES ('Chain Valley', ?)").run(now).lastInsertRowid;
+  db.prepare('UPDATE branches SET market_id = ? WHERE id IN (?, ?)').run(m, a, b);
+  access.ensureProfile('Market admin', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'backups'));
+  const officeAdmin = access.ensureProfile('Office admin (one office)', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'market.all'));
+  const put = (username, name, office, profile) => { const id = auth.createUser({ username, displayName: name, password: 'correct horse battery', profile, branchId: office }); db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?').run(id); return id; };
+  const tech = put('chain.tech', 'Tia Chaintech', a, profileId('Technician'));
+  const bm = put('chain.bm', 'Bram Chainmanager', a, profileId('Branch manager'));
+  const ba = put('chain.ba', 'Ada Chainadmin', a, officeAdmin);
+  const mm = put('chain.mm', 'Mo Chainmarket', b, profileId('Market manager'));
+  const ma = put('chain.ma', 'Mae Chainmarket', b, profileId('Market admin'));
+  const cm = put('chain.cm', 'Cy Chaincorp', solo, profileId('Corporate manager'));
+  const soloTech = put('chain.solo', 'Sol Chainsolo', solo, profileId('Technician'));
+
+  // The office's chain, top first. Each level lists its admins before its managers.
+  const steps = chain.forOffice(a);
+  assert.deepEqual(steps.map((s) => s.label), ['Corporate', 'Chain Valley market', 'Chain Alpha office']);
+  assert.deepEqual(steps[1].people.map((p) => [p.display_name, p.role]), [['Mae Chainmarket', 'Market admin'], ['Mo Chainmarket', 'Market manager']]);
+  assert.deepEqual(steps[2].people.map((p) => [p.display_name, p.role]), [['Ada Chainadmin', 'Office admin (one office)'], ['Bram Chainmanager', 'Branch manager']]);
+  // Corporate lists its admins first and stops at a dozen names, saying how many more there are.
+  assert.ok(steps[0].people.length <= 12 && steps[0].people.every((p) => p.kind === 'admin' || steps[0].more === 0));
+  const others = db.prepare("SELECT id FROM users WHERE active = 1 AND id <> ? AND is_master = 0 AND username NOT LIKE 'chain.%' AND profile_id IN (SELECT profile_id FROM profile_permissions WHERE permission = 'branches.all')").all(userId('owner')).map((r) => r.id);
+  db.prepare(`UPDATE users SET active = 0 WHERE id IN (${others.join(',') || 0})`).run();                           // set aside for a moment, so the short list is this test's own
+  const corp = chain.forOffice(a)[0];
+  assert.ok(corp.people.some((p) => p.display_name === 'Cy Chaincorp' && p.role === 'Corporate manager'), JSON.stringify(corp.people.map((p) => p.display_name)));
+  assert.equal(corp.people[corp.people.length - 1].display_name, 'Cy Chaincorp');                                  // a manager comes after the admins
+  assert.ok(!steps.some((s) => s.people.some((p) => p.display_name === 'Tia Chaintech')));                        // staff are not in it
+  // An office in no market answers straight to corporate; with nobody of its own yet, it says so.
+  assert.deepEqual(chain.forOffice(solo).map((s) => [s.label, s.key === 'office' ? s.people.length : null]), [['Corporate', null], ['Chain Solo office', 0]]);
+
+  // Who is above one person, nearest first. A manager answers to the admins of their own level before the next one up.
+  const up = (id) => chain.above(id).map((s) => [s.label, s.people.map((p) => p.display_name).filter((n) => /Chain/.test(n))]);
+  assert.deepEqual(up(tech).slice(0, 2), [['Chain Alpha office', ['Ada Chainadmin', 'Bram Chainmanager']], ['Chain Valley market', ['Mae Chainmarket', 'Mo Chainmarket']]]);
+  assert.deepEqual(up(bm).slice(0, 2), [['Chain Alpha office', ['Ada Chainadmin']], ['Chain Valley market', ['Mae Chainmarket', 'Mo Chainmarket']]]);
+  assert.deepEqual(up(ba)[0], ['Chain Valley market', ['Mae Chainmarket', 'Mo Chainmarket']]);
+  assert.deepEqual(up(mm)[0], ['Chain Valley market', ['Mae Chainmarket']]);
+  assert.equal(up(ma)[0][0], 'Corporate'); assert.equal(up(ma).length, 1);
+  assert.ok(!chain.above(cm).some((s) => s.people.some((p) => p.display_name === 'Cy Chaincorp')));               // never themselves
+  assert.deepEqual(chain.above(soloTech).map((s) => s.label), ['Corporate']);                                    // nobody runs Solo yet, and it is in no market
+  assert.deepEqual(chain.above(db.prepare('SELECT id FROM users WHERE is_master = 1').get().id), []);             // the top has nobody above
+  const top = db.prepare('SELECT id, branch_id FROM users WHERE is_master = 1').get();
+  assert.ok(chain.forOffice(top.branch_id)[0].people.some((p) => p.id === top.id && p.role === 'Master account'));
+  assert.ok(!chain.forOffice(top.branch_id).slice(1).some((s2) => s2.people.some((p) => p.id === top.id)));       // the master account is listed once, at the top
+
+  // On the pages: the office page shows the whole chain; a person's page shows who is above them.
+  const t = await loggedIn('chain.tech');
+  const office = (/<ol class="chain">[\s\S]*?<\/ol>/.exec((await t.get(`/branches/${a}`)).text) || [''])[0].replace(/\s+/g, ' ');
+  assert.match(office, /Corporate<\/span>[\s\S]*Chain Valley market<\/span>[\s\S]*Mae Chainmarket<\/strong><\/a> <span class="meta">Market admin<\/span>[\s\S]*Chain Alpha office<\/span>[\s\S]*Ada Chainadmin[\s\S]*Bram Chainmanager<\/strong><\/a> <span class="meta">Branch manager<\/span>/);
+  assert.match((await t.get(`/branches/${solo}`)).text.replace(/\s+/g, ' '), /Chain Solo office<\/span> <span class="meta">Nobody appointed yet<\/span>/);
+  const mine = (/<ol class="chain">[\s\S]*?<\/ol>/.exec((await t.get(`/people/${tech}`)).text) || [''])[0].replace(/\s+/g, ' ');
+  assert.match(mine, /Chain Alpha office<\/span>[\s\S]*Ada Chainadmin[\s\S]*Chain Valley market<\/span>[\s\S]*Corporate<\/span>/);     // nearest first
+  assert.match((await t.get(`/people/${tech}`)).text, /Above Tia in the chain of command, nearest first/);
+
+  db.transaction(() => {
+    db.prepare(`UPDATE users SET active = 1 WHERE id IN (${others.join(',') || 0})`).run();
+    db.prepare("UPDATE users SET active = 0, profile_id = ? WHERE username LIKE 'chain.%'").run(profileId('Technician'));
+    db.prepare('UPDATE branches SET market_id = NULL WHERE market_id = ?').run(m); db.prepare('DELETE FROM markets WHERE id = ?').run(m);
+  })();
+});

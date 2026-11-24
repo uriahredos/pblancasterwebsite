@@ -258,7 +258,7 @@ function branchPage(req, res, b, extra = {}) {
   // Management first, then the rest by name; people with no department last.
   const order = [...groups.keys()].sort((x, y) => (x === 'Management' ? -1 : y === 'Management' ? 1 : x === 'Team' ? 1 : y === 'Team' ? -1 : x.localeCompare(y)));
   res.status(extra.errors ? 400 : 200).render('branch', {
-    title: `${b.name} office`, wide: true, b, people, teamChart, groups: order.map((k) => ({ name: k, people: groups.get(k) })), canEdit: mayEditBranch(req.user, b), errors: [], editing: false,
+    title: `${b.name} office`, wide: true, b, people, teamChart, chain: require('../chain').forOffice(b.id), groups: order.map((k) => ({ name: k, people: groups.get(k) })), canEdit: mayEditBranch(req.user, b), errors: [], editing: false,
     services: require('./company').servicesOf(b.id), allServices: require('./company').allServices(), stateNames: require('./company').STATES,
     many: db.prepare('SELECT COUNT(*) AS n FROM branches').get().n > 1,
     // An office's shout-outs and events are its own: shown to whoever is looking at that office or runs it, not to visitors.

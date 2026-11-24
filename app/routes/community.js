@@ -83,7 +83,8 @@ router.get('/people/:id', requireLogin, (req, res) => {
   const theirTeam = db.prepare(`SELECT u.id, u.display_name, u.photo_path, u.job_title FROM user_managers um JOIN users u ON u.id = um.user_id WHERE um.manager_id = ? AND (u.active = 1 OR u.in_directory = 1) ORDER BY u.display_name COLLATE NOCASE`).all(p.id);
   const canModNotes = access.can(req.user, 'users.manage') && req.user.scope === 'all' && access.canSee(req.user, p.id);
   const canWelcome = canPosition && req.user.scope === 'all' && Boolean(welcome) && welcome.created_at >= new Date(Date.now() - WELCOME_DAYS * 86400000).toISOString();   // only while it is on the home page
-  res.render('person', { canPosition, canWelcome, canModNotes, reportsTo, theirTeam, title: p.display_name, p: decorate(p), certs, welcome, notes, me: p.id === req.user.id, bday, shouts: social.shoutoutsFor(req.user, p.id), canShout: social.mayShout(req.user, p.branch_id) });
+  const chainUp = require('../chain').above(p.id);
+  res.render('person', { canPosition, canWelcome, canModNotes, reportsTo, theirTeam, chainUp, title: p.display_name, p: decorate(p), certs, welcome, notes, me: p.id === req.user.id, bday, shouts: social.shoutoutsFor(req.user, p.id), canShout: social.mayShout(req.user, p.branch_id) });
 });
 
 // ---- Positions: job titles and departments for a whole office, edited in one table -------------

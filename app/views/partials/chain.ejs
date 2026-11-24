@@ -1,0 +1,9 @@
+<%# The chain of command as a short list. `steps`: [{ label, people: [{ id, display_name, role }], more }]. %>
+<ol class="chain">
+  <% steps.forEach(function (s) { %>
+  <li class="chain-step"><span class="chain-level"><%= s.label %></span>
+    <% if (!s.people.length) { %><span class="meta">Nobody appointed yet</span><% } else { %>
+    <span class="chain-people"><% s.people.forEach(function (p) { %><span class="chain-person"><a href="/people/<%= p.id %>"><strong><%= p.display_name %></strong></a> <span class="meta"><%= p.role %></span></span><% }) %><% if (s.more) { %><span class="meta">and <%= s.more %> more</span><% } %></span>
+    <% } %></li>
+  <% }) %>
+</ol>

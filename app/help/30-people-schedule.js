@@ -174,6 +174,7 @@ module.exports = [
       'Nobody can hand out more than they have themselves.',
       'Only people already on the site can be appointed. Add the person under **Users** first.',
       'A manager whose profile is set to **Their own team** only sees the people assigned to them, not the whole office.',
+      'Each office\'s page shows its **Chain of command**: who runs the office, its market and corporate. A person\'s page shows who is above them.',
     ],
     related: ['profiles', 'add-an-office', 'markets'],
   },

@@ -54,6 +54,10 @@
 
 <div class="dash">
   <div class="dash-main">
+    <section class="panel" aria-labelledby="chain-h">
+      <div class="panel-head"><h2 id="chain-h">Chain of command</h2></div>
+      <%- include('partials/chain', { steps: chain }) %>
+    </section>
     <section class="panel" aria-labelledby="who-h">
       <div class="panel-head"><h2 id="who-h">Who's who</h2><a href="/people?branch=<%= b.id %>">Search them</a></div>
       <% if (!people.length) { %><p class="empty">Nobody has been added to this office yet.</p><% } %>

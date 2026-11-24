@@ -11,12 +11,14 @@
     <% if (canWelcome) { %><form method="post" action="/admin/users/<%= p.id %>/welcome" data-no-live data-confirm="Take down the new-hire welcome for <%= p.display_name %>? It leaves everyone's home page. Their account is not affected."><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="remove" value="1"><input type="hidden" name="back" value="person"><button class="btn small danger" type="submit">Take down the new-hire welcome</button></form><% } %>
   </div>
 </div>
-<% if (reportsTo || theirTeam.length) { %>
+<% if (reportsTo || theirTeam.length || chainUp.length) { %>
 <h2>Team</h2>
 <div class="card stack">
   <% if (reportsTo) { %><p class="plain"><span class="meta">Reports to</span> <a href="/people/<%= reportsTo.id %>"><strong><%= reportsTo.display_name %></strong></a><% if (reportsTo.job_title) { %> <span class="meta">· <%= reportsTo.job_title %></span><% } %></p><% } %>
   <% if (theirTeam.length) { %><p class="plain"><span class="meta"><%= theirTeam.length %> <%= theirTeam.length === 1 ? 'person reports' : 'people report' %> to <%= p.display_name.split(' ')[0] %></span></p>
   <ul class="roster"><% theirTeam.forEach(function (m) { %><li><a href="/people/<%= m.id %>"><%- include('partials/avatar', { who: m }) %><span class="person-text"><strong><%= m.display_name %></strong><span class="meta"><%= m.job_title || '' %></span></span></a></li><% }) %></ul><% } %>
+  <% if (chainUp.length) { %><p class="plain"><span class="meta">Above <%= p.display_name.split(' ')[0] %> in the chain of command, nearest first</span></p>
+  <%- include('partials/chain', { steps: chainUp }) %><% } %>
 </div>
 <% } %>
 <% if (p.about) { %><h2>About</h2><div class="card"><p class="pre"><%= p.about %></p></div><% } %>

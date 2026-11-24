@@ -374,6 +374,10 @@ A manager runs the day-to-day (requests, stock, fleet, training, tasks, on call,
 - Nobody hands out a profile holding something they lack. Backups hold every office, so that box only counts on a company-level profile.
 - The Corporate setup pages (offices, markets, company lists) need a corporate admin; a corporate manager sees and runs every office without them.
 
+**Chain of command (`app/chain.js`).** An office answers to its market and a market to corporate. Nothing is stored for it: it is worked out from each person's profile level and office.
+Each office's page lists the chain (corporate, market, office, admins before managers); a person's page lists who is above them, nearest first.
+`chain.above(userId)` is the hook for escalations and approvals later.
+
 ## Newsletters (`/newsletters`, `/admin/newsletters`)
 
 - Anyone with **Upload and remove the monthly newsletters** uploads a PDF (up to 25 MB) under **Team > Newsletters**, choosing its month. A title and up to four highlight lines are optional.
