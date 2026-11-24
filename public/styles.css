@@ -1680,3 +1680,12 @@ td.reports-to .meta { display: block; }
   .inv-move-what { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); }
   .inv-move-part, .inv-move-what .btn { grid-column: 1 / -1; }
 }
+
+/* Catalog: edit one part */
+.catalog-edit { display: grid; gap: 1rem; }
+.catalog-edit-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .9rem; align-items: end; }
+.catalog-edit-grid label { display: grid; gap: .3rem; margin: 0; min-width: 0; font-weight: 700; }
+.catalog-edit-grid input { width: 100%; min-width: 0; margin: 0; }
+.catalog-edit-grid .w2 { grid-column: span 2; } .catalog-edit-grid .w4 { grid-column: span 4; }
+.catalog-edit .choice, .catalog-edit .hint, .catalog-edit .filter-actions { margin: 0; }
+@media (max-width: 640px) { .catalog-edit-grid { grid-template-columns: minmax(0, 1fr); } .catalog-edit-grid .w2, .catalog-edit-grid .w4 { grid-column: auto; } }

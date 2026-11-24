@@ -1,0 +1,19 @@
+<%- include('partials/header') %>
+<p class="back"><a class="back-link" href="/admin/catalog<%= q ? '?q=' + encodeURIComponent(q) : '' %>">Parts catalog</a></p>
+<h1>Edit <%= part.part_number %></h1>
+<p class="lede">The catalog is one list shared by every branch, so a change here shows everywhere.</p>
+<%- include('partials/errors') %>
+<form method="post" action="/admin/catalog/<%= part.id %>" class="card catalog-edit" data-no-live>
+  <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="q" value="<%= q %>">
+  <div class="catalog-edit-grid">
+    <label class="w2">Part number <input name="part_number" value="<%= values.part_number %>" maxlength="100" required autocomplete="off"></label>
+    <label class="w4">Description <input name="description" value="<%= values.description %>" maxlength="300" autocomplete="off"></label>
+    <label class="w2">Category <input name="category" value="<%= values.category %>" maxlength="100" autocomplete="off" placeholder="Optional"></label>
+    <label class="w2">Manufacturer <input name="manufacturer" value="<%= values.manufacturer %>" maxlength="100" autocomplete="off" placeholder="Optional"></label>
+    <label class="w2">Cost each <input name="cost" value="<%= values.cost %>" inputmode="decimal" maxlength="20" autocomplete="off" placeholder="Optional"></label>
+  </div>
+  <label class="choice"><input type="checkbox" name="active" value="1" <%= values.active ? 'checked' : '' %>> <span>Offer this part as a suggestion <span class="hint">Untick for something that is not a real part, or one no longer used. Nothing already recorded is lost.</span></span></label>
+  <% if (uses) { %><p class="hint">This part is on <%= uses %> past parts <%= uses === 1 ? 'entry' : 'entries' %>. If you correct the part number, <%= uses === 1 ? 'it follows' : 'they follow' %>.</p><% } %>
+  <div class="filter-actions"><button class="btn primary" type="submit">Save part</button><a class="btn" href="/admin/catalog<%= q ? '?q=' + encodeURIComponent(q) : '' %>">Cancel</a></div>
+</form>
+<%- include('partials/footer') %>

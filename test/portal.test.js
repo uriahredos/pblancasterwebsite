@@ -9461,3 +9461,60 @@ test('Corporate: people who work for the company belong to Corporate, not to a b
     db.prepare("UPDATE users SET active = 0, profile_id = ? WHERE username LIKE 'corp.%'").run(profileId('Technician'));
   })();
 });
+
+test('catalog: a part is found by searching and changed on its own Edit page; a corrected number carries past entries with it', async () => {
+  const owner = await loggedIn('owner'); const tech = await loggedIn('tech1'); const page = '/admin/catalog';
+  await owner.post(page, { part_number: 'EDT-100', description: 'Old descripton', category: 'Alarm', manufacturer: 'Acme', cost: '12.50' }, { page });
+  await owner.post(page, { part_number: 'EDT-200', description: 'Another part' }, { page });
+  const part = () => db.prepare('SELECT * FROM parts_catalog WHERE id = ?').get(id);
+  const id = db.prepare("SELECT id FROM parts_catalog WHERE part_number = 'EDT-100'").get().id;
+
+  // The list: searched, each row opens Edit (keeping the search), and there is no Hide button on the rows any more.
+  const list = (await owner.get(`${page}?q=EDT-1`)).text;
+  assert.match(list, new RegExp(`<a href="/admin/catalog/${id}/edit\\?q=EDT-1"><strong>EDT-100</strong></a>`));
+  assert.match(list, new RegExp(`<a class="btn small" href="/admin/catalog/${id}/edit\\?q=EDT-1">Edit</a>`));
+  assert.doesNotMatch((/<table>[\s\S]*?<\/table>/.exec(list) || ['none'])[0], /EDT-200|>Hide<|\/toggle"|^none$/);
+  // Only people who keep the catalog reach the page.
+  assert.equal((await tech.get(`/admin/catalog/${id}/edit`)).status, 403);
+  assert.equal((await tech.post(`/admin/catalog/${id}`, { part_number: 'HACKED' })).status, 403);
+  const form = (await owner.get(`/admin/catalog/${id}/edit?q=EDT-1`)).text;
+  assert.match(form, /<p class="back"><a class="back-link" href="\/admin\/catalog\?q=EDT-1">Parts catalog<\/a><\/p>/);
+  for (const [name, value] of [['part_number', 'EDT-100'], ['description', 'Old descripton'], ['category', 'Alarm'], ['manufacturer', 'Acme'], ['cost', '12.50']]) assert.match(form, new RegExp(`name="${name}" value="${value}"`), name);
+  assert.match(form, /name="active" value="1" checked/);
+
+  // A technician took some under the old number: the entry is tied to the part by that number.
+  await takeParts(tech, [['edt-100', 2]]);
+  const line = () => db.prepare("SELECT i.part_name FROM parts_items i WHERE i.part_name LIKE 'edt-%' OR i.part_name LIKE 'EDT-%' ORDER BY i.id DESC LIMIT 1").get().part_name;
+  assert.equal(line().toLowerCase(), 'edt-100');
+  assert.match((await owner.get(`/admin/catalog/${id}/edit`)).text, /This part is on 1 past parts entry\. If you correct the part number, it follows\./);
+
+  // Mistakes are sent back with what was typed: no number, a number another part has, a cost that is not money.
+  const save = (f) => owner.post(`/admin/catalog/${id}`, { q: 'EDT', active: '1', ...f }, { page: `/admin/catalog/${id}/edit` });
+  assert.match((await save({ part_number: '', description: 'x' })).text, /Enter the part number\./);
+  assert.match((await save({ part_number: 'edt-200', description: 'x' })).text, /Another part already has that number\./);
+  const bad = await save({ part_number: 'EDT-100', description: 'Kept while fixing', cost: 'lots' });
+  assert.equal(bad.status, 400); assert.match(bad.text, /The cost does not look like an amount of money\./); assert.match(bad.text, /name="description" value="Kept while fixing"/);
+  assert.equal(part().description, 'Old descripton');
+
+  // Saved: every detail, back to the same search, and the corrected number is on the past entry too.
+  const ok = await save({ part_number: 'EDT-101', description: 'New description', category: 'Fire', manufacturer: '', cost: '14' });
+  assert.equal(ok.status, 302); assert.equal(ok.location, '/admin/catalog?q=EDT');
+  assert.deepEqual([part().part_number, part().description, part().category, part().manufacturer, part().cost_cents, part().active], ['EDT-101', 'New description', 'Fire', null, 1400, 1]);
+  assert.equal(line(), 'EDT-101');
+  const log = db.prepare("SELECT detail FROM activity_log WHERE action = 'Catalog part edited' ORDER BY id DESC LIMIT 1").get().detail;
+  assert.match(log, /^EDT-101: number EDT-100 → EDT-101, description, category, manufacturer, cost \(1 past entry follow\)$/); assert.doesNotMatch(log, /14|12\.50/);   // never the amount
+
+  // Unticking the box stops it being suggested; nothing is deleted, and ticking it brings it back.
+  const suggest = async (q) => JSON.parse((await tech.get('/catalog/suggest?q=' + encodeURIComponent(q))).text).map((r) => r.n);
+  assert.deepEqual(await suggest('EDT-10'), ['EDT-101']);
+  await owner.post(`/admin/catalog/${id}`, { part_number: 'EDT-101', description: 'New description', category: 'Fire', cost: '14' }, { page: `/admin/catalog/${id}/edit` });   // box not ticked
+  assert.equal(part().active, 0); assert.deepEqual(await suggest('EDT-10'), []);
+  assert.match((await owner.get(`${page}?q=EDT-101`)).text.replace(/\s+/g, ' '), /EDT-101[\s\S]*?<td>Hidden<\/td>/);
+  await save({ part_number: 'EDT-101', description: 'New description', category: 'Fire', cost: '14' });
+  assert.equal(part().active, 1);
+  // Saving with nothing changed says so and logs nothing.
+  const before = db.prepare("SELECT COUNT(*) n FROM activity_log WHERE action = 'Catalog part edited'").get().n;
+  await save({ part_number: 'EDT-101', description: 'New description', category: 'Fire', cost: '14.00' });
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM activity_log WHERE action = 'Catalog part edited'").get().n, before);
+  assert.equal((await owner.get('/admin/catalog/999999/edit')).status, 302);
+});

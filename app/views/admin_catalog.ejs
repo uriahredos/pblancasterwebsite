@@ -1,30 +1,8 @@
 <%- include('partials/header', { wide: true }) %>
 <h1>Parts catalog</h1>
-<p class="lede"><%= total %> <%= total === 1 ? 'part' : 'parts' %>. These are offered as suggestions when someone types a part on the parts form. People can still type a part that is not listed.</p>
+<p class="lede"><%= total %> <%= total === 1 ? 'part' : 'parts' %>. These are offered as suggestions when someone types a part. People can still type a part that is not listed. To change one, search for it and press Edit.</p>
 <%- include('partials/errors') %>
 
-<h2>Import a list</h2>
-<form method="post" action="/admin/catalog/import" enctype="multipart/form-data" class="filters card">
-  <input type="hidden" name="_csrf" value="<%= csrf %>">
-  <label class="grow">CSV file <span class="hint">Needs a part number column; description, category, manufacturer and cost are used if present. A selling price and any other columns are ignored and not stored.</span>
-    <input type="file" name="file" accept=".csv,.txt,text/csv" required>
-  </label>
-  <div class="filter-actions"><button class="btn primary small" type="submit">Import</button></div>
-</form>
-<p class="hint">Importing again updates descriptions and adds new parts. It never removes any.</p>
-
-<h2>Add one part</h2>
-<form method="post" action="/admin/catalog" class="filters card">
-  <input type="hidden" name="_csrf" value="<%= csrf %>">
-  <label>Part number <input name="part_number" value="<%= values.part_number || '' %>" maxlength="100" required autocomplete="off"></label>
-  <label class="grow">Description <input name="description" value="<%= values.description || '' %>" maxlength="300" autocomplete="off"></label>
-  <label>Category <span class="hint">Optional</span> <input name="category" value="<%= values.category || '' %>" maxlength="100" autocomplete="off"></label>
-  <label>Manufacturer <span class="hint">Optional</span> <input name="manufacturer" value="<%= values.manufacturer || '' %>" maxlength="100" autocomplete="off"></label>
-  <label>Cost each <span class="hint">Optional</span> <input name="cost" value="<%= values.cost || '' %>" inputmode="decimal" maxlength="20" autocomplete="off"></label>
-  <div class="filter-actions"><button class="btn primary small" type="submit">Add part</button></div>
-</form>
-
-<h2>Parts</h2>
 <form method="get" class="filters card">
   <label class="grow">Search <input type="search" name="q" value="<%= q %>" placeholder="Part number, description or category"></label>
   <div class="filter-actions"><button class="btn primary small" type="submit">Search</button><a class="btn small" href="/admin/catalog">Clear</a></div>
@@ -36,13 +14,39 @@
   <tbody>
   <% rows.forEach(function (p) { %>
   <tr class="<%= p.active ? '' : 'off' %>">
-    <td><%= p.part_number %></td><td><%= p.description %></td><td><%= p.category %></td><td><%= p.manufacturer %></td><td class="num"><%= p.cost_cents === null ? '' : '$' + dollars(p.cost_cents) %></td>
+    <td class="nowrap"><a href="/admin/catalog/<%= p.id %>/edit<%= q ? '?q=' + encodeURIComponent(q) : '' %>"><strong><%= p.part_number %></strong></a></td><td><%= p.description %></td><td><%= p.category %></td><td><%= p.manufacturer %></td><td class="num"><%= p.cost_cents === null ? '' : '$' + dollars(p.cost_cents) %></td>
     <td><%= p.active ? 'Yes' : 'Hidden' %></td>
-    <td><form method="post" action="/admin/catalog/<%= p.id %>/toggle"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="q" value="<%= q %>"><button class="link" type="submit"><%= p.active ? 'Hide' : 'Show' %></button></form></td>
+    <td><a class="btn small" href="/admin/catalog/<%= p.id %>/edit<%= q ? '?q=' + encodeURIComponent(q) : '' %>">Edit</a></td>
   </tr>
   <% }) %>
   <% if (!rows.length) { %><tr><td colspan="7" class="empty"><%= q ? 'No parts match.' : 'The catalog is empty. Import a list above.' %></td></tr><% } %>
   </tbody>
 </table>
 </div>
+
+<details class="mod-tools spaced" <%= errors.length && values.part_number !== undefined ? 'open' : '' %>>
+<summary>Add one part</summary>
+<form method="post" action="/admin/catalog" class="filters thread-tools">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Part number <input name="part_number" value="<%= values.part_number || '' %>" maxlength="100" required autocomplete="off"></label>
+  <label class="grow">Description <input name="description" value="<%= values.description || '' %>" maxlength="300" autocomplete="off"></label>
+  <label>Category <span class="hint">Optional</span> <input name="category" value="<%= values.category || '' %>" maxlength="100" autocomplete="off"></label>
+  <label>Manufacturer <span class="hint">Optional</span> <input name="manufacturer" value="<%= values.manufacturer || '' %>" maxlength="100" autocomplete="off"></label>
+  <label>Cost each <span class="hint">Optional</span> <input name="cost" value="<%= values.cost || '' %>" inputmode="decimal" maxlength="20" autocomplete="off"></label>
+  <div class="filter-actions"><button class="btn primary small" type="submit">Add part</button></div>
+</form>
+
+</details>
+<details class="mod-tools" <%= errors.length && values.part_number === undefined ? 'open' : '' %>>
+<summary>Import a list</summary>
+<form method="post" action="/admin/catalog/import" enctype="multipart/form-data" class="filters thread-tools">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label class="grow">CSV file <span class="hint">Needs a part number column; description, category, manufacturer and cost are used if present. A selling price and any other columns are ignored and not stored.</span>
+    <input type="file" name="file" accept=".csv,.txt,text/csv" required>
+  </label>
+  <div class="filter-actions"><button class="btn primary small" type="submit">Import</button></div>
+</form>
+<p class="hint thread-tools">Importing again updates descriptions and adds new parts. It never removes any.</p>
+
+</details>
 <%- include('partials/footer') %>

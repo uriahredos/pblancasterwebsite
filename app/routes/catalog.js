@@ -146,6 +146,62 @@ router.post('/admin/catalog/import', requireAdmin, (req, res, next) => upload(re
   res.redirect('/admin/catalog');
 });
 
+// ---- Changing one part ---------------------------------------------------------------------------------------
+// The catalog is one list for every branch. A part is never deleted, because stock, counts and past parts entries
+// point at it: it is corrected here, or switched off so it stops being suggested.
+const getPart = (id) => (/^\d+$/.test(String(id)) ? db.prepare('SELECT * FROM parts_catalog WHERE id = ?').get(id) : null);
+const backTo = (q) => '/admin/catalog' + (q ? '?q=' + encodeURIComponent(q) : '');
+/** How many lines on past parts entries name this part: they follow it when its number is corrected. */
+const usesOf = (partNumber) => db.prepare('SELECT COUNT(*) AS n FROM parts_items WHERE TRIM(part_name) = ? COLLATE NOCASE').get(partNumber).n;
+
+function editPage(req, res, part, extra = {}) {
+  const inv = require('../inventory');
+  res.status(extra.errors ? 400 : 200).render('admin_catalog_edit', {
+    title: `Edit ${part.part_number}`, part, q: clean(req.query.q || req.body.q, 60), uses: usesOf(part.part_number), errors: [],
+    values: { part_number: part.part_number, description: part.description, category: part.category || '', manufacturer: part.manufacturer || '', cost: inv.dollars(part.cost_cents), active: part.active }, ...extra,
+  });
+}
+
+router.get('/admin/catalog/:id/edit', requireAdmin, (req, res) => {
+  const part = getPart(req.params.id);
+  if (!part) return res.redirect('/admin/catalog');
+  editPage(req, res, part);
+});
+
+router.post('/admin/catalog/:id', requireAdmin, (req, res) => {
+  const part = getPart(req.params.id);
+  if (!part) return res.redirect('/admin/catalog');
+  const inv = require('../inventory');
+  const values = { part_number: clean(req.body.part_number, 100), description: clean(req.body.description, 300), manufacturer: clean(req.body.manufacturer, 100),
+    category: clean(req.body.category, 100), cost: clean(req.body.cost, 20), active: req.body.active === '1' ? 1 : 0 };
+  const errors = [];
+  const cost = values.cost ? inv.cents(values.cost) : null;
+  if (values.cost && cost === null) errors.push('The cost does not look like an amount of money.');
+  if (!values.part_number) errors.push('Enter the part number.');
+  else if (db.prepare('SELECT 1 FROM parts_catalog WHERE part_number = ? AND id <> ?').get(values.part_number, part.id)) errors.push('Another part already has that number.');
+  if (errors.length) return editPage(req, res, part, { errors, values });
+
+  const changed = [];
+  if (values.part_number !== part.part_number) changed.push(`number ${part.part_number} → ${values.part_number}`);
+  if (values.description !== (part.description || '')) changed.push('description');
+  if ((values.category || null) !== (part.category || null)) changed.push('category');
+  if ((values.manufacturer || null) !== (part.manufacturer || null)) changed.push('manufacturer');
+  if (cost !== part.cost_cents) changed.push('cost');                       // the amount itself stays out of the activity log
+  if (values.active !== part.active) changed.push(values.active ? 'suggested again' : 'no longer suggested');
+  let carried = 0;
+  db.transaction(() => {
+    db.prepare('UPDATE parts_catalog SET part_number = ?, description = ?, manufacturer = ?, category = ?, cost_cents = ?, active = ? WHERE id = ?')
+      .run(values.part_number, values.description, values.manufacturer || null, values.category || null, cost, values.active, part.id);
+    // Past parts entries name the part by its number, so a corrected number is corrected there too: they stay tied to the part.
+    if (values.part_number.toLowerCase() !== part.part_number.toLowerCase()) {
+      carried = db.prepare('UPDATE parts_items SET part_name = ? WHERE TRIM(part_name) = ? COLLATE NOCASE').run(values.part_number, part.part_number).changes;
+    }
+  })();
+  if (changed.length) activity.log(req.user, 'Catalog part edited', `${values.part_number}: ${changed.join(', ')}${carried ? ` (${carried} past ${carried === 1 ? 'entry' : 'entries'} follow)` : ''}`);
+  flash(req, 'ok', changed.length ? `${values.part_number} saved.` : 'Nothing was changed.');
+  res.redirect(backTo(clean(req.body.q, 60)));
+});
+
 router.post('/admin/catalog/:id/toggle', requireAdmin, (req, res) => {
   db.prepare('UPDATE parts_catalog SET active = 1 - active WHERE id = ?').run(req.params.id);
   res.redirect('/admin/catalog' + (req.body.q ? '?q=' + encodeURIComponent(req.body.q) : ''));
