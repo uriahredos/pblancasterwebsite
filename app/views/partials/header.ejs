@@ -5,7 +5,7 @@
    if (user && typeof branchChoices !== 'undefined' && branchChoices.length) {
      var lookingAt = user.viewBranch === null ? null : branchChoices.filter(function (b) { return b.id === user.viewBranch; })[0];
      officeLabel = user.viewBranch === null ? 'Corporate' : lookingAt ? lookingAt.name + ' Branch' : officeLabel;
-   } %><html lang="en"<%- signedIn ? ' data-in data-lock-after="' + lockAfterMs + '"' : '' %><%- signedIn && typeof fresh !== 'undefined' && fresh ? ' data-fresh' : '' %>>
+   } %><html lang="en" data-theme="dark"<%- signedIn ? ' data-in data-lock-after="' + lockAfterMs + '"' : '' %><%- signedIn && typeof fresh !== 'undefined' && fresh ? ' data-fresh' : '' %>>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">

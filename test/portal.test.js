@@ -835,6 +835,13 @@ test('logo banner and light/dark switch are on every page', async () => {
   for (const color of ['#00b10b', '#005bb9', '#00314f']) assert.ok(css.includes(color), color);
   assert.match(css, /:root\[data-theme="dark"\]/);
   assert.match(css, /:root:not\(\[data-theme="light"\]\)/);
+  // Dark is the default: every page arrives marked dark, signed in or not, and only a saved choice of light changes it.
+  assert.match(login, /<html lang="en" data-theme="dark">/);
+  assert.match((await (await loggedIn('tech1')).get('/')).text, /<html lang="en" data-theme="dark" data-in /);
+  assert.match((await c.get('/offline.html')).text, /<html lang="en" data-theme="dark">/);
+  const early = (await c.get('/theme.js')).text;
+  assert.match(early, /setAttribute\('data-theme', saved === 'light' \? 'light' : 'dark'\)/);
+  assert.doesNotMatch(early, /prefers-color-scheme/);
 });
 
 test('an admin can change a person\'s name, username and email after the account exists', async () => {
@@ -2892,7 +2899,7 @@ test('the lock: closing the site or leaving it idle asks for Face ID, fingerprin
   const c = await loggedIn('lock1');
   const sid = () => db.prepare("SELECT sid FROM sessions WHERE json_extract(data, '$.userId') = ? ORDER BY expires DESC").get(userId('lock1')).sid;
   const home = (await c.get('/')).text;
-  assert.match(home, /<html lang="en" data-in data-lock-after="600000" data-fresh>/);    // just signed in: the page marks this tab as open (10 minutes: not plainly a desk computer)
+  assert.match(home, /<html lang="en" data-theme="dark" data-in data-lock-after="600000" data-fresh>/);    // just signed in: the page marks this tab as open (10 minutes: not plainly a desk computer)
   assert.doesNotMatch((await c.get('/')).text, /data-fresh/);                             // once only
 
   // The page reports that the site was closed and reopened. Everything is shut until they unlock.

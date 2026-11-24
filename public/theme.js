@@ -1,8 +1,9 @@
-// Runs before the page is drawn so a saved light/dark choice applies without a flash.
+// Runs before the page is drawn so the light/dark choice applies without a flash.
+// The site is dark unless this person has chosen light with the switch (the page itself arrives marked dark).
 (function () {
   var saved = null;
   try { saved = localStorage.getItem('theme'); } catch (e) {}
-  if (saved === 'light' || saved === 'dark') document.documentElement.setAttribute('data-theme', saved);
+  document.documentElement.setAttribute('data-theme', saved === 'light' ? 'light' : 'dark');
   // A touch screen with no mouse is a phone or tablet, and the site locks sooner on those than on a desk computer.
   // An iPad tells websites it is a Mac, so the site cannot work this out by itself: this note tells it.
   try {

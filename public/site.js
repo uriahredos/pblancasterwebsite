@@ -806,7 +806,7 @@
   }
 
   document.addEventListener('DOMContentLoaded', function () {
-    // Light / dark switch. With no saved choice the site follows the phone or computer setting.
+    // Light / dark switch. The site is dark until someone chooses light here; the choice is kept on that device.
     var toggle = document.getElementById('theme-toggle');
     if (toggle) {
       toggle.addEventListener('click', function () {
