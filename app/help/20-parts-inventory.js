@@ -284,10 +284,10 @@ module.exports = [
     perms: ['inventory.manage'],
     pages: [],
     intro: 'Use Move parts to shift parts from one place to another by hand, or to put a delivery straight into a place.',
-    where: 'Main menu: Parts, then Inventory. The Move parts form is below the table.',
+    where: 'Main menu: Parts, then Inventory. The Move parts form is at the top of the page.',
     steps: [
       'Open **Parts** in the main menu and choose **Inventory**.',
-      'Open **Move parts or record a delivery** below the list.',
+      'Find **Move parts or record a delivery** at the top of the page. It is always open.',
       'In **From**, choose the place the parts are leaving. For new stock, leave it on **A delivery (new stock)**.',
       'In **To**, choose the place the parts are going.',
       'Type the **Part number** exactly as it is in the catalog, and the number in **How many**.',

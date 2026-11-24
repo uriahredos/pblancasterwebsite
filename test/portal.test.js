@@ -8789,9 +8789,13 @@ test('parts section: a short menu, tabs for the pages that belong together, and 
   assert.deepEqual(tabs((await owner.get('/admin/parts/audit')).text), ['/admin/parts', '/admin/parts/audit*', '/admin/parts/summary']);
   assert.deepEqual(tabs((await owner.get('/admin/weekly')).text), ['/admin/parts', '/admin/parts/audit', '/admin/parts/summary*']);
   assert.deepEqual(tabs((await owner.get('/admin/catalog')).text), []); assert.deepEqual(tabs((await t.get('/parts')).text), []);
-  // The Inventory page leads with the list; moving parts and adding places are folded away until wanted.
+  // On the Inventory page, adding places is folded away until wanted.
   const inv = (await owner.get('/admin/inventory')).text;
-  for (const s of ['Move parts or record a delivery', 'Add a vehicle', 'Add another location']) assert.match(inv, new RegExp(`<details class="mod-tools[^"]*">\\s*<summary>${s}</summary>`));
+  for (const s of ['Add a vehicle', 'Add another location']) assert.match(inv, new RegExp(`<details class="mod-tools[^"]*">\\s*<summary>${s}</summary>`));
+  // Moving parts is the everyday job here: it sits at the top of the page, always open, above the list of places.
+  assert.match(inv, /<section class="panel inv-move"[^>]*>\s*<div class="panel-head"><h2 id="move-h">Move parts or record a delivery<\/h2><\/div>\s*<form method="post" action="\/admin\/inventory\/moves"/);
+  assert.ok(inv.indexOf('class="panel inv-move"') < inv.indexOf('<table'), 'above the table');
+  assert.doesNotMatch(inv, /<summary>Move parts or record a delivery<\/summary>/);
   // Every box where a part is typed offers the catalog, and still takes anything typed.
   assert.match(inv, /<input name="part_number"[^>]*data-catalog/);
   assert.match((await owner.get('/admin/stock')).text, /<input name="part_number"[^>]*data-catalog/);

@@ -1663,3 +1663,20 @@ td.reports-to .meta { display: block; }
 .oncall-show { margin: 0 0 1rem; }
 .oncall-show label { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; margin: 0; font-weight: 700; }
 .oncall-show select { width: auto; max-width: 100%; min-width: min(100%, 18rem); margin: 0; }
+
+/* Inventory: Move parts or record a delivery, always open at the top of the page */
+.inv-move { overflow: visible; margin: 0 0 1.25rem; }
+.inv-move .panel-head { border-radius: 13px 13px 0 0; }
+.inv-move-form { display: grid; gap: .9rem; margin: 0; }
+.inv-move-form label { display: grid; gap: .3rem; margin: 0; min-width: 0; font-weight: 700; position: relative; }
+.inv-move-form input, .inv-move-form select { width: 100%; min-width: 0; margin: 0; }
+.inv-move-where { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: .75rem; align-items: end; }
+.inv-move-arrow { align-self: end; padding: 0 .1rem .55rem; font-size: 1.5rem; line-height: 1; font-weight: 800; color: var(--pb-green); }
+.inv-move-what { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(5.5rem, .6fr) minmax(0, 1.6fr) auto; gap: .75rem; align-items: end; }
+.inv-move-what .btn { min-width: 8rem; margin: 0; }
+@media (max-width: 720px) {
+  .inv-move-where { grid-template-columns: minmax(0, 1fr); }
+  .inv-move-arrow { justify-self: center; padding: 0; transform: rotate(90deg); }
+  .inv-move-what { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); }
+  .inv-move-part, .inv-move-what .btn { grid-column: 1 / -1; }
+}
