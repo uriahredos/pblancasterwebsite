@@ -1689,3 +1689,6 @@ td.reports-to .meta { display: block; }
 .catalog-edit-grid .w2 { grid-column: span 2; } .catalog-edit-grid .w4 { grid-column: span 4; }
 .catalog-edit .choice, .catalog-edit .hint, .catalog-edit .filter-actions { margin: 0; }
 @media (max-width: 640px) { .catalog-edit-grid { grid-template-columns: minmax(0, 1fr); } .catalog-edit-grid .w2, .catalog-edit-grid .w4 { grid-column: auto; } }
+
+/* A closed count's inventory: the total line under its parts */
+table.closed-place tfoot td { border-top: 2px solid var(--line); border-bottom: 0; }

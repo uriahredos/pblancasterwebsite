@@ -195,12 +195,22 @@ router.get('/admin/inventory/count/:id/export.csv', exporter, (req, res) => {
     counts.closedFigures(audit.id).map((r) => [office, r.location, inv.KINDS[r.kind], r.part_number, r.description, r.quantity, money(r.cost_cents), r.cost_cents === null ? '' : money(r.cost_cents * r.quantity)]));
 });
 
+// One inventory of a closed count (the warehouse, or one vehicle), for Excel.
+router.get('/admin/inventory/count/:id/:loc/export.csv', exporter, (req, res) => {
+  const audit = auditOf(req); const place = audit ? inv.location(req.params.loc) : null;
+  if (!audit || audit.branch_id !== req.user.workBranch || audit.status !== 'closed' || !place || place.branch_id !== audit.branch_id) return forbidden(res);
+  const office = (db.prepare('SELECT name FROM branches WHERE id = ?').get(audit.branch_id) || {}).name;
+  sendCsv(res, `inventory-${slug(office)}-${slug(place.name)}-${audit.month}.csv`, ['Branch', 'Location', 'Kind', 'Part number', 'Description', 'On hand', 'Cost each', 'Value'],
+    counts.closedFigures(audit.id, place.id).map((r) => [office, r.location, inv.KINDS[r.kind], r.part_number, r.description, r.quantity, money(r.cost_cents), r.cost_cents === null ? '' : money(r.cost_cents * r.quantity)]));
+});
+
 router.get('/admin/inventory/count/:id', requireLogin, (req, res) => {
   const audit = auditOf(req);
   if (!audit || audit.branch_id !== req.user.workBranch || (!maySee(req.user) && !mayCountAll(req.user))) return forbidden(res);
   const showCost = mayApprove(req.user) || access.can(req.user, 'inventory.manage') || access.can(req.user, 'catalog.manage');
   if (audit.status === 'closed') {
-    return res.render('admin_inventory_closed', { title: `Inventory, ${counts.monthName(audit.month)}`, audit, rows: counts.closedFigures(audit.id), monthName: counts.monthName, dollars: inv.dollars, showCost,
+    // A closed month opens as a list of its inventories; each one has its own page and its own export.
+    return res.render('admin_inventory_closed', { title: `Inventory, ${counts.monthName(audit.month)}`, audit, places: counts.closedPlaces(audit.id), kinds: inv.KINDS, monthName: counts.monthName, dollars: inv.dollars, showCost,
       closedBy: audit.closed_by ? db.prepare('SELECT display_name FROM users WHERE id = ?').get(audit.closed_by) : null });
   }
   res.render('admin_inventory_count_one', { title: `Count for ${counts.monthName(audit.month)}`, audit, ...counts.progress(audit), monthName: counts.monthName, dollars: inv.dollars, showCost,
@@ -244,7 +254,21 @@ function sheetPage(req, res, extra = {}) {
     backToCount: mayCountAll(req.user) && audit.branch_id === req.user.workBranch, errors: [], added: '', finished: counts.finishedAt(audit, place), ...extra });
   return null;
 }
-router.get('/admin/inventory/count/:id/:loc', requireLogin, (req, res) => { sheetPage(req, res); });
+/** One inventory of a closed count, as it stood: for the people who see the count, and a technician for their own vehicle. */
+function closedPlace(req, res, audit) {
+  const place = inv.location(req.params.loc);
+  const own = place && place.kind === 'vehicle' && place.user_id === req.user.id;
+  const staff = audit.branch_id === req.user.workBranch && (maySee(req.user) || mayCountAll(req.user));
+  if (!place || place.branch_id !== audit.branch_id || !(staff || own)) return forbidden(res);
+  res.render('admin_inventory_closed_place', { title: `${place.name}, ${counts.monthName(audit.month)}`, audit, place, rows: counts.closedFigures(audit.id, place.id), kinds: inv.KINDS, monthName: counts.monthName, dollars: inv.dollars,
+    showCost: mayApprove(req.user) || access.can(req.user, 'inventory.manage') || access.can(req.user, 'catalog.manage'), backToMonth: staff,
+    technician: place.user_id ? (db.prepare('SELECT display_name FROM users WHERE id = ?').get(place.user_id) || {}).display_name : null });
+}
+router.get('/admin/inventory/count/:id/:loc', requireLogin, (req, res) => {
+  const audit = auditOf(req);
+  if (audit && audit.status === 'closed') return closedPlace(req, res, audit);
+  sheetPage(req, res);
+});
 
 router.post('/admin/inventory/count/:id/:loc', requireLogin, (req, res) => {
   const found = sheetPage(req, res, { justLoad: true });

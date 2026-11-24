@@ -1,21 +1,27 @@
 <%- include('partials/header', { wide: true }) %>
 <p class="back"><a class="back-link" href="/admin/inventory/count">Inventory count</a></p>
 <h1>Inventory, <%= monthName(audit.month) %></h1>
-<% var total = rows.reduce(function (n, r) { return n + (r.cost_cents === null ? 0 : r.cost_cents * r.quantity); }, 0); %>
-<p class="lede">Closed <%= fmtDateTime(audit.closed_at) %><% if (closedBy) { %> by <%= closedBy.display_name %><% } %>. These are the figures as they stood then; nothing done since changes them.<% if (showCost) { %> Value at that day's costs: <strong>$<%= dollars(total) %></strong>.<% } %></p>
-<% if (can('inventory.export')) { %><p><a class="btn small" href="/admin/inventory/count/<%= audit.id %>/export.csv">Export these figures</a></p><% } %>
+<% var total = places.reduce(function (n, p) { return n + p.value_cents; }, 0); %>
+<p class="lede">Closed <%= fmtDateTime(audit.closed_at) %><% if (closedBy) { %> by <%= closedBy.display_name %><% } %>. Each inventory below is as it stood then; nothing done since changes it.<% if (showCost) { %> Value of all of them at that day's costs: <strong>$<%= dollars(total) %></strong>.<% } %></p>
 <div class="table-wrap">
-<table>
-  <thead><tr><th>Location</th><th>Part</th><th>Description</th><th class="num">On hand</th><% if (showCost) { %><th class="num">Cost each</th><th class="num">Value</th><% } %></tr></thead>
+<table class="closed-places">
+  <thead><tr><th>Inventory</th><th>Kind</th><th>Technician</th><th class="num">Different parts</th><th class="num">Items</th><% if (showCost) { %><th class="num">Value</th><% } %><th></th></tr></thead>
   <tbody>
-  <% rows.forEach(function (r) { %>
+  <% places.forEach(function (p) { %>
   <tr>
-    <td><%= r.location %></td><td><strong><%= r.part_number %></strong></td><td><%= r.description %></td><td class="num"><%= r.quantity %></td>
-    <% if (showCost) { %><td class="num"><%= r.cost_cents === null ? '' : '$' + dollars(r.cost_cents) %></td><td class="num"><%= r.cost_cents === null ? '' : (r.quantity < 0 ? '-' : '') + '$' + dollars(Math.abs(r.cost_cents * r.quantity)) %></td><% } %>
+    <td><a href="/admin/inventory/count/<%= audit.id %>/<%= p.id %>"><strong><%= p.name %></strong></a></td>
+    <td><%= kinds[p.kind] %></td>
+    <td><%= p.technician || '' %></td>
+    <td class="num"><%= p.parts %></td>
+    <td class="num"><%= p.units %></td>
+    <% if (showCost) { %><td class="num"><%= (p.value_cents < 0 ? '-' : '') + '$' + dollars(Math.abs(p.value_cents)) %></td><% } %>
+    <td class="row-actions"><a class="btn small" href="/admin/inventory/count/<%= audit.id %>/<%= p.id %>">Open</a><% if (can('inventory.export')) { %> <a class="btn small" href="/admin/inventory/count/<%= audit.id %>/<%= p.id %>/export.csv" data-no-soft download>Export</a><% } %></td>
   </tr>
   <% }) %>
-  <% if (!rows.length) { %><tr><td colspan="<%= showCost ? 6 : 4 %>" class="empty">No location held anything when this month was closed.</td></tr><% } %>
+  <% if (!places.length) { %><tr><td colspan="<%= showCost ? 7 : 6 %>" class="empty">No location held anything when this month was closed.</td></tr><% } %>
   </tbody>
 </table>
 </div>
+<% if (can('inventory.export') && places.length > 1) { %><p class="filter-actions"><a class="btn small" href="/admin/inventory/count/<%= audit.id %>/export.csv" data-no-soft download>Export all of them in one file</a></p><% } %>
+<p class="hint">Exports are CSV files, which open in Excel.</p>
 <%- include('partials/footer') %>

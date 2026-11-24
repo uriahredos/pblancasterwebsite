@@ -372,7 +372,7 @@ module.exports = [
       'If a difference looks wrong, have the place counted again. Saving a new number replaces the old one.',
       'Under **Close the count**, type your password in **Type your password to close the count** and choose **Continue**.',
       'Choose the **Close** button with the month on it, and confirm.',
-      'To see it later, open **Inventory count** and choose **Open** next to the month under **Closed counts**.',
+      'To see it later, open **Inventory count** and choose **Open** next to the month under **Closed counts**. The month opens as a list of its inventories: the warehouse and each vehicle. Choose **Open** on one to see just that inventory.',
     ],
     tips: [
       'Closing cannot be undone. It corrects the records to match the count, clears the **To check** marks in the places counted, and keeps a copy of every figure as that month\'s inventory.',
@@ -396,7 +396,7 @@ module.exports = [
       'Choose **Export by location** for one line per part in each place: the warehouse, every vehicle and any other place.',
       'Choose **Export totals** for one line per part, with how many are in the main warehouse, in vehicles and in other locations.',
       'For one vehicle or one place, choose **Open** on its row, then choose **Export this location** below its parts table.',
-      'For the figures of a closed count, choose **Inventory count**, choose **Open** next to the month, then choose **Export these figures**.',
+      'For the figures of a closed count, choose **Inventory count** and choose **Open** next to the month. Choose **Export** beside one inventory for just that one, or **Export all of them in one file** under the list.',
       'Open the saved file in Excel.',
     ],
     tips: [

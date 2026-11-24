@@ -57,7 +57,8 @@ const monthName = (m) => (isMonth(m) ? `${MONTHS[Number(m.slice(5)) - 1]} ${m.sl
 const get = (id) => (/^\d+$/.test(String(id)) ? db.prepare('SELECT * FROM inv_audits WHERE id = ?').get(id) : null);
 const open = (branchId) => db.prepare("SELECT * FROM inv_audits WHERE branch_id = ? AND status = 'open'").get(branchId) || null;
 const past = (branchId) => db.prepare(
-  `SELECT a.*, u.display_name AS closed_name FROM inv_audits a LEFT JOIN users u ON u.id = a.closed_by
+  `SELECT a.*, u.display_name AS closed_name, (SELECT COUNT(DISTINCT s.location_id) FROM inv_snapshots s WHERE s.audit_id = a.id) AS places
+   FROM inv_audits a LEFT JOIN users u ON u.id = a.closed_by
    WHERE a.branch_id = ? AND a.status = 'closed' ORDER BY a.month DESC`).all(branchId);
 
 /** Start a month's count. Returns its id, or a sentence saying why not. */
@@ -127,12 +128,26 @@ function close(audit, userId) {
   })();
 }
 
-/** A closed month's figures: one row per part per location, as they stood when it was closed. */
-function closedFigures(auditId) {
+/** A closed month's figures: one row per part per location, as they stood when it was closed. `locationId`: one place only. */
+function closedFigures(auditId, locationId = null) {
   return db.prepare(
-    `SELECT l.name AS location, l.kind, c.part_number, c.description, s.quantity, s.cost_cents FROM inv_snapshots s
+    `SELECT l.id AS location_id, l.name AS location, l.kind, c.part_number, c.description, s.quantity, s.cost_cents FROM inv_snapshots s
      JOIN inv_locations l ON l.id = s.location_id JOIN parts_catalog c ON c.id = s.catalog_id
-     WHERE s.audit_id = ? ORDER BY CASE l.kind WHEN 'warehouse' THEN 0 WHEN 'vehicle' THEN 1 ELSE 2 END, l.name COLLATE NOCASE, c.part_number`).all(auditId);
+     WHERE s.audit_id = ? ${locationId ? 'AND s.location_id = ?' : ''}
+     ORDER BY CASE l.kind WHEN 'warehouse' THEN 0 WHEN 'vehicle' THEN 1 ELSE 2 END, l.name COLLATE NOCASE, c.part_number`).all(...(locationId ? [auditId, locationId] : [auditId]));
+}
+
+/**
+ * A closed month as its separate inventories: one entry for each place that held something, with its totals.
+ * The warehouse first, then the vehicles, then anything else.
+ */
+function closedPlaces(auditId) {
+  return db.prepare(
+    `SELECT l.id, l.name, l.kind, u.display_name AS technician, COUNT(*) AS parts, SUM(s.quantity) AS units,
+            SUM(CASE WHEN s.cost_cents IS NULL THEN 0 ELSE s.cost_cents * s.quantity END) AS value_cents
+     FROM inv_snapshots s JOIN inv_locations l ON l.id = s.location_id LEFT JOIN users u ON u.id = l.user_id
+     WHERE s.audit_id = ? GROUP BY l.id
+     ORDER BY CASE l.kind WHEN 'warehouse' THEN 0 WHEN 'vehicle' THEN 1 ELSE 2 END, l.name COLLATE NOCASE`).all(auditId);
 }
 
 /** Set an open count aside: what was counted is thrown away and nothing else changes. */
@@ -153,4 +168,4 @@ function vehicleToCount(user) {
   return `/admin/inventory/count/${a.id}/${v.id}`;
 }
 
-module.exports = { isMonth, monthName, get, open, past, start, sheet, count, progress, close, closedFigures, discard, vehicleToCount, finishedAt, finish, reopen };
+module.exports = { isMonth, monthName, get, open, past, start, sheet, count, progress, close, closedFigures, closedPlaces, discard, vehicleToCount, finishedAt, finish, reopen };

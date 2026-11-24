@@ -13,12 +13,12 @@
 <h2>Closed counts</h2>
 <div class="table-wrap">
 <table>
-  <thead><tr><th>Month</th><th>Closed</th><th>By</th><th></th></tr></thead>
+  <thead><tr><th>Month</th><th class="num">Inventories</th><th>Closed</th><th>By</th><th></th></tr></thead>
   <tbody>
   <% past.forEach(function (a) { %>
-  <tr><td><strong><%= monthName(a.month) %></strong></td><td class="nowrap"><%= fmtDateTime(a.closed_at) %></td><td><%= a.closed_name || '' %></td><td><a href="/admin/inventory/count/<%= a.id %>">Open</a></td></tr>
+  <tr><td><a href="/admin/inventory/count/<%= a.id %>"><strong><%= monthName(a.month) %></strong></a></td><td class="num"><%= a.places %></td><td class="nowrap"><%= fmtDateTime(a.closed_at) %></td><td><%= a.closed_name || '' %></td><td><a class="btn small" href="/admin/inventory/count/<%= a.id %>">Open</a></td></tr>
   <% }) %>
-  <% if (!past.length) { %><tr><td colspan="4" class="empty">No count has been closed yet.</td></tr><% } %>
+  <% if (!past.length) { %><tr><td colspan="5" class="empty">No count has been closed yet.</td></tr><% } %>
   </tbody>
 </table>
 </div>

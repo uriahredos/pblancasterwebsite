@@ -8180,8 +8180,34 @@ test('inventory: a count sets what was counted against the records, closing corr
   await cam.post(`${page}/${audit.id}/${truck}`, { [`qty_${p1}`]: '50' }, { page: '/parts' });
   assert.equal(inv.onHand(truck, p1), 1); assert.deepEqual(figures()[2], ['Truck 88', 'CNT-1', 3, 250]);
   const closed = (await owner.get(`${page}/${audit.id}`)).text.replace(/\s+/g, ' ');
-  assert.match(closed, /<h1>Inventory, February 2031<\/h1>/); assert.match(closed, /<td>Truck 88<\/td><td><strong>CNT-1<\/strong><\/td><td>Count test part<\/td><td class="num">3<\/td> <td class="num">\$2\.50<\/td><td class="num">\$7\.50<\/td>/);
-  assert.match((await owner.get(page)).text, /<strong>February 2031<\/strong>/);
+  // The month opens as a list of its inventories, one line each: the parts themselves are inside, not blended together here.
+  assert.match(closed, /<h1>Inventory, February 2031<\/h1>/);
+  assert.match(closed, new RegExp(`<a href="${page}/${audit.id}/${truck}"><strong>Truck 88</strong></a></td> <td>Vehicle</td>`));
+  assert.match(closed, new RegExp(`<a class="btn small" href="${page}/${audit.id}/${truck}">Open</a> <a class="btn small" href="${page}/${audit.id}/${truck}/export.csv" data-no-soft download>Export</a>`));
+  assert.match(closed, new RegExp(`<a href="${page}/${audit.id}/${wh}"><strong>Main warehouse</strong></a>`));
+  assert.match(closed, /Export all of them in one file/); assert.doesNotMatch(closed, /Count test part/);
+  // One inventory by itself: its own parts, its own total, a way back to the month, and nothing from the other places.
+  const one = (await owner.get(`${page}/${audit.id}/${truck}`)).text.replace(/\s+/g, ' ');
+  assert.match(one, /<h1>Truck 88<\/h1>/); assert.match(one, new RegExp(`<p class="back"><a class="back-link" href="${page}/${audit.id}">Inventory, February 2031</a></p>`));
+  assert.match(one, /<td class="nowrap"><strong>CNT-1<\/strong><\/td><td>Count test part<\/td><td class="num">3<\/td> <td class="num">\$2\.50<\/td><td class="num">\$7\.50<\/td>/);
+  assert.match(one, /<tfoot><tr><td colspan="2"><strong>Total<\/strong><\/td><td class="num"><strong>3<\/strong><\/td>/); assert.match(one, /Value at that day's costs: <strong>\$7\.50<\/strong>/);
+  assert.equal((one.match(/<tr> <td class="nowrap">/g) || []).length, figures().filter((f) => f[0] === 'Truck 88').length);
+  assert.match(one, new RegExp(`href="${page}/${audit.id}/${truck}/export.csv" data-no-soft download>Export for Excel</a>`));
+  // Its export holds that inventory and no other; the whole month is still one file for whoever wants it.
+  const csv = async (url) => (await owner.get(url)).text.trim().split(/\r?\n/).slice(1);
+  const truckCsv = await csv(`${page}/${audit.id}/${truck}/export.csv`);
+  assert.deepEqual(truckCsv.map((l) => l.split(',').slice(1, 4).join(',')), figures().filter((f) => f[0] === 'Truck 88').map((f) => `Truck 88,Vehicle,${f[1]}`));
+  assert.ok(truckCsv[0].endsWith(',3,2.50,7.50'));
+  assert.equal((await csv(`${page}/${audit.id}/export.csv`)).length, counts.closedFigures(audit.id).length);
+  assert.ok((await csv(`${page}/${audit.id}/${wh}/export.csv`)).every((l) => l.split(',')[1] === 'Main warehouse'));
+  // The technician sees what their own vehicle was counted at (without costs), not anyone else's place, and exports nothing.
+  const own = (await cam.get(`${page}/${audit.id}/${truck}`)).text.replace(/\s+/g, ' ');
+  assert.match(own, /<h1>Truck 88<\/h1>/); assert.match(own, /<strong>CNT-1<\/strong>/); assert.doesNotMatch(own, /\$\d|Export for Excel|class="back-link"/);
+  assert.equal((await cam.get(`${page}/${audit.id}/${wh}`)).status, 403);
+  assert.equal((await cam.get(`${page}/${audit.id}/${truck}/export.csv`)).status, 403);
+  assert.equal((await owner.get(`${page}/${audit.id}/999999`)).status, 403);
+  const months = (await owner.get(page)).text.replace(/\s+/g, ' ');
+  assert.match(months, new RegExp(`<a href="${page}/${audit.id}"><strong>February 2031</strong></a></td><td class="num">${counts.closedPlaces(audit.id).length}</td>`));
   await owner.post(page, { month: '2031-02' }, P);                                             // that month is done
   assert.equal(db.prepare('SELECT COUNT(*) n FROM inv_audits WHERE branch_id = ?').get(home).n, 1);
   // Setting a count aside throws away what was counted and changes nothing else.
