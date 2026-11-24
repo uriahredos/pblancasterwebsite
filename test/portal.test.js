@@ -8476,7 +8476,7 @@ test('on call: the picker holds the people of every office the person runs, and 
   const lc = await loggedIn('pick.lead'); const narrow = await listOf(lc);
   assert.ok(narrow.includes('value="Nell Nearby"')); assert.ok(!narrow.includes('Abe Away'));
   assert.match((await owner.get('/oncall')).text, /<input name="name"[^>]*list="oncall-people" data-fills-phone data-picks-person/);
-  assert.match((await owner.get('/oncall')).text, /pick someone from any office you run/); assert.match((await lc.get('/oncall')).text, /pick someone from this office/);
+  assert.match((await owner.get('/oncall')).text, /Someone from another office goes on their own/); assert.doesNotMatch((await lc.get('/oncall')).text, /Someone from another office goes on their own/);
   // Someone who does not keep the schedule is sent no list of names and numbers.
   assert.doesNotMatch((await tech.get('/oncall')).text, /oncall-people/);
   // Picked from another office: the shift goes on that office's schedule, with what they cover. Typed by hand: the office being looked at.

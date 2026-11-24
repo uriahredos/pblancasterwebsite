@@ -109,26 +109,20 @@
 <datalist id="oncall-people"><% people.forEach(function (x) { %><option value="<%= x.name %>" data-id="<%= x.id %>" data-phone="<%= x.phone || '' %>" label="<%= x.office %>"></option><% }) %></datalist>
 <details class="mod-tools spaced" <%= typeof addOpen !== 'undefined' && addOpen ? 'open' : '' %>>
   <summary>Add someone to the schedule</summary>
-  <form method="post" action="/admin/oncall" class="stack thread-tools">
+  <form method="post" action="/admin/oncall" class="oncall-add">
     <input type="hidden" name="_csrf" value="<%= csrf %>">
-    <div class="two">
-      <label>First day <input type="date" name="start_on" value="<%= values.start_on || '' %>" required></label>
-      <label>Handed on <span class="hint">The day the next person takes over</span><input type="date" name="end_on" value="<%= values.end_on || '' %>" required></label>
+    <input type="hidden" name="user_id" value="">
+    <div class="oncall-add-grid">
+      <label class="w3">Name <input name="name" value="<%= values.name || '' %>" required maxlength="80" autocomplete="off" list="oncall-people" data-fills-phone data-picks-person placeholder="Search by name"></label>
+      <label class="w3">Phone <input name="phone" type="tel" value="<%= values.phone || '' %>" maxlength="30" autocomplete="off" placeholder="Filled in from their account"></label>
+      <label class="w2">First day <input type="date" name="start_on" value="<%= values.start_on || '' %>" required></label>
+      <label class="w2">Handed on <input type="date" name="end_on" value="<%= values.end_on || '' %>" required></label>
+      <label class="w2">Role <select name="role"><option value="tech" <%= values.role === 'backup' ? '' : 'selected' %>>On call</option><option value="backup" <%= values.role === 'backup' ? 'selected' : '' %>>Backup</option></select></label>
+      <label class="w3">Covers <input name="covers" value="<%= values.covers || '' %>" maxlength="60" autocomplete="off" placeholder="Optional, like Sprinkler"></label>
+      <label class="w3">Holiday <input name="note" value="<%= values.note || '' %>" maxlength="120" autocomplete="off" placeholder="Optional"></label>
     </div>
-    <div class="two">
-      <label>Name <span class="hint"><%= widePick ? 'Start typing to pick someone from any office you run. They go on their own office\'s schedule.' : 'Start typing to pick someone from this office' %></span><input name="name" value="<%= values.name || '' %>" required maxlength="80" autocomplete="off" list="oncall-people" data-fills-phone data-picks-person placeholder="Search by name"></label>
-      <input type="hidden" name="user_id" value="">
-      <label>Phone <span class="hint">Filled in from their account</span><input name="phone" type="tel" value="<%= values.phone || '' %>" maxlength="30" autocomplete="off"></label>
-    </div>
-    <div class="two">
-      <label>Role <select name="role"><option value="tech" <%= values.role === 'backup' ? '' : 'selected' %>>On call</option><option value="backup" <%= values.role === 'backup' ? 'selected' : '' %>>Backup</option></select></label>
-      <label>Holiday <span class="hint">Optional</span><input name="note" value="<%= values.note || '' %>" maxlength="120" autocomplete="off"></label>
-    </div>
-    <div class="two">
-      <label>Covers <span class="hint">Optional. For example Sprinkler, Security or Supervisor.</span><input name="covers" value="<%= values.covers || '' %>" maxlength="60" autocomplete="off"></label>
-    </div>
+    <p class="hint">Handed on is the day the next person takes over.<%= widePick ? ' Someone from another office goes on their own office\'s schedule.' : '' %> Add as many people as you need for the same days.</p>
     <button class="btn primary" type="submit">Add to the schedule</button>
-    <p class="hint">Add as many people as you need for the same days: three or four on call, and three or four backups.</p>
   </form>
 </details>
 <details class="mod-tools" <%= typeof importOpen !== 'undefined' && importOpen ? 'open' : '' %>>

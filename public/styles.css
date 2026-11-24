@@ -1633,3 +1633,13 @@ td.reports-to .meta { display: block; }
 
 /* On call: what a person covers (Sprinkler, Security...). */
 .oncall-covers { display: inline-block; padding: .05rem .5rem; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: .82rem; font-weight: 700; white-space: nowrap; }
+
+/* On call: the Add someone form, one tidy grid */
+.oncall-add { padding: .9rem; display: grid; grid-template-columns: minmax(0, 1fr); gap: .8rem; }
+.oncall-add-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .8rem; align-items: end; }
+.oncall-add-grid label { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: .3rem; margin: 0; position: relative; }
+.oncall-add-grid .w3 { grid-column: span 3; }
+.oncall-add-grid .w2 { grid-column: span 2; }
+.oncall-add-grid input, .oncall-add-grid select { width: 100%; min-width: 0; margin: 0; }
+.oncall-add .hint, .oncall-add .btn { margin: 0; }
+@media (max-width: 640px) { .oncall-add-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .oncall-add-grid .w3 { grid-column: span 2; } .oncall-add-grid .w2 { grid-column: span 1; } .oncall-add-grid .w2:nth-of-type(5) { grid-column: span 2; } }
