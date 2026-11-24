@@ -355,6 +355,25 @@ The **Corporate** view (every office at once) shows the company's own posts and 
 
 A market admin runs each office of their market: they keep its office page and can take down what its people posted.
 
+## Levels and roles (`app/permissions.js`)
+
+Each profile has a **level**, set as one choice on the profile page: their own team, their office, their market, or the whole company.
+It is stored as the profile's `scope` plus the `market.all` and `branches.all` permissions, which is what the rest of the site reads.
+
+A profile that can add and edit people (`users.manage`) is an **admin** at its level; one that can assign tasks but not that is a **manager**.
+A manager runs the day-to-day (requests, stock, fleet, training, tasks, on call, news). An admin also manages people and access and appoints the level below.
+
+| | Admin | Manager |
+| --- | --- | --- |
+| Company | Corporate admin | Corporate manager |
+| Market | Market admin | Market manager |
+| Office | Admin | Branch manager |
+| Team | | Manager (sees only the people assigned to them) |
+
+- Corporate admins appoint on **Corporate > Offices and admins** and **Corporate > Markets**. A market admin appoints within their market from **Users**.
+- Nobody hands out a profile holding something they lack. Backups hold every office, so that box only counts on a company-level profile.
+- The Corporate setup pages (offices, markets, company lists) need a corporate admin; a corporate manager sees and runs every office without them.
+
 ## Newsletters (`/newsletters`, `/admin/newsletters`)
 
 - Anyone with **Upload and remove the monthly newsletters** uploads a PDF (up to 25 MB) under **Team > Newsletters**, choosing its month. A title and up to four highlight lines are optional.

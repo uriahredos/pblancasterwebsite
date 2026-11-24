@@ -5,7 +5,7 @@
 <% if (created) { %>
 <div class="card stack created">
   <% if (created.what === 'appointed') { %>
-  <p><strong><%= created.name %></strong> is now an admin for the <%= created.office %> office. Their sign-in was off, so it has been switched on. They sign in as <strong><%= created.username %></strong>.</p>
+  <p><strong><%= created.name %></strong> is now <%= created.role === 'manager' ? 'a manager' : 'an admin' %> for the <%= created.office %> office. Their sign-in was off, so it has been switched on. They sign in as <strong><%= created.username %></strong>.</p>
   <% } else { %>
   <p>Account <strong><%= created.username %></strong> was created as an admin for the <%= created.office %> office.</p>
   <% } %>
@@ -14,19 +14,19 @@
 </div>
 <% } %>
 
-<h2 id="corporate">Corporate admins</h2>
+<h2 id="corporate">Corporate admins and managers</h2>
 <div class="card stack">
-  <p class="plain">Corporate admins see and manage every office: its people, logs, stock and settings. They add offices and appoint each office's admins.</p>
+  <p class="plain">Corporate admins see and manage every office: its people, logs, stock and settings. They add offices and appoint the people who run them. Corporate managers see and run every office day to day, without managing people or access.</p>
   <ul class="plain-list">
     <% corporate.forEach(function (c) { %>
     <li><span class="who-row"><%- include('partials/avatar', { who: c }) %><span><strong><%= c.display_name %></strong><span class="meta"><%= c.is_master ? 'Master account' : c.profile %><%= c.branch ? ' · ' + c.branch + ' office' : '' %><%= c.active ? '' : ' · sign-in off' %></span></span></span>
-      <% if (!c.is_master && c.id !== user.id) { %><form method="post" action="/admin/corporate/admins/<%= c.id %>/remove" data-confirm="Stop <%= c.display_name %> being a corporate admin? They will only see their own office."><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Stand down</button></form><% } %></li>
+      <% if (!c.is_master && c.id !== user.id) { %><form method="post" action="/admin/corporate/admins/<%= c.id %>/remove" data-confirm="Stand <%= c.display_name %> down from corporate? They will only see their own office."><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Stand down</button></form><% } %></li>
     <% }) %>
   </ul>
   <% if (corporateProfiles.length && everyone.length) { %>
   <form method="post" action="/admin/corporate/admins" class="filters">
     <input type="hidden" name="_csrf" value="<%= csrf %>">
-    <label class="grow">Make someone a corporate admin
+    <label class="grow">Make someone a corporate admin or manager
       <select name="user_id" required><option value="">Choose a person</option><% everyone.forEach(function (p) { %><option value="<%= p.id %>"><%= p.display_name %><%= p.branch ? ' · ' + p.branch : '' %></option><% }) %></select></label>
     <% if (corporateProfiles.length > 1) { %><label>Profile <select name="profile_id"><% corporateProfiles.forEach(function (p) { %><option value="<%= p.id %>"><%= p.name %></option><% }) %></select></label>
     <% } else { %><input type="hidden" name="profile_id" value="<%= corporateProfiles[0].id %>"><% } %>
@@ -42,27 +42,27 @@
   <% rows.forEach(function (b) { %>
   <li class="card stack" id="o<%= b.id %>">
     <div class="rec-head"><strong class="office-name"><% if (b.number) { %><span class="office-no"><%= b.number %></span> <% } %><%= b.name %> office</strong><time><%= b.people %> <%= b.people === 1 ? 'person' : 'people' %> signed up<%= b.off ? ', ' + b.off + ' without sign-in' : '' %></time></div>
-    <p class="plain"><strong>Admins</strong> <span class="meta">run this office on the site: its people, parts, trucks, tasks, training and announcements.</span></p>
+    <p class="plain"><strong>Admins and managers</strong> <span class="meta">run this office on the site: parts, trucks, tasks, training and announcements. An admin also manages its people.</span></p>
     <% if (!b.admins.length) { %><p class="flash warn">This office has no admin of its own yet. Until it does, only corporate admins can run it.</p><% } %>
     <ul class="plain-list">
       <% b.admins.forEach(function (a) { %>
       <li><span class="who-row"><%- include('partials/avatar', { who: a }) %><span><strong><%= a.display_name %></strong><span class="meta"><%= a.profile %><%= !a.active ? ' · sign-in off' : a.must_change_password ? ' · has not signed in yet' : '' %></span></span></span>
-        <form method="post" action="/admin/branches/<%= b.id %>/admins/<%= a.id %>/remove" data-confirm="Stop <%= a.display_name %> being an admin for <%= b.name %>?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Stand down</button></form></li>
+        <form method="post" action="/admin/branches/<%= b.id %>/admins/<%= a.id %>/remove" data-confirm="Stand <%= a.display_name %> down for <%= b.name %>?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Stand down</button></form></li>
       <% }) %>
     </ul>
     <% if (officeProfiles.length) { %>
     <details class="appoint" <%= values.office === b.id ? 'open' : '' %>>
-      <summary class="btn small">Add an admin for <%= b.name %></summary>
+      <summary class="btn small">Add an admin or manager for <%= b.name %></summary>
       <form method="post" action="/admin/branches/<%= b.id %>/admins" class="stack" data-no-live>
         <input type="hidden" name="_csrf" value="<%= csrf %>">
-        <% if (officeProfiles.length > 1) { %><label>Admin profile <select name="profile_id"><% officeProfiles.forEach(function (p) { %><option value="<%= p.id %>"><%= p.name %></option><% }) %></select></label>
+        <% if (officeProfiles.length > 1) { %><label>Role <select name="profile_id"><% officeProfiles.forEach(function (p) { %><option value="<%= p.id %>"><%= p.name %></option><% }) %></select></label>
         <% } else { %><input type="hidden" name="profile_id" value="<%= officeProfiles[0].id %>"><% } %>
         <% if (b.others.length) { %>
         <label>Who? <span class="hint">Start typing a name. People already listed in the <%= b.name %> office.</span>
           <input name="person" list="office-people-<%= b.id %>" value="<%= values.office === b.id ? values.person || '' : '' %>" required maxlength="80" autocomplete="off" placeholder="Search by name" data-picks-person></label>
         <input type="hidden" name="user_id" value="">
         <datalist id="office-people-<%= b.id %>"><% b.others.forEach(function (p) { %><option value="<%= p.display_name %>" data-id="<%= p.id %>"></option><% }) %></datalist>
-        <button class="btn primary" type="submit">Appoint admin</button>
+        <button class="btn primary" type="submit">Appoint</button>
         <% } else { %>
         <p class="hint">Nobody is listed in the <%= b.name %> office yet. Add its people first: choose <%= b.name %> in the office box beside your name, then open Users and add them (or load the contact list under Import). Then come back and pick the admin here.</p>
         <% } %>

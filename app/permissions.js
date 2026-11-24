@@ -66,6 +66,31 @@ const GROUPS = [
   ] },
 ];
 const ALL = GROUPS.flatMap((g) => g.items.map((i) => i[0]));
+
+// ---- Levels ---------------------------------------------------------------------------------------------------
+// How far a profile reaches, narrowest first. It is stored as the profile's scope plus two permissions, which is
+// what every check in the site reads; the profile page shows it as one choice so the three can never disagree.
+const LEVELS = [
+  ['team', 'Their own team', 'Only the people assigned to them. You choose their people on the Users page.'],
+  ['office', 'Their office', 'Everyone in their own office.'],
+  ['market', 'Their market', 'Every office in their market, one at a time.'],
+  ['company', 'The whole company', 'Every office, and the Corporate view of all of them together.'],
+];
+const LEVEL_PERMS = ['market.all', 'branches.all'];
+const levelOf = (scope, perms) => (scope === 'team' ? 'team' : perms.has('branches.all') ? 'company' : perms.has('market.all') ? 'market' : 'office');
+/** The scope and the level permissions that make up a level. The company holds the market too, so it can hand it out. */
+const forLevel = (level) => ({ scope: level === 'team' ? 'team' : 'all', perms: level === 'company' ? ['market.all', 'branches.all'] : level === 'market' ? ['market.all'] : [] });
+/** An admin adds people and changes access; a manager runs the day-to-day; anyone else is staff. */
+const kindOf = (perms) => (perms.has('users.manage') ? 'admin' : perms.has('tasks.assign') ? 'manager' : 'staff');
+const LEVEL_WORD = { company: 'Corporate', market: 'Market', office: 'Office', team: 'Team' };
+/** Where a profile sits in the chain of command: { level, kind, label, rank }. A higher rank is further up. */
+function position(scope, perms) {
+  const level = levelOf(scope, perms); const kind = kindOf(perms);
+  const rank = kind === 'staff' ? 0 : ['team', 'office', 'market', 'company'].indexOf(level) * 2 + (kind === 'admin' ? 2 : 1);
+  return { level, kind, rank, label: kind === 'staff' ? '' : level === 'team' ? 'Team manager' : `${LEVEL_WORD[level]} ${kind}` };
+}
+// What an admin has that a manager does not: people and access, the records behind the site, and the shared catalog.
+const ADMIN_ONLY = ['users.manage', 'profiles.manage', 'activity.view', 'backups', 'records.delete', 'complaints.review', 'catalog.manage'];
 // Sales is its own side of the site. Besides the two Sales profiles, only Admin and Corporate admin start with it.
 const SALES = ['sales.use', 'sales.manage'];
 const SUBMIT = ['parts.submit', 'training.submit', 'complaints.submit', 'inspections.submit', 'fleet.signout'];
@@ -75,7 +100,7 @@ const DEFAULTS = [
   { name: 'Technician', scope: 'all', perms: [...SUBMIT, 'forum.use'] },
   { name: 'Warehouse', scope: 'all', perms: [...SUBMIT, 'forum.use', 'parts.view', 'parts.manage', 'parts.audit', 'catalog.manage', 'stock.manage', 'inventory.manage', 'inventory.count', 'inventory.export', 'inspections.view', 'inspections.manage'] },
   { name: 'Manager', scope: 'team', perms: [...SUBMIT, 'forum.use', 'parts.view', 'parts.manage', 'parts.audit', 'training.view', 'training.manage', 'digest.weekly', 'inspections.view', 'inspections.manage', 'certs.manage', 'announcements.post', 'tasks.assign'] },
-  { name: 'Admin', scope: 'all', perms: ALL.filter((p) => p !== 'branches.all' && p !== 'market.all') },   // an admin runs one branch
+  { name: 'Admin', scope: 'all', perms: ALL.filter((p) => p !== 'branches.all' && p !== 'market.all' && p !== 'backups') },   // an admin runs one branch (backups hold every branch)
 ];
 
 db.exec(`
@@ -135,7 +160,7 @@ function migrate() {
       for (const d of DEFAULTS) createProfile(d.name, d.scope, d.perms);
     }
     const withoutProfile = db.prepare('SELECT id, role, can_review_complaints AS reviewer FROM users WHERE profile_id IS NULL').all();
-    const oneBranch = ALL.filter((p) => p !== 'branches.all' && p !== 'market.all');
+    const oneBranch = ALL.filter((p) => p !== 'branches.all' && p !== 'market.all' && p !== 'backups');
     const noComplaints = oneBranch.filter((p) => p !== 'complaints.review' && p !== 'backups');
     for (const u of withoutProfile) {
       let profileId;
@@ -171,6 +196,29 @@ function migrate() {
     if (!db.prepare("SELECT 1 FROM meta WHERE key = 'corporate_profile_1'").get()) {
       if (!db.prepare("SELECT 1 FROM profiles WHERE name = 'Corporate admin'").get()) createProfile('Corporate admin', 'all', ALL);
       db.prepare("INSERT INTO meta (key, value) VALUES ('corporate_profile_1', '1')").run();
+    }
+    // Managers: one profile for each level, made once. A manager runs the day-to-day (requests, stock, fleet, training,
+    // tasks, on call, news) without the admin's side: people, access, the activity log, records and the shared catalog.
+    if (!db.prepare("SELECT 1 FROM meta WHERE key = 'manager_profiles_1'").get()) {
+      const manager = ALL.filter((p) => !ADMIN_ONLY.includes(p) && !LEVEL_PERMS.includes(p) && !SALES.includes(p) && p !== 'digest.weekly');
+      for (const [name, level] of [['Branch manager', 'office'], ['Market manager', 'market'], ['Corporate manager', 'company']]) {
+        if (!profileByName(name)) createProfile(name, 'all', [...manager, ...forLevel(level).perms]);
+      }
+      db.prepare("INSERT INTO meta (key, value) VALUES ('manager_profiles_1', '1')").run();
+    }
+    // Backups hold every office, so only someone who sees every office can use them. The box is taken off the profiles
+    // where it did nothing, once: a market admin can then hand out an office admin profile (nobody grants what they lack).
+    if (!db.prepare("SELECT 1 FROM meta WHERE key = 'backups_company_only_1'").get()) {
+      db.prepare(`DELETE FROM profile_permissions WHERE permission = 'backups'
+                  AND profile_id NOT IN (SELECT profile_id FROM profile_permissions WHERE permission = 'branches.all')`).run();
+      db.prepare("INSERT INTO meta (key, value) VALUES ('backups_company_only_1', '1')").run();
+    }
+    // A profile that sees every office holds the market level too, so its people can appoint market admins and managers.
+    // (Profiles made before markets existed did not have it.) Given once.
+    if (!db.prepare("SELECT 1 FROM meta WHERE key = 'company_holds_market_1'").get()) {
+      db.prepare(`INSERT OR IGNORE INTO profile_permissions (profile_id, permission)
+                  SELECT profile_id, 'market.all' FROM profile_permissions WHERE permission = 'branches.all'`).run();
+      db.prepare("INSERT INTO meta (key, value) VALUES ('company_holds_market_1', '1')").run();
     }
     // Sales: two profiles made once, for the sales side of the site.
     if (!db.prepare("SELECT 1 FROM meta WHERE key = 'sales_profiles_1'").get()) {
@@ -284,7 +332,8 @@ function moderates(user, perm, authorId) {
 }
 
 /** May `actor` hand out (or edit) a profile holding these permissions? Only ones they hold themselves. */
-const canGrant = (actor, perms) => [...perms].every((p) => actor.perms.has(p));
+// (Backups hold every office, so the box does nothing on a profile that does not see every office: it is not counted there.)
+const canGrant = (actor, perms) => { const set = new Set(perms); return [...set].every((p) => actor.perms.has(p) || (p === 'backups' && !set.has('branches.all'))); };
 
 /**
  * May `actor` change `target`'s account? Never the master account (except the
@@ -305,6 +354,6 @@ function viewAsChoices(user) {
 }
 
 module.exports = {
-  viewAsChoices, GROUPS, ALL, SUBMIT, DEFAULTS, profileByName, permsOf, setPermissions, createProfile, ensureProfile,
+  viewAsChoices, GROUPS, ALL, SUBMIT, DEFAULTS, LEVELS, LEVEL_PERMS, levelOf, forLevel, kindOf, position, ADMIN_ONLY, profileByName, permsOf, setPermissions, createProfile, ensureProfile,
   loadAccess, marketOffices, can, visibleUserIds, canSee, canGrant, mayManage, moderates, migrate,
 };

@@ -5,13 +5,13 @@
 <%- include('partials/errors') %>
 <div class="table-wrap">
 <table>
-  <thead><tr><th>Profile</th><th>Sees</th><th class="num">Permissions</th><th class="num">People</th><th></th></tr></thead>
+  <thead><tr><th>Profile</th><th>Level</th><th class="num">Permissions</th><th class="num">People</th><th></th></tr></thead>
   <tbody>
-  <tr><td><span class="tag master">Master</span></td><td>Everyone</td><td class="num"><%= total %> of <%= total %></td><td class="num">1</td><td><span class="hint">Always everything. Cannot be changed.</span></td></tr>
+  <tr><td><span class="tag master">Master</span></td><td>The whole company</td><td class="num"><%= total %> of <%= total %></td><td class="num">1</td><td><span class="hint">Always everything. Cannot be changed.</span></td></tr>
   <% profiles.forEach(function (p) { %>
   <tr>
     <td><a href="/admin/profiles/<%= p.id %>"><strong><%= p.name %></strong></a></td>
-    <td><%= p.scope === 'team' ? 'Only their own people' : 'Everyone' %></td>
+    <td><%= p.runs %><% if (p.at.label) { %> <span class="tag"><%= p.at.kind === 'admin' ? 'Admin' : 'Manager' %></span><% } %></td>
     <td class="num"><%= p.perm_count %> of <%= total %></td>
     <td class="num"><%= p.people %></td>
     <td class="row-actions">

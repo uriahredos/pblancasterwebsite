@@ -11,7 +11,8 @@ const { clean } = require('../util');
 
 const router = express.Router();
 const isId = (v) => /^\d+$/.test(String(v || ''));
-const everyOffice = (req, res, next) => requireLogin(req, res, () => (req.user.allBranches ? next() : forbidden(res)));
+// The company's own lists (offices, services, who to contact) are kept by corporate admins.
+const everyOffice = (req, res, next) => requireLogin(req, res, () => (req.user.allBranches && access.can(req.user, 'users.manage') ? next() : forbidden(res)));
 const LISTED = '(u.active = 1 OR u.in_directory = 1)';
 const STATES = { AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas', CA: 'California', CO: 'Colorado', CT: 'Connecticut', DE: 'Delaware', DC: 'District of Columbia', FL: 'Florida', GA: 'Georgia', HI: 'Hawaii', ID: 'Idaho', IL: 'Illinois', IN: 'Indiana', IA: 'Iowa', KS: 'Kansas', KY: 'Kentucky', LA: 'Louisiana', ME: 'Maine', MD: 'Maryland', MA: 'Massachusetts', MI: 'Michigan', MN: 'Minnesota', MS: 'Mississippi', MO: 'Missouri', MT: 'Montana', NE: 'Nebraska', NV: 'Nevada', NH: 'New Hampshire', NJ: 'New Jersey', NM: 'New Mexico', NY: 'New York', NC: 'North Carolina', ND: 'North Dakota', OH: 'Ohio', OK: 'Oklahoma', OR: 'Oregon', PA: 'Pennsylvania', RI: 'Rhode Island', SC: 'South Carolina', SD: 'South Dakota', TN: 'Tennessee', TX: 'Texas', UT: 'Utah', VT: 'Vermont', VA: 'Virginia', WA: 'Washington', WV: 'West Virginia', WI: 'Wisconsin', WY: 'Wyoming' };
 
@@ -83,7 +84,7 @@ router.get('/contacts', requireLogin, (req, res) => {
     if (!g || g.title !== (c.grp || '')) { g = { title: c.grp || '', rows: [] }; s.groups.push(g); }
     g.rows.push(c);
   }
-  res.render('contacts', { title: 'Who to contact', wide: true, sections, q, total: db.prepare('SELECT COUNT(*) AS n FROM company_contacts').get().n, canManage: req.user.allBranches });
+  res.render('contacts', { title: 'Who to contact', wide: true, sections, q, total: db.prepare('SELECT COUNT(*) AS n FROM company_contacts').get().n, canManage: req.user.allBranches && access.can(req.user, 'users.manage') });
 });
 
 // Replace the whole list from the file prepared from the "Who To Contact" spreadsheet.

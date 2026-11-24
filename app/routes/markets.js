@@ -12,18 +12,19 @@ const { clean } = require('../util');
 
 const router = express.Router();
 const isId = (v) => /^\d+$/.test(String(v || ''));
-const everyOffice = (req, res, next) => requireLogin(req, res, () => (req.user.allBranches ? next() : forbidden(res)));
+const everyOffice = (req, res, next) => requireLogin(req, res, () => (req.user.allBranches && access.can(req.user, 'users.manage') ? next() : forbidden(res)));
 const market = (id) => (isId(id) ? db.prepare('SELECT * FROM markets WHERE id = ?').get(id) : null) || null;
 
 /** Profiles that make someone a market admin: every office in their market, but not every office. */
 const marketProfiles = () => db.prepare('SELECT id, name, scope FROM profiles ORDER BY name COLLATE NOCASE').all()
-  .map((p) => ({ ...p, perms: access.permsOf(p.id) })).filter((p) => p.perms.has('market.all') && !p.perms.has('branches.all'));
+  .map((p) => ({ ...p, perms: access.permsOf(p.id) })).filter((p) => p.perms.has('market.all') && !p.perms.has('branches.all'))
+  .sort((x, y) => access.position(y.scope, y.perms).rank - access.position(x.scope, x.perms).rank);   // the admin profile first
 const grantable = (req) => marketProfiles().filter((p) => access.canGrant(req.user, p.perms));
 
 // Once: a Market admin profile to hand out (an office admin's permissions, plus the market). It is an ordinary
 // profile afterwards and can be changed on the Profiles page.
 if (!db.prepare("SELECT 1 FROM meta WHERE key = 'market_admin_profile_1'").get()) {
-  if (!marketProfiles().length && !access.profileByName('Market admin')) access.createProfile('Market admin', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'backups'));
+  if (!marketProfiles().some((p) => p.perms.has('users.manage')) && !access.profileByName('Market admin')) access.createProfile('Market admin', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'backups'));
   db.prepare("INSERT INTO meta (key, value) VALUES ('market_admin_profile_1', ?)").run(new Date().toISOString());
 }
 
@@ -162,13 +163,14 @@ router.post('/admin/markets/:id/admins', everyOffice, (req, res) => {
   }
   if (!u || u.id === req.user.id) return page(req, res, { errors: [`Choose someone from one of the ${m.name} market's offices. A person who is not on the site yet is added under Users first.`] });
   db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(profile.id, u.id);
-  activity.log(req.user, 'Market admin appointed', `${u.display_name} for ${m.name} (${profile.name})`);
+  const what = access.kindOf(profile.perms) === 'admin' ? 'admin' : 'manager';
+  activity.log(req.user, `Market ${what} appointed`, `${u.display_name} for ${m.name} (${profile.name})`);
   if (!u.active) {
     db.prepare('UPDATE users SET active = 1 WHERE id = ?').run(u.id);
-    req.session.created = { username: u.username, name: u.display_name, password: auth.issueTemp(u.id), market: m.name };
+    req.session.created = { username: u.username, name: u.display_name, password: auth.issueTemp(u.id), market: m.name, role: what };
     return res.redirect('/admin/markets');
   }
-  flash(req, 'ok', `${u.display_name} is now an admin for the ${m.name} market.`);
+  flash(req, 'ok', `${u.display_name} is now ${what === 'admin' ? 'an admin' : 'a manager'} for the ${m.name} market.`);
   res.redirect(`/admin/markets#m${m.id}`);
 });
 // Stand a market admin down: back to the Technician profile, and signed out so the wider view ends at once.
@@ -180,7 +182,7 @@ router.post('/admin/markets/:id/admins/:uid/remove', everyOffice, (req, res) => 
     db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(tech.id, u.id);
     db.prepare("DELETE FROM sessions WHERE json_extract(data, '$.userId') = ?").run(u.id);
     activity.log(req.user, 'Market admin stood down', `${u.display_name}, ${m.name}`);
-    flash(req, 'ok', `${u.display_name} is no longer a market admin. They are on the Technician profile now; change it under Users if needed.`);
+    flash(req, 'ok', `${u.display_name} no longer runs that market. They are on the Technician profile now; change it under Users if needed.`);
   }
   res.redirect(m ? `/admin/markets#m${m.id}` : '/admin/markets');
 });

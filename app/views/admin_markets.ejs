@@ -1,10 +1,10 @@
 <%- include('partials/header', { wide: true }) %>
 <h1>Markets</h1>
-<p class="lede">A market is a group of offices. Each market can have its own admins, who run every office in it.</p>
+<p class="lede">A market is a group of offices. Each market can have its own admins and managers, who run every office in it.</p>
 <%- include('partials/errors') %>
 <% if (created) { %>
 <div class="card stack created">
-  <p><strong><%= created.name %></strong> is now an admin for the <%= created.market %> market. Their sign-in was off, so it has been switched on. They sign in as <strong><%= created.username %></strong>.</p>
+  <p><strong><%= created.name %></strong> is now <%= created.role === 'manager' ? 'a manager' : 'an admin' %> for the <%= created.market %> market. Their sign-in was off, so it has been switched on. They sign in as <strong><%= created.username %></strong>.</p>
   <p>Give them this temporary password. It is shown only this once, and they choose their own the first time they sign in.</p>
   <p class="code"><%= created.password %></p>
 </div>
@@ -31,26 +31,26 @@
     <div class="filter-actions"><button class="btn primary small" type="submit">Add to <%= m.name %></button></div>
   </form>
 
-  <h3 class="sub-h">Market admins</h3>
+  <h3 class="sub-h">Market admins and managers</h3>
   <% if (m.admins.length) { %>
   <ul class="market-offices">
     <% m.admins.forEach(function (a) { %>
     <li><span><strong><%= a.display_name %></strong> <span class="meta"><%= a.office %> · <%= a.profile %></span></span>
-      <form method="post" action="/admin/markets/<%= m.id %>/admins/<%= a.id %>/remove" data-no-live data-confirm="Stop <%= a.display_name %> being an admin for the <%= m.name %> market?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Stand down</button></form></li>
+      <form method="post" action="/admin/markets/<%= m.id %>/admins/<%= a.id %>/remove" data-no-live data-confirm="Stand <%= a.display_name %> down for the <%= m.name %> market?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Stand down</button></form></li>
     <% }) %>
   </ul>
   <% } else { %><p class="hint">This market has no admin of its own yet. Corporate admins and each office's own admin run its offices until it does.</p><% } %>
   <% if (adminProfiles.length && m.people.length) { %>
   <form method="post" action="/admin/markets/<%= m.id %>/admins" class="filters" data-no-live>
     <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="user_id" value="">
-    <label class="grow">Add a market admin <span class="hint">Start typing a name. People already listed in this market's offices.</span>
+    <label class="grow">Add a market admin or manager <span class="hint">Start typing a name. People already listed in this market's offices.</span>
       <input name="person" list="market-people-<%= m.id %>" required maxlength="80" autocomplete="off" placeholder="Search by name" data-picks-person></label>
     <datalist id="market-people-<%= m.id %>"><% m.people.forEach(function (p) { %><option value="<%= p.display_name %>" data-id="<%= p.id %>" label="<%= p.office %>"></option><% }) %></datalist>
     <% if (adminProfiles.length > 1) { %><label>Profile <select name="profile_id"><% adminProfiles.forEach(function (p) { %><option value="<%= p.id %>"><%= p.name %></option><% }) %></select></label>
     <% } else { %><input type="hidden" name="profile_id" value="<%= adminProfiles[0].id %>"><% } %>
     <div class="filter-actions"><button class="btn primary small" type="submit">Appoint</button></div>
   </form>
-  <% } else if (!adminProfiles.length) { %><p class="hint">No profile has "See and manage every office in their own market" yet. Tick it on a profile under Profiles to be able to appoint market admins.</p>
+  <% } else if (!adminProfiles.length) { %><p class="hint">No profile is set to the market level yet. Choose "Their market" as the level of a profile under Profiles to be able to appoint market admins.</p>
   <% } else if (m.offices.length) { %><p class="hint">Nobody is listed in this market's offices yet. Add people under Users first.</p><% } %>
 
   <details class="mod-tools spaced">

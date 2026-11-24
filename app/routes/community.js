@@ -384,7 +384,8 @@ router.post('/admin/people/import', requirePerm('users.manage'), (req, res, next
 // ---- Branches -----------------------------------------------------------------------
 // Only for people who can see every branch (the master account, or a profile with that tick-box).
 
-const everyBranch = (req, res, next) => requireLogin(req, res, () => (req.user.allBranches ? next() : forbidden(res)));
+// Adding offices and appointing the people who run them is for corporate admins: someone who sees every office and manages people.
+const everyBranch = (req, res, next) => requireLogin(req, res, () => (req.user.allBranches && access.can(req.user, 'users.manage') ? next() : forbidden(res)));
 
 // Choose which branch the logs, stock and other branch pages show.
 router.post('/branch/view', requireLogin, (req, res) => {
@@ -420,8 +421,10 @@ router.post('/view-as', requireLogin, (req, res) => {
 // Profiles that make someone an office's admin (they manage that office's people, and nothing outside it),
 // and profiles that make someone a corporate admin (every office).
 const profilePerms = () => db.prepare('SELECT p.id, p.name, p.scope FROM profiles p ORDER BY p.name COLLATE NOCASE').all().map((p) => ({ ...p, perms: access.permsOf(p.id) }));
-const officeAdminProfiles = () => profilePerms().filter((p) => p.scope === 'all' && p.perms.has('users.manage') && !p.perms.has('branches.all') && !p.perms.has('market.all'));
-const corporateProfiles = () => profilePerms().filter((p) => p.scope === 'all' && p.perms.has('branches.all'));
+// The profiles that run one office: its admins, and its managers (who run the day-to-day without managing people).
+const officeAdminProfiles = () => profilePerms().filter((p) => access.levelOf(p.scope, p.perms) === 'office' && access.kindOf(p.perms) !== 'staff')
+  .sort((x, y) => access.position(y.scope, y.perms).rank - access.position(x.scope, x.perms).rank);
+const corporateProfiles = () => profilePerms().filter((p) => p.scope === 'all' && p.perms.has('branches.all')).sort((x, y) => access.position(y.scope, y.perms).rank - access.position(x.scope, x.perms).rank);
 const grantable = (req, list) => list.filter((p) => access.canGrant(req.user, p.perms));
 
 function branchPage(req, res, extra = {}) {
@@ -493,7 +496,7 @@ router.post('/admin/branches/:id/admins', everyBranch, (req, res) => {
   const b = isId(req.params.id) ? db.prepare('SELECT * FROM branches WHERE id = ?').get(req.params.id) : null;
   if (!b) return res.redirect('/admin/branches');
   const profile = grantable(req, officeAdminProfiles()).find((p) => String(p.id) === String(req.body.profile_id));
-  if (!profile) return branchPage(req, res, { errors: ['Choose which admin profile they get.'], values: { office: b.id } });
+  if (!profile) return branchPage(req, res, { errors: ['Choose which profile they get.'], values: { office: b.id } });
   const auth = require('../auth');
   const inOffice = 'branch_id = ? AND is_master = 0 AND removed_at IS NULL';
   // The page sends the person's id; a name typed in full is taken too, when only one person in the office has it.
@@ -506,14 +509,15 @@ router.post('/admin/branches/:id/admins', everyBranch, (req, res) => {
   }
   if (!u || u.id === req.user.id) return branchPage(req, res, { errors: [`Choose someone from that office. A person who is not on the site yet is added under Users first, with ${b.name} chosen as the office.`], values: { office: b.id, person: typed } });
   db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(profile.id, u.id);
-  activity.log(req.user, 'Office admin appointed', `${u.display_name} for ${b.name} (${profile.name})`);
+  const what = access.kindOf(profile.perms) === 'admin' ? 'admin' : 'manager';
+  activity.log(req.user, `Office ${what} appointed`, `${u.display_name} for ${b.name} (${profile.name})`);
   if (!u.active) {
     // Listed but never able to sign in: their sign-in is switched on with a temporary password, shown once.
     db.prepare('UPDATE users SET active = 1 WHERE id = ?').run(u.id);
-    req.session.created = { username: u.username, name: u.display_name, password: auth.issueTemp(u.id), what: 'appointed', office: b.name };
+    req.session.created = { username: u.username, name: u.display_name, password: auth.issueTemp(u.id), what: 'appointed', office: b.name, role: what };
     return res.redirect('/admin/branches');
   }
-  flash(req, 'ok', `${u.display_name} is now an admin for the ${b.name} office.`);
+  flash(req, 'ok', `${u.display_name} is now ${what === 'admin' ? 'an admin' : 'a manager'} for the ${b.name} office.`);
   res.redirect(`/admin/branches#o${b.id}`);
 });
 
@@ -524,7 +528,7 @@ router.post('/admin/branches/:id/admins/:uid/remove', everyBranch, (req, res) =>
   if (u && tech && officeAdminProfiles().some((p) => p.id === u.profile_id) && access.canGrant(req.user, access.permsOf(u.profile_id))) {
     db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(tech.id, u.id);
     activity.log(req.user, 'Office admin stood down', u.display_name);
-    flash(req, 'ok', `${u.display_name} is no longer an office admin. They are on the Technician profile now; change it under Users if needed.`);
+    flash(req, 'ok', `${u.display_name} no longer runs that office. They are on the Technician profile now; change it under Users if needed.`);
   }
   res.redirect(`/admin/branches#o${req.params.id}`);
 });
@@ -535,8 +539,9 @@ router.post('/admin/corporate/admins', everyBranch, (req, res) => {
   const u = isId(req.body.user_id) ? db.prepare('SELECT * FROM users WHERE id = ? AND active = 1 AND is_master = 0').get(req.body.user_id) : null;
   if (!profile || !u || u.id === req.user.id) return branchPage(req, res, { errors: ['Choose a person and a corporate profile.'] });
   db.prepare('UPDATE users SET profile_id = ? WHERE id = ?').run(profile.id, u.id);
-  activity.log(req.user, 'Corporate admin appointed', `${u.display_name} (${profile.name})`);
-  flash(req, 'ok', `${u.display_name} is now a corporate admin and can see and manage every office.`);
+  const corpAdmin = access.kindOf(profile.perms) === 'admin';
+  activity.log(req.user, corpAdmin ? 'Corporate admin appointed' : 'Corporate manager appointed', `${u.display_name} (${profile.name})`);
+  flash(req, 'ok', corpAdmin ? `${u.display_name} is now a corporate admin and can see and manage every office.` : `${u.display_name} is now a corporate manager and can see and run every office.`);
   res.redirect('/admin/branches#corporate');
 });
 

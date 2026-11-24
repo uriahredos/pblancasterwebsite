@@ -246,7 +246,7 @@ router.get('/branches/photo/:id', requireLogin, (req, res) => {
 
 // The people who keep a branch's page: anyone who can see every branch, or whoever manages people in that branch.
 // Whoever runs the office: its own admin, an admin of its market, or a corporate admin.
-const mayEditBranch = (user, b) => user.allBranches || (user.scope === 'all' && access.can(user, 'users.manage') && (user.branch_id === b.id || (user.marketBranches || []).includes(b.id)));
+const mayEditBranch = (user, b) => user.scope === 'all' && access.can(user, 'users.manage') && (user.allBranches || user.branch_id === b.id || (user.marketBranches || []).includes(b.id));
 const getBranch = (id) => (isId(id) ? db.prepare('SELECT * FROM branches WHERE id = ?').get(id) : null);
 
 function branchPage(req, res, b, extra = {}) {

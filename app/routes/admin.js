@@ -647,10 +647,13 @@ router.post('/admin/users/:id/:op', requirePerm('users.manage'), (req, res) => {
 // ---- Profiles: what each kind of account may do ----------------------------
 
 const getProfile = (id) => (/^\d+$/.test(String(id)) ? db.prepare('SELECT * FROM profiles WHERE id = ?').get(id) : null);
+// Listed from the top of the chain of command down; profiles at the same place go by name.
 const profileRows = () => db.prepare(
   `SELECT p.*, (SELECT COUNT(*) FROM users u WHERE u.profile_id = p.id) AS people,
           (SELECT COUNT(*) FROM profile_permissions pp WHERE pp.profile_id = p.id) AS perm_count
-   FROM profiles p ORDER BY p.name COLLATE NOCASE`).all();
+   FROM profiles p ORDER BY p.name COLLATE NOCASE`).all()
+  .map((p) => { const at = access.position(p.scope, access.permsOf(p.id)); return { ...p, at, runs: access.LEVELS.find((l) => l[0] === at.level)[1] }; })
+  .sort((x, y) => y.at.rank - x.at.rank);
 
 router.get('/admin/profiles', auth.requireEveryBranch('profiles.manage'), (req, res) => {
   res.render('admin_profiles', { title: 'Profiles', profiles: profileRows(), total: access.ALL.length, errors: [], values: {} });
@@ -672,7 +675,11 @@ router.post('/admin/profiles', auth.requireEveryBranch('profiles.manage'), (req,
 
 function profilePage(req, res, profile, extra = {}) {
   res.status(extra.errors ? 400 : 200).render('admin_profile_edit', {
-    title: `Profile: ${profile.name}`, profile, groups: access.GROUPS, held: access.permsOf(profile.id),
+    title: `Profile: ${profile.name}`, profile, held: access.permsOf(profile.id),
+    // The level is one choice at the top of the page, so its two permissions are not offered as boxes.
+    groups: access.GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => !access.LEVEL_PERMS.includes(i[0])) })).filter((g) => g.items.length),
+    levels: access.LEVELS.map((l) => ({ key: l[0], label: l[1], hint: l[2], locked: !access.forLevel(l[0]).perms.every((p) => access.can(req.user, p)) })),
+    level: access.levelOf(profile.scope, access.permsOf(profile.id)),
     people: db.prepare('SELECT display_name FROM users WHERE profile_id = ? ORDER BY display_name COLLATE NOCASE').all(profile.id),
     errors: [], values: profile, ...extra,
   });
@@ -688,7 +695,11 @@ router.post('/admin/profiles/:id', auth.requireEveryBranch('profiles.manage'), (
   const profile = getProfile(req.params.id);
   if (!profile) return res.redirect('/admin/profiles');
   const name = clean(req.body.name, 40);
-  const scope = req.body.scope === 'team' ? 'team' : 'all';
+  const held0 = access.permsOf(profile.id);
+  // The level chosen at the top of the page. It can only be raised as far as the person saving it reaches themselves.
+  const asked = access.LEVELS.some((l) => l[0] === req.body.level) ? req.body.level : null;
+  const level = asked && access.forLevel(asked).perms.every((p) => access.can(req.user, p)) ? asked : null;
+  const scope = level ? access.forLevel(level).scope : asked ? profile.scope : req.body.scope === 'team' ? 'team' : 'all';
   const errors = [];
   const clash = access.profileByName(name);
   if (name.length < 2) errors.push('Enter a name for the profile.');
@@ -698,7 +709,9 @@ router.post('/admin/profiles/:id', auth.requireEveryBranch('profiles.manage'), (
   // You can only tick or untick boxes you hold yourself; the rest stay as they were.
   const ticked = new Set([].concat(req.body.perms || []));
   const held = access.permsOf(profile.id);
-  const perms = access.ALL.filter((p) => (access.can(req.user, p) ? ticked.has(p) : held.has(p)));
+  const perms = access.ALL.filter((p) => (access.LEVEL_PERMS.includes(p) && asked
+    ? (level && access.can(req.user, p) ? access.forLevel(level).perms.includes(p) : held0.has(p))
+    : access.can(req.user, p) ? ticked.has(p) : held.has(p)));
   // Do not let someone lock themselves out of this page by unticking it on their own profile.
   if (!req.user.is_master && req.user.profile_id === profile.id && !perms.includes('profiles.manage')) perms.push('profiles.manage');
 
@@ -710,7 +723,9 @@ router.post('/admin/profiles/:id', auth.requireEveryBranch('profiles.manage'), (
   const removed = [...held].filter((p) => !perms.includes(p));
   const what = [];
   if (name !== profile.name) what.push(`renamed from ${profile.name}`);
-  if (scope !== profile.scope) what.push(scope === 'team' ? 'now sees only their own people' : 'now sees everyone');
+  const was = access.levelOf(profile.scope, held); const now = access.levelOf(scope, new Set(perms));
+  const levelName = (k) => access.LEVELS.find((l) => l[0] === k)[1].toLowerCase();
+  if (was !== now) what.push(`now runs ${levelName(now)} (was ${levelName(was)})`);
   if (added.length) what.push(`added: ${added.join(', ')}`);
   if (removed.length) what.push(`removed: ${removed.join(', ')}`);
   if (what.length) activity.log(req.user, 'Profile changed', `${name}: ${what.join('; ')}`);

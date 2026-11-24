@@ -164,8 +164,8 @@
         [user.scope === 'all' ? 'users.manage' : 'no.such.permission', '/admin/import', 'Import', is('/admin/import')]
       ] },
       { name: 'Corporate', items: user.allBranches ? [
-        ['', '/admin/branches', 'Offices and admins', is('/admin/branches')],
-        ['', '/admin/markets', 'Markets', is('/admin/markets')],
+        ['users.manage', '/admin/branches', 'Offices and admins', is('/admin/branches')],
+        ['users.manage', '/admin/markets', 'Markets', is('/admin/markets')],
         ['profiles.manage', '/admin/profiles', 'Profiles', is('/admin/profiles')],
         ['backups', '/admin/backups', 'Backups', is('/admin/backups')],
         ['users.manage', '/admin/security', 'Security check', is('/admin/security')]

@@ -96,6 +96,8 @@ before(async () => {
   makeUser('tech2', 'Uma Tech');
   // In these checks the Admin profile is the kind that runs the whole site, so it can see every branch.
   db.prepare("INSERT OR IGNORE INTO profile_permissions (profile_id, permission) SELECT id, 'branches.all' FROM profiles WHERE name = 'Admin'").run();
+  // ...and so it holds backups, which only a profile that sees every office keeps.
+  db.prepare("INSERT OR IGNORE INTO profile_permissions (profile_id, permission) SELECT id, 'backups' FROM profiles WHERE name = 'Admin'").run();
   await new Promise((r) => { server = app.listen(0, r); });
   base = `http://127.0.0.1:${server.address().port}`;
 });
@@ -732,10 +734,10 @@ test('a database from the first release is upgraded in place without losing data
     { username: 'plainadmin', profile: 'Admin (no complaints)', is_master: 0 },
     { username: 'rev', profile: 'Complaint reviewer', is_master: 0 },
   ]);
-  assert.equal(r.adminPerms, r.all - 2);                          // everything except seeing every branch (the master's) or a whole market
+  assert.equal(r.adminPerms, r.all - 3);                          // everything except seeing every branch (the master's), a whole market, and backups (which hold every branch)
   assert.ok(!r.plain.includes('complaints.review') && !r.plain.includes('backups') && r.plain.includes('users.manage'));
   assert.ok(r.rev.includes('complaints.review') && !r.rev.includes('parts.view'));
-  assert.deepEqual(r.profiles, ['Admin', 'Admin (no complaints)', 'Complaint reviewer', 'Corporate admin', 'Manager', 'Sales', 'Sales manager', 'Technician', 'Warehouse']);
+  assert.deepEqual(r.profiles, ['Admin', 'Admin (no complaints)', 'Branch manager', 'Complaint reviewer', 'Corporate admin', 'Corporate manager', 'Manager', 'Market manager', 'Sales', 'Sales manager', 'Technician', 'Warehouse']);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -1005,7 +1007,10 @@ test('profiles: add a new one, tick permissions, and it takes effect straight aw
   assert.equal((await owner.post('/admin/profiles', { name: 'dispatcher' }, { page: '/admin/profiles' })).status, 400);
 
   const form = (await owner.get(`/admin/profiles/${pid}`)).text;
-  for (const key of access.ALL) assert.match(form, new RegExp(`name="perms" value="${key.replace('.', '\\.')}"`));
+  // Every permission is a box, except the two that make up the level, which is one choice at the top.
+  for (const key of access.ALL.filter((k) => !access.LEVEL_PERMS.includes(k))) assert.match(form, new RegExp(`name="perms" value="${key.replace('.', '\\.')}"`));
+  for (const key of access.LEVEL_PERMS) assert.doesNotMatch(form, new RegExp(`name="perms" value="${key.replace('.', '\\.')}"`));
+  assert.deepEqual([...form.matchAll(/<input type="radio" name="level" value="(\w+)" (checked)?/g)].map((x) => [x[1], Boolean(x[2])]), [['team', false], ['office', true], ['market', false], ['company', false]]);
 
   makeUser('disp1', 'Dina Dispatcher', { profile: 'Dispatcher' });
   const disp = await loggedIn('disp1');
@@ -1273,7 +1278,7 @@ test('activity log records admin-side changes and never anything about complaint
   assert.deepEqual(log.map((r) => r.action), ['Person added', 'Person edited', 'Password reset', 'Account disabled', 'Profile changed', 'Stock count']);
   assert.ok(log.every((r) => r.username === 'owner'));
   assert.match(log[1].detail, /name Log Me → Logan Me, profile → Warehouse/);
-  assert.match(log[4].detail, /now sees only their own people; added: parts\.view; removed: training\.view/);
+  assert.match(log[4].detail, /now runs their own team \(was their office\); added: parts\.view; removed: training\.view/);
   assert.ok(!/complaint|secrecy/i.test(JSON.stringify(log)));
   assert.ok(!JSON.stringify(log).includes('correct horse')); // never a password
 
@@ -3607,7 +3612,7 @@ test('corporate: corporate admins appoint an admin for each office; office admin
   const pick = (await owner.get(`/admin/branches?office=${eph}`)).text.replace(/\s+/g, ' ');
   assert.match(pick, new RegExp(`<input name="person" list="office-people-${eph}"[^>]*data-picks-person>`)); assert.match(pick, new RegExp(`<option value="Ed Ephrata" data-id="${edId}"></option>`));
   assert.doesNotMatch(pick, /name="username"|or someone new/);
-  assert.match((await owner.post(`/admin/branches/${eph}/admins`, { profile_id: String(profileId('Corporate admin')), user_id: String(edId) }, { page: '/admin/branches' })).text, /Choose which admin profile/);   // not a way to make corporate admins
+  assert.match((await owner.post(`/admin/branches/${eph}/admins`, { profile_id: String(profileId('Corporate admin')), user_id: String(edId) }, { page: '/admin/branches' })).text, /Choose which profile they get/);   // not a way to make corporate admins
   await owner.post(`/admin/branches/${eph}/admins`, { profile_id: String(adminProfile), person: 'ed ephrata', user_id: '' }, { page: '/admin/branches' });   // typed in full, as the page sends it without scripts
   const ed = db.prepare("SELECT * FROM users WHERE username = 'ed.ephrata'").get();
   assert.deepEqual([ed.branch_id, ed.profile_id, ed.must_change_password, ed.active], [eph, adminProfile, 1, 1]);   // his sign-in is switched on with a temporary password
@@ -3641,7 +3646,7 @@ test('corporate: corporate admins appoint an admin for each office; office admin
   // Corporate admins: appointed from existing people; they then see every office. Standing down ends it at once.
   await owner.post('/admin/corporate/admins', { user_id: String(ed.id), profile_id: String(profileId('Corporate admin')) }, { page: '/admin/branches' });
   page = (await owner.get('/admin/branches')).text.replace(/\s+/g, ' ');
-  assert.match(page, /Corporate admins<\/h2>[\s\S]*Ed Ephrata<\/strong><span class="meta">Corporate admin · Ephrata office/);
+  assert.match(page, /Corporate admins and managers<\/h2>[\s\S]*Ed Ephrata<\/strong><span class="meta">Corporate admin · Ephrata office/);
   assert.equal((await edc.get('/admin/branches')).status, 200);
   assert.match((await edc.get('/')).text, /data-office-pick/);
   await edc.post('/branch/view', { branch: 'all' }, { page: '/' });
@@ -3692,7 +3697,7 @@ test('company: the office list loads once, offices say what they do, and anyone 
   assert.equal(db.prepare('SELECT COUNT(*) n FROM branch_services WHERE branch_id = 1').get().n, 6);
   assert.ok(db.prepare('SELECT COUNT(*) n FROM inspection_items WHERE branch_id = ?').get(boise).n > 0);   // each new office has its own truck checklist
   // The pages that list offices stay usable: the chooser and the Corporate page show offices in use, not all 233.
-  assert.ok(((await owner.get('/')).text.match(/<option value="\d+"/g) || []).length < 40);
+  assert.ok(((await owner.get('/')).text.match(/<option value="\d+"/g) || []).length < 45);
   assert.ok(((await owner.get('/admin/branches')).text.match(/class="card stack" id="o\d+"/g) || []).length < 12);
   assert.match((await owner.get('/admin/branches?oq=boise')).text, new RegExp(`href="/admin/branches\\?office=${boise}#o${boise}"`));
 
@@ -9167,6 +9172,89 @@ test('each office its own, each market together: shout-outs, events, newsletters
     db.prepare("DELETE FROM announcement_reads WHERE announcement_id IN (SELECT id FROM announcements WHERE title LIKE 'REACH%')").run(); db.prepare("DELETE FROM announcements WHERE title LIKE 'REACH%'").run();
     db.prepare("DELETE FROM newsletters WHERE title LIKE 'REACH%'").run();
     db.prepare("UPDATE users SET active = 0, birthday = NULL WHERE username LIKE 'reach.%'").run();
+    db.prepare('UPDATE branches SET market_id = NULL WHERE market_id = ?').run(m); db.prepare('DELETE FROM markets WHERE id = ?').run(m);
+  })();
+});
+
+test('six roles: a level on each profile, a manager at every level who runs the day-to-day, and admins who also manage people and appoint', async () => {
+  const owner = await loggedIn('owner'); const now = new Date().toISOString();
+  // The ladder, from the profiles themselves: where each sits and what it is called.
+  const at = (name) => { const p = access.profileByName(name); return access.position(p.scope, access.permsOf(p.id)); };
+  assert.deepEqual(['Corporate admin', 'Corporate manager', 'Market manager', 'Branch manager', 'Manager', 'Technician'].map((n) => [at(n).level, at(n).kind]),
+    [['company', 'admin'], ['company', 'manager'], ['market', 'manager'], ['office', 'manager'], ['team', 'manager'], ['office', 'staff']]);
+  assert.ok(at('Corporate admin').rank > at('Corporate manager').rank && at('Corporate manager').rank > at('Market manager').rank && at('Market manager').rank > at('Branch manager').rank && at('Branch manager').rank > at('Manager').rank);
+  // A manager holds none of the admin's side, at any level.
+  for (const n of ['Corporate manager', 'Market manager', 'Branch manager']) for (const p of access.ADMIN_ONLY) assert.ok(!access.permsOf(profileId(n)).has(p), `${n} ${p}`);
+  for (const p of ['parts.manage', 'tasks.assign', 'oncall.manage', 'announcements.post', 'events.post', 'stock.manage', 'fleet.manage']) assert.ok(access.permsOf(profileId('Branch manager')).has(p), p);
+
+  // The level is one choice on the profile page, and it sets what the site reads: the scope and the two level permissions.
+  await owner.post('/admin/profiles', { name: 'Level Check' }, { page: '/admin/profiles' });
+  const pid = profileId('Level Check'); const save = (level) => owner.post(`/admin/profiles/${pid}`, [['name', 'Level Check'], ['level', level], ['perms', 'parts.submit'], ['perms', 'tasks.assign']], { page: `/admin/profiles/${pid}` });
+  const state = () => { const p = db.prepare('SELECT scope FROM profiles WHERE id = ?').get(pid); const perms = access.permsOf(pid); return [p.scope, perms.has('market.all'), perms.has('branches.all'), perms.has('tasks.assign')]; };
+  await save('market'); assert.deepEqual(state(), ['all', true, false, true]);
+  await save('company'); assert.deepEqual(state(), ['all', true, true, true]);
+  await save('team'); assert.deepEqual(state(), ['team', false, false, true]);
+  await save('office'); assert.deepEqual(state(), ['all', false, false, true]);
+  const list = (await owner.get('/admin/profiles')).text.replace(/\s+/g, ' ');
+  assert.match(list, /<strong>Corporate manager<\/strong><\/a><\/td> <td>The whole company <span class="tag">Manager<\/span><\/td>/);
+  assert.match(list, /<strong>Level Check<\/strong><\/a><\/td> <td>Their office <span class="tag">Manager<\/span><\/td>/);
+  assert.ok(list.indexOf('<strong>Corporate admin</strong>') < list.indexOf('<strong>Corporate manager</strong>') && list.indexOf('<strong>Corporate manager</strong>') < list.indexOf('<strong>Branch manager</strong>'));   // top of the ladder first
+  db.prepare('DELETE FROM profile_permissions WHERE profile_id = ?').run(pid); db.prepare('DELETE FROM profiles WHERE id = ?').run(pid);
+
+  const mk = (name) => { const id = db.prepare('INSERT INTO branches (name, state, created_at) VALUES (?, ?, ?)').run(name, 'PA', now).lastInsertRowid; require('../app/branches').setUp(id); return id; };
+  const a = mk('Role Alpha'); const b = mk('Role Beta'); const out = mk('Role Outside');
+  const m = db.prepare("INSERT INTO markets (name, created_at) VALUES ('Role Valley', ?)").run(now).lastInsertRowid;
+  db.prepare('UPDATE branches SET market_id = ? WHERE id IN (?, ?)').run(m, a, b);
+  access.ensureProfile('Market admin', 'all', access.ALL.filter((p) => p !== 'branches.all' && p !== 'backups'));
+  const put = (username, name, office, profile = 'Technician') => { const id = auth.createUser({ username, displayName: name, password: 'correct horse battery', profile: profileId(profile), branchId: office }); db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?').run(id); return id; };
+  const tess = put('role.tess', 'Tess Alphatech', a); put('role.bea', 'Bea Betatech', b); const brad = put('role.brad', 'Brad Branchman', a);
+  put('role.cm', 'Cora Corpman', a, 'Corporate manager'); put('role.mm', 'Mack Marketman', a, 'Market manager'); put('role.ma', 'Mia Marketadmin', a, 'Market admin');
+
+  // ---- Corporate manager: sees and runs every office, with none of the admin pages.
+  const cora = await loggedIn('role.cm');
+  const coraHome = (await cora.get('/')).text;
+  assert.match(coraHome, /data-office-pick/); assert.match(coraHome, /<option value="Corporate"/);
+  assert.doesNotMatch(coraHome, /href="\/admin\/branches"|href="\/admin\/markets"|href="\/admin\/profiles"|href="\/admin\/users"|href="\/admin\/backups"/);
+  for (const url of ['/admin/branches', '/admin/markets', '/admin/profiles', '/admin/users', '/admin/backups', '/admin/activity', '/admin/complaints', '/admin/security']) assert.equal((await cora.get(url)).status, 403, url);
+  for (const url of ['/admin/requests', '/admin/tasks', '/admin/stock', '/fleet', '/oncall', '/admin/announcements']) assert.equal((await cora.get(url)).status, 200, url);
+  await cora.post('/branch/view', { branch: String(b), back: '/' }, { page: '/' });
+  assert.match((await cora.get('/')).text, /<span class="branch">Role Beta Office<\/span>/);
+  assert.match((await cora.get('/events')).text, /<option value="company" >The whole company<\/option>/);                 // posts for the company
+  assert.equal((await cora.post(`/branches/${b}`, [['address', 'Not for a manager'], ['phone', ''], ['about', '']], { page: `/branches/${b}`, multipart: true })).status, 403);   // office pages are kept by admins
+  assert.equal((await cora.post('/admin/markets', { name: 'Sneaky Market' }, { page: '/' })).status, 403);
+
+  // ---- Market manager: each office of the market, nothing outside it, and no people pages.
+  const mack = await loggedIn('role.mm');
+  const offices = (html) => [...((/<datalist id="office-list">([\s\S]*?)<\/datalist>/.exec(html) || [])[1] || '').matchAll(/<option value="([^"]+)"/g)].map((x) => x[1]);
+  assert.deepEqual(offices((await mack.get('/')).text), ['Role Alpha', 'Role Beta']);
+  assert.equal((await mack.get('/admin/users')).status, 403); assert.equal((await mack.get('/admin/requests')).status, 200);
+  await mack.post('/branch/view', { branch: String(out), back: '/' }, { page: '/' });
+  assert.match((await mack.get('/')).text, /<span class="branch">Role Alpha Office<\/span>/);                           // refused: still at Alpha
+  assert.match((await mack.get('/events')).text, /<option value="market" >The Role Valley market<\/option><\/select>/);   // the market, not the company
+
+  // ---- A branch manager is appointed on the Offices page beside the office's admins, and stood down the same way.
+  const pick = /<details class="appoint"[\s\S]*?<\/details>/.exec((await owner.get(`/admin/branches?office=${a}`)).text)[0];
+  assert.match(pick, /<label>Role <select name="profile_id">[\s\S]*>Office admin \(one office\)<\/option>[\s\S]*>Branch manager<\/option>/);   // admins first, then managers assert.doesNotMatch(pick, />Market manager<|>Corporate manager<|>Technician</);
+  await owner.post(`/admin/branches/${a}/admins`, { profile_id: String(profileId('Branch manager')), user_id: String(brad) }, { page: '/admin/branches' });
+  assert.equal(db.prepare('SELECT profile_id FROM users WHERE id = ?').get(brad).profile_id, profileId('Branch manager'));
+  assert.match((await owner.get(`/admin/branches?office=${a}`)).text.replace(/\s+/g, ' '), /<strong>Brad Branchman<\/strong><span class="meta">Branch manager/);
+  const bradC = await loggedIn('role.brad');
+  assert.equal((await bradC.get('/admin/requests')).status, 200); assert.equal((await bradC.get('/admin/users')).status, 403);
+  assert.doesNotMatch((await bradC.get('/')).text, /data-office-pick/);                                                  // one office: nothing to switch between
+  assert.match((await owner.get('/admin/markets')).text.replace(/\s+/g, ' '), /<strong>Mack Marketman<\/strong> <span class="meta">Role Alpha · Market manager<\/span>/);
+
+  // ---- Admins appoint the level below: a market admin can make someone in their market an office admin or manager, and nothing above their own reach.
+  const mia = await loggedIn('role.ma');
+  const choices = /<select name="profile_id" required>[\s\S]*?<\/select>/.exec((await mia.get(`/admin/users/${tess}/edit`)).text)[0];
+  for (const n of ['Office admin \\(one office\\)', 'Branch manager', 'Market manager', 'Manager', 'Technician']) assert.match(choices, new RegExp(`>${n}</option>`), n);
+  assert.doesNotMatch(choices, />Corporate admin<|>Corporate manager</);
+  // A branch manager cannot hand out anything: the Users page is not theirs.
+  assert.equal((await bradC.get(`/admin/users/${tess}/edit`)).status, 403);
+
+  await owner.post(`/admin/branches/${a}/admins/${brad}/remove`, {}, { page: '/admin/branches' });
+  assert.equal(db.prepare('SELECT profile_id FROM users WHERE id = ?').get(brad).profile_id, profileId('Technician'));
+  db.transaction(() => {
+    db.prepare("UPDATE users SET active = 0, profile_id = ? WHERE username LIKE 'role.%'").run(profileId('Technician'));
     db.prepare('UPDATE branches SET market_id = NULL WHERE market_id = ?').run(m); db.prepare('DELETE FROM markets WHERE id = ?').run(m);
   })();
 });
