@@ -55,7 +55,7 @@
 <div class="dash">
   <div class="dash-main">
     <section class="panel" aria-labelledby="chain-h">
-      <div class="panel-head"><h2 id="chain-h">Chain of command</h2></div>
+      <div class="panel-head"><h2 id="chain-h"><%= isCorporate ? 'Corporate management' : 'Who runs this branch' %></h2></div>
       <%- include('partials/chain', { steps: chain }) %>
     </section>
     <section class="panel" aria-labelledby="who-h">

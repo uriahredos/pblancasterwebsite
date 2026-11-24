@@ -384,7 +384,7 @@ Someone added from the Corporate view joins it; anyone else is moved there with 
 What is low or out right now is also a line on their bell and Alerts page for as long as it stays that way, so nobody depends on having phone alerts switched on.
 
 **Chain of command (`app/chain.js`).** An office answers to its market and a market to corporate. Nothing is stored for it: it is worked out from each person's profile level and office.
-Each office's page lists the chain (corporate, market, office, admins before managers); a person's page lists who is above them, nearest first.
+Each branch's page lists who runs that branch (admins before managers). A person's page lists who is directly above them, one step only: staff see their branch's management, a branch's management see their market's, and the market's see corporate. Nobody's page carries the whole ladder.
 `chain.above(userId)` is the hook for escalations and approvals later.
 
 ## Newsletters (`/newsletters`, `/admin/newsletters`)

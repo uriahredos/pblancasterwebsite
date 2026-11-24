@@ -17,7 +17,7 @@
   <% if (reportsTo) { %><p class="plain"><span class="meta">Reports to</span> <a href="/people/<%= reportsTo.id %>"><strong><%= reportsTo.display_name %></strong></a><% if (reportsTo.job_title) { %> <span class="meta">· <%= reportsTo.job_title %></span><% } %></p><% } %>
   <% if (theirTeam.length) { %><p class="plain"><span class="meta"><%= theirTeam.length %> <%= theirTeam.length === 1 ? 'person reports' : 'people report' %> to <%= p.display_name.split(' ')[0] %></span></p>
   <ul class="roster"><% theirTeam.forEach(function (m) { %><li><a href="/people/<%= m.id %>"><%- include('partials/avatar', { who: m }) %><span class="person-text"><strong><%= m.display_name %></strong><span class="meta"><%= m.job_title || '' %></span></span></a></li><% }) %></ul><% } %>
-  <% if (chainUp.length) { %><p class="plain"><span class="meta">Above <%= p.display_name.split(' ')[0] %> in the chain of command, nearest first</span></p>
+  <% if (chainUp.length) { %><p class="plain"><span class="meta">Above <%= p.display_name.split(' ')[0] %> in the chain of command</span></p>
   <%- include('partials/chain', { steps: chainUp }) %><% } %>
 </div>
 <% } %>

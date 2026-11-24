@@ -177,7 +177,7 @@ module.exports = [
       'Only people already on the site can be appointed. Add the person under **Users** first.',
       'A manager whose profile is set to **Their own team** only sees the people assigned to them, not the whole branch.',
       'Corporate people do not have to belong to a branch. Set their **Branch** to **Corporate (not a branch)** on their Users page.',
-      'Each branch\'s page shows its **Chain of command**: who runs the branch, its market and corporate. A person\'s page shows who is above them.',
+      'Each branch\'s page shows **Who runs this branch**. A person\'s page shows who is directly above them, one step only: staff see the branch\'s management, the branch\'s management see their market\'s, and the market\'s see corporate.',
     ],
     related: ['profiles', 'add-an-office', 'markets'],
   },

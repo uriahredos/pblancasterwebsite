@@ -27,10 +27,10 @@ function leaders(pl, level, where, args) {
 }
 
 /**
- * The chain for an office, top first: [{ key, label, people, more }]. Corporate, then the office's market when it
- * is in one, then the office itself. A step can have nobody yet.
+ * What a branch's own page shows: the people who run that branch, and nothing above them. (For Corporate, which is
+ * not a branch, the corporate admins and managers.) The levels above are met one at a time: see above().
  */
-function forOffice(officeId) { return whole(officeId).map(cut); }
+function forOffice(officeId) { const steps = whole(officeId); return steps.slice(-1).map(cut); }
 /** A step with its first few names, and how many more there are. */
 const cut = (s) => ({ ...s, more: Math.max(0, s.people.length - SHOWN), people: s.people.slice(0, SHOWN) });
 function whole(officeId) {
@@ -38,15 +38,16 @@ function whole(officeId) {
   if (!office) return [];
   const pl = places();
   const steps = [{ key: 'company', label: 'Corporate', people: leaders(pl, 'company', '1 = 1', []) }];
-  if (office.market_id) steps.push({ key: 'market', label: `${office.market} market`, people: leaders(pl, 'market', 'u.branch_id IN (SELECT id FROM branches WHERE market_id = ?)', [office.market_id]) });
+  if (office.market_id) steps.push({ key: 'market', label: `${office.market} market management`, people: leaders(pl, 'market', 'u.branch_id IN (SELECT id FROM branches WHERE market_id = ?)', [office.market_id]) });
   // Corporate is not a branch: its people answer straight to the corporate admins and managers.
-  if (!require('./branches').isCorporate(office.id)) steps.push({ key: 'office', label: `${office.name} branch`, people: leaders(pl, 'office', 'u.branch_id = ?', [office.id]) });
+  if (!require('./branches').isCorporate(office.id)) steps.push({ key: 'office', label: `${office.name} branch management`, people: leaders(pl, 'office', 'u.branch_id = ?', [office.id]) });
   return steps;
 }
 
 /**
- * Who is above one person, nearest first: the admins of their own level when they are its manager, then each level up.
- * Steps with nobody in them are left out. Empty for someone at the top.
+ * Who is directly above one person: one step only, so nobody's page carries the whole ladder. Staff see the people
+ * who run their branch; those people see their market's management; the market's see corporate. A manager sees
+ * the admins of their own level first. Where a level has nobody yet, the next one up stands in. Empty at the top.
  */
 function above(userId) {
   const u = db.prepare('SELECT id, branch_id, profile_id, is_master FROM users WHERE id = ?').get(userId);
@@ -55,7 +56,7 @@ function above(userId) {
   const rank = mine ? mine.rank : 0;
   return whole(u.branch_id).reverse()
     .map((s) => ({ ...s, people: s.people.filter((p) => p.id !== u.id && p.rank > rank) }))
-    .filter((s) => s.people.length).map(cut);
+    .filter((s) => s.people.length).slice(0, 1).map(cut);
 }
 
 module.exports = { forOffice, above };
