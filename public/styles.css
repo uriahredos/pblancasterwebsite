@@ -1658,3 +1658,8 @@ td.reports-to .meta { display: block; }
 .chain-person { white-space: nowrap; }
 .chain-people .meta { font-size: .85rem; }
 @media (max-width: 640px) { .chain-step { grid-template-columns: minmax(0, 1fr); } }
+
+/* On call: choose all of the market's branches or one of them */
+.oncall-show { margin: 0 0 1rem; }
+.oncall-show label { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; margin: 0; font-weight: 700; }
+.oncall-show select { width: auto; max-width: 100%; min-width: min(100%, 18rem); margin: 0; }

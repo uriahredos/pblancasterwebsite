@@ -4820,6 +4820,33 @@ test('on call across a market: your own branch first, each person tagged with th
   const home = /<section class="panel p-oncall"[\s\S]*?<\/section>/.exec((await t1.get('/')).text)[0];
   // The home page shows only the office being looked at; the rest of the market is on the On call page.
   assert.match(home, /Owen Ownoffice/); assert.doesNotMatch(home, /Nell Nearby/);
+  // Anyone can narrow the page to one branch of the market, or go back to all of them. Their own branch is marked in the list.
+  const show = (/<form method="get" action="\/oncall" class="oncall-show">[\s\S]*?<\/form>/.exec(page) || [''])[0].replace(/\s+/g, ' ');
+  assert.match(show, /<select name="branch" data-autosubmit> <option value="all" selected>All 3 branches in the Test Market market<\/option> <option value="1" >Lancaster \(your branch\)<\/option>/);
+  assert.match(show, new RegExp(`<option value="${near}" >Nearby Branch</option>`)); assert.match(show, new RegExp(`<option value="${quiet}" >Quiet Branch</option>`));
+  const one = (await t1.get(`/oncall?branch=${near}`)).text;
+  assert.match(one, /Who to call after hours at the Nearby Branch branch, and who is up next\./);
+  assert.match(one, /Nell Nearby/); assert.doesNotMatch(one, /Owen Ownoffice|Bea Backup|Nobody is listed today for/);
+  assert.match(one, new RegExp(`<option value="${near}" selected>Nearby Branch</option>`));
+  assert.match((await t1.get('/oncall')).text, new RegExp(`<option value="${near}" selected>`));                   // the choice stays while they move around
+  assert.doesNotMatch((await t1.get('/oncall')).text, /Owen Ownoffice/);
+  assert.match(/<section class="panel p-oncall"[\s\S]*?<\/section>/.exec((await t1.get('/')).text)[0], /Owen Ownoffice/);   // the home page is still their own branch
+  const none = (await t1.get(`/oncall?branch=${quiet}`)).text;
+  assert.match(none, /Nobody is listed as on call today for the Quiet Branch branch\./); assert.doesNotMatch(none, /Owen Ownoffice|Nell Nearby/);
+  const back = (await t1.get('/oncall?branch=all')).text;
+  assert.match(back, /Owen Ownoffice/); assert.match(back, /Nell Nearby/); assert.match(back, /<option value="all" selected>/);
+  assert.match((await t1.get('/oncall?branch=999999')).text, /<option value="all" selected>/);                      // a branch outside the market is not a choice
+  // What covers the whole market stays when one branch is chosen.
+  const mkId = db.prepare("INSERT INTO markets (name, created_at) VALUES ('Show Valley', ?)").run(new Date().toISOString()).lastInsertRowid;
+  db.prepare('UPDATE branches SET market_id = ? WHERE id IN (1, ?, ?)').run(mkId, near, quiet);
+  db.prepare("INSERT INTO oncall_shifts (branch_id, market_id, start_on, end_on, role, name, created_at) VALUES (1, ?, date('now', '-1 day'), date('now', '+6 day'), 'tech', 'Mark Marketwide', ?)").run(mkId, new Date().toISOString());
+  const withMarket = (await t1.get(`/oncall?branch=${near}`)).text;
+  assert.match(withMarket, /Nell Nearby/); assert.match(withMarket, /Mark Marketwide/); assert.doesNotMatch(withMarket, /Owen Ownoffice/);
+  await t1.get('/oncall?branch=all');
+  db.prepare('UPDATE branches SET market_id = NULL WHERE market_id = ?').run(mkId); db.prepare('DELETE FROM markets WHERE id = ?').run(mkId);
+  // An office on its own has nothing to choose between.
+  const solo = db.prepare("SELECT u.username FROM users u JOIN branches b ON b.id = u.branch_id WHERE u.active = 1 AND u.must_change_password = 0 AND b.market IS NULL AND b.market_id IS NULL AND b.is_corporate = 0 LIMIT 1").get();
+  if (solo) { const c = new Client(); const r = await c.post('/login', { username: solo.username, password: 'correct horse battery' }, { page: '/login' }); if (r.status === 302) assert.doesNotMatch((await c.get('/oncall')).text, /class="oncall-show"/); }
   // Someone in an office outside the market sees none of it.
   const far = db.prepare("SELECT u.username FROM users u JOIN branches b ON b.id = u.branch_id WHERE u.active = 1 AND u.must_change_password = 0 AND (b.market IS NULL OR b.market <> 'Test Market') LIMIT 1").get();
   if (far) { const c = new Client(); const r = await c.post('/login', { username: far.username, password: 'correct horse battery' }, { page: '/login' }); if (r.status === 302) assert.doesNotMatch((await c.get('/oncall')).text, /Nell Nearby|Owen Ownoffice/); }

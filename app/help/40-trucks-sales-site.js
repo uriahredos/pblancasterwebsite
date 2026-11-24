@@ -267,6 +267,7 @@ module.exports = [
       'A branch is in one market at a time. Adding it to another market moves it.',
       'A market admin gets a branch box holding only the branches of their market. They never see all branches at once, or the Corporate menu.',
       'Branches in the same market share the on-call page.',
+      'To see one branch only, use **Show** at the top of the page and pick it. Pick **All branches** to see the whole market again.',
       'To change what a market admin can do, edit the **Market admin** profile under **Profiles**.',
     ],
     related: ['switch-office', 'add-an-office'],

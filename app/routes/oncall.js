@@ -45,18 +45,25 @@ function page(req, res, extra = {}) {
   const all = ids.length ? db.prepare(
     `${oncall.SCOPED} WHERE ${oncall.seenBy(ids, marketId)} AND s.end_on > ?
      ORDER BY s.start_on, s.market_id IS NOT NULL, b.name COLLATE NOCASE, s.role = 'backup', s.id LIMIT 4000`).all(today) : [];
-  const list = stretches(all);
+  // In a market, anyone can narrow the page to one of its branches, or go back to all of them. The choice is kept
+  // for the rest of their visit, so it survives adding to the schedule or coming back from another page.
+  if (req.query.branch !== undefined) req.session.oncallBranch = ids.includes(Number(req.query.branch)) ? Number(req.query.branch) : null;
+  const only = ids.length > 1 && ids.includes(req.session.oncallBranch) ? offices.find((o) => o.id === req.session.oncallBranch) : null;
+  // What covers the whole market covers that branch too, so it stays.
+  const list = stretches(all).filter((g) => !only || g.market_id || g.branch_id === only.id);
   // The office being looked at first, then the rest of the market, then what covers the whole market.
   const mineFirst = (a, b) => Boolean(a.market_id) - Boolean(b.market_id) || (b.branch_id === req.user.workBranch) - (a.branch_id === req.user.workBranch);
   const current = list.filter((g) => g.start_on <= today).sort(mineFirst);
   // Offices in the market with nobody down for today: say so, so an empty space is not mistaken for "nobody is on call there".
-  const missing = offices.filter((o) => !current.some((g) => !g.market_id && g.branch_id === o.id));
+  const missing = only ? [] : offices.filter((o) => !current.some((g) => !g.market_id && g.branch_id === o.id));
   // On a phone the whole year is a very long scroll: the next four weeks show, and the rest waits behind a button.
   const soon = new Date(`${today}T12:00:00Z`); soon.setUTCDate(soon.getUTCDate() + 28);
   const soonUntil = soon.toISOString().slice(0, 10);
   const upcoming = list.filter((g) => g.start_on > today).map((g, i) => ({ ...g, later: i >= 4 && g.start_on > soonUntil }));
   res.status(extra.errors ? 400 : 200).render('oncall', {
-    title: 'On call', wide: true, current, upcoming, laterCount: upcoming.filter((g) => g.later).length, many: offices.length > 1 || all.some((s) => s.market_id), market: offices[0] && offices[0].market, missing, officeCount: offices.length,
+    title: 'On call', wide: true, current, upcoming, laterCount: upcoming.filter((g) => g.later).length, many: !only && (offices.length > 1 || all.some((s) => s.market_id)), market: offices[0] && offices[0].market, missing, officeCount: offices.length,
+    // The branches to choose between (their own first), and the one chosen, if any.
+    choices: offices.length > 1 ? offices.map((o) => ({ id: o.id, name: o.name, own: o.id === req.user.branch_id })) : [], only,
     canManage: access.can(req.user, 'oncall.manage'), roles: oncall.ROLES,
     // Shifts this person may tick to remove: those of the offices they run.
     canPick: (g) => access.can(req.user, 'oncall.manage') && (!reachOf(req.user).length || reachOf(req.user).includes(g.branch_id)),
