@@ -147,6 +147,8 @@ function loadUser(req, res, next) {
       [b.updates, '/my', 'update on your requests', 'updates on your requests'],
       [b.requests, '/admin/requests', 'open parts request', 'open parts requests'],
       [b.inspections, '/admin/inspections?show=open', 'truck problem not fixed', 'truck problems not fixed'],
+      // For the people who look after the warehouse: what is at or below its minimum, or gone, for as long as it stays that way.
+      [(b.lowStock = access.can(req.user, 'stock.manage') ? require('./stock').lowCount(req.user.workBranch) : 0), '/admin/stock?low=1', 'part low or out in the warehouse', 'parts low or out in the warehouse'],
       [b.certs, '/admin/certs?show=attention', 'certification expired or expiring', 'certifications expired or expiring'],
       // The monthly count is under way and this person's own vehicle has not been counted.
       [(b.vehicleCount = require('./invcount').vehicleToCount(req.user)) ? 1 : 0, b.vehicleCount, 'vehicle to count', 'vehicles to count'],

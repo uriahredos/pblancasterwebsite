@@ -127,7 +127,7 @@ router.get('/', requireLogin, (req, res) => {
   }
   if (!at.corporate && (can('stock.manage') || can('parts.view'))) {
     const low = require('../stock').lowCount(req.user.workBranch);
-    branch.push({ label: 'Low stock', value: low, sub: low === 1 ? 'part at or below its minimum' : 'parts at or below their minimum', level: low ? 'warn' : '', url: '/admin/stock?low=1' });
+    branch.push({ label: 'Low stock', value: low, sub: low === 1 ? 'part low or out in the warehouse' : 'parts low or out in the warehouse', level: low ? 'warn' : '', url: '/admin/stock?low=1' });
   }
   if (can('tasks.assign')) {
     // Open tasks this person gave, or that belong to the people they look after.

@@ -380,6 +380,9 @@ A manager runs the day-to-day (requests, stock, fleet, training, tasks, on call,
 It is never listed, chosen or counted as a branch ("Corporate" in the box at the top still means every branch together).
 Someone added from the Corporate view joins it; anyone else is moved there with the Branch box on their Users page. A company-level person who belongs to Corporate starts in the Corporate view.
 
+**Low or out (`app/stock.js`).** A part is *low* at or below its minimum and *out* at zero or less. The stock people of the branch whose warehouse it is (`stock.manage`, belonging to that branch) get a push alert once, when a part crosses either line, whoever caused it.
+What is low or out right now is also a line on their bell and Alerts page for as long as it stays that way, so nobody depends on having phone alerts switched on.
+
 **Chain of command (`app/chain.js`).** An office answers to its market and a market to corporate. Nothing is stored for it: it is worked out from each person's profile level and office.
 Each office's page lists the chain (corporate, market, office, admins before managers); a person's page lists who is above them, nearest first.
 `chain.above(userId)` is the hook for escalations and approvals later.

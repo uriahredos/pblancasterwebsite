@@ -42,7 +42,7 @@ const seesCost = (user) => access.can(user, 'inventory.manage') || access.can(us
 function page(req, { q = '', low = false, errors = [], values = {} } = {}) {
   const all = stock.list(req.user.workBranch);
   return { title: 'Warehouse stock', rows: q || low ? stock.list(req.user.workBranch, { q, low }) : all, q, low, errors, values,
-    total: all.length, lowTotal: all.filter((r) => r.low).length, figures: stock.figures(all), showCost: seesCost(req.user), dollars: inv.dollars, useDays: stock.USE_DAYS };
+    total: all.length, lowTotal: all.filter((r) => r.short).length, figures: stock.figures(all), showCost: seesCost(req.user), dollars: inv.dollars, useDays: stock.USE_DAYS };
 }
 
 // What to order: every part at or below its minimum, with how many it takes to bring it back up.
@@ -173,7 +173,9 @@ router.post('/admin/stock/:id/:op', manage, (req, res) => {
     case 'count': {
       const qty = wholeNumber(req.body.count);
       if (qty === null) { flash(req, 'err', 'Enter how many are on the shelf (a whole number).'); break; }
+      const before = stock.levels(branchId);
       db.transaction(() => setCount(branchId, part, qty, null, req.user.id))();
+      stock.tellLow(req.user, branchId, before);   // a count that finds fewer than thought can leave the part low or out
       activity.log(req.user, 'Stock count', `${part.part_number}: counted ${qty}`);
       flash(req, 'ok', `Count set to ${qty}.`);
       break;

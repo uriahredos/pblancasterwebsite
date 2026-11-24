@@ -18,7 +18,7 @@ const SELECT = `SELECT c.id, c.part_number, c.description, c.category, c.active,
     AND c.id IN (SELECT catalog_id FROM branch_stock WHERE branch_id = w.branch_id
                  UNION SELECT catalog_id FROM inv_moves WHERE to_id = w.id UNION SELECT catalog_id FROM inv_moves WHERE from_id = w.id)`;
 
-function list(branchId, { q = '', low = false } = {}) {
+function list(branchId, { q = '', low = false, everything = false } = {}) {
   inv.ensureOffice(branchId);
   const params = [branchId];
   let sql = SELECT;
@@ -27,7 +27,7 @@ function list(branchId, { q = '', low = false } = {}) {
     sql += " AND (c.part_number LIKE ? ESCAPE '\\' OR c.description LIKE ? ESCAPE '\\')";
     params.push(like, like);
   }
-  let rows = db.prepare(sql + ' ORDER BY c.part_number').all(...params).filter((r) => r.tracked || r.on_hand !== 0);   // gone and never given a level: not listed
+  let rows = db.prepare(sql + ' ORDER BY c.part_number').all(...params).filter((r) => everything || r.tracked || r.on_hand !== 0);   // gone and never given a level: not listed
   // What left the warehouse in the last 30 days for work (taken to a job or out to a vehicle), not corrections.
   const since = new Date(Date.now() - USE_DAYS * 86400000).toISOString();
   const used = new Map(db.prepare(
@@ -35,14 +35,17 @@ function list(branchId, { q = '', low = false } = {}) {
      WHERE w.branch_id = ? AND w.kind = 'warehouse' AND m.kind IN ('use', 'transfer') AND m.created_at >= ? GROUP BY m.catalog_id`).all(branchId, since).map((r) => [r.id, r.n]));
   rows.forEach((r) => {
     r.low = r.min_level !== null && r.on_hand <= r.min_level;
+    r.out = r.on_hand <= 0;
+    r.short = r.low || r.out;                 // what the people who look after stock are told about: low, or none left
     r.over = r.max_level !== null && r.on_hand > r.max_level;
     r.used = used.get(r.id) || 0;
     // At the pace of the last 30 days, how many days the shelf lasts. Nothing used: no guess.
     r.days_left = r.used > 0 && r.on_hand > 0 ? Math.floor(r.on_hand / (r.used / USE_DAYS)) : r.used > 0 ? 0 : null;
     // How many to order: enough to bring a low part back up to its maximum (or just past its minimum if it has none).
-    r.order = !r.low ? 0 : Math.max(1, (r.max_level !== null ? r.max_level : r.min_level + 1) - r.on_hand);
+    // A part that ran out with no levels set: enough to cover what is owed and have one on the shelf.
+    r.order = !r.short ? 0 : Math.max(1, (r.max_level !== null ? r.max_level : r.min_level !== null ? r.min_level + 1 : 1) - r.on_hand);
   });
-  if (low) rows = rows.filter((r) => r.low);
+  if (low) rows = rows.filter((r) => r.short);
   return rows;
 }
 const USE_DAYS = 30;
@@ -61,17 +64,24 @@ function figures(rows) {
 }
 
 /**
- * Low-stock alerts for anything that takes parts out of the warehouse. Call before() first, do the work, then
- * tell(): the people who look after stock hear once, when a part goes from above its minimum to at or below it.
+ * Alerts for anything that takes parts out of the warehouse. Call levels() first, do the work, then tellLow():
+ * the branch's own stock people hear once, at the moment a part goes from above its minimum to at or below it,
+ * or from some on the shelf to none (whether or not it has a minimum). `after`: the rows to look at, when the
+ * caller already knows which parts moved; otherwise the whole warehouse.
+ * (What is low or out right now is also on their bell for as long as it stays that way: see auth.js.)
  */
-const levels = (branchId) => new Map(list(branchId).map((r) => [r.id, r.on_hand]));
-function tellLow(user, branchId, before) {
-  const crossed = list(branchId).filter((p) => p.min_level !== null && p.on_hand <= p.min_level && before.has(p.id) && before.get(p.id) > p.min_level);
+const levels = (branchId) => new Map(list(branchId, { everything: true }).map((r) => [r.id, r.on_hand]));
+function tellLow(user, branchId, before, after) {
+  const rows = (after || list(branchId, { everything: true })).filter((p) => before.has(p.id));
+  const out = rows.filter((p) => p.on_hand <= 0 && before.get(p.id) > 0);
+  const low = rows.filter((p) => !out.includes(p) && p.min_level !== null && p.on_hand <= p.min_level && before.get(p.id) > p.min_level);
+  const crossed = [...out, ...low];
   if (!crossed.length) return crossed;
   const push = require('./push');
-  push.notify(push.peopleWith('stock.manage', user.id), 'low_stock', {
-    title: crossed.length === 1 ? `Low stock: ${crossed[0].part_number}` : `Low stock: ${crossed.length} parts`,
-    body: crossed.map((p) => `${p.part_number}: ${p.on_hand} left (minimum ${p.min_level})`).join(', '), url: '/admin/stock?low=1' });
+  const line = (p) => (out.includes(p) ? `${p.part_number}: none left` : `${p.part_number}: ${p.on_hand} left (minimum ${p.min_level})`);
+  push.notify(push.inBranch('stock.manage', branchId), 'low_stock', {
+    title: crossed.length > 1 ? `Low or out: ${crossed.length} parts` : out.length ? `Out of stock: ${crossed[0].part_number}` : `Low stock: ${crossed[0].part_number}`,
+    body: crossed.map(line).join(', '), url: '/admin/stock?low=1' });
   return crossed;
 }
 

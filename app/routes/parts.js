@@ -135,15 +135,10 @@ router.post('/parts', requirePerm('parts.submit'), parseUpload, verifyCsrf, (req
     return info.lastInsertRowid;
   })();
 
-  // Taking parts may have pushed something to or below its minimum: tell the people who order.
+  // Taking parts may have pushed something to or below its minimum, or used the last one: tell the branch's stock people.
   if (values.action === 'take') {
-    const crossed = stock.forNames(req.user.branch_id, names).filter((p) => p.min_level !== null && p.on_hand <= p.min_level && before.get(p.id) > p.min_level);
-    if (crossed.length) {
-      if (require('../branches').isHome(req.user)) mail.notifyLowStock(crossed);
-      push.notify(push.peopleWith('stock.manage', req.user.id), 'low_stock', {
-        title: crossed.length === 1 ? `Low stock: ${crossed[0].part_number}` : `Low stock: ${crossed.length} parts`,
-        body: crossed.map((p) => `${p.part_number}: ${p.on_hand} left (minimum ${p.min_level})`).join(', '), url: '/admin/stock?low=1' });
-    }
+    const crossed = stock.tellLow(req.user, req.user.branch_id, before, stock.forNames(req.user.branch_id, names));
+    if (crossed.length && require('../branches').isHome(req.user)) mail.notifyLowStock(crossed);
   }
   if (isRequest) {
     push.notify(push.peopleWith('parts.manage', req.user.id, req.user.id), 'parts_request', {

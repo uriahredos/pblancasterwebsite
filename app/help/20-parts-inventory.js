@@ -214,7 +214,7 @@ module.exports = [
     where: 'Main menu: Parts, then Inventory, then the Warehouse stock and minimums tab.',
     steps: [
       'Open **Parts** in the main menu, choose **Inventory**, then the **Warehouse stock and minimums** tab at the top.',
-      'Find the part. Type in **Search**, or tick **Low stock only**, and choose **Show**.',
+      'Find the part. Type in **Search**, or tick **Low or out only**, and choose **Show**.',
       'Choose **Update** on the part\'s row.',
       'For a delivery, go to **Delivery or correction**, type how many arrived in **Quantity**, add a **Reason** such as the PO number, and choose **Save**.',
       'To take off damaged or lost parts, type a minus number in **Quantity**, such as -2, and choose **Save**.',
@@ -223,7 +223,9 @@ module.exports = [
     ],
     tips: [
       '**On hand** is the last count, plus deliveries and returns, minus parts taken since. You do not need to subtract what technicians take.',
-      'The **Level** column shows **Low** when a part is at or below its minimum and **Out** when there are none. People who manage stock are also notified when a part first drops to its minimum.',
+      'The **Level** column shows **Low** when a part is at or below its minimum and **Out** when there are none.',
+      'The people in your branch who look after warehouse stock are told when a part runs low or runs out. It shows on their bell until it is put right, and goes to their phone if they have alerts switched on.',
+      'A part with no minimum is only flagged when the last one goes. Set a **Minimum** on anything you want warning about sooner.',
       'Leave **Minimum** or **Maximum** blank and choose **Save levels** to remove it.',
       '**Stop tracking this part** at the bottom takes the part off the Stock page. It does not remove it from the catalog.',
     ],

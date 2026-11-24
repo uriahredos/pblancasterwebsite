@@ -9518,3 +9518,79 @@ test('catalog: a part is found by searching and changed on its own Edit page; a 
   assert.equal(db.prepare("SELECT COUNT(*) n FROM activity_log WHERE action = 'Catalog part edited'").get().n, before);
   assert.equal((await owner.get('/admin/catalog/999999/edit')).status, 302);
 });
+
+test('low or out: the branch\'s own warehouse people are told when a part runs low or runs out, and it stays on their bell until it is put right', async () => {
+  const push = require('../app/push'); const inv = require('../app/inventory'); const owner = await loggedIn('owner'); const now = new Date().toISOString();
+  const pushed = [];
+  push.setSender(async (sub, payload) => { pushed.push({ to: sub.user_id, ...JSON.parse(payload) }); });
+  const take = async () => { await new Promise((r) => setTimeout(r, 30)); return pushed.splice(0); };
+  const who = (list) => list.map((p) => db.prepare('SELECT username FROM users WHERE id = ?').get(p.to).username).sort();
+  const mk = (name) => { const id = db.prepare('INSERT INTO branches (name, state, created_at) VALUES (?, ?, ?)').run(name, 'PA', now).lastInsertRowid; require('../app/branches').setUp(id); return id; };
+  const a = mk('Alert Alpha'); const b = mk('Alert Beta');
+  const put = (username, name, office, profile) => { const id = auth.createUser({ username, displayName: name, password: 'correct horse battery', profile: profileId(profile), branchId: office }); db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?').run(id); return id; };
+  put('alert.wa', 'Wanda Warehouse', a, 'Warehouse'); put('alert.wb', 'Wes Otherwarehouse', b, 'Warehouse'); put('alert.ta', 'Tom Taker', a, 'Technician');
+  const wa = await loggedIn('alert.wa'); const wb = await loggedIn('alert.wb'); const ta = await loggedIn('alert.ta');
+  const sub = (client, name) => client.post('/push/subscribe', { endpoint: `https://fcm.googleapis.com/fcm/send/${name}`, p256dh: 'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM', auth: 'tBHItJI5svbpez7KI4CCXg', device: 'Test phone' }, { page: '/settings/notifications' });
+  assert.equal((await sub(wa, 'alert-wa')).status, 200); assert.equal((await sub(wb, 'alert-wb')).status, 200);
+  assert.match((await wa.get('/settings/notifications')).text, /value="low_stock" checked[\s\S]{0,200}?A part runs low or runs out in my branch&#39;s warehouse/);
+
+  // A corporate admin looking at Alpha stocks its warehouse and sets a minimum on one part.
+  await owner.post('/branch/view', { branch: String(a), back: '/' }, { page: '/' });
+  const wh = inv.warehouseOf(a).id;
+  const deliver = (pn, n) => owner.post('/admin/inventory/moves', { from: 'delivery', to: String(wh), part_number: pn, quantity: String(n) }, { page: '/admin/inventory' });
+  await deliver('ALR-1', 10); await deliver('ALR-2', 2); await deliver('ALR-3', 10);
+  const idOf = (pn) => db.prepare('SELECT id FROM parts_catalog WHERE part_number = ?').get(pn).id;
+  await owner.post(`/admin/stock/${idOf('ALR-1')}/min`, { min_level: '5', max_level: '12' }, { page: '/admin/stock' });
+  await owner.post(`/admin/stock/${idOf('ALR-3')}/min`, { min_level: '8', max_level: '' }, { page: '/admin/stock' });
+  await take();
+  const bell = async (client) => { const m = /<a href="\/admin\/stock\?low=1"><span class="bell-n">(\d+)<\/span><span>(parts? low or out in the warehouse)<\/span><\/a>/.exec((await client.get('/alerts')).text); return m ? `${m[1]} ${m[2]}` : ''; };
+  assert.equal(await bell(wa), '');                                                       // nothing wrong yet
+
+  // Running low: told once, at the moment it reaches the minimum. Only Alpha's own stock people hear, whoever took the parts.
+  await takeParts(ta, [['ALR-1', 4]]);
+  assert.deepEqual(await take(), []);                                                     // 6 left: still above the minimum
+  await takeParts(ta, [['ALR-1', 1]]);
+  let got = await take();
+  assert.deepEqual(who(got), ['alert.wa']);
+  assert.deepEqual([got[0].title, got[0].body, got[0].url], ['Low stock: ALR-1', 'ALR-1: 5 left (minimum 5)', '/admin/stock?low=1']);
+  assert.equal(await bell(wa), '1 part low or out in the warehouse');
+  assert.equal(await bell(ta), ''); assert.equal(await bell(wb), '');                      // not the technician, and not another branch's warehouse
+  await takeParts(ta, [['ALR-1', 1]]);
+  assert.deepEqual(await take(), []);                                                     // already low: not told again
+
+  // Running out: told as well, and a part with no minimum at all is told when the last one goes.
+  await takeParts(ta, [['ALR-1', 4], ['ALR-2', 2]]);
+  got = await take();
+  assert.deepEqual(who(got), ['alert.wa']);
+  assert.deepEqual([got[0].title, got[0].body], ['Low or out: 2 parts', 'ALR-1: none left, ALR-2: none left']);
+  await takeParts(ta, [['ALR-2', 1]]);
+  assert.deepEqual(await take(), []);                                                     // already out
+  // What is low or out stays on the bell and on the filtered list for as long as it is true.
+  assert.equal(await bell(wa), '2 parts low or out in the warehouse');
+  const lowList = (await wa.get('/admin/stock?low=1')).text.replace(/\s+/g, ' ');
+  assert.match(lowList, /Low or out only/); assert.match(lowList, /ALR-1[\s\S]*?<span class="tag overdue">Out<\/span>/); assert.match(lowList, /ALR-2[\s\S]*?<span class="tag overdue">Out<\/span>/); assert.doesNotMatch(lowList, /ALR-3/);
+  assert.match((await wa.get('/')).text.replace(/\s+/g, ' '), /parts low or out in the warehouse/);
+
+  // Someone from another branch acting on Alpha's stock: Alpha's people are still the ones told. A count that finds none does it too.
+  await owner.post(`/admin/stock/${idOf('ALR-3')}/adjust`, { quantity: '-3', reason: 'Damaged' }, { page: '/admin/stock' });
+  got = await take();
+  assert.deepEqual(who(got), ['alert.wa']); assert.equal(got[0].body, 'ALR-3: 7 left (minimum 8)');
+  await owner.post(`/admin/stock/${idOf('ALR-3')}/count`, { count: '0' }, { page: '/admin/stock' });
+  got = await take();
+  assert.deepEqual(who(got), ['alert.wa']); assert.equal(got[0].title, 'Out of stock: ALR-3');
+  assert.equal(await bell(wa), '3 parts low or out in the warehouse');
+
+  // Putting stock back clears it; and someone who has switched the alert off is not sent it, though their bell still shows it.
+  await deliver('ALR-1', 12); await deliver('ALR-2', 5); await deliver('ALR-3', 10);
+  assert.equal(await bell(wa), '');
+  await wa.post('/settings/notifications', [['kinds', 'task_assigned']], { page: '/settings/notifications' });
+  await takeParts(ta, [['ALR-2', 5]]);
+  assert.deepEqual(await take(), []);
+  await takeParts(ta, [['ALR-2', 1]]);
+  assert.equal(await bell(wa), '1 part low or out in the warehouse');
+
+  const homeId = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id;
+  await owner.post('/branch/view', { branch: String(homeId), back: '/' }, { page: '/' });
+  push.setSender(async () => {});
+  db.prepare("UPDATE users SET active = 0 WHERE username LIKE 'alert.%'").run();
+});

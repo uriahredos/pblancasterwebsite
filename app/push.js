@@ -38,7 +38,7 @@ const KINDS = [
   { key: 'task_done', perm: 'tasks.assign', group: 'For what you manage', label: 'A task I assigned is updated or finished' },
   { key: 'parts_request', perm: 'parts.manage', group: 'For what you manage', label: 'Someone requests parts' },
   { key: 'truck_problem', perm: 'inspections.view', group: 'For what you manage', label: 'A truck problem is reported' },
-  { key: 'low_stock', perm: 'stock.manage', group: 'For what you manage', label: 'A part drops to or below its minimum' },
+  { key: 'low_stock', perm: 'stock.manage', group: 'For what you manage', label: 'A part runs low or runs out in my branch\'s warehouse' },
   // Backups cover every office, so this one is only offered to people who see them all.
   { key: 'backup_failed', perm: 'backups', everyOffice: true, group: 'For what you manage', label: 'A nightly backup does not work' },
 ];
@@ -123,4 +123,11 @@ function peopleWith(perm, ownerId, exceptId) {
     .map((u) => u.id);
 }
 
-module.exports = { KINDS, kindsFor, vapid, notify, liveDevices, peopleWith, wants, setSender };
+/** Active people who belong to one branch and hold a permission (and have alerts on): the branch's own stock people, say. */
+function inBranch(perm, branchId) {
+  return db.prepare(`SELECT DISTINCT u.* FROM users u JOIN push_subscriptions s ON s.user_id = u.id WHERE u.active = 1 AND u.branch_id = ?
+      AND (u.is_master = 1 OR EXISTS (SELECT 1 FROM profile_permissions pp WHERE pp.profile_id = u.profile_id AND pp.permission = ?))`).all(branchId, perm)
+    .map((u) => access.loadAccess(u)).filter((u) => access.can(u, perm)).map((u) => u.id);
+}
+
+module.exports = { KINDS, kindsFor, vapid, notify, liveDevices, peopleWith, inBranch, wants, setSender };
