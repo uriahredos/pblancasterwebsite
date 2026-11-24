@@ -58,6 +58,8 @@ function page(req, res, extra = {}) {
   res.status(extra.errors ? 400 : 200).render('oncall', {
     title: 'On call', wide: true, current, upcoming, laterCount: upcoming.filter((g) => g.later).length, many: offices.length > 1 || all.some((s) => s.market_id), market: offices[0] && offices[0].market, missing, officeCount: offices.length,
     canManage: access.can(req.user, 'oncall.manage'), roles: oncall.ROLES,
+    // Shifts this person may tick to remove: those of the offices they run.
+    canPick: (g) => access.can(req.user, 'oncall.manage') && (!reachOf(req.user).length || reachOf(req.user).includes(g.branch_id)),
     rates: ratesOf(req.user.workBranch),
     // For whoever keeps the schedule: the people of this office to pick from, each with the phone number on their account.
     people: access.can(req.user, 'oncall.manage') ? pickable(req.user) : [], widePick: reachOf(req.user).length !== 1,
@@ -210,6 +212,19 @@ function importLong(req, res, rows, fail) {
   flash(req, 'ok', `Schedule loaded: ${entered.length} entries.${cleared ? ' Earlier entries were cleared where the file asked.' : ''}${bad.size ? ` Skipped lines for: ${[...bad].join(', ')} (not found, or not an office you run).` : ''}${noPhone.length ? ` No phone number on file for ${noPhone.length}: ${noPhone.slice(0, 12).join(', ')}${noPhone.length > 12 ? '…' : ''}.` : ''}${problems.length ? ` ${problems.length} line(s) could not be read.` : ''}`);
   res.redirect('/oncall#schedule');
 }
+
+// Remove the ticked shifts in one go (tick them all to clear the schedule). Only shifts of offices this person runs.
+router.post('/admin/oncall/clear', manage, (req, res) => {
+  const ids = [...new Set([].concat(req.body.ids || []).join(',').split(',').filter((x) => /^\d{1,12}$/.test(x)).map(Number))].slice(0, 5000);
+  const reach = reachOf(req.user);
+  const mine = ids.length ? db.prepare(`SELECT id FROM oncall_shifts WHERE id IN (${ids.join(',')}) ${reach.length ? `AND branch_id IN (${reach.map(Number).join(',')})` : ''}`).all().map((r) => r.id) : [];
+  if (mine.length) {
+    db.prepare(`DELETE FROM oncall_shifts WHERE id IN (${mine.join(',')})`).run();
+    activity.log(req.user, 'On-call schedule changed', `${mine.length} ${mine.length === 1 ? 'entry' : 'entries'} removed`);
+    flash(req, 'ok', `Removed ${mine.length} ${mine.length === 1 ? 'person' : 'people'} from the schedule.`);
+  } else flash(req, 'error', 'Tick the shifts to remove first.');
+  res.redirect('/oncall#schedule');
+});
 
 router.post('/admin/oncall/:id/delete', manage, (req, res) => {
   const s = /^\d+$/.test(req.params.id) ? db.prepare('SELECT * FROM oncall_shifts WHERE id = ? AND branch_id = ?').get(req.params.id, req.user.workBranch) : null;

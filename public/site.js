@@ -770,6 +770,17 @@
     }
   };
 
+  // On call: tick shifts to remove them together. "Select all" ticks every shift, shown or not.
+  document.addEventListener('change', function (e) {
+    var t = e.target; if (!t || !t.matches || !t.matches('.oncall-pick, [data-oncall-pick-all]')) return;
+    var picks = [].slice.call(document.querySelectorAll('.oncall-pick'));
+    if (t.matches('[data-oncall-pick-all]')) picks.forEach(function (p) { p.checked = t.checked; });
+    var n = picks.filter(function (p) { return p.checked; }).length;
+    var all = document.querySelector('[data-oncall-pick-all]'); if (all) all.checked = n > 0 && n === picks.length;
+    var b = document.querySelector('[data-oncall-remove]'); if (b) b.disabled = !n;
+    var c = document.querySelector('[data-oncall-count]'); if (c) c.textContent = n ? n + (n === 1 ? ' shift selected' : ' shifts selected') : '';
+  });
+
   // On call, on a phone: the button brings in the rest of the schedule.
   document.addEventListener('click', function (e) {
     var b = e.target.closest ? e.target.closest('[data-oncall-all]') : null;

@@ -8562,6 +8562,17 @@ test('on call: one file can fill several offices and the whole market, saying wh
   await lc.post('/admin/oncall/import', { file: file([`${day(10)},${day(17)},Call Beta,Sprinkler,On call,Sneaky Entry,,`, `${day(10)},${day(17)},Call Alpha,Sprinkler,On call,Fair Entry,,`]) }, { page, multipart: true });
   assert.equal(db.prepare("SELECT COUNT(*) n FROM oncall_shifts WHERE name = 'Sneaky Entry'").get().n, 0);
   assert.equal(db.prepare("SELECT branch_id FROM oncall_shifts WHERE name = 'Fair Entry'").get().branch_id, a);
+  // Tick shifts and remove them together: only those of offices the person runs go.
+  const keep = db.prepare("INSERT INTO oncall_shifts (branch_id, start_on, end_on, role, name, created_at) VALUES (?, ?, ?, 'tech', 'Beta Keep', ?)").run(b, day(10), day(17), now).lastInsertRowid;
+  const fair = db.prepare("SELECT id FROM oncall_shifts WHERE name = 'Fair Entry'").get().id;
+  const lcPage = (await lc.get('/oncall')).text;
+  assert.match(lcPage, /data-oncall-pick-all/); assert.match(lcPage, new RegExp(`class="oncall-pick" form="oncall-clear" name="ids" value="${fair}"`)); assert.doesNotMatch(lcPage, new RegExp(`name="ids" value="${keep}"`));
+  await lc.post('/admin/oncall/clear', { ids: `${fair},${keep}` }, { page });
+  assert.deepEqual(db.prepare('SELECT name FROM oncall_shifts WHERE id IN (?, ?)').all(fair, keep).map((r) => r.name), ['Beta Keep']);
+  assert.match((await owner.get('/oncall')).text, new RegExp(`name="ids" value="${keep}"`));
+  await owner.post('/admin/oncall/clear', { ids: String(keep) }, { page });
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM oncall_shifts WHERE id = ?').get(keep).n, 0);
+  assert.doesNotMatch((await (await loggedIn('tech1')).get('/oncall')).text, /oncall-pick|oncall-clear/);
   db.prepare('DELETE FROM oncall_shifts WHERE market_id = ? OR branch_id IN (?, ?, ?)').run(m, a, b, out);
   db.prepare('UPDATE branches SET market_id = NULL WHERE market_id = ?').run(m); db.prepare('DELETE FROM markets WHERE id = ?').run(m);
   const homeId = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id;

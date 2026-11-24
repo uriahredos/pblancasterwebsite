@@ -7,7 +7,7 @@
   <% if (!current.length) { %><p class="empty">Nobody is listed as on call today.<%= canManage ? ' Add the schedule below.' : '' %></p><% } %>
   <% current.forEach(function (g) { %>
   <% if (many || g.market_id) { %><h3 class="sub-h"><%= g.market_id ? g.office : g.office + ' office' %></h3><% } %>
-  <p class="meta oncall-range"><%= g.label %><%= g.note ? ' · ' + g.note : '' %></p>
+  <p class="meta oncall-range"><% if (canPick(g)) { %><input type="checkbox" class="oncall-pick" form="oncall-clear" name="ids" value="<%= g.tech.concat(g.backup).map(function (p) { return p.id; }).join(',') %>" aria-label="Select <%= g.office %>, <%= g.label %>"> <% } %><%= g.label %><%= g.note ? ' · ' + g.note : '' %></p>
   <ul class="oncall-people">
     <% g.tech.concat(g.backup).forEach(function (p) { %>
     <li class="role-<%= p.role %>">
@@ -64,6 +64,14 @@
 <% } %>
 
 <h2 id="schedule">Coming up</h2>
+<% if (canManage && (current.some(canPick) || upcoming.some(canPick))) { %>
+<form method="post" action="/admin/oncall/clear" id="oncall-clear" class="oncall-clear" data-no-live data-confirm="Remove the selected shifts from the schedule? This cannot be undone.">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label class="oncall-clear-all"><input type="checkbox" data-oncall-pick-all> Select all</label>
+  <button class="btn small danger" type="submit" data-oncall-remove disabled>Remove selected</button>
+  <span class="hint" data-oncall-count></span>
+</form>
+<% } %>
 <%- include('partials/errors') %>
 <% if (problems.length) { %><ul class="card hint"><% problems.forEach(function (p) { %><li><%= p %></li><% }) %></ul><% } %>
 <% if (!upcoming.length) { %><p class="card empty">Nothing scheduled after the current shift.</p><% } else { %>
@@ -74,7 +82,7 @@
   <% var lastYear = ''; upcoming.forEach(function (g) { %>
   <% if (g.year !== lastYear) { lastYear = g.year; %><tr class="year-row<%= g.later ? ' later' : '' %>"><td colspan="<%= many ? 5 : 4 %>"><%= g.year %></td></tr><% } %>
   <tr<%- g.later ? ' class="later"' : '' %>>
-    <td class="nowrap" data-label="Days"><strong><%= g.label %></strong></td>
+    <td class="nowrap" data-label="Days"><% if (canPick(g)) { %><input type="checkbox" class="oncall-pick" form="oncall-clear" name="ids" value="<%= g.tech.concat(g.backup).map(function (p) { return p.id; }).join(',') %>" aria-label="Select <%= g.office %>, <%= g.label %>"> <% } %><strong><%= g.label %></strong></td>
     <% if (many) { %><td data-label="Office"><%= g.office %></td><% } %>
     <% ['tech', 'backup'].forEach(function (role) { %>
     <td data-label="<%= roles[role] %>">
