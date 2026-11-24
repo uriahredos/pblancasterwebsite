@@ -6,7 +6,7 @@
   <div class="panel-head"><h2 id="now-h">On call now</h2></div>
   <% if (!current.length) { %><p class="empty">Nobody is listed as on call today.<%= canManage ? ' Add the schedule below.' : '' %></p><% } %>
   <% current.forEach(function (g) { %>
-  <% if (many || g.market_id) { %><h3 class="sub-h"><%= g.market_id ? g.office : g.office + ' branch' %></h3><% } %>
+  <% if (many || g.market_id) { %><h3 class="sub-h"><%= g.market_id ? g.office : placeLabel(g.office) %></h3><% } %>
   <p class="meta oncall-range"><% if (canPick(g)) { %><input type="checkbox" class="oncall-pick" form="oncall-clear" name="ids" value="<%= g.tech.concat(g.backup).map(function (p) { return p.id; }).join(',') %>" aria-label="Select <%= g.office %>, <%= g.label %>"> <% } %><%= g.label %><%= g.note ? ' · ' + g.note : '' %></p>
   <ul class="oncall-people">
     <% g.tech.concat(g.backup).forEach(function (p) { %>

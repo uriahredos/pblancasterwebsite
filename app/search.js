@@ -101,7 +101,7 @@ function find(user, typed) {
     .map((p) => ({ label: p.display_name, sub: [p.job_title, p.office].filter(Boolean).join(' · ') || 'Person', url: `/people/${p.id}` })));
 
   add('Branches', db.prepare(
-    `SELECT b.id, b.name FROM branches b WHERE ${where(['b.name'])} AND EXISTS (SELECT 1 FROM users u WHERE u.branch_id = b.id AND (u.active = 1 OR u.in_directory = 1))
+    `SELECT b.id, b.name FROM branches b WHERE b.is_corporate = 0 AND ${where(['b.name'])} AND EXISTS (SELECT 1 FROM users u WHERE u.branch_id = b.id AND (u.active = 1 OR u.in_directory = 1))
      ORDER BY b.name COLLATE NOCASE LIMIT 4`).all(...args(1)).map((b) => ({ label: b.name, sub: 'Branch', url: `/branches/${b.id}` })));
 
   // Parts from the catalog, for people who work with parts: managers land on Stock, everyone else on the parts form.

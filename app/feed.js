@@ -41,7 +41,7 @@ function recent(user, limit = 8, { full = false } = {}) {
       EXISTS (SELECT 1 FROM welcome_notes n WHERE n.welcome_id = x.id AND n.user_id = @me) AS waved,
       (SELECT COUNT(*) FROM welcome_notes n JOIN users nu ON nu.id = n.user_id WHERE n.welcome_id = x.id AND nu.active = 1) AS waves
       FROM welcomes x ${from.replace('USER', 'user_id')} WHERE u.active = 1 AND ${nearby} AND x.created_at >= @since ORDER BY x.created_at DESC LIMIT ${each}`).all({ me: user.id, since: full ? since : new Date(Date.now() - 14 * 86400000).toISOString() })) {
-    items.push({ kind: 'hire', at: w.created_at, who: w, title: `${w.display_name} joined${w.office ? ' the ' + w.office + ' branch' : ''}`, text: w.intro || w.job_title || '', url: `/people/${w.user_id}`,
+    items.push({ kind: 'hire', at: w.created_at, who: w, title: `${w.display_name} joined${!w.office ? '' : require('./branches').isCorporate(w.office_id) ? ' ' + w.office : ' the ' + w.office + ' branch'}`, text: w.intro || w.job_title || '', url: `/people/${w.user_id}`,
       action: w.user_id === user.id || w.waved ? null : { url: `/welcome/${w.id}/wave`, label: '👋 Say welcome' }, done: w.waved ? 'You said welcome ✓' : '',
       extra: w.waves ? `${w.waves} ${w.waves === 1 ? 'welcome' : 'welcomes'}` : 'Be the first to say welcome', link: w.user_id === user.id ? { url: `/people/${w.user_id}#welcome`, label: 'See your messages' } : null });
   }
@@ -75,7 +75,7 @@ function company(user, today = localDate()) {
   const at = require('./reach').place(user);
   const month = `${today.slice(0, 7)}-01`;
   const stats = [
-    { value: n('SELECT COUNT(*) AS n FROM branches'), label: 'Branches', url: '/branches' },
+    { value: n('SELECT COUNT(*) AS n FROM branches WHERE is_corporate = 0'), label: 'Branches', url: '/branches' },
     { value: n('SELECT COUNT(*) AS n FROM users WHERE active = 1 OR in_directory = 1'), label: 'People Here', url: '/people' },
     // Counted the way the Shout-outs page lists them: the ones the office being looked at gave or received.
     { value: at.corporate ? n('SELECT COUNT(*) AS n FROM shoutouts WHERE created_at >= ?', month)
@@ -90,7 +90,7 @@ function company(user, today = localDate()) {
   const offices = db.prepare(`SELECT b.id, b.name, b.city, b.state, b.about,
       (SELECT group_concat(s.name, ', ') FROM branch_services bs JOIN services s ON s.id = bs.service_id WHERE bs.branch_id = b.id) AS services,
       (SELECT COUNT(*) FROM users u WHERE u.branch_id = b.id AND (u.active = 1 OR u.in_directory = 1)) AS people
-      FROM branches b WHERE b.id <> ? ORDER BY b.id`).all(at.office || 0).filter((o) => o.services || o.about || o.people);
+      FROM branches b WHERE b.id <> ? AND b.is_corporate = 0 ORDER BY b.id`).all(at.office || 0).filter((o) => o.services || o.about || o.people);
   const week = Math.floor(new Date(`${today}T12:00:00Z`).getTime() / (7 * 86400000));
   const spot = offices.length ? offices[week % offices.length] : null;
   for (const s of stats) if (s.value === 1 && s.one) s.label = s.one;

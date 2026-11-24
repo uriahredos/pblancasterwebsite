@@ -19,8 +19,8 @@
   </label>
 
   <% if (branches.length > 1) { %>
-  <label>Branch <span class="hint">Moving someone to another branch takes them out of any manager's team.</span>
-    <select name="branch_id"><% branches.forEach(function (b) { %><option value="<%= b.id %>" <%= b.id === target.branch_id ? 'selected' : '' %>><%= b.name %></option><% }) %></select>
+  <label>Branch <span class="hint">Choose Corporate for someone who works for the company, not for one branch. Moving someone takes them out of any manager's team.</span>
+    <select name="branch_id"><% branches.forEach(function (b) { %><option value="<%= b.id %>" <%= b.id === target.branch_id ? 'selected' : '' %>><%= b.is_corporate ? 'Corporate (not a branch)' : b.name %></option><% }) %></select>
   </label>
   <% } %>
 

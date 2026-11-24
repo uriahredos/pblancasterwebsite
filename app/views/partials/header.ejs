@@ -1,6 +1,6 @@
 <!doctype html>
 <% var isLocked = typeof locked !== 'undefined' && locked; var signedIn = Boolean(user) && !isLocked;
-   var officeLabel = typeof branchName !== 'undefined' && branchName ? branchName + ' Branch' : '';
+   var officeLabel = typeof branchName !== 'undefined' && branchName ? (typeof atCorporate !== 'undefined' && atCorporate ? branchName : branchName + ' Branch') : '';
    // Someone who chooses which office they look at sees that office named at the top, not their own.
    if (user && typeof branchChoices !== 'undefined' && branchChoices.length) {
      var lookingAt = user.viewBranch === null ? null : branchChoices.filter(function (b) { return b.id === user.viewBranch; })[0];

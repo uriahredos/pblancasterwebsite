@@ -391,6 +391,13 @@ const allProfiles = () => db.prepare('SELECT * FROM profiles ORDER BY name COLLA
 const getUser = (id) => (/^\d+$/.test(String(id)) ? db.prepare('SELECT * FROM users WHERE id = ?').get(id) : null);
 
 /** Profiles this person is allowed to hand out: only ones that hold nothing they lack themselves. */
+/** Where someone added by this person goes: the branch being looked at, or Corporate from the Corporate view. */
+function joinsWhere(user) {
+  const places = require('../branches');
+  const id = user.allBranches && user.viewBranch === null ? places.corporateId() : user.workBranch;
+  const name = (db.prepare('SELECT name FROM branches WHERE id = ?').get(id) || {}).name || '';
+  return { id, name, label: places.title(name, id), corporate: places.isCorporate(id) };
+}
 const grantableProfiles = (actor) => allProfiles().filter((p) => access.canGrant(actor, access.permsOf(p.id)));
 
 // May `actor` change `target`'s account? One rule for every page that changes an account (see permissions.js).
@@ -415,7 +422,7 @@ function renderUsers(req, res, extra = {}) {
      ORDER BY u.active DESC, u.display_name COLLATE NOCASE, u.id`).all()
     .map((u) => ({ ...u, manageable: mayManage(req.user, u), tempExpired: auth.tempExpired(u) }));
   res.status(extra.errors ? 400 : 200).render('admin_users', {
-    title: 'Users', errors: [], values: {}, created: null, users,
+    title: 'Users', errors: [], values: {}, created: null, users, joins: joinsWhere(req.user),
     profiles: grantableProfiles(req.user), roles: require('../team').titles(), duplicates: duplicatesFor(req.user), disabledCount: users.filter((u) => !u.active && u.manageable && u.id !== req.user.id).length,
     disabledListed: users.filter((u) => !u.active && u.manageable && u.in_directory).length, canAdd: req.user.scope === 'all', ...extra,
   });
@@ -522,13 +529,16 @@ router.post('/admin/users', requirePerm('users.manage'), (req, res) => {
 
   const password = auth.tempPassword();
   // A new person joins the branch being looked at: your own, unless you can see every branch and have chosen another.
-  const newId = auth.createUser({ username: values.username, displayName: values.display_name, email: values.email, password, profile: profile.id, branchId: req.user.workBranch });
+  // ...and from the Corporate view (every branch together) they join Corporate: they work for the company, not for a branch.
+  const joins = joinsWhere(req.user);
+  if (joins.corporate) require('../branches').setUp(joins.id);   // its truck checklist, the first time someone belongs there
+  const newId = auth.createUser({ username: values.username, displayName: values.display_name, email: values.email, password, profile: profile.id, branchId: joins.id });
   if (role) {
     db.prepare('UPDATE users SET job_title = ?, department = ? WHERE username = ?').run(role.name, role.department || null, values.username);
-    require('../team').applyAuto(req.user.workBranch);
+    require('../team').applyAuto(joins.id);
   }
   activity.log(req.user, 'Person added', `${values.display_name} (${values.username}) as ${profile.name}${role ? ', ' + role.name : ''}`);
-  req.session.created = { username: values.username, password, what: 'created' };
+  req.session.created = { username: values.username, password, what: 'created', where: joins.label };
   res.redirect('/admin/users');
 });
 
@@ -542,7 +552,8 @@ function editPage(req, res, target, extra = {}) {
     // Changing someone's profile or team is for people who see everyone; nobody changes their own profile.
     canSetProfile: fullAccess && !target.is_master && target.id !== req.user.id,
     canSetTeam: Boolean(fullAccess && profile && profile.scope === 'team' && !target.is_master),
-    branches: req.user.allBranches ? db.prepare('SELECT id, name FROM branches ORDER BY name COLLATE NOCASE').all() : [],
+    // Corporate first: for people who work for the company rather than for one branch.
+    branches: req.user.allBranches ? db.prepare('SELECT id, name, is_corporate FROM branches ORDER BY is_corporate DESC, name COLLATE NOCASE').all() : [],
     people: db.prepare('SELECT id, display_name, active FROM users WHERE id <> ? AND branch_id = ? AND removed_at IS NULL ORDER BY display_name COLLATE NOCASE').all(target.id, target.branch_id),
     team: db.prepare('SELECT user_id FROM user_managers WHERE manager_id = ?').all(target.id).map((r) => r.user_id),
     ...extra,
@@ -583,10 +594,11 @@ router.post('/admin/users/:id/edit', requirePerm('users.manage'), (req, res) => 
     // Moving someone to another branch: only by people who can see every branch. Their team ties do not come along.
     const moveTo = req.user.allBranches && /^\d+$/.test(String(req.body.branch_id || '')) ? db.prepare('SELECT id, name FROM branches WHERE id = ?').get(req.body.branch_id) : null;
     if (moveTo && moveTo.id !== target.branch_id) {
+      if (require('../branches').isCorporate(moveTo.id)) require('../branches').setUp(moveTo.id);
       db.prepare('UPDATE users SET branch_id = ? WHERE id = ?').run(moveTo.id, target.id);
       db.prepare('DELETE FROM user_managers WHERE manager_id = ? OR user_id = ?').run(target.id, target.id);
       target.branch_id = moveTo.id;
-      changes.push(`moved to ${moveTo.name} branch`);
+      changes.push(`moved to ${require('../branches').title(moveTo.name, moveTo.id)}`);
     }
     if (changes.length) activity.log(req.user, 'Person edited', `${values.display_name}: ${changes.join(', ')}`);
     const newProfile = profileId ? db.prepare('SELECT scope FROM profiles WHERE id = ?').get(profileId) : null;

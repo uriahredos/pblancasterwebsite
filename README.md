@@ -376,6 +376,10 @@ A manager runs the day-to-day (requests, stock, fleet, training, tasks, on call,
 - Nobody hands out a profile holding something they lack. Backups hold every office, so that box only counts on a company-level profile.
 - The Corporate setup pages (offices, markets, company lists) need a corporate admin; a corporate manager sees and runs every office without them.
 
+**Corporate as a home (`app/branches.js`).** People who work for the company rather than one branch belong to **Corporate**: one row in `branches` marked `is_corporate`, so every person still has a `branch_id`.
+It is never listed, chosen or counted as a branch ("Corporate" in the box at the top still means every branch together).
+Someone added from the Corporate view joins it; anyone else is moved there with the Branch box on their Users page. A company-level person who belongs to Corporate starts in the Corporate view.
+
 **Chain of command (`app/chain.js`).** An office answers to its market and a market to corporate. Nothing is stored for it: it is worked out from each person's profile level and office.
 Each office's page lists the chain (corporate, market, office, admins before managers); a person's page lists who is above them, nearest first.
 `chain.above(userId)` is the hook for escalations and approvals later.

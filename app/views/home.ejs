@@ -19,7 +19,7 @@
     <p class="hero-date"><%= dateLine %></p>
     <h1>Hi, <%= user.display_name.split(' ')[0] %></h1>
     <% // Under the greeting: the office being looked at (Corporate when it is all of them), or the person's own.
-       var heroOffice = branchName ? branchName + ' Branch' : 'Pye-Barker Fire & Safety';
+       var heroOffice = branchName ? (atCorporate ? branchName : branchName + ' Branch') : 'Pye-Barker Fire & Safety';
        if (branchChoices.length) { var heroAt = branchChoices.filter(function (b) { return b.id === user.viewBranch; })[0]; heroOffice = user.viewBranch === null ? 'Corporate' : heroAt ? heroAt.name + ' Branch' : heroOffice; } %>
     <p class="hero-sub"><%= heroOffice %></p>
   </div>
@@ -36,7 +36,7 @@
       <% } else if (sl.who) { %><span class="spot-face"><%- include('partials/avatar', { who: { id: sl.who.user_id, display_name: sl.who.display_name, photo_path: sl.who.photo_path }, size: 'lg' }) %></span>
       <% } else { %><span class="spot-face spot-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20.500V6l8-3 8 3v14.500M9 20.500v-5h6v5M8.500 9.500h1M14.500 9.500h1M8.500 12.500h1M14.500 12.500h1"/></svg></span><% } %>
       <span class="spot-text">
-        <span class="eyebrow"><%= sl.label %><% if (sl.office) { %> · <%= sl.office %> branch<% } %></span>
+        <span class="eyebrow"><%= sl.label %><% if (sl.office) { %> · <%= placeLabel(sl.office) %><% } %></span>
         <strong><%= sl.title %></strong>
         <% if (sl.text) { %><span class="spot-sub"><%= sl.text %></span><% } %>
       </span>

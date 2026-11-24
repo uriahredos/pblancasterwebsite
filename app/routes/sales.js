@@ -268,7 +268,7 @@ function load(req, res) {
 }
 function page(req, res, lead, extra = {}) {
   const notes = db.prepare('SELECT n.*, u.display_name AS author FROM lead_notes n JOIN users u ON u.id = n.user_id WHERE n.lead_id = ? ORDER BY n.id').all(lead.id);
-  const offices = db.prepare('SELECT id, name, number FROM branches WHERE id <> ? ORDER BY name COLLATE NOCASE').all(lead.branch_id);
+  const offices = db.prepare('SELECT id, name, number FROM branches WHERE id <> ? AND is_corporate = 0 ORDER BY name COLLATE NOCASE').all(lead.branch_id);
   res.status(extra.errors ? 400 : 200).render('sales_lead', {
     // The customer's name heads the page itself, not the browser tab, where it would stay in the browser's history.
     title: 'Lead', lead, notes, stages: sales.STAGES, sources: sales.SOURCES, people: salesPeople(lead.branch_id), offices,

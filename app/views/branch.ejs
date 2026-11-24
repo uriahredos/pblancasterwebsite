@@ -1,7 +1,7 @@
 <%- include('partials/header') %>
 <p class="back"><a class="back-link" href="<%= many ? '/branches' : '/people' %>"><%= many ? 'Branches' : 'People' %></a></p>
-<% if (b.photo_path) { %><img class="branch-hero" src="/branches/photo/<%= b.id %>?v=<%= b.photo_path.slice(0, 8) %>" alt="The <%= b.name %> branch"><% } %>
-<div class="title-row"><h1><%= b.name %> branch</h1><% if (canEdit && !editing) { %><a class="btn small" href="/branches/<%= b.id %>?edit=1#edit">Edit this page</a><% } %></div>
+<% if (b.photo_path) { %><img class="branch-hero" src="/branches/photo/<%= b.id %>?v=<%= b.photo_path.slice(0, 8) %>" alt="<%= isCorporate ? b.name : 'The ' + b.name + ' branch' %>"><% } %>
+<div class="title-row"><h1><%= isCorporate ? b.name : b.name + ' branch' %></h1><% if (canEdit && !editing) { %><a class="btn small" href="/branches/<%= b.id %>?edit=1#edit">Edit this page</a><% } %></div>
 <%
   var place = b.address || b.street || '';
   var phones = b.phone ? b.phone.split(/\s*\/\s*/).filter(Boolean) : [];

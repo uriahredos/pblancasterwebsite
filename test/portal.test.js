@@ -4243,7 +4243,7 @@ test('community first: the company in numbers, one list of what people across th
   // The strip under the greeting: how big the company is, each number a link.
   const home = (await t1.get('/')).text.replace(/\s+/g, ' ');
   const strip = /<section class="company-strip"[\s\S]*?<\/section>/.exec(home)[0];
-  const offices = db.prepare('SELECT COUNT(*) n FROM branches').get().n;
+  const offices = db.prepare('SELECT COUNT(*) n FROM branches WHERE is_corporate = 0').get().n;
   assert.match(strip, new RegExp(`<a href="/branches"><strong>${offices.toLocaleString('en-US')}</strong><span>Branches</span></a>`));
   assert.match(strip, /<a href="\/people"><strong>[\d,]+<\/strong><span>People Here<\/span>/); assert.match(strip, /Shout-Outs? This Month/);
   // The activity feed sits straight after shout-outs in the main column, and each item names the office it came from.
@@ -8913,7 +8913,7 @@ test('fleet: the branch\'s trucks, trailers, lifts and other equipment in one li
 test('branch box: a corporate admin can find and switch to any branch by typing, including one with nobody in it', async () => {
   const owner = await loggedIn('owner');
   const empty = db.prepare("INSERT INTO branches (name, number, state, created_at) VALUES ('Quietville', '9876', 'OH', ?)").run(new Date().toISOString()).lastInsertRowid;
-  const total = db.prepare('SELECT COUNT(*) n FROM branches').get().n;
+  const total = db.prepare('SELECT COUNT(*) n FROM branches WHERE is_corporate = 0').get().n;   // Corporate is where some people belong, not a branch to look at
   const home = (await owner.get('/')).text;
   const list = (/<datalist id="office-list">([\s\S]*?)<\/datalist>/.exec(home) || [])[1] || '';
   assert.equal((list.match(/<option /g) || []).length, total + 1);                                   // every office, and "All offices"
@@ -9347,4 +9347,86 @@ test('wording: the site says branch; old habits still work (typing "all offices"
   db.prepare("INSERT INTO profiles (name, scope, created_at) VALUES ('Branch admin (renamed check)', 'all', ?)").run(new Date().toISOString());
   assert.equal(access.profileByName('admin').name, 'Admin');                       // here it still has its first name
   db.prepare("DELETE FROM profiles WHERE name = 'Branch admin (renamed check)'").run();
+});
+
+test('Corporate: people who work for the company belong to Corporate, not to a branch; it is never listed or counted as a branch', async () => {
+  const owner = await loggedIn('owner'); const places = require('../app/branches'); const corp = places.corporateId();
+  const ownHome = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id;
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM branches WHERE is_corporate = 1').get().n, 1);
+  assert.equal(places.title('Corporate', corp), 'Corporate'); assert.equal(places.title('Lancaster', 1), 'Lancaster branch');
+
+  // Not a branch to look at, pick, count or put in a market: "Corporate" in the box is still every branch together.
+  const home = (await owner.get('/')).text;
+  const box = (/<datalist id="office-list">([\s\S]*?)<\/datalist>/.exec(home) || [])[1] || '';
+  assert.equal((box.match(/<option value="Corporate"/g) || []).length, 1); assert.match(box, /<option value="Corporate" data-id="all"/); assert.doesNotMatch(box, new RegExp(`data-id="${corp}"`));
+  assert.doesNotMatch((await owner.get('/branches')).text, new RegExp(`href="/branches/${corp}"`));
+  assert.doesNotMatch((await owner.get('/admin/branches')).text, new RegExp(`id="o${corp}"`));
+  assert.doesNotMatch((/<datalist id="market-offices">[\s\S]*?<\/datalist>/.exec((await owner.get('/admin/markets')).text) || ['none'])[0], /value="Corporate"|^none$/);
+  await owner.post('/branch/view', { branch: String(corp), back: '/' }, { page: '/' });                              // asked for by hand: not a branch to switch to
+  assert.match((await owner.get('/')).text, /<span class="branch">Lancaster Branch<\/span>/);
+
+  // Added from the Corporate view, a person joins Corporate. Added while looking at a branch, they join that branch.
+  await owner.post('/branch/view', { branch: 'all', back: '/' }, { page: '/' });
+  assert.match((await owner.get('/admin/users')).text, /<strong>They join Corporate, not a branch\.<\/strong> To add someone to a branch, choose that branch in the box at the top first\./);
+  const added = await owner.post('/admin/users', { username: 'corp.cora', display_name: 'Cora Corporate', profile_id: String(profileId('Corporate admin')) }, { page: '/admin/users' });
+  assert.equal(added.status, 302);
+  const cora = db.prepare("SELECT * FROM users WHERE username = 'corp.cora'").get();
+  assert.equal(cora.branch_id, corp);
+  const after = (await owner.get('/admin/users')).text.replace(/\s+/g, ' ');
+  assert.match(after, /Account <strong>corp\.cora<\/strong> was created at Corporate\./);
+  assert.match(after, /Cora Corporate[\s\S]{0,200}?<td[^>]*>Corporate<\/td>/);                                      // the Branch column says Corporate
+  await owner.post('/branch/view', { branch: String(ownHome), back: '/' }, { page: '/' });
+  const atBranch = (await owner.get('/admin/users')).text;
+  assert.match(atBranch, /<strong>They join the Lancaster branch\.<\/strong> For someone who works for the company rather than a branch, choose Corporate in the box at the top first\./);
+  assert.doesNotMatch(atBranch, /Cora Corporate/);                                                                 // she is not one of the branch's people
+  await owner.post('/admin/users', { username: 'corp.brad', display_name: 'Brad Branchside', profile_id: String(profileId('Technician')) }, { page: '/admin/users' });
+  const brad = db.prepare("SELECT * FROM users WHERE username = 'corp.brad'").get();
+  assert.equal(brad.branch_id, ownHome);
+
+  // Someone already here is moved to Corporate on their Users page; Corporate is the first choice there.
+  const edit = (await owner.get(`/admin/users/${brad.id}/edit`)).text;
+  assert.match(edit, new RegExp(`<select name="branch_id"><option value="${corp}" >Corporate \\(not a branch\\)</option>`));
+  await owner.post(`/admin/users/${brad.id}/edit`, { display_name: 'Brad Branchside', username: 'corp.brad', profile_id: String(profileId('Technician')), branch_id: String(corp) }, { page: `/admin/users/${brad.id}/edit` });
+  assert.equal(db.prepare('SELECT branch_id FROM users WHERE id = ?').get(brad.id).branch_id, corp);
+  assert.ok(db.prepare("SELECT 1 FROM activity_log WHERE action = 'Person edited' AND detail LIKE '%moved to Corporate%' AND detail NOT LIKE '%Corporate branch%'").get());
+
+  // A corporate admin who belongs to Corporate starts in the Corporate view, switches to any branch, and comes back.
+  db.prepare('UPDATE users SET must_change_password = 0, password_hash = (SELECT password_hash FROM users WHERE username = ?) WHERE id IN (?, ?)').run('owner', cora.id, brad.id);
+  const c = await loggedIn('corp.cora');
+  const hers = (await c.get('/')).text;
+  assert.match(hers, /<span class="branch">Corporate<\/span>/); assert.match(hers, /<p class="hero-sub">Corporate<\/p>/); assert.match(hers, /across every branch/);
+  await c.post('/branch/view', { branch: '1', back: '/' }, { page: '/' });
+  assert.match((await c.get('/')).text, /<span class="branch">Lancaster Branch<\/span>/);
+  await c.post('/branch/view', { branch: 'all', back: '/' }, { page: '/' });
+  assert.match((await c.get('/')).text, /<span class="branch">Corporate<\/span>/);
+
+  // Someone at Corporate without the whole-company view: the site says Corporate, never "Corporate branch", and shows the company's own posts.
+  await owner.post('/branch/view', { branch: 'all', back: '/' }, { page: '/' });
+  await owner.post('/admin/announcements', { title: 'CORPHOME company notice', body: 'For everyone', reach: 'company' }, { page: '/admin/announcements' });
+  await owner.post('/branch/view', { branch: String(ownHome), back: '/' }, { page: '/' });
+  await owner.post('/admin/announcements', { title: 'CORPHOME branch notice', body: 'For Lancaster', reach: 'office' }, { page: '/admin/announcements' });
+  const b = await loggedIn('corp.brad');
+  const his = (await b.get('/')).text;
+  assert.match(his, /<span class="branch">Corporate<\/span>/); assert.match(his, /<p class="hero-sub">Corporate<\/p>/); assert.match(his, /at Corporate/);
+  assert.match(his, /CORPHOME company notice/); assert.doesNotMatch(his, /CORPHOME branch notice|Corporate branch|Corporate Branch|data-office-pick/);
+  // Their page links to Corporate, and above them in the chain of command are the corporate admins and managers only.
+  const page = (await b.get(`/people/${brad.id}`)).text.replace(/\s+/g, ' ');
+  assert.match(page, new RegExp(`<a href="/branches/${corp}">Corporate</a>`));
+  assert.deepEqual(require('../app/chain').above(brad.id).map((s) => s.label), ['Corporate']);
+  assert.deepEqual(require('../app/chain').forOffice(corp).map((s) => s.label), ['Corporate']);
+  const team = (await b.get(`/branches/${corp}`)).text;
+  assert.match(team, /<h1>Corporate<\/h1>/); assert.match(team, /Cora Corporate/); assert.doesNotMatch(team, /Corporate branch/);
+
+  // Shout-outs: Corporate works with every branch, so one can go to or come from someone there.
+  const t1 = await loggedIn('tech1');
+  assert.match((await t1.get(`/people/${brad.id}`)).text, /Give a shout-out/);
+  assert.equal((await t1.post('/shoutouts', { to_user: String(brad.id), message: 'CORPHOME thanks from the branch' }, { page: '/shoutouts' })).status, 302);
+  assert.equal((await b.post('/shoutouts', { to_user: String(userId('tech2')), message: 'CORPHOME thanks from Corporate' }, { page: '/shoutouts' })).status, 302);
+  assert.match((await b.get('/shoutouts')).text, /CORPHOME thanks from the branch/); assert.match((await t1.get('/shoutouts')).text, /CORPHOME thanks from Corporate/);
+
+  db.transaction(() => {
+    db.prepare("DELETE FROM shoutouts WHERE message LIKE 'CORPHOME%'").run();
+    db.prepare("DELETE FROM announcement_reads WHERE announcement_id IN (SELECT id FROM announcements WHERE title LIKE 'CORPHOME%')").run(); db.prepare("DELETE FROM announcements WHERE title LIKE 'CORPHOME%'").run();
+    db.prepare("UPDATE users SET active = 0, profile_id = ? WHERE username LIKE 'corp.%'").run(profileId('Technician'));
+  })();
 });

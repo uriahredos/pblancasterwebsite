@@ -611,6 +611,8 @@ addColumn('branches', 'product_lines', 'TEXT');
 // Markets: groups of offices that corporate admins make and fill. An office belongs to one market at most.
 db.exec(`CREATE TABLE IF NOT EXISTS markets (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE, created_at TEXT NOT NULL)`);
 addColumn('branches', 'market_id', 'INTEGER');
+// 1 on the one row that stands for Corporate: where people belong who work for the company, not for a branch (see branches.js).
+addColumn('branches', 'is_corporate', 'INTEGER NOT NULL DEFAULT 0');
 // Who a post is for (see reach.js): one office (branch_id), a market (market_id), or the whole company (both empty).
 addColumn('announcements', 'market_id', 'INTEGER');
 addColumn('events', 'market_id', 'INTEGER');

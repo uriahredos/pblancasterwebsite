@@ -73,13 +73,15 @@ function loadUser(req, res, next) {
   res.locals.myTasks = [];
   res.locals.newThreads = [];
   res.locals.alerts = [];
-  res.locals.branchName = null; res.locals.branchChoices = [];
+  res.locals.branchName = null; res.locals.branchChoices = []; res.locals.atCorporate = false;
   // Profiles this person can look at the site as (see loadAccess). Listed for their own account menu only.
   res.locals.viewAsChoices = access.viewAsChoices(req.user);
   if (req.user) {
-    const all = db.prepare('SELECT id, name, number, city, state, region, marketing_name FROM branches ORDER BY name COLLATE NOCASE').all()
+    // Corporate is where some people belong, but it is not a branch to look at: "Corporate" in the box means every branch together.
+    const all = db.prepare('SELECT id, name, number, city, state, region, marketing_name FROM branches WHERE is_corporate = 0 ORDER BY name COLLATE NOCASE').all()
       .map((b) => ({ ...b, find: require('./util').officeWords(b) }));
-    res.locals.branchName = (all.find((b) => b.id === req.user.branch_id) || {}).name || null;
+    res.locals.branchName = (db.prepare('SELECT name FROM branches WHERE id = ?').get(req.user.branch_id) || {}).name || null;
+    res.locals.atCorporate = Boolean(req.user.atCorporate);
     // Someone who can see every branch chooses which one they are looking at.
     // Every office is offered, with or without people in it: the box is searched by typing, not scrolled.
     if (req.user.allBranches && all.length > 1) res.locals.branchChoices = all;

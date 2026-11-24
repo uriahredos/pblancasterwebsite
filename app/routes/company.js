@@ -32,7 +32,7 @@ function findOffices({ q = '', region = '', state = '', service = null } = {}) {
   if (service) { where.push('EXISTS (SELECT 1 FROM branch_services bs WHERE bs.branch_id = b.id AND bs.service_id = ?)'); params.push(service); }
   const rows = db.prepare(
     `SELECT b.*, (SELECT COUNT(*) FROM users u WHERE u.branch_id = b.id AND ${LISTED}) AS people FROM branches b
-     ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY b.state IS NULL, b.state, b.name COLLATE NOCASE`).all(...params);
+     WHERE b.is_corporate = 0 ${where.length ? 'AND ' + where.join(' AND ') : ''} ORDER BY b.state IS NULL, b.state, b.name COLLATE NOCASE`).all(...params);
   const map = new Map();
   for (const r of db.prepare('SELECT bs.branch_id, s.code, s.name FROM branch_services bs JOIN services s ON s.id = bs.service_id ORDER BY s.sort').all()) {
     if (!map.has(r.branch_id)) map.set(r.branch_id, []);
@@ -117,7 +117,7 @@ function officeListStatus() {
   return {
     missing,
     // An office here whose name is what a listed office goes by ("Lancaster" for the Ephrata office) is offered as that one.
-    unnumbered: db.prepare('SELECT id, name FROM branches WHERE number IS NULL ORDER BY name COLLATE NOCASE').all()
+    unnumbered: db.prepare('SELECT id, name FROM branches WHERE number IS NULL AND is_corporate = 0 ORDER BY name COLLATE NOCASE').all()
       .map((u) => ({ ...u, guess: (missing.find((o) => [o.marketing, o.name, o.labelCity].some((n) => n && n.toLowerCase() === u.name.toLowerCase())) || {}).number || '' })),
   };
 }
@@ -139,7 +139,7 @@ router.post('/admin/company/offices', everyOffice, (req, res) => {
       return changed;
     };
     // First, offices that are already here under another name ("Lancaster" being the Ephrata office, say).
-    for (const b of db.prepare('SELECT id FROM branches WHERE number IS NULL').all()) {
+    for (const b of db.prepare('SELECT id FROM branches WHERE number IS NULL AND is_corporate = 0').all()) {
       const o = byNumber.get(String(req.body[`is_${b.id}`] || ''));
       if (o && !db.prepare('SELECT 1 FROM branches WHERE number = ?').get(o.number)) { fill.run(o.number, o.city, o.state, o.street, o.region, b.id); hint(b.id, o); result.linked++; }
     }

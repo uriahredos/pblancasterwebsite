@@ -1,5 +1,6 @@
 'use strict';
 const db = require('./db');
+require('./branches');   // makes sure the Corporate home exists before anyone is looked up
 
 /**
  * Everything a profile can be allowed to do. Adding a line here makes a new
@@ -277,7 +278,11 @@ function loadAccess(user, viewBranch, viewProfile) {
   // and never an office outside it.
   user.marketBranches = !user.allBranches && user.perms.has('market.all') ? marketOffices(user.branch_id) : [];
   const inMarket = user.marketBranches.includes(Number(viewBranch));
-  const chosen = (user.allBranches || inMarket) && viewBranch !== undefined && viewBranch !== null ? viewBranch : user.branch_id;
+  // Someone who belongs to Corporate and sees every branch starts in the Corporate view (every branch together).
+  const corp = require('./branches');
+  user.atCorporate = corp.isCorporate(user.branch_id);
+  const picked = (user.allBranches || inMarket) && viewBranch !== undefined && viewBranch !== null && !corp.isCorporate(viewBranch);
+  const chosen = picked ? viewBranch : user.allBranches && user.atCorporate ? 'all' : user.branch_id;
   // null = every branch at once. workBranch is the one branch that stock, the truck checklist and new training sessions belong to.
   user.viewBranch = chosen === 'all' ? null : (db.prepare('SELECT id FROM branches WHERE id = ?').get(chosen) || { id: user.branch_id }).id;
   // Fail closed: an account with no office (which should not happen) sees no office's records rather than every office's.

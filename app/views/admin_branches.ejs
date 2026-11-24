@@ -19,7 +19,7 @@
   <p class="plain">Corporate admins see and manage every branch: its people, logs, stock and settings. They add branches and appoint the people who run them. Corporate managers see and run every branch day to day, without managing people or access.</p>
   <ul class="plain-list">
     <% corporate.forEach(function (c) { %>
-    <li><span class="who-row"><%- include('partials/avatar', { who: c }) %><span><strong><%= c.display_name %></strong><span class="meta"><%= c.is_master ? 'Master account' : c.profile %><%= c.branch ? ' · ' + c.branch + ' branch' : '' %><%= c.active ? '' : ' · sign-in off' %></span></span></span>
+    <li><span class="who-row"><%- include('partials/avatar', { who: c }) %><span><strong><%= c.display_name %></strong><span class="meta"><%= c.is_master ? 'Master account' : c.profile %><%= c.branch ? ' · ' + placeLabel(c.branch) : '' %><%= c.active ? '' : ' · sign-in off' %></span></span></span>
       <% if (!c.is_master && c.id !== user.id) { %><form method="post" action="/admin/corporate/admins/<%= c.id %>/remove" data-confirm="Stand <%= c.display_name %> down from corporate? They will only see their own branch."><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Stand down</button></form><% } %></li>
     <% }) %>
   </ul>

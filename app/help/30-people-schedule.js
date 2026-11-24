@@ -22,7 +22,8 @@ module.exports = [
       'Press **Open Teams chat** to start a chat with the message already typed, or **Copy message** to paste it somewhere else.',
     ],
     tips: [
-      'The new person joins the branch you are looking at. If you can see every branch, check the branch picker at the top before you add them.',
+      'The new person joins the branch you are looking at. If you can see every branch, check the branch picker at the top before you add them. The line under the form says where they will join.',
+      'For someone who works for the company rather than one branch, choose **Corporate** in the box at the top first. They then join Corporate, not a branch.',
       'A temporary password only works for a few days. If it has run out, use **Send sign-in details** again to make a fresh one.',
       'The list of sign-in messages is shown once. Send them all before you leave or refresh the page.',
       'If you do not see **Add a person**, your profile only lets you look after the people assigned to you. Ask an admin to add the person.',
@@ -49,6 +50,7 @@ module.exports = [
     tips: [
       'The list of people to manage only shows for someone whose profile sees only its own people, such as Manager. Change their **Profile** first, press **Save**, and the list appears.',
       'The **Branch** box only shows if you can see every branch. Moving someone takes them out of any manager\'s team.',
+      'To take someone out of a branch because they work for the company, choose **Corporate (not a branch)** in the **Branch** box. It is the first choice.',
       'Resetting a password also signs the person out everywhere and removes their Face ID sign-in.',
       '**Remove for good** erases the account and cannot be undone. Use **Disable** if the person might come back.',
     ],
@@ -174,6 +176,7 @@ module.exports = [
       'Nobody can hand out more than they have themselves.',
       'Only people already on the site can be appointed. Add the person under **Users** first.',
       'A manager whose profile is set to **Their own team** only sees the people assigned to them, not the whole branch.',
+      'Corporate people do not have to belong to a branch. Set their **Branch** to **Corporate (not a branch)** on their Users page.',
       'Each branch\'s page shows its **Chain of command**: who runs the branch, its market and corporate. A person\'s page shows who is above them.',
     ],
     related: ['profiles', 'add-an-office', 'markets'],

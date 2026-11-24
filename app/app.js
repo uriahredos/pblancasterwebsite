@@ -30,6 +30,7 @@ if (config.production) app.set('trust proxy', 1);
 
 Object.assign(app.locals, {
   labels: util.labels, fmtDateTime: util.fmtDateTime, fmtDate: util.fmtDate, splitNote: util.splitNote,
+  placeLabel: (name) => require('./branches').placeLabel(name),   // "Ephrata branch", plain "Corporate"
   // "11/5/2026" and "8:48 AM" separately, for stacking in a narrow column.
   money: util.money, fmt: require('./format').render,
   dateOnly: (iso) => util.fmtDateTime(iso).split(', ')[0], timeOnly: (iso) => util.fmtDateTime(iso).split(', ')[1] || '',

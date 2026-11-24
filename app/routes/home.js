@@ -156,7 +156,7 @@ router.get('/', requireLogin, (req, res) => {
   const office = at.office ? db.prepare('SELECT id, name FROM branches WHERE id = ?').get(at.office) : null;
   const inOffice = at.corporate ? db.prepare('SELECT COUNT(*) AS n FROM users WHERE active = 1 OR in_directory = 1').get().n
     : db.prepare('SELECT COUNT(*) AS n FROM users WHERE branch_id = ? AND (active = 1 OR in_directory = 1)').get(at.office).n;
-  branch.push({ label: 'People', value: inOffice, sub: at.corporate ? 'across every branch' : office ? `in the ${office.name} branch` : 'in your branch', level: '', url: office ? `/branches/${office.id}` : '/people' });
+  branch.push({ label: 'People', value: inOffice, sub: at.corporate ? 'across every branch' : office ? (require('../branches').isCorporate(office.id) ? 'at Corporate' : `in the ${office.name} branch`) : 'in your branch', level: '', url: office ? `/branches/${office.id}` : '/people' });
   const unread = res.locals.badges.notices;
   branch.push({ label: 'Announcements', value: unread, sub: unread ? 'for you to read' : 'all read', level: unread ? 'warn' : '', url: '/notices' });
   const homeWeek = social.thisWeek(req.user, today);   // worked out once, used here and for the panel further down

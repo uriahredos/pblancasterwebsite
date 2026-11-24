@@ -94,9 +94,9 @@ function page(req, res, extra = {}) {
   const created = req.session.created || null; delete req.session.created;
   res.status(extra.errors ? 400 : 200).render('admin_markets', {
     title: 'Markets', wide: true, markets, created, errors: [], values: {}, adminProfiles: grantable(req),
-    offices: db.prepare('SELECT b.id, b.name, b.number, b.city, b.state, b.region, b.marketing_name, m.name AS market FROM branches b LEFT JOIN markets m ON m.id = b.market_id ORDER BY b.name COLLATE NOCASE').all()
+    offices: db.prepare('SELECT b.id, b.name, b.number, b.city, b.state, b.region, b.marketing_name, m.name AS market FROM branches b LEFT JOIN markets m ON m.id = b.market_id WHERE b.is_corporate = 0 ORDER BY b.name COLLATE NOCASE').all()
       .map((b) => ({ ...b, find: require('../util').officeWords(b) })),
-    loose: db.prepare('SELECT COUNT(*) AS n FROM branches WHERE market_id IS NULL').get().n, ...extra,
+    loose: db.prepare('SELECT COUNT(*) AS n FROM branches WHERE market_id IS NULL AND is_corporate = 0').get().n, ...extra,
   });
 }
 router.get('/admin/markets', everyOffice, (req, res) => page(req, res));
@@ -133,7 +133,7 @@ router.post('/admin/markets/:id/offices', everyOffice, (req, res) => {
   if (!m) return res.redirect('/admin/markets');
   const typed = clean(req.body.office, 80);
   let hits = isId(req.body.branch) ? db.prepare('SELECT * FROM branches WHERE id = ?').all(req.body.branch) : [];
-  if (!hits.length && typed) hits = db.prepare('SELECT * FROM branches WHERE name = ? COLLATE NOCASE OR number = ?').all(typed, typed.replace(/^#/, ''));
+  if (!hits.length && typed) hits = db.prepare('SELECT * FROM branches WHERE (name = ? COLLATE NOCASE OR number = ?) AND is_corporate = 0').all(typed, typed.replace(/^#/, ''));
   if (hits.length !== 1) { flash(req, 'err', typed ? `No single branch matches "${typed}". Pick one from the list as you type.` : 'Choose a branch.'); return res.redirect(`/admin/markets#m${m.id}`); }
   const b = hits[0]; const was = b.market_id && b.market_id !== m.id ? market(b.market_id) : null;
   db.prepare('UPDATE branches SET market_id = ? WHERE id = ?').run(m.id, b.id);

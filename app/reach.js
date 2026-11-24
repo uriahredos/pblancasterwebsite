@@ -51,7 +51,7 @@ function runs(user, row) {
 function choices(user) {
   if (user.scope === 'team') return [];
   const p = place(user); const out = [];
-  if (p.office) out.push({ key: 'office', label: `${officeName(p.office)} branch only` });
+  if (p.office) out.push({ key: 'office', label: require('./branches').isCorporate(p.office) ? 'Corporate staff only' : `${officeName(p.office)} branch only` });
   if (p.market && (user.allBranches || (user.perms && user.perms.has('market.all')))) out.push({ key: 'market', label: `The ${marketName(p.market)} market` });
   if (user.allBranches) out.push({ key: 'company', label: 'The whole company' });
   return out;
@@ -73,7 +73,7 @@ function target(user, key) {
 function label(row) {
   if (row.market_id) return `${marketName(row.market_id)} market`;
   if (row.branch_id === null || row.branch_id === undefined) return 'Whole company';
-  return `${officeName(row.branch_id)} branch`;
+  return require('./branches').isCorporate(row.branch_id) ? 'Corporate staff' : `${officeName(row.branch_id)} branch`;
 }
 
 /** The offices whose people share birthdays, new faces and shout-outs with this office: its market, or just itself. */

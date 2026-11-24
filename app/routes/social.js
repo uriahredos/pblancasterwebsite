@@ -33,7 +33,8 @@ const involved = (user) => (reach.place(user).corporate ? '1 = 1' : '(f.branch_i
 const recentShoutouts = (user, limit = 3) => db.prepare(`${SHOUT} WHERE ${involved(user)} ORDER BY s.id DESC LIMIT @limit`).all({ me: user.id, office: reach.place(user).office, limit });
 const shoutoutsFor = (user, userId, limit = 20) => db.prepare(`${SHOUT} WHERE s.to_user = @u AND ${involved(user)} ORDER BY s.id DESC LIMIT @limit`).all({ me: user.id, office: reach.place(user).office, u: userId, limit });
 /** May this person give `targetId` a shout-out? Anyone in their own office, or in another office of their market. */
-const mayShout = (user, targetBranch) => Boolean(targetBranch) && reach.marketOffices(user.branch_id).includes(targetBranch);
+// Corporate works with every branch, so a shout-out can go to or come from someone there whatever the market.
+const mayShout = (user, targetBranch) => Boolean(targetBranch) && (reach.marketOffices(user.branch_id).includes(targetBranch) || require('../branches').isCorporate(targetBranch) || require('../branches').isCorporate(user.branch_id));
 const PICKER_MAX = 500;   // past this many people in the company, the "who is it for" list is your own office only
 
 /**
@@ -249,6 +250,7 @@ router.get('/branches/photo/:id', requireLogin, (req, res) => {
 const mayEditBranch = (user, b) => user.scope === 'all' && access.can(user, 'users.manage') && (user.allBranches || user.branch_id === b.id || (user.marketBranches || []).includes(b.id));
 const getBranch = (id) => (isId(id) ? db.prepare('SELECT * FROM branches WHERE id = ?').get(id) : null);
 
+const corporate = require('../branches');
 function branchPage(req, res, b, extra = {}) {
   const inside = reach.place(req.user).office === b.id || req.user.allBranches || (req.user.marketBranches || []).includes(b.id);
   const people = db.prepare(`SELECT u.id, u.display_name, u.photo_path, u.job_title, u.department FROM users u WHERE u.branch_id = ? AND ${LISTED} ORDER BY u.display_name COLLATE NOCASE`).all(b.id);
@@ -258,9 +260,9 @@ function branchPage(req, res, b, extra = {}) {
   // Management first, then the rest by name; people with no department last.
   const order = [...groups.keys()].sort((x, y) => (x === 'Management' ? -1 : y === 'Management' ? 1 : x === 'Team' ? 1 : y === 'Team' ? -1 : x.localeCompare(y)));
   res.status(extra.errors ? 400 : 200).render('branch', {
-    title: `${b.name} branch`, wide: true, b, people, teamChart, chain: require('../chain').forOffice(b.id), groups: order.map((k) => ({ name: k, people: groups.get(k) })), canEdit: mayEditBranch(req.user, b), errors: [], editing: false,
+    title: corporate.title(b.name, b.id), wide: true, b, isCorporate: corporate.isCorporate(b.id), people, teamChart, chain: require('../chain').forOffice(b.id), groups: order.map((k) => ({ name: k, people: groups.get(k) })), canEdit: mayEditBranch(req.user, b), errors: [], editing: false,
     services: require('./company').servicesOf(b.id), allServices: require('./company').allServices(), stateNames: require('./company').STATES,
-    many: db.prepare('SELECT COUNT(*) AS n FROM branches').get().n > 1,
+    many: db.prepare('SELECT COUNT(*) AS n FROM branches WHERE is_corporate = 0').get().n > 1,
     // An office's shout-outs and events are its own: shown to whoever is looking at that office or runs it, not to visitors.
     inside,
     shouts: inside ? db.prepare(`${SHOUT} WHERE t.branch_id = @b ORDER BY s.id DESC LIMIT 4`).all({ me: req.user.id, b: b.id }) : [],

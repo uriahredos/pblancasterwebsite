@@ -434,7 +434,7 @@ function branchPage(req, res, extra = {}) {
   const rows = db.prepare(
     `SELECT b.*, (SELECT COUNT(*) FROM users u WHERE u.branch_id = b.id AND u.active = 1) AS people,
             (SELECT COUNT(*) FROM users u WHERE u.branch_id = b.id AND u.active = 0 AND u.removed_at IS NULL) AS off
-     FROM branches b ORDER BY b.name COLLATE NOCASE`).all();
+     FROM branches b WHERE b.is_corporate = 0 ORDER BY b.name COLLATE NOCASE`).all();
   // With a couple of hundred offices, only the ones in use (or the one asked for) are shown in full.
   const wanted = isId(req.query.office) ? Number(req.query.office) : extra.values && extra.values.office ? extra.values.office : null;
   const oq = clean(req.query.oq, 40).toLowerCase();
