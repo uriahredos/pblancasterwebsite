@@ -254,7 +254,8 @@
      if (tabSet.length > 1) { %>
 <nav class="section-tabs no-print" aria-label="This section"><% tabSet.forEach(function (t) { %><a href="<%= t[1] %>" <%- t[3] ? 'aria-current="page"' : '' %>><%= t[2] %></a><% }) %></nav>
 <% } } %>
-<% var pageGuide = user && typeof helpFor === 'function' ? helpFor() : null; if (pageGuide) { %><a class="help-link no-print" href="/help/<%= pageGuide.slug %>?from=<%= encodeURIComponent(path) %>" title="How to use this page: <%= pageGuide.title %>"><span aria-hidden="true">?</span><span class="sr">How to use this page: <%= pageGuide.title %></span></a><% } %>
+<% /* The home page keeps its "?" inside the greeting banner, so the banner runs the full width: see home.ejs. */
+   var pageGuide = user && typeof helpFor === 'function' ? helpFor() : null; if (pageGuide && path !== '/') { %><a class="help-link no-print" href="/help/<%= pageGuide.slug %>?from=<%= encodeURIComponent(path) %>" title="How to use this page: <%= pageGuide.title %>"><span aria-hidden="true">?</span><span class="sr">How to use this page: <%= pageGuide.title %></span></a><% } %>
 <% if (user && user.viewingAs) { %>
 <form method="post" action="/view-as" class="flash view-as no-print" data-no-live>
   <input type="hidden" name="_csrf" value="<%= csrf %>">

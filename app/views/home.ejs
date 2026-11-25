@@ -15,6 +15,7 @@
   var icon = function (name) { return '<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + icons[name] + '</svg>'; };
 %>
 <div class="dash-hello hero">
+  <% var homeGuide = typeof helpFor === 'function' ? helpFor() : null; if (homeGuide) { %><a class="help-link no-print" href="/help/<%= homeGuide.slug %>?from=<%= encodeURIComponent(path) %>" title="How to use this page: <%= homeGuide.title %>"><span aria-hidden="true">?</span><span class="sr">How to use this page: <%= homeGuide.title %></span></a><% } %>
   <div>
     <p class="hero-date"><%= dateLine %></p>
     <h1>Hi, <%= user.display_name.split(' ')[0] %></h1>

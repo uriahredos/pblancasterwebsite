@@ -1535,6 +1535,10 @@ td.reports-to .meta { display: block; }
 .react-who { flex-basis: 100%; margin: .15rem 0 0; padding: .5rem .75rem; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: 0 6px 18px rgba(0, 0, 0, .14); font-size: .95rem; overflow-wrap: anywhere; }
 .help-link { float: right; margin: 0 0 .5rem .75rem; width: 36px; height: 36px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--accent); font-weight: 800; font-size: 1.1rem; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; position: relative; z-index: 2; }
 .help-link:hover { border-color: var(--accent); background: var(--accent-soft); }
+/* On the home page it sits in the corner of the greeting banner, taking no room from it. */
+.hero .help-link { float: none; position: absolute; top: .8rem; right: .9rem; margin: 0; background: rgba(255, 255, 255, .12); border-color: rgba(255, 255, 255, .4); color: #fff; }
+.hero .help-link:hover { background: rgba(255, 255, 255, .24); border-color: #fff; }
+.hero .help-link + div { padding-right: 2.75rem; }
 .nav > a.nav-help { margin-left: auto; }
 .nav > a.nav-manage { margin-left: auto; }
 .nav > a.nav-manage + a.nav-help { margin-left: 0; }
