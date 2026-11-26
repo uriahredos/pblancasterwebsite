@@ -26,6 +26,8 @@ module.exports = [
       'For someone who works for the company rather than one branch, choose **Corporate** in the box at the top first. They then join Corporate, not a branch.',
       'A temporary password only works for a few days. If it has run out, use **Send sign-in details** again to make a fresh one. **Tick only those not emailed yet** picks out whoever was missed.',
       'People brought in from a contact list are switched off until you send them their sign-in details. Sending switches the account on.',
+      'Only people who have not yet signed in and chosen their own password are on the list, so nobody who is already using the site is sent anything.',
+      'To see how the welcome email arrives before you send it to everyone, open **Send a test email** at the bottom of the **Send sign-in details** page and send one to yourself.',
       'The list of sign-in messages is shown once. Send them all before you leave or refresh the page.',
       'If you do not see **Add a person**, your profile only lets you look after the people assigned to you. Ask an admin to add the person.',
     ],

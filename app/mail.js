@@ -22,21 +22,23 @@ if (config.smtp.host) {
 function setTransport(t) { transport = t; }
 const isConfigured = () => Boolean(transport);
 
-/** Never throws: a mail problem must not break a form submission. */
-async function send(to, subject, text, attachments) {
-  if (!to || to.length === 0) return false;
+/** Send one message and say how it went: { ok } or { ok: false, why }. Never throws. */
+async function deliver(to, subject, text, attachments) {
+  if (!to || to.length === 0) return { ok: false, why: 'There is nobody to send it to.' };
   if (!transport) {
     console.log(`[mail] not configured, skipped: ${subject}`);
-    return false;
+    return { ok: false, why: 'Email is not set up on the site.' };
   }
   try {
     await transport.sendMail({ from: config.mailFrom, to: to.join(', '), subject, text, attachments });
-    return true;
+    return { ok: true };
   } catch (err) {
     console.error(`[mail] failed: ${subject}: ${err.message}`);
-    return false;
+    return { ok: false, why: String(err.message || 'The mail service refused it.').split('\n')[0].slice(0, 200) };
   }
 }
+/** Never throws: a mail problem must not break a form submission. */
+async function send(to, subject, text, attachments) { return (await deliver(to, subject, text, attachments)).ok; }
 
 function notifyPartsRequest({ id, name, items, source, jobNumber, neededBy }) {
   const lines = items.map((i) => `  ${i.quantity} x ${i.part_name}`).join('\n');
@@ -128,18 +130,32 @@ function notifyStatus(user, what, status, note, link) {
  * so the message does not read like one from a stranger. The password is in the message and nowhere else: a
  * message that fails is logged by its subject only.
  */
-function sendWelcome(user, password, site, by) {
-  if (!user || !user.email) return Promise.resolve(false);
+const WELCOME_SUBJECT = 'Your PB Portal sign-in details';
+function welcomeText(user, password, site, by) {
   const first = String(user.display_name || '').split(' ')[0] || 'there';
   const who = by || 'Your branch';
-  return send([user.email], 'Your PB Portal sign-in details', [
+  return [
     `Hi ${first},`, '',
     `${who} has set up your account on PB Portal, the Pye-Barker employee site for parts, fleet, training, your team and company news.`, '',
     `Site: ${site}`, `Username: ${user.username}`, `Temporary password: ${password}`, '',
     `The first time you sign in you will be asked to choose your own password. The temporary password works for ${config.tempPasswordDays} days.`, '',
     'On your phone, open the site in your browser, sign in, then choose "Add to Home Screen" to use it like an app.', '',
     `If you were not expecting this, check with ${by || 'your manager'} before you sign in.`, '',
-  ].join('\n'));
+  ].join('\n');
+}
+function sendWelcome(user, password, site, by) {
+  if (!user || !user.email) return Promise.resolve(false);
+  return send([user.email], WELCOME_SUBJECT, welcomeText(user, password, site, by));
+}
+/**
+ * The same message, to any address, to see how it arrives and how it reads. Same subject and wording as the real
+ * one, so it is treated by mail filters as the real one would be. The username and password in it are examples
+ * that open nothing, and its first line says so. Answers { ok } or { ok: false, why }.
+ */
+function sendWelcomeTest(to, by, site) {
+  const sample = { display_name: by || 'there', username: 'your.username' };
+  return deliver([to], WELCOME_SUBJECT,
+    'This is a test of the welcome email. The username and password below are examples and will not work.\n\n' + welcomeText(sample, 'abcd-efgh-jkmn', site, by));
 }
 
-module.exports = { sendWelcome, isConfigured, notifyLowStock, notifyStatus, setTransport, send, notifyPartsRequest, notifyTraining, runComplaintDigest, startComplaintDigest };
+module.exports = { sendWelcome, sendWelcomeTest, isConfigured, notifyLowStock, notifyStatus, setTransport, send, notifyPartsRequest, notifyTraining, runComplaintDigest, startComplaintDigest };

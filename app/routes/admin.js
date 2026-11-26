@@ -528,6 +528,24 @@ router.post('/admin/users/invite', requirePerm('users.manage'), (req, res) => {
   res.redirect('/admin/users/invite');
 });
 
+// A test of the welcome email, to any address: to see that it arrives, where it lands and how it reads.
+// A handful at a time for each person, so the page cannot be used to pester an address.
+const testsSent = new Map();   // user id -> when their recent tests were sent
+router.post('/admin/users/invite/test', requirePerm('users.manage'), (req, res, next) => {
+  const back = '/admin/users/invite#test';
+  const to = clean(req.body.to, 120);
+  const recent = (testsSent.get(req.user.id) || []).filter((t) => Date.now() - t < 10 * 60 * 1000);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) { flash(req, 'err', 'Enter the email address to send the test to.'); return res.redirect(back); }
+  if (!mail.isConfigured()) { flash(req, 'err', 'Email is not set up on the site yet, so nothing was sent.'); return res.redirect(back); }
+  if (recent.length >= 5) { flash(req, 'err', 'That is five tests in ten minutes. Wait a few minutes before sending another.'); return res.redirect(back); }
+  testsSent.set(req.user.id, [...recent, Date.now()]);
+  mail.sendWelcomeTest(to, req.user.display_name, siteOf(req)).then((sent) => {
+    activity.log(req.user, 'Test email sent', `${to}${sent.ok ? '' : ': not sent'}`);
+    flash(req, sent.ok ? 'ok' : 'err', sent.ok ? `Test email sent to ${to}. If it is not there in a few minutes, look in the junk folder.` : `The test email could not be sent. The mail service said: ${sent.why}`);
+    res.redirect(back);
+  }).catch(next);
+});
+
 function readPerson(body, exceptId) {
   const values = { username: clean(body.username, 40), display_name: clean(body.display_name, 80), email: clean(body.email, 120) };
   const errors = [];

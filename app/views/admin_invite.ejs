@@ -24,7 +24,7 @@
 <% if (sending && !sending.finishedAt) { %><script src="/invite.js?v=<%= assetV %>"></script><% } %>
 <% } else { %>
 <%- include('partials/invite_run') %>
-<p class="lede">These people have an account but have not signed in yet. Tick the ones you want<%= mailOn ? ', then email each of them their username and a new temporary password.' : ', and you get a ready-made message for each with their username and a new temporary password.' %></p>
+<p class="lede">These people have an account but have not signed in and chosen their own password yet. Tick the ones you want<%= mailOn ? ', then email each of them their username and a new temporary password.' : ', and you get a ready-made message for each with their username and a new temporary password.' %></p>
 <form method="post" action="/admin/users/invite" class="card stack" id="invite-form" data-no-live>
   <input type="hidden" name="_csrf" value="<%= csrf %>">
   <label>Find a person <input type="search" id="invite-find" placeholder="Start typing a name" autocomplete="off"></label>
@@ -47,5 +47,15 @@
   <p class="hint"><%= mailOn ? 'Email has no limit on how many. ' : 'Email is not set up on this site yet, so details cannot be emailed from here. ' %>Sign-in messages, to copy or send in Teams, are made up to 25 at a time.</p>
 </form>
 <script src="/invite.js?v=<%= assetV %>"></script>
+<% } %>
+<% if (!made && mailOn) { %>
+<details class="mod-tools spaced" id="test"<%- flash && /test/i.test(flash.text) ? ' open' : '' %>>
+<summary>Send a test email</summary>
+<form method="post" action="/admin/users/invite/test" class="filters thread-tools" data-no-live>
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label class="grow">Send it to <span class="hint">The same welcome email, with an example username and password that do not work.</span> <input name="to" type="email" required maxlength="120" value="<%= user.email || '' %>" autocomplete="off" placeholder="name@example.com"></label>
+  <div class="filter-actions"><button class="btn primary small" type="submit">Send test</button></div>
+</form>
+</details>
 <% } %>
 <%- include('partials/footer') %>

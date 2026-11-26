@@ -9881,6 +9881,44 @@ test('sign-in details by email: sent to a new person when they are added, and to
   db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?').run(ids['inv.quiet']);
   assert.equal(await invites.sendTo(ids['inv.quiet'], 'https://portal.test', { id: userId('owner'), display_name: 'Olive Owner' }), false);
 
+  // Sending to everyone reaches only people still waiting on a temporary password. Someone who has signed in and chosen
+  // their own is not on the list, and ticking them by hand (an old page left open) sends them nothing and changes nothing.
+  const chosenHash = row('inv.quiet').password_hash;
+  const everyone = await flat(owner, '/admin/users/invite');
+  assert.match(everyone, /have not signed in and chosen their own password yet/); assert.doesNotMatch(everyone, /Quinn Quiet/);
+  sent.length = 0;
+  await owner.post('/admin/users/invite', [['who', String(ids['inv.quiet'])], ['how', 'email']], { page: '/admin/users/invite' });
+  assert.match(await flat(owner, '/admin/users/invite'), /Tick at least one person first\./);
+  await owner.post('/admin/users/invite', [['who', String(ids['inv.quiet'])], ['who', String(ids['inv.fail'])], ['how', 'email']], { page: '/admin/users/invite' });
+  for (let i = 0; i < 100 && invites.busy(); i++) await new Promise((r) => setTimeout(r, 20));
+  assert.deepEqual(sent.map((m) => m.to), ['fay@example.test']); assert.equal(row('inv.quiet').password_hash, chosenHash);
+
+  // A test of the welcome email, to any address: the same subject and wording, with an example username and password that open nothing.
+  const tested = await flat(owner, '/admin/users/invite');
+  assert.match(tested, /<summary>Send a test email<\/summary> <form method="post" action="\/admin\/users\/invite\/test"/);
+  sent.length = 0;
+  const test1 = await owner.post('/admin/users/invite/test', { to: 'it.desk@example.test' }, { page: '/admin/users/invite' });
+  assert.equal(test1.location, '/admin/users/invite#test');
+  assert.match(await flat(owner, '/admin/users/invite'), /Test email sent to it\.desk@example\.test\. If it is not there in a few minutes, look in the junk folder\./);
+  assert.equal(sent.length, 1); assert.equal(sent[0].to, 'it.desk@example.test'); assert.equal(sent[0].subject, 'Your PB Portal sign-in details');
+  assert.match(sent[0].text, /^This is a test of the welcome email\. The username and password below are examples and will not work\.\n\nHi Olive,\n\nOlive Owner has set up your account on PB Portal/);
+  assert.match(sent[0].text, /\nUsername: your\.username\nTemporary password: abcd-efgh-jkmn\n/);
+  assert.equal(await canSignIn('your.username', 'abcd-efgh-jkmn'), false); assert.equal(db.prepare("SELECT COUNT(*) n FROM users WHERE username = 'your.username'").get().n, 0);
+  assert.ok(db.prepare("SELECT 1 FROM activity_log WHERE action = 'Test email sent' AND detail = 'it.desk@example.test'").get());
+  // Not an address: nothing goes. A technician cannot send one. When the mail service refuses, the page says what it said.
+  await owner.post('/admin/users/invite/test', { to: 'not an address' }, { page: '/admin/users/invite' });
+  assert.match(await flat(owner, '/admin/users/invite'), /Enter the email address to send the test to\./); assert.equal(sent.length, 1);
+  assert.equal((await (await loggedIn('tech1')).post('/admin/users/invite/test', { to: 'x@example.test' }, { page: '/parts' })).status, 403);
+  mail.setTransport({ sendMail: async () => { throw new Error('Invalid login: 535 Authentication unsuccessful\nsecond line'); } });
+  await owner.post('/admin/users/invite/test', { to: 'it.desk@example.test' }, { page: '/admin/users/invite' });
+  assert.match(await flat(owner, '/admin/users/invite'), /The test email could not be sent\. The mail service said: Invalid login: 535 Authentication unsuccessful<\/p>/);
+  mail.setTransport(stub);
+  // Five in ten minutes for one person, so the page cannot be used to pester an address.
+  for (let i = 0; i < 3; i++) await owner.post('/admin/users/invite/test', { to: 'it.desk@example.test' }, { page: '/admin/users/invite' });
+  assert.equal(sent.length, 4);
+  await owner.post('/admin/users/invite/test', { to: 'it.desk@example.test' }, { page: '/admin/users/invite' });
+  assert.match(await flat(owner, '/admin/users/invite'), /That is five tests in ten minutes\. Wait a few minutes before sending another\./); assert.equal(sent.length, 4);
+
   config.inviteGapMs = gap;
   const homeId = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id;
   await owner.post('/branch/view', { branch: String(homeId), back: '/' }, { page: '/' });
