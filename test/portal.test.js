@@ -9763,3 +9763,126 @@ test('assigned to a job: parts stay on hand but stop being available, leave when
   push.setSender(async () => {});
   db.prepare("UPDATE users SET active = 0 WHERE username LIKE 'hold.%'").run();
 });
+
+test('sign-in details by email: sent to a new person when they are added, and to as many people as are ticked on the Send sign-in details page', async () => {
+  const config = require('../app/config'); const invites = require('../app/invites'); const now = new Date().toISOString();
+  const stub = { sendMail: async (m) => { sent.push(m); } };
+  const gap = config.inviteGapMs; config.inviteGapMs = 0;
+  const owner = await loggedIn('owner');
+  const mk = (name) => { const id = db.prepare('INSERT INTO branches (name, state, created_at) VALUES (?, ?, ?)').run(name, 'PA', now).lastInsertRowid; require('../app/branches').setUp(id); return id; };
+  const a = mk('Invite Alpha');
+  await owner.post('/branch/view', { branch: String(a), back: '/' }, { page: '/' });
+  const techProfile = String(profileId('Technician'));
+  const mailTo = (addr) => sent.filter((m) => m.to === addr && m.subject === 'Your PB Portal sign-in details');
+  const passwordIn = (m) => /Temporary password: (\S+)/.exec(m.text)[1];
+  const canSignIn = async (username, password) => (await new Client().post('/login', { username, password }, { page: '/login' })).status === 302;
+  const row = (username) => db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+  const add = (fields) => owner.post('/admin/users', { profile_id: techProfile, ...fields }, { page: '/admin/users' });
+  const flat = async (client, at) => (await client.get(at)).text.replace(/\s+/g, ' ');
+
+  // Adding a person with an email: their sign-in details go to them there and then. The form says so, and has a box to say no.
+  assert.match(await flat(owner, '/admin/users'), /name="send_email" value="1" checked> Email them their sign-in details<\/label> <button class="btn primary small" type="submit">Add person<\/button>/);
+  assert.match(await flat(owner, '/admin/users/invite'), /<p class="back"><a class="back-link" href="\/admin\/users">Users<\/a><\/p>/);
+  await add({ username: 'inv.new', display_name: 'Nora Newhire', email: 'nora@example.test', email_choice: '1', send_email: '1' });
+  let page = await flat(owner, '/admin/users');
+  assert.match(page, /Account <strong>inv\.new<\/strong> was created in the Invite Alpha branch\.<\/p> <p><strong>Their sign-in details were emailed to nora@example\.test\.<\/strong><\/p>/);
+  assert.equal(mailTo('nora@example.test').length, 1);
+  const welcome = mailTo('nora@example.test')[0];
+  assert.match(welcome.text, /^Hi Nora,\n\nOlive Owner has set up your account on PB Portal/);
+  assert.match(welcome.text, /\nSite: http\S+\nUsername: inv\.new\nTemporary password: \S+\n/);
+  assert.match(welcome.text, /The temporary password works for 14 days\./);
+  assert.match(page, new RegExp(`<p class="code">${passwordIn(welcome)}</p> <p>It is also shown here once, in case the email does not reach them\\.`));   // the same password, as a fallback
+  assert.ok(await canSignIn('inv.new', passwordIn(welcome)));
+  assert.ok(row('inv.new').invited_at);
+  assert.ok(db.prepare("SELECT 1 FROM activity_log WHERE action = 'Sign-in details emailed' AND detail = 'Nora Newhire'").get());
+  // The box unticked, or no email on the form: nothing is sent, and the password is handed over as before.
+  await add({ username: 'inv.quiet', display_name: 'Quinn Quiet', email: 'quinn@example.test', email_choice: '1' });
+  page = await flat(owner, '/admin/users');
+  assert.equal(mailTo('quinn@example.test').length, 0); assert.match(page, /Give this to the person now\./); assert.doesNotMatch(page, /were emailed to/);
+  assert.equal(row('inv.quiet').invited_at, null);
+  const before = sent.length;
+  await add({ username: 'inv.nomail', display_name: 'Nell Nomail', email_choice: '1', send_email: '1' });
+  assert.equal(sent.length, before);
+  // A message that cannot be sent never stops the account being made: the page says so and shows the password.
+  mail.setTransport({ sendMail: async () => { throw new Error('relay down'); } });
+  await add({ username: 'inv.fail', display_name: 'Fay Failed', email: 'fay@example.test', email_choice: '1', send_email: '1' });
+  page = await flat(owner, '/admin/users');
+  assert.match(page, /<strong>The welcome email could not be sent\.<\/strong> Give them the password below yourself\./);
+  assert.ok(row('inv.fail')); assert.equal(row('inv.fail').invited_at, null);
+  // With no email set up on the site, the form is as it was and nothing is attempted.
+  mail.setTransport(null);
+  assert.doesNotMatch(await flat(owner, '/admin/users'), /name="send_email"/);
+  assert.doesNotMatch(await flat(owner, '/admin/users/invite'), /Email sign-in details<\/button>/);
+  assert.match(await flat(owner, '/admin/users/invite'), /Email is not set up on this site yet/);
+  const five = db.prepare("SELECT id FROM users WHERE username = 'inv.quiet'").get().id;
+  await owner.post('/admin/users/invite', [['who', String(five)], ['how', 'email']], { page: '/admin/users/invite' });
+  assert.match(await flat(owner, '/admin/users/invite'), /Email is not set up on the site yet, so nothing was sent\./);
+  mail.setTransport(stub);
+
+  // Many at once. The list is everyone who has not signed in yet, and people from the contact list who are still switched off.
+  const listed = db.prepare("INSERT INTO users (username, display_name, email, password_hash, profile_id, created_at, branch_id, temp_set_at, active, in_directory) VALUES ('inv.listed', 'Lia Listed', 'lia@example.test', 'x', ?, ?, ?, ?, 0, 1)").run(profileId('Technician'), now, a, now).lastInsertRowid;
+  const gone = db.prepare("INSERT INTO users (username, display_name, email, password_hash, profile_id, created_at, branch_id, temp_set_at, active, in_directory) VALUES ('inv.gone', 'Gus Gone', 'gus@example.test', 'x', ?, ?, ?, ?, 0, 0)").run(profileId('Technician'), now, a, now).lastInsertRowid;   // disabled by an admin: not offered
+  const ids = Object.fromEntries(['inv.new', 'inv.quiet', 'inv.nomail', 'inv.fail'].map((u) => [u, row(u).id]));
+  const pick = await flat(owner, '/admin/users/invite');
+  assert.match(pick, /data-tick="email">Tick everyone with an email<\/button> <button class="btn small" type="button" data-tick="new">Tick only those not emailed yet<\/button>/);
+  assert.match(pick, new RegExp(`value="${listed}" data-email="1" data-sent="0"> <span><strong>Lia Listed</strong>[^<]*<span class="meta">[^<]*</span> <span class="pill">switched off</span>`));
+  assert.match(pick, new RegExp(`value="${ids['inv.new']}" data-email="1" data-sent="1">[\\s\\S]*?<span class="pill">emailed `));
+  assert.match(pick, new RegExp(`value="${ids['inv.nomail']}" data-email="0" data-sent="0">`));
+  assert.doesNotMatch(pick, /Gus Gone/);
+  assert.match(pick, /name="how" value="email" data-confirm-button="[^"]+">Email sign-in details<\/button> <button class="btn " type="submit" name="how" value="messages">Make sign-in messages<\/button>/);
+
+  const nomailHash = row('inv.nomail').password_hash; const firstNora = passwordIn(welcome);
+  sent.length = 0;
+  const who = [ids['inv.new'], ids['inv.quiet'], ids['inv.nomail'], ids['inv.fail'], listed, gone].map((id) => ['who', String(id)]);
+  // A technician cannot; nor can anyone send to people who are not theirs to manage.
+  assert.equal((await (await loggedIn('tech1')).post('/admin/users/invite', [...who, ['how', 'email']], { page: '/parts' })).status, 403);
+  await owner.post('/admin/users/invite', [...who, ['how', 'email']], { page: '/admin/users/invite' });
+  assert.match(await flat(owner, '/admin/users/invite'), /Sending sign-in details to 4 people by email\. 1 with no email on file was left out\./);
+  for (let i = 0; i < 100 && invites.busy(); i++) await new Promise((r) => setTimeout(r, 20));
+  assert.equal(invites.busy(), false);
+  // Each of the four has their own message, with their own username and a password that works. The old one no longer does.
+  assert.deepEqual(sent.map((m) => m.to).sort(), ['fay@example.test', 'lia@example.test', 'nora@example.test', 'quinn@example.test']);
+  for (const [addr, username] of [['fay@example.test', 'inv.fail'], ['lia@example.test', 'inv.listed'], ['quinn@example.test', 'inv.quiet']]) {
+    const m = mailTo(addr)[0]; assert.match(m.text, new RegExp(`\\nUsername: ${username.replace('.', '\\.')}\\n`)); assert.ok(await canSignIn(username, passwordIn(m)), username); assert.ok(row(username).invited_at);
+  }
+  assert.equal(await canSignIn('inv.new', firstNora), false); assert.ok(await canSignIn('inv.new', passwordIn(mailTo('nora@example.test')[0])));
+  // The person from the contact list was switched on by it; the one with no email, and the disabled one, were left exactly as they were.
+  assert.equal(row('inv.listed').active, 1); assert.equal(row('inv.nomail').password_hash, nomailHash); assert.equal(row('inv.gone').active, 0); assert.equal(row('inv.gone').password_hash, 'x');
+  const done = await flat(owner, '/admin/users/invite');
+  assert.match(done, /<strong>Sign-in details were emailed to 4 of 4 people\.<\/strong>/); assert.doesNotMatch(done, /data-sending/);
+  assert.ok(db.prepare("SELECT 1 FROM activity_log WHERE action = 'Sign-in details emailed' AND detail = '4 of 4 people'").get());
+  assert.ok(db.prepare("SELECT 1 FROM activity_log WHERE action = 'Account enabled' AND detail = 'Lia Listed, with their sign-in details'").get());
+
+  // A message that does not go is counted and named, and that person stays on the list, not marked as emailed, to be sent again.
+  db.prepare('UPDATE users SET invited_at = NULL WHERE id IN (?, ?)').run(ids['inv.quiet'], ids['inv.fail']);
+  mail.setTransport({ sendMail: async (m) => { if (m.to === 'fay@example.test') throw new Error('bounced'); sent.push(m); } });
+  await owner.post('/admin/users/invite', [['who', String(ids['inv.quiet'])], ['who', String(ids['inv.fail'])], ['how', 'email']], { page: '/admin/users/invite' });
+  for (let i = 0; i < 100 && invites.busy(); i++) await new Promise((r) => setTimeout(r, 20));
+  const partly = await flat(owner, '/admin/users/invite');
+  assert.match(partly, /<strong>Sign-in details were emailed to 1 of 2 people\.<\/strong><\/p> <p class="hint">Not sent: Fay Failed\./);
+  assert.ok(row('inv.quiet').invited_at); assert.equal(row('inv.fail').invited_at, null);
+  assert.match(partly, new RegExp(`value="${ids['inv.fail']}" data-email="1" data-sent="0">`));
+  mail.setTransport(stub);
+  // While one lot is going out, another cannot be started; the page says how far it has got.
+  config.inviteGapMs = 150;
+  await owner.post('/admin/users/invite', [['who', String(ids['inv.quiet'])], ['who', String(ids['inv.fail'])], ['how', 'email']], { page: '/admin/users/invite' });
+  assert.match(await flat(owner, '/admin/users/invite'), /class="card invite-run" data-sending role="status"> <p><strong>Emailing sign-in details: \d of 2 done\.<\/strong>/);
+  await owner.post('/admin/users/invite', [['who', String(ids['inv.new'])], ['how', 'email']], { page: '/admin/users/invite' });
+  assert.match(await flat(owner, '/admin/users/invite'), /Sign-in details are still being sent\. Wait for that to finish, then send the rest\./);
+  for (let i = 0; i < 100 && invites.busy(); i++) await new Promise((r) => setTimeout(r, 20));
+  config.inviteGapMs = 0;
+
+  // The messages to copy still work, 25 at a time, and they too switch on someone from the contact list.
+  db.prepare('UPDATE users SET active = 0, in_directory = 1 WHERE id = ?').run(ids['inv.nomail']);
+  await owner.post('/admin/users/invite', [['who', String(ids['inv.nomail'])], ['how', 'messages']], { page: '/admin/users/invite' });
+  const made = await flat(owner, '/admin/users/invite');
+  assert.match(made, /<strong>Nell Nomail<\/strong>[\s\S]*?Username: inv\.nomail/); assert.equal(row('inv.nomail').active, 1);
+  // Someone who has since chosen their own password is not sent anything, even if a run had them in it.
+  db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?').run(ids['inv.quiet']);
+  assert.equal(await invites.sendTo(ids['inv.quiet'], 'https://portal.test', { id: userId('owner'), display_name: 'Olive Owner' }), false);
+
+  config.inviteGapMs = gap;
+  const homeId = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id;
+  await owner.post('/branch/view', { branch: String(homeId), back: '/' }, { page: '/' });
+  db.prepare("UPDATE users SET active = 0, in_directory = 0 WHERE username LIKE 'inv.%'").run();
+});

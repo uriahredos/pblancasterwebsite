@@ -50,4 +50,6 @@ module.exports = {
   minPasswordLength: 10,
   // A temporary password handed out by an admin stops working after this many days.
   tempPasswordDays: Math.max(1, Number(env.TEMP_PASSWORD_DAYS) || 14),
+  // Sign-in details emailed to many people go one at a time, this far apart: mail services limit how fast one sender may send.
+  inviteGapMs: env.INVITE_GAP_MS === undefined || env.INVITE_GAP_MS === '' ? 2500 : Math.max(0, Number(env.INVITE_GAP_MS) || 0),
 };

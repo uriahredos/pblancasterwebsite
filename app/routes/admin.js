@@ -424,7 +424,7 @@ function renderUsers(req, res, extra = {}) {
   res.status(extra.errors ? 400 : 200).render('admin_users', {
     title: 'Users', errors: [], values: {}, created: null, users, joins: joinsWhere(req.user),
     profiles: grantableProfiles(req.user), roles: require('../team').titles(), duplicates: duplicatesFor(req.user), disabledCount: users.filter((u) => !u.active && u.manageable && u.id !== req.user.id).length,
-    disabledListed: users.filter((u) => !u.active && u.manageable && u.in_directory).length, canAdd: req.user.scope === 'all', ...extra,
+    disabledListed: users.filter((u) => !u.active && u.manageable && u.in_directory).length, canAdd: req.user.scope === 'all', mailOn: mail.isConfigured(), ...extra,
   });
 }
 
@@ -466,10 +466,18 @@ router.post('/admin/users/duplicates', requirePerm('users.manage'), (req, res) =
 /** People `actor` may send sign-in details to: active, still on a temporary password, and theirs to manage. */
 function waitingToSignIn(actor) {
   const scope = scopeSql(actor, 'u.id');
+  // Besides the active accounts: people brought in from a contact list, who are switched off and have never had a
+  // sign-in. Sending one of them their details is what switches the account on. (An account an admin disabled is
+  // taken off the People list at that moment, so it is not offered here.)
   return db.prepare(`SELECT u.*, (SELECT name FROM branches b WHERE b.id = u.branch_id) AS branch_name FROM users u
-      WHERE u.active = 1 AND u.must_change_password = 1 AND u.id <> ? ${scope ? 'AND ' + scope : ''} ORDER BY u.display_name COLLATE NOCASE, u.id`).all(actor.id)
+      WHERE u.must_change_password = 1 AND u.removed_at IS NULL AND u.id <> ?
+        AND (u.active = 1 OR (u.in_directory = 1 AND NOT EXISTS (SELECT 1 FROM activity_log a WHERE a.user_id = u.id AND a.action = 'Signed in')))
+        ${scope ? 'AND ' + scope : ''} ORDER BY u.display_name COLLATE NOCASE, u.id`).all(actor.id)
     .filter((u) => mayManage(actor, u)).map((u) => ({ ...u, tempExpired: auth.tempExpired(u) }));
 }
+// The address people are sent to: the configured one, or else the address this page was opened on.
+const siteOf = (req) => (process.env.BASE_URL ? config.baseUrl : `${req.protocol}://${req.get('host')}`);
+const invites = require('../invites');
 
 function signInMessage(u, password, site) {
   const first = u.display_name.split(' ')[0];
@@ -481,20 +489,35 @@ function signInMessage(u, password, site) {
 router.get('/admin/users/invite', requirePerm('users.manage'), (req, res) => {
   const made = req.session.invites || null;   // temporary passwords, shown once
   delete req.session.invites;
-  res.render('admin_invite', { title: 'Send sign-in details', wide: true, people: made ? [] : waitingToSignIn(req.user), made });
+  res.render('admin_invite', { title: 'Send sign-in details', wide: true, people: made ? [] : waitingToSignIn(req.user), made, mailOn: mail.isConfigured(), sending: invites.status() });
 });
 
 router.post('/admin/users/invite', requirePerm('users.manage'), (req, res) => {
   const picked = [].concat(req.body.who || []).filter((v) => /^\d+$/.test(v)).map(Number);
-  const people = waitingToSignIn(req.user).filter((u) => picked.includes(u.id)).slice(0, 25);
-  if (!people.length) { flash(req, 'err', 'Tick at least one person first.'); return res.redirect('/admin/users/invite'); }
+  const chosen = waitingToSignIn(req.user).filter((u) => picked.includes(u.id));
+  if (!chosen.length) { flash(req, 'err', 'Tick at least one person first.'); return res.redirect('/admin/users/invite'); }
+  const site = siteOf(req);
+
+  // By email: as many as were ticked, sent in the background. Each person gets their own message; nothing is shown here.
+  if (req.body.how === 'email') {
+    const withEmail = chosen.filter((u) => u.email).slice(0, 2000); const without = chosen.length - withEmail.length;
+    if (!mail.isConfigured()) flash(req, 'err', 'Email is not set up on the site yet, so nothing was sent.');
+    else if (invites.busy()) flash(req, 'err', 'Sign-in details are still being sent. Wait for that to finish, then send the rest.');
+    else if (!withEmail.length) flash(req, 'err', 'None of the people you ticked has an email on file.');
+    else {
+      invites.start(withEmail, site, req.user);
+      flash(req, 'ok', `Sending sign-in details to ${withEmail.length} ${withEmail.length === 1 ? 'person' : 'people'} by email.${without ? ` ${without} with no email on file ${without === 1 ? 'was' : 'were'} left out.` : ''}`);
+    }
+    return res.redirect('/admin/users/invite');
+  }
+
+  const people = chosen.slice(0, 25);
   const made = [];
-  // The address people are sent to: the configured one, or else the address this page was opened on.
-  const site = process.env.BASE_URL ? config.baseUrl : `${req.protocol}://${req.get('host')}`;
   db.transaction(() => {
     for (const u of people) {
       const password = auth.issueTemp(u.id);
       auth.endSessions(u.id);
+      if (!u.active) { db.prepare('UPDATE users SET active = 1 WHERE id = ?').run(u.id); activity.log(req.user, 'Account enabled', `${u.display_name}, with their sign-in details`); }
       const m = signInMessage(u, password, site);
       made.push({ id: u.id, name: u.display_name, email: u.email || '', text: m.text,
         teams: u.email ? `https://teams.microsoft.com/l/chat/0/0?users=${encodeURIComponent(u.email)}&message=${encodeURIComponent(m.oneLine)}` : '' });
@@ -515,7 +538,9 @@ function readPerson(body, exceptId) {
   return { values, errors };
 }
 
-router.post('/admin/users', requirePerm('users.manage'), (req, res) => {
+// (Sending the welcome email is waited for, so anything that goes wrong here is handed to the site's error page.)
+router.post('/admin/users', requirePerm('users.manage'), (req, res, next) => { addPerson(req, res).catch(next); });
+async function addPerson(req, res) {
   if (req.user.scope !== 'all') return forbidden(res); // team managers do not create accounts
   const { values, errors } = readPerson(req.body);
   // A role can be picked here too; when it gives a profile and none was chosen, that profile is used.
@@ -525,7 +550,7 @@ router.post('/admin/users', requirePerm('users.manage'), (req, res) => {
   const profile = grantableProfiles(req.user).find((p) => String(p.id) === String(wanted));
   values.profile_id = wanted;
   if (!profile) errors.push('Choose a profile.');
-  if (errors.length) return renderUsers(req, res, { errors, values });
+  if (errors.length) return renderUsers(req, res, { errors, values: { ...values, email_choice: req.body.email_choice, send_email: req.body.send_email } });
 
   const password = auth.tempPassword();
   // A new person joins the branch being looked at: your own, unless you can see every branch and have chosen another.
@@ -538,9 +563,17 @@ router.post('/admin/users', requirePerm('users.manage'), (req, res) => {
     require('../team').applyAuto(joins.id);
   }
   activity.log(req.user, 'Person added', `${values.display_name} (${values.username}) as ${profile.name}${role ? ', ' + role.name : ''}`);
-  req.session.created = { username: values.username, password, what: 'created', where: joins.label };
+  // With an email on the form and email set up on the site, their sign-in details go to them there and then
+  // (unless the box on the form was unticked). The password is still shown here once, in case the message goes astray.
+  let emailed = '';
+  if (values.email && mail.isConfigured() && !(req.body.email_choice && !req.body.send_email)) {
+    const sent = await mail.sendWelcome({ display_name: values.display_name, username: values.username, email: values.email }, password, siteOf(req), req.user.display_name);
+    if (sent) { db.prepare('UPDATE users SET invited_at = ? WHERE id = ?').run(new Date().toISOString(), newId); activity.log(req.user, 'Sign-in details emailed', values.display_name); emailed = values.email; }
+    else emailed = 'failed';
+  }
+  req.session.created = { username: values.username, password, what: 'created', where: joins.label, emailed };
   res.redirect('/admin/users');
-});
+}
 
 function editPage(req, res, target, extra = {}) {
   const profile = target.profile_id ? db.prepare('SELECT * FROM profiles WHERE id = ?').get(target.profile_id) : null;

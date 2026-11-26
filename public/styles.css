@@ -1320,6 +1320,12 @@ h1, h2, h3, .hero h1, .panel-head h2 { font-weight: 700; letter-spacing: 0; }
 .invite-pick .choice { display: flex; align-items: center; gap: .6rem; }
 .invite-text { margin: .2rem 0 .7rem; padding: .7rem .8rem; background: var(--accent-soft); border-radius: 8px; font: inherit; font-size: .93rem; white-space: pre-wrap; overflow-wrap: anywhere; user-select: all; }
 .invites .invite-done { opacity: .7; }
+.invite-ticks { margin: .35rem 0; align-items: center; }
+.filters .add-go { flex-basis: 100%; align-items: center; gap: .9rem; }
+.filters.card .add-go label.choice { margin: 0; flex: 0 0 auto; }   /* its words on one line, whatever width the boxes above are given */
+.invite-run { border-left: 5px solid var(--pb-green); margin-bottom: 1rem; }
+.invite-run p { margin: 0; }
+.invite-run p + p { margin-top: .35rem; }
 
 /* Users: the search row above the list */
 .users-find { margin-bottom: .4rem; }

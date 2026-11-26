@@ -1,5 +1,5 @@
 <%- include('partials/header') %>
-<p class="back"><a href="/admin/users">Users</a></p>
+<p class="back"><a class="back-link" href="/admin/users">Users</a></p>
 <h1>Send sign-in details</h1>
 <% if (made) { %>
 <p class="lede">Each person below has a new temporary password. Press <strong>Open Teams chat</strong> to start a chat with the message already typed, then press send in Teams. Or copy the message and paste it anywhere.</p>
@@ -19,19 +19,32 @@
 <p class="filter-actions"><a class="btn" href="/admin/users/invite">Choose more people</a><a class="btn" href="/admin/users">Back to Users</a></p>
 <script src="/invite.js?v=<%= assetV %>"></script>
 <% } else if (!people.length) { %>
+<%- include('partials/invite_run') %>
 <p class="card empty">Everyone you manage has already signed in and chosen a password. For someone who is locked out, use Reset password on the Users page.</p>
+<% if (sending && !sending.finishedAt) { %><script src="/invite.js?v=<%= assetV %>"></script><% } %>
 <% } else { %>
-<p class="lede">These people have an account but have not signed in yet. Tick the ones you want, and you get a ready-made message for each with their username and a new temporary password.</p>
-<form method="post" action="/admin/users/invite" class="card stack" id="invite-form">
+<%- include('partials/invite_run') %>
+<p class="lede">These people have an account but have not signed in yet. Tick the ones you want<%= mailOn ? ', then email each of them their username and a new temporary password.' : ', and you get a ready-made message for each with their username and a new temporary password.' %></p>
+<form method="post" action="/admin/users/invite" class="card stack" id="invite-form" data-no-live>
   <input type="hidden" name="_csrf" value="<%= csrf %>">
   <label>Find a person <input type="search" id="invite-find" placeholder="Start typing a name" autocomplete="off"></label>
+  <p class="filter-actions invite-ticks">
+    <button class="btn small" type="button" data-tick="email">Tick everyone with an email</button>
+    <button class="btn small" type="button" data-tick="new">Tick only those not emailed yet</button>
+    <button class="btn small" type="button" data-tick="none">Untick all</button>
+    <span class="hint" id="invite-count" aria-live="polite"></span>
+  </p>
   <ul class="invite-pick">
   <% people.forEach(function (u) { %>
-    <li><label class="choice"><input type="checkbox" name="who" value="<%= u.id %>"> <span><strong><%= u.display_name %></strong> <span class="meta"><%= u.username %><%= u.email ? ' · ' + u.email : ' · no email on file' %><%= user.viewBranch === null && u.branch_name ? ' · ' + u.branch_name : '' %></span><% if (u.tempExpired) { %> <span class="pill">temporary password expired</span><% } %></span></label></li>
+    <li><label class="choice"><input type="checkbox" name="who" value="<%= u.id %>" data-email="<%= u.email ? 1 : 0 %>" data-sent="<%= u.invited_at ? 1 : 0 %>"> <span><strong><%= u.display_name %></strong> <span class="meta"><%= u.username %><%= u.email ? ' · ' + u.email : ' · no email on file' %><%= user.viewBranch === null && u.branch_name ? ' · ' + u.branch_name : '' %></span><% if (!u.active) { %> <span class="pill">switched off</span><% } %><% if (u.invited_at) { %> <span class="pill">emailed <%= fmtDateTime(u.invited_at) %></span><% } %><% if (u.tempExpired) { %> <span class="pill">temporary password expired</span><% } %></span></label></li>
   <% }) %>
   </ul>
-  <p class="hint">Up to 25 at a time. Any temporary password these people were given before stops working. A temporary password lasts <%= tempPasswordDays %> days.</p>
-  <button class="btn primary" type="submit">Make sign-in messages</button>
+  <p class="hint">Any temporary password these people were given before stops working. A temporary password lasts <%= tempPasswordDays %> days. An account that is switched off is switched on when its details are sent.</p>
+  <p class="filter-actions">
+    <% if (mailOn) { %><button class="btn primary" type="submit" name="how" value="email" data-confirm-button="Email sign-in details to everyone ticked? Each person gets their own message with a new temporary password.">Email sign-in details</button><% } %>
+    <button class="btn <%= mailOn ? '' : 'primary' %>" type="submit" name="how" value="messages">Make sign-in messages</button>
+  </p>
+  <p class="hint"><%= mailOn ? 'Email has no limit on how many. ' : 'Email is not set up on this site yet, so details cannot be emailed from here. ' %>Sign-in messages, to copy or send in Teams, are made up to 25 at a time.</p>
 </form>
 <script src="/invite.js?v=<%= assetV %>"></script>
 <% } %>

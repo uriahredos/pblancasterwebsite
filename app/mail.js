@@ -123,4 +123,23 @@ function notifyStatus(user, what, status, note, link) {
     `Hi ${user.display_name},\n\nYour ${what} was updated.\n\nStatus: ${status}\n${note ? 'Reply: ' + note + '\n' : ''}\n${config.baseUrl}${link}\n`);
 }
 
-module.exports = { isConfigured, notifyLowStock, notifyStatus, setTransport, send, notifyPartsRequest, notifyTraining, runComplaintDigest, startComplaintDigest };
+/**
+ * A person's sign-in details: where the site is, their username and a temporary password. `by` is who set them up,
+ * so the message does not read like one from a stranger. The password is in the message and nowhere else: a
+ * message that fails is logged by its subject only.
+ */
+function sendWelcome(user, password, site, by) {
+  if (!user || !user.email) return Promise.resolve(false);
+  const first = String(user.display_name || '').split(' ')[0] || 'there';
+  const who = by || 'Your branch';
+  return send([user.email], 'Your PB Portal sign-in details', [
+    `Hi ${first},`, '',
+    `${who} has set up your account on PB Portal, the Pye-Barker employee site for parts, fleet, training, your team and company news.`, '',
+    `Site: ${site}`, `Username: ${user.username}`, `Temporary password: ${password}`, '',
+    `The first time you sign in you will be asked to choose your own password. The temporary password works for ${config.tempPasswordDays} days.`, '',
+    'On your phone, open the site in your browser, sign in, then choose "Add to Home Screen" to use it like an app.', '',
+    `If you were not expecting this, check with ${by || 'your manager'} before you sign in.`, '',
+  ].join('\n'));
+}
+
+module.exports = { sendWelcome, isConfigured, notifyLowStock, notifyStatus, setTransport, send, notifyPartsRequest, notifyTraining, runComplaintDigest, startComplaintDigest };

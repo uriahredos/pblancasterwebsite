@@ -445,6 +445,7 @@ addColumn('users', 'branch_id', 'INTEGER');
 db.exec('CREATE INDEX IF NOT EXISTS users_branch ON users(branch_id)');
 addColumn('users', 'job_title', 'TEXT');
 addColumn('users', 'started_on', 'TEXT');
+addColumn('users', 'invited_at', 'TEXT');   // when their sign-in details were last emailed to them
 addColumn('users', 'about', 'TEXT');
 addColumn('users', 'skills', 'TEXT');
 addColumn('users', 'phone', 'TEXT');

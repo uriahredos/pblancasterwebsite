@@ -1,0 +1,11 @@
+<%# Sign-in details being emailed in the background, or just finished. Give it `sending` (see app/invites.js). %>
+<% if (sending) { var runDone = sending.sent + sending.failed.length; %>
+<div class="card invite-run"<%- sending.finishedAt ? '' : ' data-sending' %> role="status">
+  <% if (!sending.finishedAt) { %>
+  <p><strong>Emailing sign-in details: <%= runDone %> of <%= sending.total %> done.</strong> You can leave this page. It carries on by itself.</p>
+  <% } else { %>
+  <p><strong>Sign-in details were emailed to <%= sending.sent %> of <%= sending.total %> <%= sending.total === 1 ? 'person' : 'people' %>.</strong></p>
+  <% } %>
+  <% if (sending.failed.length) { %><p class="hint">Not sent: <%= sending.failed.slice(0, 20).join(', ') %><%= sending.failed.length > 20 ? ' and ' + (sending.failed.length - 20) + ' more' : '' %>. Anyone not sent is still on the list, so you can send to them again.</p><% } %>
+</div>
+<% } %>

@@ -4,9 +4,11 @@
 <% if (created) { %>
 <div class="card code-card">
   <p>Account <strong><%= created.username %></strong> <%= created.what === 'reset' ? 'has a new temporary password' : 'was created' + (created.where ? (created.where === 'Corporate' ? ' at Corporate' : ' in the ' + created.where) : '') %>.</p>
+  <% if (created.emailed && created.emailed !== 'failed') { %><p><strong>Their sign-in details were emailed to <%= created.emailed %>.</strong></p><% } %>
+  <% if (created.emailed === 'failed') { %><p><strong>The welcome email could not be sent.</strong> Give them the password below yourself.</p><% } %>
   <p class="mini">Temporary password</p>
   <p class="code"><%= created.password %></p>
-  <p>Give this to the person now. It is shown only once, and they will be asked to choose their own password when they sign in.</p>
+  <p><%= created.emailed && created.emailed !== 'failed' ? 'It is also shown here once, in case the email does not reach them.' : 'Give this to the person now. It is shown only once, and they will be asked to choose their own password when they sign in.' %></p>
 </div>
 <% } %>
 <%- include('partials/errors') %>
@@ -52,7 +54,15 @@
       <% profiles.forEach(function (p) { %><option value="<%= p.id %>" <%= String(values.profile_id) === String(p.id) ? 'selected' : '' %>><%= p.name %></option><% }) %>
     </select>
   </label>
+  <% if (mailOn) { /* with email set up, the last line of the form: send them their details, and the button */ %>
+  <div class="filter-actions add-go">
+    <input type="hidden" name="email_choice" value="1">
+    <label class="choice"><input type="checkbox" name="send_email" value="1" <%= values.email_choice && !values.send_email ? '' : 'checked' %>> Email them their sign-in details</label>
+    <button class="btn primary small" type="submit">Add person</button>
+  </div>
+  <% } else { %>
   <div class="filter-actions"><button class="btn primary small" type="submit">Add person</button></div>
+  <% } %>
 </form>
 <p class="hint"><strong>They join <%= joins.corporate ? 'Corporate, not a branch' : 'the ' + joins.label %>.</strong> <%= joins.corporate ? 'To add someone to a branch, choose that branch in the box at the top first.' : user.allBranches ? 'For someone who works for the company rather than a branch, choose Corporate in the box at the top first.' : '' %> A temporary password is generated for you and shown once after you add the person. It works for <%= tempPasswordDays %> days; after that, send fresh sign-in details. The role places them on the chart; the profile decides what they can do, and is filled in for you when the role gives one.</p>
 <% } else { %>
