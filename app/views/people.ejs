@@ -23,7 +23,7 @@
       <span class="meta"><%= [p.job_title, p.department, branches.length > 1 ? p.branch : ''].filter(Boolean).join(' · ') || p.branch || 'No details yet' %></span>
       <% if (p.skillList.length) { %><span class="chips"><% p.skillList.slice(0, 4).forEach(function (s) { %><span class="skill"><%= s %></span><% }) %><% if (p.skillList.length > 4) { %><span class="skill more">+<%= p.skillList.length - 4 %></span><% } %></span><% } %>
     </span>
-  </a><% if (p.email && p.id !== user.id) { %><a class="teams-mini" href="https://teams.microsoft.com/l/chat/0/0?users=<%= encodeURIComponent(p.email) %>" target="_blank" rel="noopener noreferrer" title="Chat with <%= p.display_name %> in Teams" aria-label="Chat with <%= p.display_name %> in Teams"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H10l-4.500 3.500V16H4z"/><path d="M8 9.500h8M8 12.500h5"/></svg></a><% } %></li>
+  </a><% if (p.id !== user.id && canMessage.has(p.id)) { %><a class="teams-mini" href="/messages/with/<%= p.id %>" title="Message <%= p.display_name %>" aria-label="Message <%= p.display_name %>"><%- icons.chat %></a><% } %></li>
   <% }) %>
 </ul><% if (pages > 1) { %>
 <p class="filter-actions spaced"><% if (page > 1) { %><a class="btn small" href="<%= pageLink(page - 1) %>">Previous</a><% } %><% if (page < pages) { %><a class="btn small" href="<%= pageLink(page + 1) %>">Next</a><% } %></p><% } %>

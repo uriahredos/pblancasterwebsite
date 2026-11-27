@@ -56,7 +56,7 @@ router.get('/people', requireLogin, (req, res) => {
   const page = Math.min(pages, Math.max(1, isId(req.query.page) ? Number(req.query.page) : 1));
   const people = db.prepare(`${PERSON} ${matching} ORDER BY u.display_name COLLATE NOCASE, u.id LIMIT ${PEOPLE_PER_PAGE} OFFSET ?`).all(...params, (page - 1) * PEOPLE_PER_PAGE).map(decorate);
   const pageLink = (n) => '/people?' + new URLSearchParams(Object.entries({ q, branch: branch || '', dept, page: n > 1 ? String(n) : '' }).filter(([, v]) => v)).toString();
-  res.render('people', { title: 'People', wide: true, people, q, branch, dept, departments, branches: branches(), found, page, pages, pageLink, firstShown: (page - 1) * PEOPLE_PER_PAGE + 1,
+  res.render('people', { canMessage: access.can(req.user, 'messages.use') ? require('../messages').reachableIds() : new Set(), title: 'People', wide: true, people, q, branch, dept, departments, branches: branches(), found, page, pages, pageLink, firstShown: (page - 1) * PEOPLE_PER_PAGE + 1,
     total: db.prepare('SELECT COUNT(*) AS n FROM users WHERE active = 1 OR in_directory = 1').get().n });
 });
 

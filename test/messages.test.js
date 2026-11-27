@@ -286,6 +286,9 @@ test('quick list and person card: favorites, recents, search, and the ways to re
   const plain = (await n.get(`/people/${idOf('cat')}/card`)).text;            // no messages: the card is just who they are
   assert.match(plain, /Cat Tech/); assert.doesNotMatch(plain, /data-call-person|messages\/with/);
   assert.notEqual((await n.get('/messages/dock')).status, 200);
+  const dir = (await a.get('/people')).text;                                  // the directory's chat icon goes to the site's messages
+  assert.match(dir, new RegExp(`class="teams-mini" href="/messages/with/${idOf('cat')}"`)); assert.doesNotMatch(dir, new RegExp(`href="/messages/with/(${idOf('nomsg')}|${idOf('ann')})"`));
+  assert.doesNotMatch((await n.get('/people')).text, /messages\/with/);
   assert.doesNotMatch((await n.get('/')).text, /id="dock"/); assert.match((await a.get('/')).text, /id="dock"/);
   assert.equal((await new Client().get(`/people/${idOf('cat')}/card`)).status, 302);
 });

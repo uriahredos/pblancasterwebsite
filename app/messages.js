@@ -81,6 +81,13 @@ function reachable(userId) {
   return Boolean(u && u.active && (u.is_master || (u.profile_id && access.permsOf(u.profile_id).has('messages.use'))));
 }
 
+/** Everyone who can get private messages, as a set of ids: for lists that mark many people at once. */
+function reachableIds() {
+  const ok = new Map();
+  const has = (profileId) => { if (!ok.has(profileId)) ok.set(profileId, access.permsOf(profileId).has('messages.use')); return ok.get(profileId); };
+  return new Set(db.prepare('SELECT id, is_master, profile_id FROM users WHERE active = 1').all().filter((u) => u.is_master || (u.profile_id && has(u.profile_id))).map((u) => u.id));
+}
+
 /** People to start a conversation with: active, able to get messages, not this person, matched on name. */
 function people(me, q) {
   const like = `%${String(q || '').replace(/[\\%_]/g, '\\$&')}%`;
@@ -135,4 +142,4 @@ function moveUser(fromId, toId) {
   }
 }
 
-module.exports = { find, forUser, create, listFor, unreadCount, messages, markRead, lastRead, add, people, reachable, asReported, moveUser, waitingReports, favorites, isFavorite, toggleFavorite };
+module.exports = { find, forUser, create, listFor, unreadCount, messages, markRead, lastRead, add, people, reachable, reachableIds, asReported, moveUser, waitingReports, favorites, isFavorite, toggleFavorite };

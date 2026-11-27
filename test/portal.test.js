@@ -3849,7 +3849,9 @@ test('Teams: a chat button for people whose work email is shown on their profile
   db.prepare("UPDATE users SET email = 'tech.two@example.com', show_email = 1 WHERE id = ?").run(a);
   const link = /href="https:\/\/teams\.microsoft\.com\/l\/chat\/0\/0\?users=tech\.two%40example\.com" target="_blank" rel="noopener noreferrer"/;
   assert.match((await t1.get(`/people/${a}`)).text, new RegExp(link.source + '>Chat in Teams'));
-  assert.match((await t1.get('/people')).text, new RegExp('class="teams-mini" ' + link.source));
+  const dir = (await t1.get('/people')).text;
+  assert.doesNotMatch(dir, /teams\.microsoft/);                                   // in the directory the chat icon is the site's own messages
+  assert.match((await t1.get(`/people/${a}`)).text, /<a class="btn small" href="mailto:tech\.two@example\.com">Email<\/a>/);
   assert.doesNotMatch((await (await loggedIn('tech2')).get(`/people/${a}`)).text, /Chat in Teams/);   // not on your own page
   db.prepare('UPDATE users SET show_email = 0 WHERE id = ?').run(a);
   assert.doesNotMatch((await t1.get(`/people/${a}`)).text, /teams\.microsoft|tech\.two/);
