@@ -1,7 +1,7 @@
 // Service worker: lets the site be installed on a phone's home screen and shows a
 // friendly page when there is no signal. Pages themselves are never stored, so
 // nothing private is kept on the phone by this file.
-var CACHE = 'portal-static-v131';
+var CACHE = 'portal-static-v132';
 var ASSETS = ['/offline.html', '/offline.js', '/styles.css', '/site.js', '/alerts-prompt.js', '/passkey.js', '/theme.js', '/logo.png', '/logo-p.png', '/logo-b.png', '/logo-flame.png', '/parts-form.js', '/scan.js', '/inspection-form.js', '/icons/icon-192.png', '/icons/badge-pb-96.png'];
 
 self.addEventListener('install', function (event) {
@@ -23,12 +23,12 @@ self.addEventListener('push', function (event) {
   try { data = event.data ? event.data.json() : {}; } catch (e) { data = { title: 'PB Portal', body: event.data ? event.data.text() : '' }; }
   var callTag = data.call ? 'call-' + data.call : null;
   var show = function () {
-    // A call that is ringing: one alert that comes again (with its sound and buzz) each time the site sends it, stays on the
-    // screen until dealt with, and can be answered or declined right there.
+    // A call that is ringing: one alert, with its sound once and a long buzz, that stays on the screen until dealt with
+    // and can be answered or declined right there.
     if (data.ring && callTag) {
       return self.registration.showNotification(data.title || 'Incoming call', {
         body: data.body || '', icon: '/icons/icon-192.png', badge: '/icons/badge-pb-96.png', tag: callTag, renotify: true, silent: false,
-        vibrate: [600, 300, 600, 300, 600, 300, 600], requireInteraction: true,
+        vibrate: [800, 400, 800, 400, 800, 400, 800, 400, 800], requireInteraction: true,
         actions: [{ action: 'answer', title: 'Answer' }, { action: 'decline', title: 'Decline' }],
         data: { url: data.url || '/', call: data.call, token: data.token || '' }
       });

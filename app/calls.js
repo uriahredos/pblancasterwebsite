@@ -30,6 +30,14 @@ function onRingEnd(fn) { ringEnded.push(fn); }
 /** Take a call away and tell whoever needs to know. */
 function drop(key, c, reason) { stopRing(key, c, reason); calls.delete(key); }
 const changed = (threadId) => live.publish([topic(threadId)]);
+/**
+ * Send one person a setup message about a call. In a support thread it goes to the thread's page. Between two people it
+ * goes down the person's own line, which every page of theirs listens to, so the call carries on while they move around the site.
+ */
+function tell(userId, key, data) {
+  if (typeof key === 'string' && key.indexOf('dm:') === 0) return live.sendTo(userId, `inbox:${userId}`, 'signal', { ...data, key });
+  return live.sendTo(userId, topic(key), 'signal', data);
+}
 
 /** Drop people who have gone quiet, and calls that have run their course. Returns true if anything changed. */
 function prune(threadId, now = Date.now()) {
@@ -37,17 +45,17 @@ function prune(threadId, now = Date.now()) {
   if (!c) return false;
   if (c.ring && now > c.ring.until) {                       // nobody answered: the call ends and the caller is told
     drop(threadId, c, 'noanswer');
-    live.sendTo(c.host.id, topic(threadId), 'signal', { type: 'noanswer' });
+    tell(c.host.id, threadId, { type: 'noanswer' });
     return true;
   }
   if (now - c.startedAt > MAX_MS || now - c.host.seen > STALE_MS) {
     drop(threadId, c);
-    if (c.guest) live.sendTo(c.guest.id, topic(threadId), 'signal', { type: 'bye' });
+    if (c.guest) tell(c.guest.id, threadId, { type: 'bye' });
     return true;
   }
   if (c.guest && now - c.guest.seen > STALE_MS) {
     c.guest = null;
-    live.sendTo(c.host.id, topic(threadId), 'signal', { type: 'bye' });
+    tell(c.host.id, threadId, { type: 'bye' });
     return true;
   }
   return false;
@@ -109,10 +117,10 @@ function leave(threadId, userId) {
   if (!c) return false;
   if (c.host.id === userId) {
     drop(threadId, c);
-    if (c.guest) live.sendTo(c.guest.id, topic(threadId), 'signal', { type: 'bye' });
+    if (c.guest) tell(c.guest.id, threadId, { type: 'bye' });
   } else if (c.guest && c.guest.id === userId) {
     c.guest = null;
-    live.sendTo(c.host.id, topic(threadId), 'signal', { type: 'bye' });
+    tell(c.host.id, threadId, { type: 'bye' });
   } else return false;
   changed(threadId);
   return true;
@@ -124,7 +132,7 @@ function decline(key, userId) {
   const c = get(key);
   if (!c || !c.ring || c.ring.userId !== userId) return false;
   drop(key, c, 'declined');
-  live.sendTo(c.host.id, topic(key), 'signal', { type: 'declined' });
+  tell(c.host.id, key, { type: 'declined' });
   changed(key);
   return true;
 }
@@ -144,4 +152,4 @@ function viewFor(threadId, user) {
   return { ringToken: c.ring && c.ring.userId === user.id ? c.ring.token : null, hostName: c.host.name, mineHost, mineGuest, full: Boolean(c.guest) && !mineGuest && !mineHost, mode: c.mode, ringing: Boolean(c.ring && c.ring.userId === user.id) };
 }
 
-module.exports = { onRingEnd, _RING_MS: RING_MS, get, start, join, peerOf, beat, leave, decline, ringingFor, allow, viewFor, prune, topic, _calls: calls, _STALE_MS: STALE_MS };
+module.exports = { tell, onRingEnd, _RING_MS: RING_MS, get, start, join, peerOf, beat, leave, decline, ringingFor, allow, viewFor, prune, topic, _calls: calls, _STALE_MS: STALE_MS };

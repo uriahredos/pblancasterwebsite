@@ -13,7 +13,6 @@ const { requirePerm } = require('../auth');
 const router = express.Router();
 const MAX_SIGNAL = 20000;                       // characters in one setup message (a description of a phone's video, a few thousand)
 const KINDS = new Set(['offer', 'answer', 'candidate']);
-const RING_AGAIN_MS = 6000;
 
 const fail = (res, code, error) => res.status(code).json({ error });
 const nameOf = (c) => (c ? c.name : '');
@@ -63,12 +62,9 @@ function mount(base, perm, place) {
       live.publish([p.key, `inbox:${p.dm.user_a}`, `inbox:${p.dm.user_b}`]);
       const ring = r.call.ring;
       live.sendTo(p.dm.other.id, `inbox:${p.dm.other.id}`, 'ring', { key: p.key, id: p.dm.id, from: req.user.display_name, fromId: req.user.id, mode: r.call.mode, token: ring.token });
-      // The phone rings the way a phone does: the alert comes again every few seconds until it is answered, declined or given up on.
-      const alert = () => push.notify([p.dm.other.id], 'call', { title: `${req.user.display_name} is calling`, body: `Incoming ${what} call`, url: `/messages/c/${p.dm.id}?answer=${ring.token}`,
+      // One alert on the phone, with its sound once, that stays put until it is answered, declined or given up on.
+      push.notify([p.dm.other.id], 'call', { title: `${req.user.display_name} is calling`, body: `Incoming ${what} call`, url: `/messages/c/${p.dm.id}?answer=${ring.token}`,
         extra: { call: p.dm.id, token: ring.token, mode: r.call.mode } });
-      alert();
-      const again = setInterval(() => { const c = calls.get(p.key); if (c && c.ring && c.ring.token === ring.token) alert(); else clearInterval(again); }, RING_AGAIN_MS);
-      again.unref();
     }
     res.json({ ok: true, role: 'host', waiting: !r.call.guest, mode: r.call.mode });
   });
@@ -80,7 +76,7 @@ function mount(base, perm, place) {
     if (r.error === 'own') return fail(res, 409, 'You started this call.');
     if (r.error === 'full') return fail(res, 409, 'That call already has two people in it.');
     // The one who started it is told, and makes the offer.
-    live.sendTo(r.call.host.id, calls.topic(p.key), 'signal', { type: 'joined', name: req.user.display_name });
+    calls.tell(r.call.host.id, p.key, { type: 'joined', name: req.user.display_name });
     res.json({ ok: true, role: 'guest', host: nameOf(r.call.host), mode: r.call.mode });
   });
 
@@ -97,7 +93,7 @@ function mount(base, perm, place) {
     const me = calls.peerOf(p.key, req.user.id);
     if (!me.in) return fail(res, 403, 'You are not in this call.');
     if (!me.peer) return fail(res, 409, 'There is nobody on the other end yet.');
-    live.sendTo(me.peer.id, calls.topic(p.key), 'signal', { type: kind, data });
+    calls.tell(me.peer.id, p.key, { type: kind, data });
     res.json({ ok: true });
   });
 

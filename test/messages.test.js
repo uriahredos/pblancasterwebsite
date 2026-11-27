@@ -237,7 +237,7 @@ test('calls to a person: it rings them, they answer or say not now, and only the
   const a = await new Client().login('ann'), b = await new Client().login('bob'), c = await new Client().login('cat');
   const fetchJson = { 'x-requested-with': 'fetch' };
   alerts.length = 0;
-  const bobInbox = await b.stream(`inbox:${idOf('bob')}`); const annDm = await a.stream(`dm:${convo}`); await wait(100);
+  const bobInbox = await b.stream(`inbox:${idOf('bob')}`); const annDm = await a.stream(`inbox:${idOf('ann')}`); await wait(100);   // a call's setup messages come down each person's own line
   assert.equal((await c.post(`/call/dm/${convo}/start`, { mode: 'audio' }, '/messages', fetchJson)).status, 404, 'not your conversation');
   const started = await a.post(`/call/dm/${convo}/start`, { mode: 'audio' }, '/messages', fetchJson);
   assert.equal(started.json.mode, 'audio');
@@ -247,11 +247,11 @@ test('calls to a person: it rings them, they answer or say not now, and only the
   const token = (await b.get('/call/ringing')).json.calls[0].token;
   assert.doesNotMatch(annDm.text(), new RegExp(token), 'the caller is never sent the token');
   // Answer on the phone's alert leads to the conversation with this ring's token: only then does the page join by itself.
-  assert.match((await b.get(`/messages/c/${convo}?answer=${token}`)).text, /data-call-auto="audio"/);
-  assert.doesNotMatch((await b.get(`/messages/c/${convo}?answer=nope`)).text, /data-call-auto/);
-  assert.doesNotMatch((await a.get(`/messages/c/${convo}?answer=${token}`)).text, /data-call-auto/);
+  assert.match((await b.get(`/messages/c/${convo}?answer=${token}`)).text, /data-dcall-auto data-mode="audio"/);
+  assert.doesNotMatch((await b.get(`/messages/c/${convo}?answer=nope`)).text, /data-dcall-auto/);
+  assert.doesNotMatch((await a.get(`/messages/c/${convo}?answer=${token}`)).text, /data-dcall-auto/);
   assert.equal((await b.get('/call/ringing')).json.calls[0].id, convo);
-  assert.match((await b.get(`/messages/c/${convo}`)).text, /Ann Tech<\/strong> is calling you \(voice\)[^]*data-call-join data-mode="audio"[^]*Ann Tech called you/);
+  assert.match((await b.get(`/messages/c/${convo}`)).text, /Ann Tech<\/strong> is calling you \(voice\)[^]*data-dcall="join" data-mode="audio"[^]*Ann Tech called you/);
   // Not now: the call is over and the caller is told.
   assert.equal((await b.post(`/call/dm/${convo}/decline`, {}, '/messages', fetchJson)).status, 200);
   assert.ok(await until(() => /"type":"declined"/.test(annDm.text())));

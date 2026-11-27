@@ -4,6 +4,7 @@
   'use strict';
   if (window.__dock || !document.documentElement.hasAttribute('data-in')) return;
   window.__dock = true;
+  var es = null, retry = null;
   var dock = document.getElementById('dock');                  // only for people who have messages
   var card = document.getElementById('pcard');
   function csrf() { var m = document.querySelector('meta[name="csrf"]'); return m ? m.getAttribute('content') : ''; }
@@ -28,10 +29,12 @@
     if (btn) btn.disabled = true;
     post('/messages/open/' + userId).then(function (j) {
       closeCard(); closeDock();
-      leaveNote(j.id, 'host', mode);
-      go('/messages/c/' + j.id);
+      if (window.pbCall) window.pbCall.start(j.id, mode, j.name);      // the call starts right here, in its own small window
+      else { leaveNote(j.id, 'host', mode); go('/messages/c/' + j.id); }
     }).catch(function (e) { window.alert ? note(e.message) : 0; }).then(function () { if (btn) btn.disabled = false; });
   }
+  window.__dockNote = function (t) { note(t); };
+  window.__dockOpen = function () { return Boolean(es && es.readyState === 1); };
   function note(text) {
     var p = document.createElement('p'); p.className = 'dock-toast'; p.setAttribute('role', 'alert'); p.textContent = text;
     document.body.appendChild(p); setTimeout(function () { p.remove(); }, 5000);
@@ -143,8 +146,7 @@
   function hideRing() { if (!ring) return; ringing = null; ring.hidden = true; stopTone(); flashTitle(''); if (navigator.vibrate) { try { navigator.vibrate(0); } catch (e) { /* not allowed */ } } }
   function showRing(c) {
     if (!ring || !c || !c.id) return;
-    // Already looking at that conversation: its own Answer button is right there.
-    if (document.querySelector('[data-call-base="/call/dm/' + c.id + '"]')) { if (window.__liveRefresh) window.__liveRefresh(); return; }
+    if (window.pbCall && window.pbCall.busy()) { post('/call/dm/' + c.id + '/decline').catch(function () {}); return; }   // already on a call: this one is turned away
     ringing = c;
     document.getElementById('ring-what').textContent = c.mode === 'audio' ? 'Incoming voice call' : 'Incoming video call';
     document.getElementById('ring-who').textContent = c.from || 'Someone';
@@ -154,7 +156,8 @@
   if (ring) {
     document.getElementById('ring-yes').addEventListener('click', function () {
       var c = ringing; hideRing(); if (!c) return;
-      leaveNote(c.id, 'guest', c.mode); go('/messages/c/' + c.id);
+      if (window.pbCall) window.pbCall.answer(c.id, c.mode, c.from);     // answered where you are, no page change
+      else { leaveNote(c.id, 'guest', c.mode); go('/messages/c/' + c.id); }
     });
     document.getElementById('ring-no').addEventListener('click', function () {
       var c = ringing; hideRing(); if (c) post('/call/dm/' + c.id + '/decline').catch(function () {});
@@ -198,12 +201,12 @@
   if (navigator.serviceWorker) navigator.serviceWorker.addEventListener('message', function (e) { if (e.data && e.data.type === 'pb-push') inApp(e.data); });
 
   // ---- One quiet line to the site for this person's own news: a new message, a call ringing, a call given up -------
-  var es = null, retry = null;
   function listen() {
     if (!dock || !window.EventSource || es) return;
     es = new EventSource('/live/stream?topics=inbox:' + dock.getAttribute('data-me'));
     es.addEventListener('open', function () { askRinging(); recount(); });
     es.addEventListener('update', function () { setTimeout(recount, 1500); if (!panel.hidden && !q.value.trim()) load(); });   // a moment later: an open conversation marks it read first
+    es.addEventListener('signal', function (e) { try { window.dispatchEvent(new CustomEvent('pb-dsignal', { detail: JSON.parse(e.data) })); } catch (x) { /* ignore a garbled one */ } });
     es.addEventListener('ring', function (e) { try { showRing(JSON.parse(e.data)); } catch (x) { /* ignore */ } });
     es.addEventListener('ringend', function (e) { try { var d = JSON.parse(e.data); if (ringing && 'dm:' + ringing.id === d.key) hideRing(); } catch (x) { /* ignore */ } });
     es.addEventListener('bye', function () { es.close(); es = null; hideRing(); });             // signed out or locked

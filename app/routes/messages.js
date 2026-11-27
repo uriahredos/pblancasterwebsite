@@ -64,9 +64,9 @@ router.get('/messages/unread', use, (req, res) => res.set('Cache-Control', 'no-s
 
 // The conversation with this person, made if it does not exist yet: where a Call button needs to go.
 router.post('/messages/open/:id', use, (req, res) => {
-  const other = isId(req.params.id) ? db.prepare('SELECT id, active FROM users WHERE id = ?').get(req.params.id) : null;
+  const other = isId(req.params.id) ? db.prepare('SELECT id, active, display_name FROM users WHERE id = ?').get(req.params.id) : null;
   if (!other || other.id === req.user.id || !dm.reachable(other.id)) return res.status(404).json({ error: 'That person cannot be called here.' });
-  res.json({ id: dm.create(req.user.id, other.id).id });
+  res.json({ id: dm.create(req.user.id, other.id).id, name: other.display_name });
 });
 
 router.post('/messages/favorite/:id', use, (req, res) => {
