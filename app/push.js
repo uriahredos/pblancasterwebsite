@@ -27,22 +27,25 @@ CREATE TABLE IF NOT EXISTS push_prefs (
 // alerts while that sign-in is alive. Registrations from before this was kept have none, and wait for their owner to open the site.
 if (!db.prepare("SELECT 1 FROM pragma_table_info('push_subscriptions') WHERE name = 'sid'").get()) db.exec('ALTER TABLE push_subscriptions ADD COLUMN sid TEXT');
 
-/** Every kind of alert: who it is offered to (a permission, or null for everyone) and how it reads on the settings page. */
+/**
+ * Every kind of alert: who it is offered to (a permission, or null for everyone) and how it reads on the settings page.
+ * `sound` marks the ones worth a noise: something that needs the person now. The rest arrive quietly.
+ */
 const KINDS = [
-  { key: 'task_assigned', perm: null, group: 'For you', label: 'A task is given to me' },
-  { key: 'critical_notice', perm: null, group: 'For you', label: 'A critical announcement is posted' },
+  { key: 'task_assigned', sound: true, perm: null, group: 'For you', label: 'A task is given to me' },
+  { key: 'critical_notice', sound: true, perm: null, group: 'For you', label: 'A critical announcement is posted' },
   { key: 'request_status', perm: null, group: 'For you', label: 'My parts or training request is updated' },
   { key: 'forum_reply', perm: 'forum.use', group: 'For you', label: 'Someone replies in a discussion I follow' },
-  { key: 'message', perm: 'messages.use', group: 'For you', label: 'Someone sends me a private message' },
-  { key: 'call', perm: 'messages.use', group: 'For you', label: 'Someone calls me (voice or video)' },
+  { key: 'message', sound: true, perm: 'messages.use', group: 'For you', label: 'Someone sends me a private message' },
+  { key: 'call', sound: true, perm: 'messages.use', group: 'For you', label: 'Someone calls me (voice or video)' },
   { key: 'social_comment', perm: null, group: 'For you', label: 'Someone comments on my post in Social' },
   { key: 'shoutout', perm: null, group: 'For you', label: 'Someone gives me a shout-out' },
   { key: 'task_done', perm: 'tasks.assign', group: 'For what you manage', label: 'A task I assigned is updated or finished' },
   { key: 'parts_request', perm: 'parts.manage', group: 'For what you manage', label: 'Someone requests parts' },
-  { key: 'truck_problem', perm: 'inspections.view', group: 'For what you manage', label: 'A truck problem is reported' },
+  { key: 'truck_problem', sound: true, perm: 'inspections.view', group: 'For what you manage', label: 'A truck problem is reported' },
   { key: 'low_stock', perm: 'stock.manage', group: 'For what you manage', label: 'A part runs low or runs out in my branch\'s warehouse' },
   // Backups cover every office, so this one is only offered to people who see them all.
-  { key: 'backup_failed', perm: 'backups', everyOffice: true, group: 'For what you manage', label: 'A nightly backup does not work' },
+  { key: 'backup_failed', sound: true, perm: 'backups', everyOffice: true, group: 'For what you manage', label: 'A nightly backup does not work' },
 ];
 const kindsFor = (user) => KINDS.filter((k) => (!k.perm || access.can(user, k.perm)) && (!k.everyOffice || user.allBranches));
 
@@ -93,7 +96,8 @@ function liveDevices(userId) {
  */
 function notify(userIds, kind, { title, body, url }) {
   const ids = [...new Set([].concat(userIds || []).filter(Boolean))];
-  const payload = JSON.stringify({ title: String(title).slice(0, 120), body: String(body || '').slice(0, 300), url: url || '/', tag: kind });
+  const loud = Boolean((KINDS.find((k) => k.key === kind) || {}).sound);
+  const payload = JSON.stringify({ title: String(title).slice(0, 120), body: String(body || '').slice(0, 300), url: url || '/', tag: kind, quiet: !loud, ring: kind === 'call' });
   const jobs = [];
   for (const id of ids) {
     if (!wants(id, kind)) continue;

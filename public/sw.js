@@ -1,8 +1,8 @@
 // Service worker: lets the site be installed on a phone's home screen and shows a
 // friendly page when there is no signal. Pages themselves are never stored, so
 // nothing private is kept on the phone by this file.
-var CACHE = 'portal-static-v127';
-var ASSETS = ['/offline.html', '/offline.js', '/styles.css', '/site.js', '/alerts-prompt.js', '/passkey.js', '/theme.js', '/logo.png', '/logo-p.png', '/logo-b.png', '/logo-flame.png', '/parts-form.js', '/scan.js', '/inspection-form.js', '/icons/icon-192.png'];
+var CACHE = 'portal-static-v128';
+var ASSETS = ['/offline.html', '/offline.js', '/styles.css', '/site.js', '/alerts-prompt.js', '/passkey.js', '/theme.js', '/logo.png', '/logo-p.png', '/logo-b.png', '/logo-flame.png', '/parts-form.js', '/scan.js', '/inspection-form.js', '/icons/icon-192.png', '/icons/badge-pb-96.png'];
 
 self.addEventListener('install', function (event) {
   event.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(ASSETS); }).then(function () { return self.skipWaiting(); }));
@@ -19,7 +19,11 @@ self.addEventListener('push', function (event) {
   var data = {};
   try { data = event.data ? event.data.json() : {}; } catch (e) { data = { title: 'PB Portal', body: event.data ? event.data.text() : '' }; }
   event.waitUntil(self.registration.showNotification(data.title || 'PB Portal', {
-    body: data.body || '', icon: '/icons/icon-192.png', badge: '/icons/badge-96.png', tag: data.tag || undefined, renotify: Boolean(data.tag),
+    // Every alert carries the same PB logo: the picture beside the text, and its outline as the small mark in the status bar.
+    body: data.body || '', icon: '/icons/icon-192.png', badge: '/icons/badge-pb-96.png', tag: data.tag || undefined,
+    // The ones that need someone now make the phone's alert sound and buzz; the rest arrive without a noise.
+    silent: Boolean(data.quiet), renotify: Boolean(data.tag) && !data.quiet, vibrate: data.quiet ? undefined : (data.ring ? [400, 200, 400, 200, 400] : [200, 100, 200]),
+    requireInteraction: Boolean(data.ring),
     data: { url: data.url || '/' }
   }));
 });

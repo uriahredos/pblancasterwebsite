@@ -8288,8 +8288,12 @@ test('alerts: someone signed in is offered alerts on any page, with what the dev
   assert.match(js, /\^\\\/\(complaint\|settings\\\/notifications\|unlock\)/);       // never on a complaint page
   assert.match((await t.get('/sw.js')).text, /'\/alerts-prompt\.js'/);
   // The mark in a phone's status bar is the flame by itself on a see-through background; a full-colour icon there shows as a white square.
-  assert.match((await t.get('/sw.js')).text, /badge: '\/icons\/badge-96\.png'/);
-  const badge = await fetch(base + '/icons/badge-96.png'); assert.equal(badge.status, 200); assert.equal(badge.headers.get('content-type'), 'image/png');
+  assert.match((await t.get('/sw.js')).text, /badge: '\/icons\/badge-pb-96\.png'/);
+  // Every alert shows the same PB logo, and only the ones that need someone now make a noise.
+  assert.match((await t.get('/sw.js')).text, /icon: '\/icons\/icon-192\.png'/); assert.match((await t.get('/sw.js')).text, /silent: Boolean\(data\.quiet\)/);
+  { const push = require('../app/push');
+    assert.deepEqual(push.KINDS.filter((k) => k.sound).map((k) => k.key), ['task_assigned', 'critical_notice', 'message', 'call', 'truck_problem', 'backup_failed']); }
+  const badge = await fetch(base + '/icons/badge-pb-96.png'); assert.equal(badge.status, 200); assert.equal(badge.headers.get('content-type'), 'image/png');
 });
 
 test('view as: the master account and corporate admins can look at the site as another profile sees it, and get back; nobody else can, and it never adds anything', async () => {

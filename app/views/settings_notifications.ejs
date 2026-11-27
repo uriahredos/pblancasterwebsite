@@ -33,7 +33,7 @@
   <fieldset>
     <legend><%= g %></legend>
     <% kinds.filter(function (k) { return k.group === g; }).forEach(function (k) { %>
-    <label class="choice"><input type="checkbox" name="kinds" value="<%= k.key %>" <%= k.on ? 'checked' : '' %>> <%= k.label %></label>
+    <label class="choice"><input type="checkbox" name="kinds" value="<%= k.key %>" <%= k.on ? 'checked' : '' %>> <%= k.label %><% if (k.sound) { %> <span class="tag">With sound</span><% } %></label>
     <% }) %>
   </fieldset>
   <% }) %>
