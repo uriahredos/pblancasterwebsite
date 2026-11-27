@@ -3540,7 +3540,7 @@ test('photo wall and branch pages: photos posted and liked, a branch page with i
   assert.equal((await t2.get('/photos')).location, '/social');                           // where the photo wall used to be
   const wall = (await t2.get('/social')).text;
   assert.match(wall, new RegExp(`<a href="/wall/photo/${ids[1]}"><img src="/wall/photo/${ids[1]}"`)); assert.match(wall, /New &lt;panel&gt; at the school/);
-  assert.doesNotMatch(wall, /target=/);
+  assert.doesNotMatch((wall.match(/<a [^>]*href="[^"]*\/photo\/[^>]*>/g) || []).join('\n'), /target=/);                // photos open in the viewer, never a new window
   assert.equal((await t2.get(`/wall/photo/${ids[0]}`)).headers.get('content-type'), 'image/png');
   assert.equal((await new Client().get(`/wall/photo/${ids[0]}`)).status, 302);
   // Reactions: given once each, and taken back by giving the same one again.

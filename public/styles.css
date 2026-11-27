@@ -1715,3 +1715,15 @@ td.reports-to .meta { display: block; }
 
 /* A closed count's inventory: the total line under its parts */
 table.closed-place tfoot td { border-top: 2px solid var(--line); border-bottom: 0; }
+
+/* Company social links: in the left margin beside the feed on wide screens, a row of buttons above it on narrow ones. */
+.social-links { margin: 0 0 1rem; }
+.social-links h2 { margin: 0 0 .5rem; font-size: .8rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.social-links ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: .5rem; }
+.social-links a { display: flex; align-items: center; gap: .6rem; padding: .5rem .8rem; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; color: var(--ink); text-decoration: none; font-weight: 600; }
+.social-links a:hover, .social-links a:focus-visible { border-color: var(--accent); background: var(--accent-soft); }
+.social-links svg { flex: none; color: var(--accent); }
+@media (min-width: 1180px) {
+  .social-links { float: left; position: sticky; top: 1rem; width: 11rem; margin: .4rem 0 0 -12.5rem; }
+  .social-links ul { flex-direction: column; }
+}

@@ -1,4 +1,20 @@
 <%- include('partials/header') %>
+<% if (!one) { %>
+<aside class="social-links" aria-label="Pye-Barker on social media">
+  <h2>Follow Pye-Barker</h2>
+  <ul>
+    <li><a href="https://www.instagram.com/pyebarkerfire/" target="_blank" rel="noopener noreferrer">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.3" cy="6.7" r="1" fill="currentColor" stroke="none"/></svg>
+      <span>Instagram</span></a></li>
+    <li><a href="https://www.facebook.com/PyeBarkerFireSafety/" target="_blank" rel="noopener noreferrer">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M15.5 8H14a2 2 0 0 0-2 2v10M9.5 12.5h5.5"/></svg>
+      <span>Facebook</span></a></li>
+    <li><a href="https://www.linkedin.com/company/pye-barker-fire-%26-safety/" target="_blank" rel="noopener noreferrer">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 10.5V16M8 7.8v.1M12 16v-5.5M12 13a2.5 2.5 0 0 1 5 0V16"/></svg>
+      <span>LinkedIn</span></a></li>
+  </ul>
+</aside>
+<% } %>
 <% if (one) { %><p class="back"><a class="back-link" href="/social">Social</a></p><% } else { %>
 <h1>Social</h1>
 <p class="lede">Share what is going on: a job well done, a new truck, a new baby, a fish you caught. Everyone in the company sees it. Keep customers' private details out of the picture.</p>
