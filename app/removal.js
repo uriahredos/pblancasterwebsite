@@ -14,7 +14,7 @@ const PERSONAL = [
   ['user_managers', 'user_id'], ['user_managers', 'manager_id'], ['forum_reads', 'user_id'], ['announcement_reads', 'user_id'],
   ['daily_answers', 'user_id'], ['wall_likes', 'user_id'], ['shoutout_cheers', 'user_id'], ['event_signups', 'user_id'],
   ['training_votes', 'user_id'], ['training_attendance', 'user_id'], ['reactions', 'user_id'], ['certifications', 'user_id'],
-  ['dm_reads', 'user_id'], ['dm_favorites', 'user_id'], ['dm_favorites', 'other_id'], ['welcomes', 'user_id'], ['welcome_notes', 'user_id'], ['shoutouts', 'to_user'], ['celebrations', 'user_id'], ['celebrations', 'from_user'],
+  ['welcomes', 'user_id'], ['welcome_notes', 'user_id'], ['shoutouts', 'to_user'], ['celebrations', 'user_id'], ['celebrations', 'from_user'],
 ];
 
 /** Every table and column that points at a user. */

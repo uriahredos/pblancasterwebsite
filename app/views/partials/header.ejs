@@ -106,7 +106,6 @@
         ['', '/contacts', 'Who to contact', is('/contacts')],
         'divider',
         ['', '/feed', 'Activity feed', is('/feed')],
-        ['messages.use', '/messages', 'Messages', is('/messages'), badges.messages],
         ['', '/people', 'People', is('/people') || path === '/profile'],
         ['', '/shoutouts', 'Shout-outs', is('/shoutouts')],
         ['', '/events', 'Events', is('/events')],
@@ -156,8 +155,7 @@
         ['tasks.assign', '/admin/tasks', 'Manage tasks', is('/admin/tasks')],
         ['announcements.post', '/admin/announcements', 'Post announcements', is('/admin/announcements')],
         ['newsletters.manage', '/admin/newsletters', 'Newsletters', is('/admin/newsletters')],
-        ['complaints.review', '/admin/complaints', 'Complaints', is('/admin/complaints')],
-        ['messages.review', '/admin/message-reports', 'Reported messages', is('/admin/message-reports'), badges.dmReports]
+        ['complaints.review', '/admin/complaints', 'Complaints', is('/admin/complaints')]
       ] },
       { name: 'Setup', items: [
         ['users.manage', '/poster', 'QR code sign', is('/poster')],

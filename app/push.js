@@ -36,8 +36,6 @@ const KINDS = [
   { key: 'critical_notice', sound: true, perm: null, group: 'For you', label: 'A critical announcement is posted' },
   { key: 'request_status', perm: null, group: 'For you', label: 'My parts or training request is updated' },
   { key: 'forum_reply', perm: 'forum.use', group: 'For you', label: 'Someone replies in a discussion I follow' },
-  { key: 'message', sound: true, perm: 'messages.use', group: 'For you', label: 'Someone sends me a private message' },
-  { key: 'call', sound: true, perm: 'messages.use', group: 'For you', label: 'Someone calls me (voice or video)' },
   { key: 'social_comment', perm: null, group: 'For you', label: 'Someone comments on my post in Social' },
   { key: 'shoutout', perm: null, group: 'For you', label: 'Someone gives me a shout-out' },
   { key: 'task_done', perm: 'tasks.assign', group: 'For what you manage', label: 'A task I assigned is updated or finished' },
@@ -69,7 +67,7 @@ let sender = (sub, payload, opts = {}) => {
   const k = vapid();
   const contact = /^https:\/\//.test(config.baseUrl) ? config.baseUrl : 'mailto:portal@localhost.invalid';
   return webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, payload,
-    { vapidDetails: { subject: contact, publicKey: k.publicKey, privateKey: k.privateKey }, TTL: opts.ttl || 24 * 60 * 60, urgency: opts.urgent ? 'high' : 'normal' });
+    { vapidDetails: { subject: contact, publicKey: k.publicKey, privateKey: k.privateKey }, TTL: 24 * 60 * 60, urgency: opts.urgent ? 'high' : 'normal' });
 };
 function setSender(fn) { sender = fn; }
 
@@ -94,17 +92,17 @@ function liveDevices(userId) {
  * Send an alert of this kind to these people, on every device they switched on and are still signed in on,
  * unless they turned that kind off. Never throws and never holds up the page.
  */
-function notify(userIds, kind, { title, body, url, extra }) {
+function notify(userIds, kind, { title, body, url }) {
   const ids = [...new Set([].concat(userIds || []).filter(Boolean))];
   // The ones that make a noise are also sent as urgent, so a locked or sleeping phone is woken for them straight away
-  // instead of getting them whenever it next checks. A call that is not delivered within a minute is not delivered at all.
+  // instead of getting them whenever it next checks.
   const loud = kind === 'test' || Boolean((KINDS.find((k) => k.key === kind) || {}).sound);   // a test alert makes the noise, so it proves the noise works
-  const payload = JSON.stringify({ title: String(title).slice(0, 120), body: String(body || '').slice(0, 300), url: url || '/', tag: kind, quiet: !loud, ring: kind === 'call', ...(extra || {}) });
+  const payload = JSON.stringify({ title: String(title).slice(0, 120), body: String(body || '').slice(0, 300), url: url || '/', tag: kind, quiet: !loud });
   const jobs = [];
   for (const id of ids) {
     if (!wants(id, kind)) continue;
     for (const sub of liveDevices(id)) {
-      jobs.push(Promise.resolve().then(() => sender(sub, payload, { urgent: loud, ttl: kind === 'call' ? 30 : 0 })).catch((err) => {
+      jobs.push(Promise.resolve().then(() => sender(sub, payload, { urgent: loud })).catch((err) => {
         // The phone or browser has dropped this subscription: forget it.
         if (err && (err.statusCode === 404 || err.statusCode === 410)) db.prepare('DELETE FROM push_subscriptions WHERE id = ?').run(sub.id);
         else console.error('[push] could not send:', err && (err.statusCode || err.message));

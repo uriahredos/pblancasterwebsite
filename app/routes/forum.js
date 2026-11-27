@@ -174,8 +174,7 @@ function threadPage(req, res, t, extra = {}) {
   }
   res.status(extra.errors ? 400 : 200).render('forum_thread', {
     title: t.title, t, posts, following: Boolean(mine && mine.following), mod: modOf(req.user, t.user_id), anyMod: isMod(req.user), owner: t.user_id === req.user.id,
-    sections: modOf(req.user, t.user_id) ? sections() : [], errors: [], values: {}, maxPhotos: MAX_PHOTOS,
-    call: t.kind === 'support' ? require('../calls').viewFor(t.id, req.user) : null, ...extra,
+    sections: modOf(req.user, t.user_id) ? sections() : [], errors: [], values: {}, maxPhotos: MAX_PHOTOS, ...extra,
   });
 }
 

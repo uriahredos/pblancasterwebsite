@@ -56,7 +56,7 @@ router.get('/people', requireLogin, (req, res) => {
   const page = Math.min(pages, Math.max(1, isId(req.query.page) ? Number(req.query.page) : 1));
   const people = db.prepare(`${PERSON} ${matching} ORDER BY u.display_name COLLATE NOCASE, u.id LIMIT ${PEOPLE_PER_PAGE} OFFSET ?`).all(...params, (page - 1) * PEOPLE_PER_PAGE).map(decorate);
   const pageLink = (n) => '/people?' + new URLSearchParams(Object.entries({ q, branch: branch || '', dept, page: n > 1 ? String(n) : '' }).filter(([, v]) => v)).toString();
-  res.render('people', { canMessage: access.can(req.user, 'messages.use') ? require('../messages').reachableIds() : new Set(), title: 'People', wide: true, people, q, branch, dept, departments, branches: branches(), found, page, pages, pageLink, firstShown: (page - 1) * PEOPLE_PER_PAGE + 1,
+  res.render('people', { title: 'People', wide: true, people, q, branch, dept, departments, branches: branches(), found, page, pages, pageLink, firstShown: (page - 1) * PEOPLE_PER_PAGE + 1,
     total: db.prepare('SELECT COUNT(*) AS n FROM users WHERE active = 1 OR in_directory = 1').get().n });
 });
 
@@ -64,6 +64,13 @@ router.get('/people/photo/:id', requireLogin, (req, res) => {
   const row = isId(req.params.id) ? db.prepare('SELECT photo_path FROM users WHERE id = ? AND (active = 1 OR in_directory = 1)').get(req.params.id) : null;
   if (!row || !row.photo_path) return notFound(res);
   uploads.send(res, row.photo_path, { 'Cache-Control': 'private, max-age=86400' }, () => notFound(res));
+});
+
+// The small card that opens from a person's name anywhere on the site: who they are and how to reach them.
+router.get('/people/:id/card', requireLogin, (req, res) => {
+  const p = isId(req.params.id) ? db.prepare(`${PERSON} AND u.id = ?`).get(req.params.id) : null;
+  if (!p) return res.status(404).end();
+  res.set('Cache-Control', 'no-store').render('partials/person_card', { p, mine: p.id === req.user.id });
 });
 
 router.get('/people/:id', requireLogin, (req, res) => {
@@ -84,7 +91,7 @@ router.get('/people/:id', requireLogin, (req, res) => {
   const canModNotes = access.can(req.user, 'users.manage') && req.user.scope === 'all' && access.canSee(req.user, p.id);
   const canWelcome = canPosition && req.user.scope === 'all' && Boolean(welcome) && welcome.created_at >= new Date(Date.now() - WELCOME_DAYS * 86400000).toISOString();   // only while it is on the home page
   const chainUp = require('../chain').above(p.id);
-  res.render('person', { reach: p.id !== req.user.id && access.can(req.user, 'messages.use') && require('../messages').reachable(p.id), canPosition, canWelcome, canModNotes, reportsTo, theirTeam, chainUp, title: p.display_name, p: decorate(p), certs, welcome, notes, me: p.id === req.user.id, bday, shouts: social.shoutoutsFor(req.user, p.id), canShout: social.mayShout(req.user, p.branch_id) });
+  res.render('person', { canPosition, canWelcome, canModNotes, reportsTo, theirTeam, chainUp, title: p.display_name, p: decorate(p), certs, welcome, notes, me: p.id === req.user.id, bday, shouts: social.shoutoutsFor(req.user, p.id), canShout: social.mayShout(req.user, p.branch_id) });
 });
 
 // ---- Positions: job titles and departments for a whole office, edited in one table -------------

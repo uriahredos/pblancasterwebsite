@@ -8,10 +8,10 @@
 // ever run as several servers, this is the part that would need a shared channel between them.
 const db = require('./db');
 
-const MAX_PER_USER = 16;       // every open page listens for calls and messages, and some listen for their own content too
+const MAX_PER_USER = 6;        // tabs and devices one person can have listening at once
 const MAX_TOTAL = 1000;
 const BEAT_MS = 25000;         // a quiet line keeps proxies from closing the connection, and is when we re-check the session
-const TOPIC = /^(forum|thread:\d+|dm:\d+|inbox:\d+)$/;
+const TOPIC = /^(forum|thread:\d+)$/;
 
 const streams = new Set();     // { res, userId, sid, store, lockAfter, topics:Set }
 
@@ -41,13 +41,6 @@ function publish(topics) {
     const hit = list.filter((t) => entry.topics.has(t));
     if (hit.length) send(entry, 'update', { topics: hit });
   }
-}
-
-/** Send one person (on every screen of theirs listening to this topic) a message meant only for them: a call's setup details. */
-function sendTo(userId, topic, event, data) {
-  let n = 0;
-  for (const entry of [...streams]) if (entry.userId === userId && entry.topics.has(topic) && send(entry, event, data)) n += 1;
-  return n;
 }
 
 /** Is this person still signed in, unlocked and active? Asked again on every beat, because a stream can outlive all three. */
@@ -89,4 +82,4 @@ function attach(req, res, topics) {
   return true;
 }
 
-module.exports = { publish, sendTo, attach, parseTopics, count: () => streams.size, _beat: beat };
+module.exports = { publish, attach, parseTopics, count: () => streams.size, _beat: beat };

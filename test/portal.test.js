@@ -244,7 +244,7 @@ test('training request: private ones keep their text out of email', async () => 
 
 test('regular users cannot open admin pages; users only see their own submissions', async () => {
   const tech2 = await loggedIn('tech2');
-  for (const url of ['/admin/parts', '/admin/parts.csv', '/admin/training', '/admin/training.csv', '/admin/users', '/admin/parts/1', '/admin/complaints', '/admin/message-reports']) {
+  for (const url of ['/admin/parts', '/admin/parts.csv', '/admin/training', '/admin/training.csv', '/admin/users', '/admin/parts/1', '/admin/complaints']) {
     assert.equal((await tech2.get(url)).status, 403, url);
   }
   assert.equal((await tech2.post('/admin/users', { username: 'hacker', display_name: 'H' })).status, 403);
@@ -434,7 +434,7 @@ test('user-typed text is escaped on every page that shows it', async () => {
   const cid = db.prepare('SELECT id FROM complaints WHERE description = ?').get(xss).id;
   const pages = [
     [tech, '/my'], [admin, '/admin/parts'], [admin, `/admin/parts/${pid}`], [admin, '/admin/training'],
-    [admin, `/admin/training/${tid}`], [reviewer, '/admin/complaints', '/admin/message-reports'], [reviewer, `/admin/complaints/${cid}`],
+    [admin, `/admin/training/${tid}`], [reviewer, '/admin/complaints'], [reviewer, `/admin/complaints/${cid}`],
   ];
   for (const [client, url] of pages) {
     const { text, status } = await client.get(url);
@@ -1750,7 +1750,7 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
   const team = /<summary[^>]*>Team[\s\S]*?<\/details>/.exec(owner)[0];
   const setup = /<summary[^>]*>Setup[\s\S]*?<\/details>/.exec(owner)[0];
   const hrefs = (html) => [...html.matchAll(/<a href="([^"]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(hrefs(team), ['/complaint', '/admin/users', '/admin/tasks', '/admin/announcements', '/admin/newsletters', '/admin/complaints', '/admin/message-reports']);
+  assert.deepEqual(hrefs(team), ['/complaint', '/admin/users', '/admin/tasks', '/admin/announcements', '/admin/newsletters', '/admin/complaints']);
   assert.deepEqual(hrefs(setup), ['/poster', '/admin/activity', '/admin/import']);
   // The company level has its own group, only for people who can see every office.
   assert.deepEqual(hrefs(/<summary[^>]*>Corporate[\s\S]*?<\/details>/.exec(owner)[0]), ['/admin/branches', '/admin/markets', '/admin/profiles', '/admin/backups', '/admin/security']);
@@ -3850,7 +3850,7 @@ test('Teams: a chat button for people whose work email is shown on their profile
   const link = /href="https:\/\/teams\.microsoft\.com\/l\/chat\/0\/0\?users=tech\.two%40example\.com" target="_blank" rel="noopener noreferrer"/;
   assert.match((await t1.get(`/people/${a}`)).text, new RegExp(link.source + '>Chat in Teams'));
   const dir = (await t1.get('/people')).text;
-  assert.doesNotMatch(dir, /teams\.microsoft/);                                   // in the directory the chat icon is the site's own messages
+  assert.match(dir, new RegExp('class="teams-mini" ' + link.source));
   assert.match((await t1.get(`/people/${a}`)).text, /<a class="btn small" href="mailto:tech\.two@example\.com">Email<\/a>/);
   assert.doesNotMatch((await (await loggedIn('tech2')).get(`/people/${a}`)).text, /Chat in Teams/);   // not on your own page
   db.prepare('UPDATE users SET show_email = 0 WHERE id = ?').run(a);
@@ -4787,7 +4787,7 @@ test('security: hostile input cannot crash a page, and the security check page i
   assert.equal(broken.status, 400);
   assert.equal((await t1.get('/social?page=99999999999999999999')).status, 200);
   // Every response says which device features the site may use.
-  assert.match((await t1.get('/')).headers.get('permissions-policy'), /camera=\(self\), microphone=\(self\), geolocation=\(\)/);
+  assert.match((await t1.get('/')).headers.get('permissions-policy'), /camera=\(self\), microphone=\(\), geolocation=\(\)/);
   // An account with no office sees no office's records (never everyone's).
   const lost = makeUser('sec.lost', 'Lee Lostoffice'); db.prepare('UPDATE users SET branch_id = NULL, profile_id = ? WHERE id = ?').run(profileId('Admin (no complaints)') || profileId('Admin'), lost);
   db.prepare("DELETE FROM profile_permissions WHERE permission = 'branches.all' AND profile_id = (SELECT profile_id FROM users WHERE id = ?)").run(lost);
@@ -8292,7 +8292,7 @@ test('alerts: someone signed in is offered alerts on any page, with what the dev
   // Every alert shows the same PB logo, and only the ones that need someone now make a noise.
   assert.match((await t.get('/sw.js')).text, /icon: '\/icons\/icon-192\.png'/); assert.match((await t.get('/sw.js')).text, /silent: Boolean\(data\.quiet\)/);
   { const push = require('../app/push');
-    assert.deepEqual(push.KINDS.filter((k) => k.sound).map((k) => k.key), ['task_assigned', 'critical_notice', 'message', 'call', 'truck_problem', 'backup_failed']); }
+    assert.deepEqual(push.KINDS.filter((k) => k.sound).map((k) => k.key), ['task_assigned', 'critical_notice', 'truck_problem', 'backup_failed']); }
   const badge = await fetch(base + '/icons/badge-pb-96.png'); assert.equal(badge.status, 200); assert.equal(badge.headers.get('content-type'), 'image/png');
 });
 
@@ -9929,4 +9929,22 @@ test('sign-in details by email: sent to a new person when they are added, and to
   const homeId = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id;
   await owner.post('/branch/view', { branch: String(homeId), back: '/' }, { page: '/' });
   db.prepare("UPDATE users SET active = 0, in_directory = 0 WHERE username LIKE 'inv.%'").run();
+});
+
+test('person card: opens from a name with who they are and how to reach them; calling and private messages are gone', async () => {
+  const t1 = await loggedIn('tech1'); const a = userId('tech2');
+  const was = db.prepare('SELECT email, show_email FROM users WHERE id = ?').get(a);
+  db.prepare("UPDATE users SET email = 'tech.two@example.com', show_email = 1 WHERE id = ?").run(a);
+  const card = (await t1.get(`/people/${a}/card`)).text;
+  assert.doesNotMatch(card, /<html/); assert.match(card, /Open profile/); assert.match(card, /teams\.microsoft\.com[^"]*tech\.two%40example\.com/); assert.match(card, /mailto:tech\.two@example\.com/);
+  db.prepare('UPDATE users SET show_email = 0 WHERE id = ?').run(a);
+  assert.doesNotMatch((await t1.get(`/people/${a}/card`)).text, /tech\.two|pcard-acts/);          // nothing shared, nothing shown
+  db.prepare('UPDATE users SET email = ?, show_email = ? WHERE id = ?').run(was.email, was.show_email, a);
+  assert.match((await t1.get(`/people/${userId('tech1')}/card`)).text, /My profile/);
+  assert.equal((await (new Client()).get(`/people/${a}/card`)).status, 302);
+  const home = (await t1.get('/')).text;
+  assert.match(home, /id="pcard"/); assert.match(home, /src="\/card\.js/); assert.doesNotMatch(home, /id="dock"|id="ring"|id="callwin"|href="\/messages"/);
+  for (const url of ['/messages', '/messages/dock', '/call/ringing', '/admin/message-reports']) assert.equal((await t1.get(url)).status, 404, url);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name LIKE 'dm\\_%' ESCAPE '\\'").get().n, 0, 'what was written is erased');
+  assert.ok(!access.ALL.includes('messages.use') && !require('../app/push').KINDS.some((k) => k.key === 'message' || k.key === 'call'));
 });

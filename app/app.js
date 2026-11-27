@@ -29,7 +29,6 @@ app.disable('x-powered-by');
 if (config.production) app.set('trust proxy', 1);
 
 Object.assign(app.locals, {
-  icons: { mic: '<svg class="ico" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 3.500a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0v-5a3 3 0 0 1 3-3zM6 11.500a6 6 0 0 0 12 0M12 17.500v3"/></svg>', flip: '<svg class="ico" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4.500 12a7.500 7.500 0 0 1 13-5l2 2M19.500 4.500v4.500h-4.500M19.500 12a7.500 7.500 0 0 1-13 5l-2-2M4.500 19.500v-4.500h4.500"/></svg>', phone: '<svg class="ico" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M6.500 3.500h3l1.500 4-2 1.500a11 11 0 0 0 6 6l1.500-2 4 1.500v3a2 2 0 0 1-2 2A15.500 15.500 0 0 1 4.500 5.500a2 2 0 0 1 2-2z"/></svg>', video: '<svg class="ico" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3.500 7.500a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2zM15.500 10.500l5-3v9l-5-3z"/></svg>', chat: '<svg class="ico" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4.500 5.500h15v10.500h-8l-4.500 3.500v-3.500h-2.500z"/></svg>', star: '<svg class="ico" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="m12 3.500 2.600 5.400 5.900.800-4.300 4.100 1 5.900L12 16.900l-5.200 2.800 1-5.900-4.300-4.100 5.900-.800z"/></svg>' },
   labels: util.labels, fmtDateTime: util.fmtDateTime, fmtDate: util.fmtDate, splitNote: util.splitNote,
   placeLabel: (name) => require('./branches').placeLabel(name),   // "Ephrata branch", plain "Corporate"
   // "11/5/2026" and "8:48 AM" separately, for stacking in a narrow column.
@@ -57,8 +56,8 @@ app.use(helmet({
   frameguard: { action: 'deny' },
 }));
 
-// Device features the site may use: the camera (scanning part barcodes, video calls) and the microphone (video calls). Nothing else, and nothing for embedded pages.
-app.use((req, res, next) => { res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(), payment=(), usb=(), bluetooth=(), serial=(), midi=()'); next(); });
+// Device features the site may use: the camera, for scanning part barcodes. Nothing else, and nothing for embedded pages.
+app.use((req, res, next) => { res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(), payment=(), usb=(), bluetooth=(), serial=(), midi=()'); next(); });
 
 // Barcode scanning library, served from the installed package so nothing is loaded from other sites.
 app.get('/vendor/html5-qrcode.min.js', (req, res) => {
@@ -174,8 +173,6 @@ app.use(require('./routes/community'));
 app.use(require('./routes/social'));
 app.use(require('./routes/company'));
 app.use(require('./routes/live'));
-app.use(require('./routes/call'));
-app.use(require('./routes/messages'));
 app.use(require('./routes/forum'));
 app.use(require('./routes/reactions'));
 app.use(require('./routes/sales'));

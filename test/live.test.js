@@ -122,11 +122,11 @@ test('live stream: it never holds off the idle lock, and ends when the session l
   s2.close();
 });
 
-test('live stream: one person can listen on sixteen screens at once, the next is turned away', async () => {
+test('live stream: one person can listen on six screens at once, the seventh is turned away', async () => {
   db.prepare("UPDATE users SET active = 1 WHERE username = 'tech1'").run();
   const c = await new Client().login('tech1');
   const open = [];
-  for (let i = 0; i < 16; i++) { const s = await c.stream("forum"); assert.equal(s.status, 200); open.push(s); }
+  for (let i = 0; i < 6; i++) { const s = await c.stream('forum'); assert.equal(s.status, 200); open.push(s); }
   assert.equal((await c.stream('forum')).status, 429);
   open.forEach((s) => s.close());
   assert.ok(await until(() => live.count() === 0), 'closed streams are forgotten');

@@ -669,60 +669,11 @@ CREATE TABLE IF NOT EXISTS passkeys (
 CREATE INDEX IF NOT EXISTS passkeys_user ON passkeys(user_id);
 `);
 
-// ---- Private messages ----
-// One conversation per pair of people (user_a is always the lower id), the messages in it, how far each person has read, and
-// reports. A report is the only way anyone but the two people can see a conversation: it opens that one conversation to
-// the people who review reports, and is recorded when they open it.
-db.exec(`
-CREATE TABLE IF NOT EXISTS dm_threads (
-  id INTEGER PRIMARY KEY,
-  user_a INTEGER NOT NULL REFERENCES users(id),
-  user_b INTEGER NOT NULL REFERENCES users(id),
-  created_at TEXT NOT NULL,
-  last_at TEXT NOT NULL,
-  UNIQUE (user_a, user_b),
-  CHECK (user_a < user_b)
-);
-CREATE INDEX IF NOT EXISTS dm_threads_a ON dm_threads(user_a, last_at);
-CREATE INDEX IF NOT EXISTS dm_threads_b ON dm_threads(user_b, last_at);
-CREATE TABLE IF NOT EXISTS dm_messages (
-  id INTEGER PRIMARY KEY,
-  thread_id INTEGER NOT NULL REFERENCES dm_threads(id) ON DELETE CASCADE,
-  user_id INTEGER NOT NULL REFERENCES users(id),
-  body TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  removed_at TEXT
-);
-CREATE INDEX IF NOT EXISTS dm_messages_thread ON dm_messages(thread_id, id);
-CREATE TABLE IF NOT EXISTS dm_reads (
-  thread_id INTEGER NOT NULL REFERENCES dm_threads(id) ON DELETE CASCADE,
-  user_id INTEGER NOT NULL REFERENCES users(id),
-  last_read_id INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (thread_id, user_id)
-);
-CREATE TABLE IF NOT EXISTS dm_reports (
-  id INTEGER PRIMARY KEY,
-  thread_id INTEGER NOT NULL REFERENCES dm_threads(id) ON DELETE CASCADE,
-  message_id INTEGER,
-  reported_by INTEGER NOT NULL REFERENCES users(id),
-  note TEXT,
-  created_at TEXT NOT NULL,
-  opened_by INTEGER REFERENCES users(id),
-  opened_at TEXT,
-  closed_by INTEGER REFERENCES users(id),
-  closed_at TEXT,
-  outcome TEXT
-);
-CREATE INDEX IF NOT EXISTS dm_reports_open ON dm_reports(closed_at, created_at);
-CREATE TABLE IF NOT EXISTS dm_favorites (
-  user_id INTEGER NOT NULL REFERENCES users(id),
-  other_id INTEGER NOT NULL REFERENCES users(id),
-  created_at TEXT NOT NULL,
-  PRIMARY KEY (user_id, other_id)
-);
-`);
-// A line in a conversation that is not something typed: 'call' marks where a voice or video call was made.
-if (!db.prepare("SELECT 1 FROM pragma_table_info('dm_messages') WHERE name = 'kind'").get()) db.exec('ALTER TABLE dm_messages ADD COLUMN kind TEXT');
+// ---- Private messages and calls were tried and taken out. What was written is erased with them, along with the settings that only they used. ----
+db.exec('DROP TABLE IF EXISTS dm_favorites; DROP TABLE IF EXISTS dm_reports; DROP TABLE IF EXISTS dm_reads; DROP TABLE IF EXISTS dm_messages; DROP TABLE IF EXISTS dm_threads;');
+for (const [table, column] of [['profile_permissions', 'permission'], ['push_prefs', 'kind']]) {
+  if (db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table)) db.prepare(`DELETE FROM ${table} WHERE ${column} IN ('messages.use', 'messages.review', 'message', 'call')`).run();
+}
 
 // The contact sheet misspells the company's email address in places; an address sent there would not arrive.
 db.prepare("UPDATE company_contacts SET email = replace(email, '@pyebarkefs.com', '@pyebarkerfs.com') WHERE email LIKE '%@pyebarkefs.com%'").run();

@@ -55,7 +55,6 @@ function merge(keepId, extraId) {
   db.transaction(() => {
     // One vehicle a person: if the account kept has one, the extra's is left with nobody's name on it.
     if (db.prepare("SELECT 1 FROM inv_locations WHERE kind = 'vehicle' AND active = 1 AND user_id = ?").get(keep.id)) db.prepare("UPDATE inv_locations SET user_id = NULL WHERE kind = 'vehicle' AND user_id = ?").run(extra.id);
-    require('./messages').moveUser(extra.id, keep.id);   // private conversations move across whole
     for (const { table, column } of userColumns()) {
       db.prepare(`UPDATE OR IGNORE "${table}" SET "${column}" = ? WHERE "${column}" = ?`).run(keep.id, extra.id);   // moved across
       db.prepare(`DELETE FROM "${table}" WHERE "${column}" = ?`).run(extra.id);                                       // what the kept account already had its own of
