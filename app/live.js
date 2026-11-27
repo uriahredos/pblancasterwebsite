@@ -11,7 +11,7 @@ const db = require('./db');
 const MAX_PER_USER = 6;        // tabs and devices one person can have listening at once
 const MAX_TOTAL = 1000;
 const BEAT_MS = 25000;         // a quiet line keeps proxies from closing the connection, and is when we re-check the session
-const TOPIC = /^(forum|thread:\d+)$/;
+const TOPIC = /^(forum|thread:\d+|dm:\d+|inbox:\d+)$/;
 
 const streams = new Set();     // { res, userId, sid, store, lockAfter, topics:Set }
 

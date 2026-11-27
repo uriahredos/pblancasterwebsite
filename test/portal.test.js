@@ -244,7 +244,7 @@ test('training request: private ones keep their text out of email', async () => 
 
 test('regular users cannot open admin pages; users only see their own submissions', async () => {
   const tech2 = await loggedIn('tech2');
-  for (const url of ['/admin/parts', '/admin/parts.csv', '/admin/training', '/admin/training.csv', '/admin/users', '/admin/parts/1', '/admin/complaints']) {
+  for (const url of ['/admin/parts', '/admin/parts.csv', '/admin/training', '/admin/training.csv', '/admin/users', '/admin/parts/1', '/admin/complaints', '/admin/message-reports']) {
     assert.equal((await tech2.get(url)).status, 403, url);
   }
   assert.equal((await tech2.post('/admin/users', { username: 'hacker', display_name: 'H' })).status, 403);
@@ -434,7 +434,7 @@ test('user-typed text is escaped on every page that shows it', async () => {
   const cid = db.prepare('SELECT id FROM complaints WHERE description = ?').get(xss).id;
   const pages = [
     [tech, '/my'], [admin, '/admin/parts'], [admin, `/admin/parts/${pid}`], [admin, '/admin/training'],
-    [admin, `/admin/training/${tid}`], [reviewer, '/admin/complaints'], [reviewer, `/admin/complaints/${cid}`],
+    [admin, `/admin/training/${tid}`], [reviewer, '/admin/complaints', '/admin/message-reports'], [reviewer, `/admin/complaints/${cid}`],
   ];
   for (const [client, url] of pages) {
     const { text, status } = await client.get(url);
@@ -1745,12 +1745,12 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
 
   const owner = (await (await loggedIn('owner')).get('/admin/users')).text;
   assert.deepEqual(groupsOf(owner), ['Community', 'Parts', 'Fleet', 'Training', 'Team', 'Setup', 'Corporate']);
-  assert.deepEqual(barLinks(owner), ['/', '/tasks', '/social', '/oncall', '/sales']);   // the master account also sees the sales side
+  assert.deepEqual(barLinks(owner), ['/', '/tasks', '/social', '/messages', '/oncall', '/sales']);   // the master account also sees the sales side
   // What used to be one long Admin list is two: Team (people and what goes out to them) and Setup (the site itself).
   const team = /<summary[^>]*>Team[\s\S]*?<\/details>/.exec(owner)[0];
   const setup = /<summary[^>]*>Setup[\s\S]*?<\/details>/.exec(owner)[0];
   const hrefs = (html) => [...html.matchAll(/<a href="([^"]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(hrefs(team), ['/complaint', '/admin/users', '/admin/tasks', '/admin/announcements', '/admin/newsletters', '/admin/complaints']);
+  assert.deepEqual(hrefs(team), ['/complaint', '/admin/users', '/admin/tasks', '/admin/announcements', '/admin/newsletters', '/admin/complaints', '/admin/message-reports']);
   assert.deepEqual(hrefs(setup), ['/poster', '/admin/activity', '/admin/import']);
   // The company level has its own group, only for people who can see every office.
   assert.deepEqual(hrefs(/<summary[^>]*>Corporate[\s\S]*?<\/details>/.exec(owner)[0]), ['/admin/branches', '/admin/markets', '/admin/profiles', '/admin/backups', '/admin/security']);
@@ -1769,7 +1769,7 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
   assert.deepEqual(groupsOf(tech), ['Community', 'Fleet', 'Training']);
   assert.deepEqual([...(/<summary[^>]*>Fleet[\s\S]*?<\/details>/.exec(tech)[0]).matchAll(/<a href="([^"]+)"/g)].map((m) => m[1]), ['/fleet', '/fleet/signout', '/inspection']);
   assert.match(tech, /<a href="\/parts" >Parts<\/a>/);                    // for a technician Parts is one plain link: the form
-  assert.deepEqual(barLinks(tech), ['/', '/tasks', '/social', '/parts', '/oncall', '/complaint']); // one-item groups show as plain links
+  assert.deepEqual(barLinks(tech), ['/', '/tasks', '/social', '/messages', '/parts', '/oncall', '/complaint']); // one-item groups show as plain links
   assert.doesNotMatch(tech, /href="\/admin\//);
   assert.match(tech, /<a href="\/inspection"[^>]*>Truck inspection<\/a>/);
   assert.doesNotMatch(/<summary[^>]*>Community[\s\S]*?<\/details>/.exec(tech)[0], /<hr>\s*<hr>|<div class="menu-list">\s*<hr>|<hr>\s*<\/div>/); // no stray divider
@@ -1777,7 +1777,7 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
   // A manager's Team group holds only what their profile allows, and they have no Setup group.
   const mgr = (await (await loggedIn('mgr1')).get('/')).text;
   assert.deepEqual(groupsOf(mgr), ['Community', 'Parts', 'Fleet', 'Training', 'Team']);           // Manage tasks and Post announcements
-  assert.deepEqual(barLinks(mgr), ['/', '/tasks', '/social', '/oncall']);
+  assert.deepEqual(barLinks(mgr), ['/', '/tasks', '/social', '/messages', '/oncall']);
   assert.doesNotMatch(mgr, /admin\/(users|profiles|complaints|backups|activity)"/);
 
   // Styles and scripts carry a version so a new release is not shown with old files.

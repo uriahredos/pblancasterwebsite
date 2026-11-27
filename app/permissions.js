@@ -48,6 +48,7 @@ const GROUPS = [
     ['newsletters.manage', 'Upload newsletters'],
     ['daily.manage', 'Run the daily question'],
     ['forum.moderate', 'Remove anyone\'s posts and comments; lock and move discussions'],
+    ['messages.use', 'Send private messages to anyone in the company'],
   ] },
   { title: 'Sales', items: [
     ['sales.use', 'Use Sales: add and work leads'],
@@ -62,6 +63,7 @@ const GROUPS = [
     ['market.all', 'See and manage every branch in their own market'],
     ['branches.all', 'See and manage every branch'],
     ['complaints.review', 'Read and answer anonymous complaints'],
+    ['messages.review', 'Read private conversations that someone has reported'],
     ['backups', 'Download backups (a backup holds everything, complaints included)'],
     ['records.delete', 'Permanently delete records'],
   ] },
@@ -91,7 +93,7 @@ function position(scope, perms) {
   return { level, kind, rank, label: kind === 'staff' ? '' : level === 'team' ? 'Team manager' : `${LEVEL_WORD[level]} ${kind}` };
 }
 // What an admin has that a manager does not: people and access, the records behind the site, and the shared catalog.
-const ADMIN_ONLY = ['users.manage', 'profiles.manage', 'activity.view', 'backups', 'records.delete', 'complaints.review', 'catalog.manage'];
+const ADMIN_ONLY = ['messages.review', 'users.manage', 'profiles.manage', 'activity.view', 'backups', 'records.delete', 'complaints.review', 'catalog.manage'];
 // Sales is its own side of the site. Besides the two Sales profiles, only Admin and Corporate admin start with it.
 const SALES = ['sales.use', 'sales.manage'];
 const SUBMIT = ['parts.submit', 'training.submit', 'complaints.submit', 'inspections.submit', 'fleet.signout'];
@@ -180,7 +182,7 @@ function migrate() {
       'inspections.submit': 'parts.submit', 'inspections.view': 'parts.view', 'inspections.manage': 'parts.manage', 'fleet.signout': 'parts.submit', 'fleet.manage': 'inspections.manage',
       'certs.manage': 'training.manage', 'announcements.post': 'training.manage', 'records.delete': 'profiles.manage',
       'tasks.assign': 'announcements.post',
-      'newsletters.manage': 'users.manage', 'forum.use': 'parts.submit', 'forum.moderate': 'users.manage', 'daily.manage': 'users.manage', 'events.post': 'announcements.post', 'oncall.manage': 'tasks.assign',
+      'newsletters.manage': 'users.manage', 'forum.use': 'parts.submit', 'forum.moderate': 'users.manage', 'messages.use': 'forum.use', 'messages.review': 'complaints.review', 'daily.manage': 'users.manage', 'events.post': 'announcements.post', 'oncall.manage': 'tasks.assign',
     };
     for (const [perm, from] of Object.entries(INHERIT)) {
       const key = `perm_granted:${perm}`;
