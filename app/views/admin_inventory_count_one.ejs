@@ -20,6 +20,32 @@
 </table>
 </div>
 
+<% if (unknowns.length) { %>
+<h2 id="identify">To identify</h2>
+<p class="hint">Found during the count, with a photo, by someone who could not name the part. Say which part each is and it joins the count where it was found.</p>
+<ul class="records unknowns">
+<% unknowns.forEach(function (x) { %>
+  <li class="card unknown">
+    <a class="unknown-photo" href="/admin/inventory/unknowns/<%= x.id %>/photo" target="_blank" rel="noopener"><img src="/admin/inventory/unknowns/<%= x.id %>/photo" alt="Photo of the item" loading="lazy"></a>
+    <div class="unknown-what">
+      <p><strong><%= x.quantity %></strong> in <strong><%= x.location %></strong><% if (x.barcode) { %> <span class="hint">barcode <%= x.barcode %></span><% } %></p>
+      <p class="meta"><%= x.by_name || '' %> · <%= fmtDateTime(x.created_at) %><% if (x.note) { %> · <%= x.note %><% } %></p>
+      <% if (mayCount) { %>
+      <form method="post" action="/admin/inventory/unknowns/<%= x.id %>/identify" class="filters" data-no-live>
+        <input type="hidden" name="_csrf" value="<%= csrf %>">
+        <label class="grow">Which part is it? <input name="part_number" required maxlength="100" autocomplete="off" data-catalog placeholder="Number or name"></label>
+        <div class="filter-actions"><button class="btn primary small" type="submit">It is this part</button></div>
+      </form>
+      <form method="post" action="/admin/inventory/unknowns/<%= x.id %>/discard" data-no-live data-confirm="Remove this from the count? Its photo is deleted.">
+        <input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Remove from the count</button>
+      </form>
+      <% } %>
+    </div>
+  </li>
+<% }) %>
+</ul>
+<% } %>
+
 <h2>Differences</h2>
 <div class="table-wrap">
 <table>

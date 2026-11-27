@@ -180,6 +180,12 @@ router.get('/parts/suggest', requirePerm('parts.submit'), (req, res) => {
   res.json(rows);
 });
 
+// A scanned code that is a barcode someone has matched to a part before: the part number it stands for.
+router.get('/parts/lookup', requirePerm('parts.submit'), (req, res) => {
+  const part = require('../invcount').lookup(req.query.code);
+  res.json(part ? { found: true, part_number: part.part_number } : { found: false });
+});
+
 // ---- Edit or cancel an entry ----------------------------------------------
 
 const getEntry = (id) => db.prepare('SELECT * FROM parts_submissions WHERE id = ?').get(id);

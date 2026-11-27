@@ -168,4 +168,80 @@ function vehicleToCount(user) {
   return `/admin/inventory/count/${a.id}/${v.id}`;
 }
 
-module.exports = { isMonth, monthName, get, open, past, start, sheet, count, progress, close, closedFigures, closedPlaces, discard, vehicleToCount, finishedAt, finish, reopen };
+// ---- Barcodes, and things found that nobody could name ---------------------------------------------------------
+// The barcode on a box is seldom the part number. The first time one is scanned, whoever is counting says which part
+// it is; from then on every branch's scanner knows it. Something nobody can name is photographed and set down with
+// how many there are, for a person who knows the parts to match later.
+db.exec(`
+CREATE TABLE IF NOT EXISTS part_barcodes (
+  code TEXT PRIMARY KEY COLLATE NOCASE,
+  catalog_id INTEGER NOT NULL REFERENCES parts_catalog(id) ON DELETE CASCADE,
+  added_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS part_barcodes_part ON part_barcodes(catalog_id);
+CREATE TABLE IF NOT EXISTS inv_unknowns (
+  id INTEGER PRIMARY KEY,
+  audit_id INTEGER NOT NULL REFERENCES inv_audits(id) ON DELETE CASCADE,
+  location_id INTEGER NOT NULL REFERENCES inv_locations(id),
+  barcode TEXT,
+  note TEXT,
+  quantity INTEGER NOT NULL CHECK (quantity > 0),
+  photo_path TEXT,
+  user_id INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  catalog_id INTEGER REFERENCES parts_catalog(id),      -- the part it turned out to be
+  resolved_by INTEGER REFERENCES users(id),
+  resolved_at TEXT
+);
+CREATE INDEX IF NOT EXISTS inv_unknowns_audit ON inv_unknowns(audit_id) WHERE resolved_at IS NULL;
+`);
+const tidyCode = (text) => String(text || '').trim().slice(0, 100);
+
+/** The part a scanned or typed code stands for: a part number as it is, or a barcode someone has matched before. */
+function lookup(text) {
+  const code = tidyCode(text);
+  if (!code) return null;
+  return db.prepare('SELECT id, part_number, description FROM parts_catalog WHERE part_number = ?').get(code)
+    || db.prepare('SELECT c.id, c.part_number, c.description FROM part_barcodes b JOIN parts_catalog c ON c.id = b.catalog_id WHERE b.code = ?').get(code) || null;
+}
+/** Remember that this barcode is that part. A code that is itself a part number is never pointed anywhere else. True when something new was learned. */
+function learn(text, catalogId, userId) {
+  const code = tidyCode(text);
+  if (!code || db.prepare('SELECT 1 FROM parts_catalog WHERE part_number = ?').get(code)) return false;
+  const had = db.prepare('SELECT catalog_id FROM part_barcodes WHERE code = ?').get(code);
+  if (had && had.catalog_id === catalogId) return false;
+  db.prepare('INSERT INTO part_barcodes (code, catalog_id, added_by, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(code) DO UPDATE SET catalog_id = excluded.catalog_id, added_by = excluded.added_by, created_at = excluded.created_at')
+    .run(code, catalogId, userId, now());
+  return true;
+}
+
+/** How many of a part have been counted in a place so far in this count; null when it has not been counted. */
+const countedSoFar = (audit, place, catalogId) => { const k = db.prepare('SELECT counted FROM inv_counts WHERE audit_id = ? AND location_id = ? AND catalog_id = ?').get(audit.id, place.id, catalogId); return k ? k.counted : null; };
+
+function addUnknown(audit, place, { barcode, note, quantity, photo, userId }) {
+  return db.prepare('INSERT INTO inv_unknowns (audit_id, location_id, barcode, note, quantity, photo_path, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(audit.id, place.id, tidyCode(barcode) || null, note || null, quantity, photo || null, userId, now()).lastInsertRowid;
+}
+/** What is still to be identified in a count (or in one place of it), oldest first. */
+function unknowns(auditId, locationId = null) {
+  return db.prepare(
+    `SELECT x.*, l.name AS location, u.display_name AS by_name FROM inv_unknowns x JOIN inv_locations l ON l.id = x.location_id LEFT JOIN users u ON u.id = x.user_id
+     WHERE x.audit_id = ? AND x.resolved_at IS NULL AND (? IS NULL OR x.location_id = ?) ORDER BY x.id`).all(auditId, locationId, locationId);
+}
+const unknown = (id) => (/^\d+$/.test(String(id)) ? db.prepare('SELECT * FROM inv_unknowns WHERE id = ?').get(id) : null);
+/** It turned out to be this part: its quantity joins what has been counted there, and its barcode is remembered. */
+function identify(x, catalogId, userId) {
+  return db.transaction(() => {
+    const audit = get(x.audit_id); const place = inv.location(x.location_id);
+    const total = (countedSoFar(audit, place, catalogId) || 0) + x.quantity;
+    count(audit, place, catalogId, total, userId);
+    if (x.barcode) learn(x.barcode, catalogId, userId);
+    db.prepare('UPDATE inv_unknowns SET catalog_id = ?, resolved_by = ?, resolved_at = ? WHERE id = ?').run(catalogId, userId, now(), x.id);
+    return total;
+  })();
+}
+const dropUnknown = (x) => db.prepare('DELETE FROM inv_unknowns WHERE id = ?').run(x.id);
+
+module.exports = { isMonth, monthName, get, open, past, start, sheet, count, progress, close, closedFigures, closedPlaces, discard, vehicleToCount, finishedAt, finish, reopen,
+  lookup, learn, countedSoFar, addUnknown, unknowns, unknown, identify, dropUnknown };

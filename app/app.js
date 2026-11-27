@@ -12,7 +12,7 @@ const util = require('./util');
 const device = require('./device');
 const { rateKey } = require('./clientip');
 
-const MULTIPART_PATHS = /^\/(social|parts|parts\/\d+\/edit|admin\/catalog\/import|admin\/stock\/import|admin\/import|admin\/newsletters|inspection|profile|admin\/people\/import|admin\/company\/contacts|admin\/company\/details|photos|branches\/\d+|discussions\/new|discussions\/t\/\d+\/reply|sales\/library|admin\/oncall\/import)$/;
+const MULTIPART_PATHS = /^\/(admin\/inventory\/count\/\d+\/\d+\/unknown|social|parts|parts\/\d+\/edit|admin\/catalog\/import|admin\/stock\/import|admin\/import|admin\/newsletters|inspection|profile|admin\/people\/import|admin\/company\/contacts|admin\/company\/details|photos|branches\/\d+|discussions\/new|discussions\/t\/\d+\/reply|sales\/library|admin\/oncall\/import)$/;
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000; // stay signed in on a phone for 30 days
 const VISITOR_MS = 2 * 60 * 60 * 1000;       // a visitor who has not signed in: long enough to fill in the sign-in or reset form
 // The anonymous complaint pages. Nothing about a request for one is written down anywhere: not in the log, not in the session.

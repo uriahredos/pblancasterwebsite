@@ -369,6 +369,15 @@ table.audit .check-cell form { display: block; margin: 0 0 .2rem; }
 .scan-box { width: 100%; max-width: 460px; max-height: 100%; overflow: auto; }
 #scan-view { width: 100%; min-height: 200px; background: #000; border-radius: 8px; overflow: hidden; margin-bottom: .6rem; }
 #scan-view video { display: block; width: 100% !important; }
+.scan-result { display: grid; gap: .6rem; margin-bottom: .8rem; }
+.scan-result label { display: grid; gap: .3rem; font-weight: 700; }
+.scan-result p { margin: 0; }
+#scan-what { font-size: 1.1rem; overflow-wrap: anywhere; }
+#scan-qty { font-size: 1.4rem; max-width: 9rem; }
+.unknown { display: flex; gap: 1rem; align-items: flex-start; flex-wrap: wrap; }
+.unknown-photo img { display: block; width: 9rem; height: 9rem; object-fit: cover; border-radius: 10px; border: 1px solid var(--line); background: #000; }
+.unknown-what { flex: 1 1 16rem; min-width: 0; display: grid; gap: .5rem; }
+.unknown-what p, .unknown-what form { margin: 0; }
 .stats > div.stat { cursor: default; }
 
 /* Notices, inspections, delete */
