@@ -35,6 +35,7 @@ function listFor(userId) {
             (SELECT m.body FROM dm_messages m WHERE m.thread_id = t.id ORDER BY m.id DESC LIMIT 1) AS last_body,
             (SELECT m.user_id FROM dm_messages m WHERE m.thread_id = t.id ORDER BY m.id DESC LIMIT 1) AS last_from,
             (SELECT m.removed_at FROM dm_messages m WHERE m.thread_id = t.id ORDER BY m.id DESC LIMIT 1) AS last_removed,
+            (SELECT m.kind FROM dm_messages m WHERE m.thread_id = t.id ORDER BY m.id DESC LIMIT 1) AS last_kind,
             EXISTS (SELECT 1 FROM dm_messages m WHERE m.thread_id = t.id AND m.user_id <> @me AND m.removed_at IS NULL
                     AND m.id > COALESCE((SELECT r.last_read_id FROM dm_reads r WHERE r.thread_id = t.id AND r.user_id = @me), 0)) AS unread
      FROM dm_threads t JOIN users u ON u.id = CASE WHEN t.user_a = @me THEN t.user_b ELSE t.user_a END
@@ -64,10 +65,10 @@ function markRead(threadId, userId) {
 }
 const lastRead = (threadId, userId) => (db.prepare('SELECT last_read_id FROM dm_reads WHERE thread_id = ? AND user_id = ?').get(threadId, userId) || { last_read_id: 0 }).last_read_id;
 
-function add(threadId, userId, body) {
+function add(threadId, userId, body, kind = null) {
   const now = new Date().toISOString();
   return db.transaction(() => {
-    const id = db.prepare('INSERT INTO dm_messages (thread_id, user_id, body, created_at) VALUES (?, ?, ?, ?)').run(threadId, userId, body, now).lastInsertRowid;
+    const id = db.prepare('INSERT INTO dm_messages (thread_id, user_id, body, created_at, kind) VALUES (?, ?, ?, ?, ?)').run(threadId, userId, body, now, kind).lastInsertRowid;
     db.prepare('UPDATE dm_threads SET last_at = ? WHERE id = ?').run(now, threadId);
     markRead(threadId, userId);                       // what you just wrote is read by you
     return id;
@@ -87,6 +88,20 @@ function people(me, q) {
     `SELECT u.id, u.display_name, u.photo_path, u.job_title, b.name AS branch FROM users u LEFT JOIN branches b ON b.id = u.branch_id
      WHERE u.active = 1 AND u.id <> ? AND u.display_name LIKE ? ESCAPE '\\' ORDER BY u.display_name COLLATE NOCASE LIMIT 100`).all(me, like)
     .filter((u) => reachable(u.id)).slice(0, 25);
+}
+
+/** The people this person has starred, by name. */
+function favorites(userId) {
+  return db.prepare(
+    `SELECT u.id, u.display_name, u.photo_path, u.job_title, b.name AS branch FROM dm_favorites f JOIN users u ON u.id = f.other_id LEFT JOIN branches b ON b.id = u.branch_id
+     WHERE f.user_id = ? AND u.active = 1 ORDER BY u.display_name COLLATE NOCASE LIMIT 50`).all(userId).filter((u) => reachable(u.id));
+}
+const isFavorite = (userId, otherId) => Boolean(db.prepare('SELECT 1 FROM dm_favorites WHERE user_id = ? AND other_id = ?').get(userId, otherId));
+/** Star or unstar someone. Returns whether they are now a favorite. */
+function toggleFavorite(userId, otherId) {
+  if (isFavorite(userId, otherId)) { db.prepare('DELETE FROM dm_favorites WHERE user_id = ? AND other_id = ?').run(userId, otherId); return false; }
+  db.prepare('INSERT INTO dm_favorites (user_id, other_id, created_at) VALUES (?, ?, ?)').run(userId, otherId, new Date().toISOString());
+  return true;
 }
 
 /** Reports nobody has opened yet, among those this person may handle (see routes/messages.js for the rule). */
@@ -120,4 +135,4 @@ function moveUser(fromId, toId) {
   }
 }
 
-module.exports = { find, forUser, create, listFor, unreadCount, messages, markRead, lastRead, add, people, reachable, asReported, moveUser, waitingReports };
+module.exports = { find, forUser, create, listFor, unreadCount, messages, markRead, lastRead, add, people, reachable, asReported, moveUser, waitingReports, favorites, isFavorite, toggleFavorite };

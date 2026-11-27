@@ -2398,7 +2398,7 @@ test('tasks: assigned with a due date, shown in the bell with when they are due,
 
   // Tasks page, and ticking one off with a note.
   const mine = (await tess.get('/tasks')).text;
-  assert.match(mine, /Ten 12V 7Ah\./); assert.match(mine, /From Olive Owner/); assert.match(mine, /class="tag overdue">Overdue</);
+  assert.match(mine, /Ten 12V 7Ah\./); assert.match(mine, /From <a class="who" href="\/people\/\d+">Olive Owner<\/a>/); assert.match(mine, /class="tag overdue">Overdue</);
   const tid = db.prepare("SELECT id FROM tasks WHERE title LIKE 'Send in%'").get().id;
   await tess.post(`/tasks/${tid}/done`, { done_note: 'Emailed it Monday' }, { page: '/tasks' });
   // A task counts as new on the bell until that one task is opened. Looking at the Tasks page is not enough:
@@ -4270,7 +4270,7 @@ test('community first: the company in numbers, one list of what people across th
   await owner.post(`/notices/${nid}/comment`, { body: '309 and 311.' }, { page: '/notices' });
   assert.equal(db.prepare('SELECT COUNT(*) n FROM announcement_comments WHERE announcement_id = ?').get(nid).n, 2);
   const page = (await t2.get('/notices')).text.replace(/\s+/g, ' ');
-  assert.match(page, /<summary>2 comments<\/summary>[\s\S]*Terry Tech<\/strong> · Lancaster ·[\s\S]*Which trucks do they &lt;b&gt;replace&lt;\/b&gt;\?[\s\S]*Olive Owner<\/strong>[\s\S]*309 and 311\./);
+  assert.match(page, /<summary>2 comments<\/summary>[\s\S]*Terry Tech<\/strong><\/a> · Lancaster ·[\s\S]*Which trucks do they &lt;b&gt;replace&lt;\/b&gt;\?[\s\S]*Olive Owner<\/strong>[\s\S]*309 and 311\./);
   // Someone the announcement is not for cannot comment on it.
   db.prepare('UPDATE announcements SET branch_id = 1 WHERE id = ?').run(nid);
   if (other) assert.equal((await (await loggedIn(other.username)).post(`/notices/${nid}/comment`, { body: 'hello' }, { page: '/notices' })).status, 403);
@@ -8634,15 +8634,15 @@ test('on call: one file can fill several branches and the whole market, saying w
   assert.match(said, /Schedule loaded: 5 entries\. Skipped lines for: No Such Branch[^<]*No phone number on file for 1: Al Alpha\. 1 line\(s\) could not be read\./);
   // Everyone in the market sees the market-wide people under the market's name, and each office's own under that office.
   const shown = (await owner.get(page)).text.replace(/\s+/g, ' ');
-  assert.match(shown, /<h3 class="sub-h">Call Valley market<\/h3>[\s\S]*?<span class="oncall-covers">Supervisor<\/span><strong>Sue Supervisor<\/strong>/);
-  assert.match(shown, /<h3 class="sub-h">Call Beta branch<\/h3>[\s\S]*?<span class="oncall-covers">Sprinkler<\/span><strong>Sam Sprinkler<\/strong>/);
+  assert.match(shown, /<h3 class="sub-h">Call Valley market<\/h3>[\s\S]*?<span class="oncall-covers">Supervisor<\/span>(?:<a class="who" href="\/people\/\d+">)?<strong>Sue Supervisor<\/strong>/);
+  assert.match(shown, /<h3 class="sub-h">Call Beta branch<\/h3>[\s\S]*?<span class="oncall-covers">Sprinkler<\/span>(?:<a class="who" href="\/people\/\d+">)?<strong>Sam Sprinkler<\/strong>/);
   assert.equal((shown.match(/<strong>Sue Supervisor<\/strong>/g) || []).length, 1);                    // once, not once per office
   const bob = auth.createUser({ username: 'call.bob', displayName: 'Bob Beta', password: 'correct horse battery', profile: profileId('Technician'), branchId: b }); db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?').run(bob);
   const bc = await loggedIn('call.bob'); const his = (await bc.get(page)).text;
   assert.match(his, /Sue Supervisor/); assert.match(his, /Sam Sprinkler/); assert.match(his, /Al Alpha/);
   // The home page's On call now is only the office being looked at: Bob's own sprinkler person, not the market's or another office's.
   const bobHome = (/<section class="panel p-oncall"[\s\S]*?<\/section>/.exec((await bc.get('/')).text) || [''])[0];
-  assert.match(bobHome, /<span class="oncall-covers">Sprinkler<\/span><strong>Sam Sprinkler<\/strong>/); assert.doesNotMatch(bobHome, /Sue Supervisor|Al Alpha|Typed Number/);
+  assert.match(bobHome, /<span class="oncall-covers">Sprinkler<\/span>(?:<a class="who" href="\/people\/\d+">)?<strong>Sam Sprinkler<\/strong>/); assert.doesNotMatch(bobHome, /Sue Supervisor|Al Alpha|Typed Number/);
   // An office outside the market sees none of it.
   const oc = auth.createUser({ username: 'call.out', displayName: 'Olga Outside', password: 'correct horse battery', profile: profileId('Technician'), branchId: out }); db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?').run(oc);
   assert.doesNotMatch((await (await loggedIn('call.out')).get(page)).text, /Sue Supervisor|Sam Sprinkler/);

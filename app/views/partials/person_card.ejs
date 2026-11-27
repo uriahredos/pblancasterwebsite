@@ -1,0 +1,11 @@
+<%# The small card that opens from a person's name anywhere on the site. %>
+<div class="pcard-top"><%- include('avatar', { who: p }) %><div class="pcard-text"><strong><%= p.display_name %></strong><% if (p.job_title || p.department) { %><span class="meta"><%= [p.job_title, p.department].filter(Boolean).join(' · ') %></span><% } %><% if (p.branch) { %><span class="meta"><%= p.branch %></span><% } %><% if (!p.active) { %><span class="meta">No longer here</span><% } %></div>
+<% if (reach) { %><button type="button" class="pcard-fav" data-fav="<%= p.id %>" aria-pressed="<%= fav ? 'true' : 'false' %>" aria-label="Favorite" title="Keep in your favorites"><%- icons.star %></button><% } %></div>
+<% if (reach) { %>
+<div class="pcard-acts">
+  <a class="btn small primary" href="/messages/with/<%= p.id %>" data-no-card><%- icons.chat %> Message</a>
+  <button type="button" class="btn small" data-call-person="<%= p.id %>" data-mode="audio"><%- icons.phone %> Voice</button>
+  <button type="button" class="btn small" data-call-person="<%= p.id %>" data-mode="video"><%- icons.video %> Video</button>
+</div>
+<% } %>
+<a class="pcard-open" href="<%= mine ? '/profile' : '/people/' + p.id %>" data-no-card><%= mine ? 'My profile' : 'Open profile' %></a>

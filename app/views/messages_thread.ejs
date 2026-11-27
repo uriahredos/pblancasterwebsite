@@ -1,9 +1,47 @@
 <%- include('partials/header') %>
 <p class="back"><a class="back-link" href="/messages">Messages</a></p>
-<div class="dm-head"><%- include('partials/avatar', { who: t.other }) %><div><h1><a href="/people/<%= t.other.id %>"><%= t.other.display_name %></a></h1><p class="meta">Private: only you and <%= t.other.display_name %> can read this.<% if (t.other.job_title) { %> · <%= t.other.job_title %><% } %></p></div></div>
+<div class="dm-head"><%- include('partials/avatar', { who: t.other }) %><div class="grow"><h1><a href="/people/<%= t.other.id %>" data-no-card><%= t.other.display_name %></a></h1><p class="meta">Private: only you and <%= t.other.display_name %> can read this.<% if (t.other.job_title) { %> · <%= t.other.job_title %><% } %></p></div></div>
+<% if (canSend) { %>
+<section class="call dm-call" data-call-root data-call-direct data-call-base="/call/dm/<%= t.id %>" aria-label="Call">
+  <div class="call-banner" data-call-banner>
+    <% if (!call) { %>
+    <button class="btn small" type="button" data-call-start data-mode="audio"><%- icons.phone %> Voice call</button>
+    <button class="btn small" type="button" data-call-start data-mode="video"><%- icons.video %> Video call</button>
+    <% } else if (call.mineHost) { %>
+    <span class="call-dot" aria-hidden="true"></span><strong>Your call is open</strong>
+    <button class="btn small" type="button" data-call-start data-mode="<%= call.mode %>">Resume</button>
+    <% } else if (call.mineGuest) { %>
+    <span class="call-dot" aria-hidden="true"></span><strong>You are on a call with <%= call.hostName %></strong>
+    <button class="btn small" type="button" data-call-join data-mode="<%= call.mode %>">Rejoin</button>
+    <% } else { %>
+    <span class="call-dot" aria-hidden="true"></span><span><strong><%= call.hostName %></strong> is calling you (<%= call.mode === 'audio' ? 'voice' : 'video' %>).</span>
+    <button class="btn primary small" type="button" data-call-join data-mode="<%= call.mode %>">Answer</button>
+    <button class="btn small" type="button" data-call-decline>Not now</button>
+    <% } %>
+  </div>
+  <p class="call-note meta" data-call-note role="status" hidden></p>
+  <div class="call-panel" data-call-panel hidden>
+    <div class="call-stage">
+      <div class="call-voice" aria-hidden="true"><%- include('partials/avatar', { who: t.other, size: 'lg' }) %><strong><%= t.other.display_name %></strong></div>
+      <video class="call-remote" data-call-remote autoplay playsinline></video>
+      <video class="call-local" data-call-local autoplay playsinline muted></video>
+    </div>
+    <p class="call-status" data-call-status role="status"></p>
+    <div class="call-controls">
+      <button class="btn small" type="button" data-call-mute aria-pressed="false">Mute</button>
+      <button class="btn small video-only" type="button" data-call-camera aria-pressed="false">Camera off</button>
+      <button class="btn small video-only" type="button" data-call-flip>Flip camera</button>
+      <button class="btn small danger" type="button" data-call-end>End call</button>
+    </div>
+  </div>
+</section>
+<% } %>
 <%- include('partials/errors') %>
 <div class="dm" data-live-dm="<%= t.id %>">
   <% rows.forEach(function (m) { var mine = m.user_id === me; %>
+  <% if (m.kind === 'call') { %>
+  <article class="dm-note" id="m<%= m.id %>" data-rev=""><p class="meta"><%- m.body === 'Voice call' ? icons.phone : icons.video %> <%= mine ? 'You called' : t.other.display_name + ' called you' %> · <%= m.body.toLowerCase() %> · <%= fmtDateTime(m.created_at) %></p></article>
+  <% return; } %>
   <article class="dm-msg <%= mine ? 'mine' : 'theirs' %> <%= !mine && m.id > read && !m.removed_at ? 'is-new' : '' %>" id="m<%= m.id %>" data-rev="<%= m.removed_at || '' %>">
     <div class="dm-bubble">
       <% if (m.removed_at) { %><p class="meta removed-msg">Removed by the sender.</p><% } else { %><div class="msg-body"><%- fmt(m.body) %></div><% } %>
@@ -35,4 +73,5 @@
 <% } else { %><p class="flash warn"><%= t.other.display_name %> cannot get messages any more.</p><% } %>
 <script src="/live.js?v=<%= assetV %>" defer></script>
 <script src="/messages.js?v=<%= assetV %>" defer></script>
+<% if (canSend) { %><script src="/call.js?v=<%= assetV %>" defer></script><% } %>
 <%- include('partials/footer') %>

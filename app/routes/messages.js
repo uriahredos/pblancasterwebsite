@@ -9,7 +9,7 @@ const live = require('../live');
 const push = require('../push');
 const activity = require('../activity');
 const { allow } = require('../allowance');
-const { requirePerm, flash } = require('../auth');
+const { requirePerm, requireLogin, flash } = require('../auth');
 const { clean } = require('../util');
 
 const router = express.Router();
@@ -50,6 +50,42 @@ router.post('/messages/with/:id', use, (req, res) => {
   res.redirect(`/messages/c/${t.id}`);
 });
 
+// ---- The quick list at the bottom of every page, and the small card that opens from a person's name -----------------
+
+// Favorites and the people last written to; or, with something typed, the people it finds. Drawn into the open list as it is.
+router.get('/messages/dock', use, (req, res) => {
+  const q = clean(req.query.q, 60);
+  const recent = q ? [] : dm.listFor(req.user.id).slice(0, 8);
+  const favs = q ? [] : dm.favorites(req.user.id);
+  res.set('Cache-Control', 'no-store').render('partials/dock_list', { q, found: q ? dm.people(req.user.id, q) : [], favs, recent, me: req.user.id });
+});
+
+router.get('/messages/unread', use, (req, res) => res.set('Cache-Control', 'no-store').json({ n: dm.unreadCount(req.user.id) }));
+
+// The conversation with this person, made if it does not exist yet: where a Call button needs to go.
+router.post('/messages/open/:id', use, (req, res) => {
+  const other = isId(req.params.id) ? db.prepare('SELECT id, active FROM users WHERE id = ?').get(req.params.id) : null;
+  if (!other || other.id === req.user.id || !dm.reachable(other.id)) return res.status(404).json({ error: 'That person cannot be called here.' });
+  res.json({ id: dm.create(req.user.id, other.id).id });
+});
+
+router.post('/messages/favorite/:id', use, (req, res) => {
+  const other = isId(req.params.id) ? db.prepare('SELECT id FROM users WHERE id = ? AND active = 1').get(req.params.id) : null;
+  if (!other || other.id === req.user.id) return res.status(404).json({ error: 'That person is not here.' });
+  res.json({ on: dm.toggleFavorite(req.user.id, other.id) });
+});
+
+// The small card for one person: who they are, and the quickest ways to reach them.
+router.get('/people/:id/card', requireLogin, (req, res) => {
+  const p = isId(req.params.id) ? db.prepare(
+    `SELECT u.id, u.display_name, u.photo_path, u.job_title, u.department, u.active, b.name AS branch FROM users u LEFT JOIN branches b ON b.id = u.branch_id
+     WHERE u.id = ? AND u.removed_at IS NULL AND (u.active = 1 OR u.in_directory = 1)`).get(req.params.id) : null;
+  if (!p) return res.status(404).end();
+  const mine = p.id === req.user.id;
+  const reach = !mine && access.can(req.user, 'messages.use') && dm.reachable(p.id);
+  res.set('Cache-Control', 'no-store').render('partials/person_card', { p, mine, reach, fav: reach && dm.isFavorite(req.user.id, p.id) });
+});
+
 // ---- A conversation -------------------------------------------------------------------------------
 
 router.get('/messages/c/:id', use, (req, res) => {
@@ -60,7 +96,7 @@ router.get('/messages/c/:id', use, (req, res) => {
   dm.markRead(t.id, req.user.id);
   // Reading it clears it from the count shown around this very page.
   if (rows.some((m) => m.user_id !== req.user.id && !m.removed_at && m.id > read)) res.locals.badges.messages = Math.max(0, res.locals.badges.messages - 1);
-  res.render('messages_thread', { title: t.other.display_name, t, rows, read, me: req.user.id, errors: [], canSend: dm.reachable(t.other.id) });
+  res.render('messages_thread', { title: t.other.display_name, t, rows, read, me: req.user.id, errors: [], canSend: dm.reachable(t.other.id), call: require('../calls').viewFor(`dm:${t.id}`, req.user) });
 });
 
 function deliver(req, t, otherId, body) {

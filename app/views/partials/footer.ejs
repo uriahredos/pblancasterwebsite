@@ -13,6 +13,21 @@
   <a href="#navbar" id="more-toggle" role="button" aria-controls="navbar" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5h16M4 12h16M4 17.5h16"/></svg><span>More</span></a>
 </nav>
 <% } %>
+<% if (user && !user.must_change_password && !(typeof locked !== 'undefined' && locked) && can('messages.use')) { %>
+<div class="dock no-print" id="dock" data-me="<%= user.id %>">
+  <button type="button" class="dock-btn" id="dock-btn" aria-expanded="false" aria-controls="dock-panel" aria-label="Messages and calls" title="Messages and calls"><%- icons.chat %><b class="dock-count" id="dock-count" <%= badges.messages ? '' : 'hidden' %>><%= badges.messages %></b></button>
+  <section class="dock-panel" id="dock-panel" hidden aria-label="Messages and calls">
+    <div class="dock-head"><strong>Messages and calls</strong><a href="/messages" data-dock-close>All messages</a><button type="button" class="link" data-dock-close aria-label="Close">Close</button></div>
+    <label class="dock-find"><span class="sr">Find someone</span><input type="search" id="dock-q" maxlength="60" placeholder="Find someone" autocomplete="off"></label>
+    <div class="dock-body" id="dock-body" aria-live="polite"></div>
+  </section>
+</div>
+<div class="ring no-print" id="ring" hidden role="alertdialog" aria-label="Incoming call">
+  <div class="ring-box"><p class="ring-what" id="ring-what"></p><p class="ring-who" id="ring-who"></p>
+    <div class="ring-acts"><button type="button" class="btn danger" id="ring-no">Not now</button><button type="button" class="btn primary" id="ring-yes">Answer</button></div></div>
+</div>
+<% } %>
+<% if (user && !user.must_change_password && !(typeof locked !== 'undefined' && locked)) { %><div class="pcard no-print" id="pcard" hidden role="dialog" aria-label="Person"></div><script src="/dock.js?v=<%= assetV %>" defer></script><% } %>
 <%# Shown by site.js only on a phone's browser, never inside the installed app. %>
 <aside class="install-bar no-print" id="install-bar" hidden aria-label="Get the app">
   <img src="/icons/icon-192.png" alt="" width="44" height="44">

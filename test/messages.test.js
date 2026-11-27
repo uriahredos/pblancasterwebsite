@@ -71,7 +71,10 @@ test('messages: a person without the permission has no Messages page or link; si
   assert.match((await new Client().get('/messages')).location, /^\/login/);
   const a = await new Client().login('ann');
   assert.match((await a.get('/')).text, /<a href="\/messages"[^>]*>Messages/);
-  assert.match((await a.get(`/people/${idOf('bob')}`)).text, new RegExp(`href="/messages/with/${idOf('bob')}">Message`));
+  const bobPage = (await a.get(`/people/${idOf('bob')}`)).text;
+  assert.match(bobPage, new RegExp(`href="/messages/with/${idOf('bob')}">[^]*?Message</a>`));
+  assert.match(bobPage, new RegExp(`data-call-person="${idOf('bob')}" data-mode="audio"`)); assert.match(bobPage, /data-mode="video"/);
+  assert.doesNotMatch((await a.get(`/people/${idOf('nomsg')}`)).text, /data-call-person/, 'no buttons for someone who cannot be reached');
 });
 
 test('messages: the first message makes the conversation; you cannot message yourself or someone who is no longer here', async () => {
@@ -226,4 +229,63 @@ test('people: someone without private messages cannot be written to, and two acc
   assert.equal(require('../app/duplicates').merge(idOf('ann'), extra), true);
   assert.match((await a.get(`/messages/c/${convo}`)).text, /From my second account/);
   assert.equal(db.prepare('SELECT COUNT(*) n FROM dm_threads WHERE user_a = ? OR user_b = ?').get(extra, extra).n, 0);
+});
+
+test('calls to a person: it rings them, they answer or say not now, and only the two of them are ever in it', async () => {
+  const calls = require('../app/calls');
+  db.prepare("UPDATE users SET active = 1 WHERE username = 'bob'").run();
+  const a = await new Client().login('ann'), b = await new Client().login('bob'), c = await new Client().login('cat');
+  const fetchJson = { 'x-requested-with': 'fetch' };
+  alerts.length = 0;
+  const bobInbox = await b.stream(`inbox:${idOf('bob')}`); const annDm = await a.stream(`dm:${convo}`); await wait(100);
+  assert.equal((await c.post(`/call/dm/${convo}/start`, { mode: 'audio' }, '/messages', fetchJson)).status, 404, 'not your conversation');
+  const started = await a.post(`/call/dm/${convo}/start`, { mode: 'audio' }, '/messages', fetchJson);
+  assert.equal(started.json.mode, 'audio');
+  assert.ok(await until(() => /event: ring/.test(bobInbox.text())), 'the other person\'s screens ring');
+  assert.match(bobInbox.text(), /"from":"Ann Tech"/);
+  assert.ok(alerts.some((x) => x.kind === 'call' && x.ids.includes(idOf('bob')) && /Ann Tech is calling you/.test(x.title)), 'and their phone is alerted');
+  assert.equal((await b.get('/call/ringing')).json.calls[0].id, convo);
+  assert.match((await b.get(`/messages/c/${convo}`)).text, /Ann Tech<\/strong> is calling you \(voice\)[^]*data-call-join data-mode="audio"[^]*Ann Tech called you/);
+  // Not now: the call is over and the caller is told.
+  assert.equal((await b.post(`/call/dm/${convo}/decline`, {}, '/messages', fetchJson)).status, 200);
+  assert.ok(await until(() => /"type":"declined"/.test(annDm.text())));
+  assert.equal(calls.get(`dm:${convo}`), null);
+  assert.deepEqual((await b.get('/call/ringing')).json.calls, []);
+  // Again, answered this time: the ringing stops everywhere and the caller is told to connect.
+  await a.post(`/call/dm/${convo}/start`, { mode: 'video' }, '/messages', fetchJson);
+  const joined = await b.post(`/call/dm/${convo}/join`, {}, '/messages', fetchJson);
+  assert.equal(joined.json.mode, 'video');
+  assert.ok(await until(() => /event: ringend/.test(bobInbox.text()) && /"type":"joined"/.test(annDm.text())));
+  assert.equal((await c.post(`/call/dm/${convo}/join`, {}, '/messages', fetchJson)).status, 404);
+  await a.post(`/call/dm/${convo}/leave`, {}, '/messages', fetchJson);
+  assert.equal(calls.get(`dm:${convo}`), null);
+  // Nobody answers: it stops by itself.
+  await a.post(`/call/dm/${convo}/start`, { mode: 'audio' }, '/messages', fetchJson);
+  calls._calls.get(`dm:${convo}`).ring.until = Date.now() - 1;
+  assert.equal(calls.get(`dm:${convo}`), null);
+  assert.ok(await until(() => /"type":"noanswer"/.test(annDm.text())));
+  // Someone who cannot get messages cannot be rung.
+  assert.equal((await a.post(`/messages/open/${idOf('nomsg')}`, {}, '/messages', fetchJson)).status, 404);
+  [bobInbox, annDm].forEach((s) => s.close());
+});
+
+test('quick list and person card: favorites, recents, search, and the ways to reach someone', async () => {
+  const a = await new Client().login('ann'); const n = await new Client().login('nomsg');
+  const list = (await a.get('/messages/dock')).text;
+  assert.doesNotMatch(list, /<html/); assert.match(list, /Recent/); assert.match(list, new RegExp(`href="/messages/c/${convo}"`)); assert.doesNotMatch(list, /Favorites/);
+  assert.equal((await a.post(`/messages/favorite/${idOf('cat')}`, {}, '/messages')).json.on, true);
+  assert.match((await a.get('/messages/dock')).text, /Favorites[^]*Cat Tech/);
+  const found = (await a.get('/messages/dock?q=bob')).text;
+  assert.match(found, new RegExp(`href="/messages/with/${idOf('bob')}"`)); assert.match(found, new RegExp(`data-call-person="${idOf('bob')}"`));
+  assert.doesNotMatch((await a.get('/messages/dock?q=Nora')).text, /messages\/with/);
+  const card = (await a.get(`/people/${idOf('cat')}/card`)).text;
+  assert.doesNotMatch(card, /<html/); assert.match(card, /Cat Tech/); assert.match(card, /aria-pressed="true"/); assert.match(card, /Open profile/);
+  assert.match(card, new RegExp(`data-call-person="${idOf('cat')}" data-mode="video"`));
+  assert.equal((await a.post(`/messages/favorite/${idOf('cat')}`, {}, '/messages')).json.on, false);
+  assert.match((await a.get(`/people/${idOf('ann')}/card`)).text, /My profile/);
+  const plain = (await n.get(`/people/${idOf('cat')}/card`)).text;            // no messages: the card is just who they are
+  assert.match(plain, /Cat Tech/); assert.doesNotMatch(plain, /data-call-person|messages\/with/);
+  assert.notEqual((await n.get('/messages/dock')).status, 200);
+  assert.doesNotMatch((await n.get('/')).text, /id="dock"/); assert.match((await a.get('/')).text, /id="dock"/);
+  assert.equal((await new Client().get(`/people/${idOf('cat')}/card`)).status, 302);
 });

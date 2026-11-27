@@ -1,4 +1,4 @@
-// Video call in a tech-support thread: two phones, one picture each way, set up through the site and then connected
+// A call: video in a tech-support thread, or voice or video with one person from a private conversation. Two phones, one picture each way, set up through the site and then connected
 // directly (or through a relay when a network will not allow that). Nothing is recorded. The one who starts the call
 // is usually the tech in the field, so the back camera is the default for them and the front camera for the one who joins.
 (function () {
@@ -7,6 +7,9 @@
   var root = document.querySelector('[data-call-root]');
   if (!root || !document.documentElement.hasAttribute('data-in')) return;
   var threadId = root.getAttribute('data-thread');
+  var base = root.getAttribute('data-call-base') || ('/call/t/' + threadId);
+  var person = root.hasAttribute('data-call-direct');          // a call to one person: it rings them, and ends when either leaves
+  var mode = 'video';
   var note = root.querySelector('[data-call-note]');
   var panel = root.querySelector('[data-call-panel]');
   var remoteEl = root.querySelector('[data-call-remote]');
@@ -24,7 +27,7 @@
   function post(path, fields) {
     var body = new URLSearchParams(); body.append('_csrf', csrf());
     Object.keys(fields || {}).forEach(function (k) { body.append(k, fields[k]); });
-    return fetch('/call/t/' + threadId + '/' + path, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'fetch', Accept: 'application/json' }, body: body.toString() })
+    return fetch(base + '/' + path, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'fetch', Accept: 'application/json' }, body: body.toString() })
       .then(function (res) {
         if (!/json/.test(res.headers.get('content-type') || '')) throw new Error('Sign in again to use video calls.');
         return res.json().then(function (j) { if (!res.ok) throw new Error(j.error || 'That did not work.'); return j; });
@@ -39,7 +42,7 @@
     return 'Could not start the camera or microphone.';
   }
   function getMedia(face) {
-    return navigator.mediaDevices.getUserMedia({ audio: true, video: { facingMode: { ideal: face }, width: { ideal: 1280 }, height: { ideal: 720 } } });
+    return navigator.mediaDevices.getUserMedia({ audio: true, video: mode === 'audio' ? false : { facingMode: { ideal: face }, width: { ideal: 1280 }, height: { ideal: 720 } } });
   }
 
   function stopLocal() { if (local) { local.getTracks().forEach(function (t) { t.stop(); }); local = null; } }
@@ -65,7 +68,7 @@
     local.getTracks().forEach(function (t) { pc.addTrack(t, local); });
   }
 
-  function show(on) { panel.hidden = !on; active = on; window.__callActive = on; }
+  function show(on) { panel.hidden = !on; active = on; window.__callActive = on; root.classList.toggle('in-call', on); if (!on && window.__liveRefresh) setTimeout(window.__liveRefresh, 600); }
 
   function releaseWake() { if (wake && wake.release) { try { wake.release(); } catch (e) { /* gone */ } } wake = null; }
   function holdWake() { if (navigator.wakeLock && navigator.wakeLock.request) navigator.wakeLock.request('screen').then(function (w) { wake = w; }, function () {}); }
@@ -85,10 +88,12 @@
     p.then(function () { ended = false; });
   }
 
-  function begin(as) {
+  function begin(as, how) {
     if (active || !supported) return;
+    mode = how === 'audio' ? 'audio' : 'video';
+    root.classList.toggle('audio-only', mode === 'audio');
     if (!window.__liveOpen || !window.__liveOpen()) { say('The live connection is not up yet. Wait a moment and try again.'); return; }
-    say(''); role = as; facing = as === 'host' ? 'environment' : 'user'; ended = false;
+    say(''); role = as; facing = as === 'host' && !person ? 'environment' : 'user'; ended = false;
     getMedia(facing).then(function (stream) {
       local = stream;
       if (localEl) { localEl.srcObject = stream; var lp = localEl.play(); if (lp && lp.catch) lp.catch(function () {}); }
@@ -104,9 +109,9 @@
       return post('ice');
     }).then(function (ice) {
       servers = ice.servers; makePc();
-      return post(as === 'host' ? 'start' : 'join');
+      return post(as === 'host' ? 'start' : 'join', { mode: mode });
     }).then(function () {
-      status(as === 'host' ? 'Waiting for someone to join…' : 'Connecting…');
+      status(as === 'host' ? (person ? 'Ringing…' : 'Waiting for someone to join…') : 'Connecting…');
       beatTimer = setInterval(function () {
         post('beat').then(function (b) { if (!b.active) hangup(false, 'The call has ended.'); }).catch(function () {});
       }, 20000);
@@ -139,8 +144,13 @@
       pc.setRemoteDescription(m.data).then(function () { remoteSet = true; flush(); }).catch(function () {});
     } else if (m.type === 'candidate') {
       if (remoteSet) pc.addIceCandidate(m.data).catch(function () {}); else pendingIce.push(m.data);
+    } else if (m.type === 'declined') {
+      hangup(false, 'They cannot talk right now.');
+    } else if (m.type === 'noanswer') {
+      hangup(false, 'No answer.');
     } else if (m.type === 'bye') {
-      if (role === 'host') { makePc(); status('They left. Waiting for someone to join…'); }
+      if (person) hangup(true, 'The call has ended.');
+      else if (role === 'host') { makePc(); status('They left. Waiting for someone to join…'); }
       else hangup(false, 'The call has ended.');
     }
   }
@@ -174,10 +184,11 @@
   }
 
   function onClick(e) {
-    var t = e.target.closest && e.target.closest('[data-call-start],[data-call-join],[data-call-end],[data-call-flip],[data-call-mute],[data-call-camera]');
+    var t = e.target.closest && e.target.closest('[data-call-start],[data-call-join],[data-call-decline],[data-call-end],[data-call-flip],[data-call-mute],[data-call-camera]');
     if (!t || !root.contains(t)) return;
-    if (t.hasAttribute('data-call-start')) begin('host');
-    else if (t.hasAttribute('data-call-join')) begin('guest');
+    if (t.hasAttribute('data-call-start')) begin('host', t.getAttribute('data-mode'));
+    else if (t.hasAttribute('data-call-join')) begin('guest', t.getAttribute('data-mode'));
+    else if (t.hasAttribute('data-call-decline')) { post('decline').catch(function () {}); say(''); }
     else if (t.hasAttribute('data-call-end')) hangup(true, 'You left the call.');
     else if (t.hasAttribute('data-call-flip')) flip();
     else if (t.hasAttribute('data-call-mute')) toggle(t, 'audio', 'Unmute', 'Mute');
@@ -189,15 +200,29 @@
   function onHide() {
     if (!role || !navigator.sendBeacon) return;                   // closing the page ends the call on our side
     var body = new URLSearchParams(); body.append('_csrf', csrf());
-    navigator.sendBeacon('/call/t/' + threadId + '/leave', new Blob([body.toString()], { type: 'application/x-www-form-urlencoded' }));
+    navigator.sendBeacon(base + '/leave', new Blob([body.toString()], { type: 'application/x-www-form-urlencoded' }));
   }
   window.addEventListener('pagehide', onHide);
 
   if (!supported) {
     var btns = root.querySelectorAll('[data-call-start],[data-call-join]');
     Array.prototype.forEach.call(btns, function (b) { b.disabled = true; });
-    say('This browser cannot do video calls. Use Safari on an iPhone or Chrome on Android.');
+    say('This browser cannot do calls. Use Safari on an iPhone or Chrome on Android.');
   }
+
+  // Arriving here from a Call or Answer button elsewhere on the site: that tap left a note, and the call starts by itself.
+  // Only a note left by this site a moment ago counts, so a link from somewhere else can never start a call.
+  (function () {
+    var want = null;
+    try { want = JSON.parse(sessionStorage.getItem('pbCall') || 'null'); sessionStorage.removeItem('pbCall'); } catch (e) { want = null; }
+    if (!want || !supported || want.base !== base || !(Date.now() - want.at < 20000)) return;
+    var tries = 0;
+    var wait = setInterval(function () {
+      tries += 1;
+      if (!document.body.contains(root) || tries > 40) { clearInterval(wait); return; }
+      if (window.__liveOpen && window.__liveOpen()) { clearInterval(wait); begin(want.as === 'guest' ? 'guest' : 'host', want.mode); }
+    }, 250);
+  })();
 
   window.__callStop = function () {
     window.removeEventListener('portal-signal', onSignal); window.removeEventListener('pagehide', onHide); root.removeEventListener('click', onClick);

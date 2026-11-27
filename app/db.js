@@ -714,7 +714,15 @@ CREATE TABLE IF NOT EXISTS dm_reports (
   outcome TEXT
 );
 CREATE INDEX IF NOT EXISTS dm_reports_open ON dm_reports(closed_at, created_at);
+CREATE TABLE IF NOT EXISTS dm_favorites (
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  other_id INTEGER NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, other_id)
+);
 `);
+// A line in a conversation that is not something typed: 'call' marks where a voice or video call was made.
+if (!db.prepare("SELECT 1 FROM pragma_table_info('dm_messages') WHERE name = 'kind'").get()) db.exec('ALTER TABLE dm_messages ADD COLUMN kind TEXT');
 
 // The contact sheet misspells the company's email address in places; an address sent there would not arrive.
 db.prepare("UPDATE company_contacts SET email = replace(email, '@pyebarkefs.com', '@pyebarkerfs.com') WHERE email LIKE '%@pyebarkefs.com%'").run();

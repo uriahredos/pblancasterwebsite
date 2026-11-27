@@ -90,7 +90,8 @@ function parseSheet(rows) {
 }
 
 /** A shift covers its first day up to, but not including, the day it is handed on. */
-const SCOPED = `SELECT s.*, CASE WHEN s.market_id IS NULL THEN b.name ELSE m.name || ' market' END AS office FROM oncall_shifts s
+// The schedule holds names as typed. Where a name is exactly one active person's, the row carries who that is, so the name can open their card.
+const SCOPED = `SELECT s.*, (SELECT CASE WHEN COUNT(*) = 1 THEN MAX(u.id) END FROM users u WHERE u.active = 1 AND u.display_name = s.name COLLATE NOCASE) AS user_id, CASE WHEN s.market_id IS NULL THEN b.name ELSE m.name || ' market' END AS office FROM oncall_shifts s
    JOIN branches b ON b.id = s.branch_id LEFT JOIN markets m ON m.id = s.market_id`;
 /** WHERE that picks out the shifts these offices see: their own, and their market's market-wide ones. */
 const seenBy = (branchIds, marketId) => `((s.market_id IS NULL AND s.branch_id IN (${branchIds.map(Number).join(',') || 0}))${marketId ? ` OR s.market_id = ${Number(marketId)}` : ''})`;

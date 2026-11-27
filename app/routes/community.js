@@ -84,7 +84,7 @@ router.get('/people/:id', requireLogin, (req, res) => {
   const canModNotes = access.can(req.user, 'users.manage') && req.user.scope === 'all' && access.canSee(req.user, p.id);
   const canWelcome = canPosition && req.user.scope === 'all' && Boolean(welcome) && welcome.created_at >= new Date(Date.now() - WELCOME_DAYS * 86400000).toISOString();   // only while it is on the home page
   const chainUp = require('../chain').above(p.id);
-  res.render('person', { canPosition, canWelcome, canModNotes, reportsTo, theirTeam, chainUp, title: p.display_name, p: decorate(p), certs, welcome, notes, me: p.id === req.user.id, bday, shouts: social.shoutoutsFor(req.user, p.id), canShout: social.mayShout(req.user, p.branch_id) });
+  res.render('person', { reach: p.id !== req.user.id && access.can(req.user, 'messages.use') && require('../messages').reachable(p.id), canPosition, canWelcome, canModNotes, reportsTo, theirTeam, chainUp, title: p.display_name, p: decorate(p), certs, welcome, notes, me: p.id === req.user.id, bday, shouts: social.shoutoutsFor(req.user, p.id), canShout: social.mayShout(req.user, p.branch_id) });
 });
 
 // ---- Positions: job titles and departments for a whole office, edited in one table -------------

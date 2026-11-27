@@ -1776,3 +1776,74 @@ table.closed-place tfoot td { border-top: 2px solid var(--line); border-bottom: 
 .dm-compose { position: sticky; bottom: 0; display: flex; gap: .5rem; align-items: flex-end; padding: .6rem 0; background: var(--bg); border-top: 1px solid var(--line); }
 .dm-compose textarea { width: 100%; resize: vertical; max-height: 10rem; }
 @media (max-width: 899px) { .dm-compose { bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px)); } }
+
+/* ---- Calls with one person, the quick list, the person card and the ringing screen ---- */
+.ico { flex: none; vertical-align: -.2em; }
+.btn .ico { margin-right: .4rem; }
+.dm-head .grow { flex: 1; min-width: 0; }
+.dm-call { margin: 0 0 .8rem; }
+.dm-call.in-call .call-banner { display: none; }
+.dm-call .call-stage { max-height: 52vh; margin: 0 auto; }
+.dm-note { text-align: center; margin: .5rem 0; }
+.dm-note .meta { display: inline-block; padding: .2rem .7rem; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); }
+.call-voice { display: none; }
+.audio-only .call-stage { aspect-ratio: auto; background: var(--accent-soft); }
+.audio-only .call-voice { display: flex; flex-direction: column; align-items: center; gap: .5rem; padding: 1.6rem 1rem; color: var(--ink); font-size: 1.1rem; }
+.audio-only .call-remote { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.audio-only .call-local, .audio-only .video-only { display: none; }
+
+.dock { position: fixed; z-index: 58; right: 1rem; bottom: 1rem; }
+.dock-btn { position: relative; width: 3.4rem; height: 3.4rem; border-radius: 50%; border: 0; background: var(--pb-blue); color: #fff; cursor: pointer; box-shadow: 0 6px 18px rgba(0,0,0,.35); display: grid; place-items: center; }
+.dock-btn .ico { width: 26px; height: 26px; }
+.dock-btn:focus-visible { outline: 3px solid var(--green); outline-offset: 2px; }
+.dock-count { position: absolute; top: -.25rem; right: -.25rem; min-width: 1.4rem; height: 1.4rem; padding: 0 .3rem; border-radius: 999px; background: #d92b2b; color: #fff; font-size: .78rem; line-height: 1.4rem; text-align: center; }
+.dock-panel { position: absolute; right: 0; bottom: 4.1rem; width: min(22.5rem, calc(100vw - 1.5rem)); max-height: min(34rem, calc(100vh - 8rem)); display: flex; flex-direction: column; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 14px 40px rgba(0,0,0,.4); overflow: hidden; }
+.dock-panel[hidden] { display: none; }
+.dock-head { display: flex; align-items: center; gap: .8rem; padding: .7rem .9rem; background: var(--brand); color: #fff; }
+.dock-head strong { flex: 1; }
+.dock-head a, .dock-head .link { color: #fff; font-size: .9rem; }
+.dock-find { display: block; padding: .6rem .7rem 0; }
+.dock-find input { width: 100%; min-height: 42px; }
+.dock-body { overflow-y: auto; padding: .2rem .4rem .6rem; overscroll-behavior: contain; }
+.dock-body h3 { margin: .7rem .5rem .2rem; font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.dock-body .empty { margin: .6rem .5rem; }
+.dock-list { list-style: none; margin: 0; padding: 0; }
+.dock-list li { display: flex; align-items: center; gap: .15rem; border-radius: 10px; }
+.dock-list li:hover { background: var(--accent-soft); }
+.dock-who { flex: 1; min-width: 0; display: flex; align-items: center; gap: .6rem; padding: .45rem .5rem; color: inherit; text-decoration: none; }
+.dock-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.dock-text strong, .dock-text .meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dock-list li.unread strong { color: var(--accent); }
+.dock-act { flex: none; width: 2.5rem; height: 2.5rem; border-radius: 50%; border: 0; background: transparent; color: var(--accent); cursor: pointer; display: grid; place-items: center; }
+.dock-act:hover, .dock-act:focus-visible { background: var(--surface); outline: 2px solid var(--accent); }
+.dock-toast { position: fixed; z-index: 90; left: 50%; bottom: 5.5rem; transform: translateX(-50%); margin: 0; padding: .6rem 1rem; border-radius: 10px; background: var(--err-bg); color: var(--err); border: 1px solid var(--err); max-width: calc(100vw - 2rem); }
+
+.pcard { position: absolute; z-index: 80; width: 21rem; max-width: calc(100vw - 1rem); padding: .9rem; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 14px 40px rgba(0,0,0,.4); }
+.pcard.sheet { position: fixed; left: 0; right: 0; bottom: 0; top: auto; width: auto; max-width: none; border-radius: 16px 16px 0 0; padding: 1.1rem 1rem calc(1.1rem + env(safe-area-inset-bottom, 0px)); box-shadow: 0 0 0 100vmax rgba(0,0,0,.5); z-index: 85; }
+.pcard-top { display: flex; align-items: flex-start; gap: .75rem; }
+.pcard-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pcard-text strong { font-size: 1.08rem; }
+.pcard-fav { flex: none; width: 2.4rem; height: 2.4rem; border-radius: 50%; border: 0; background: transparent; color: var(--muted); cursor: pointer; display: grid; place-items: center; }
+.pcard-fav[aria-pressed="true"] { color: #e0a100; }
+.pcard-fav[aria-pressed="true"] path { fill: currentColor; }
+.pcard-acts { display: flex; gap: .4rem; margin-top: .8rem; }
+.pcard-acts .btn { flex: 1 1 auto; min-width: 0; min-height: 42px; padding: .4rem .45rem; font-size: .92rem; white-space: nowrap; }
+.pcard-acts .btn .ico { margin-right: .3rem; }
+.pcard-open { display: block; margin-top: .7rem; padding-top: .6rem; border-top: 1px solid var(--line); text-align: center; font-weight: 600; text-decoration: none; }
+
+.ring { position: fixed; inset: 0; z-index: 95; display: grid; place-items: center; background: rgba(3, 14, 24, .78); padding: 1rem; }
+.ring[hidden] { display: none; }
+.ring-box { width: min(22rem, 100%); padding: 1.6rem 1.3rem; border-radius: 18px; background: var(--surface); color: var(--ink); text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+.ring-what { margin: 0; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; font-size: .8rem; }
+.ring-who { margin: .4rem 0 1.3rem; font-size: 1.3rem; font-weight: 700; }
+.ring-acts { display: flex; gap: .7rem; }
+.ring-acts .btn { flex: 1; }
+.ring-acts .btn.primary { background: var(--pb-green); border-color: var(--pb-green); color: #fff; }
+@media (max-width: 899px) {
+  body:has(.dm-compose) .dock { display: none; }     /* in a conversation the Send button has that corner */
+  .has-tabbar .dock { bottom: calc(var(--tabbar-h) + .8rem + env(safe-area-inset-bottom, 0px)); right: .8rem; }
+  .dock-panel { position: fixed; left: .5rem; right: .5rem; width: auto; bottom: calc(var(--tabbar-h) + 5rem + env(safe-area-inset-bottom, 0px)); max-height: calc(100dvh - var(--tabbar-h) - 9rem); }
+}
+@media print { .dock, .ring, .pcard { display: none !important; } }
+a.who { color: inherit; text-decoration: none; }
+a.who:hover, a.who:focus-visible { text-decoration: underline; }

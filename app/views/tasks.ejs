@@ -16,7 +16,7 @@
     <% if (t.isNew) { %><p class="hint fold-hint">Tap to open this task.</p><% } %>
     </summary>
     <% if (t.details) { %><p class="pre"><%= t.details %></p><% } %>
-    <p class="meta">From <%= t.by_name %>, <%= fmtDateTime(t.created_at) %></p>
+    <p class="meta">From <a class="who" href="/people/<%= t.assigned_by %>"><%= t.by_name %></a>, <%= fmtDateTime(t.created_at) %></p>
     <% if (t.kind === 'inspection') { %><p class="task-go"><a class="btn primary" href="/inspection?task=<%= t.id %>">Do the vehicle inspection</a> <span class="hint">Sending it finishes this task. Six photos are required.</span></p><% } %>
     <%- include('partials/task_notes', { t: t }) %>
     <form method="post" action="/tasks/<%= t.id %>/update" class="filters task-update">

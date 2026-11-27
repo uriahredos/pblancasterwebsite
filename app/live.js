@@ -8,7 +8,7 @@
 // ever run as several servers, this is the part that would need a shared channel between them.
 const db = require('./db');
 
-const MAX_PER_USER = 6;        // tabs and devices one person can have listening at once
+const MAX_PER_USER = 16;       // every open page listens for calls and messages, and some listen for their own content too
 const MAX_TOTAL = 1000;
 const BEAT_MS = 25000;         // a quiet line keeps proxies from closing the connection, and is when we re-check the session
 const TOPIC = /^(forum|thread:\d+|dm:\d+|inbox:\d+)$/;

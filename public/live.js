@@ -103,6 +103,8 @@
     if (!box || !next) return;
     var nearEnd = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 300;
     var added = mergeArticles(box, next);
+    var banner = document.querySelector('[data-call-banner]'), newBanner = doc.querySelector('[data-call-banner]');
+    if (banner && newBanner && !window.__callActive && banner.innerHTML !== newBanner.innerHTML) banner.innerHTML = newBanner.innerHTML;
     var send = document.querySelector('[data-dm-send]'), canSend = doc.querySelector('[data-dm-send]');
     if (Boolean(send) !== Boolean(canSend) && (!send || !send.querySelector('textarea').value)) { stop(); location.reload(); return; }
     if (added.length) announce(added, nearEnd, 'message');
