@@ -11,4 +11,5 @@
   <% if (page < pages) { %><a class="btn small" href="/discussions/s/<%= section.id %>?page=<%= page + 1 %>">Older &rarr;</a><% } else { %><span></span><% } %>
 </div>
 <% } %>
+<script src="/live.js?v=<%= assetV %>" defer></script>
 <%- include('partials/footer') %>

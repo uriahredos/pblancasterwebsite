@@ -1,4 +1,4 @@
-<ul class="threads">
+<ul class="threads" data-live-list>
   <% threads.forEach(function (t) { %>
   <li class="<%= t.unread ? 'unread' : '' %>">
     <a href="/discussions/t/<%= t.id %>">

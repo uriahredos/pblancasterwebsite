@@ -9,6 +9,19 @@ const { requirePerm, verifyCsrf, flash } = require('../auth');
 const { clean } = require('../util');
 
 const router = express.Router();
+
+// Tell pages that are open when a discussion changes, so they update without a reload. A change is any POST here that
+// went through (a failed one answers 400 or more). The pages then fetch their own copy, so nothing private is sent.
+const live = require('../live');
+router.use((req, res, next) => {
+  if (req.method !== 'POST' || !req.path.startsWith('/discussions/')) return next();
+  let threadId = null;
+  const t = /^\/discussions\/t\/(\d+)\//.exec(req.path), p = /^\/discussions\/p\/(\d+)\//.exec(req.path);
+  if (t) threadId = Number(t[1]);
+  else if (p) { const row = db.prepare('SELECT thread_id FROM forum_posts WHERE id = ?').get(p[1]); threadId = row ? row.thread_id : null; }   // looked up now: a deleted post is gone afterwards
+  res.on('finish', () => { if (res.statusCode < 400) live.publish(threadId ? ['forum', `thread:${threadId}`] : ['forum']); });
+  next();
+});
 const use = requirePerm('forum.use');
 const MAX_PHOTOS = 4;
 const PER_PAGE = 30;

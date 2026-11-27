@@ -20,7 +20,7 @@ const VISITOR_MS = 2 * 60 * 60 * 1000;       // a visitor who has not signed in:
 const complaintPage = (req) => /^\/complaint/i.test(req.path);
 // What a page does by itself: checking for news, saying "still here", locking when the site is reopened, showing the lock screen.
 // A person's own picture is in the header of every page, so it counts as well: on its own in the log it would give away the page around it.
-const pageItself = (req) => ['/pulse', '/alive', '/lock', '/push/attach'].includes(req.path) || (req.path === '/unlock' && req.method === 'GET') || /^\/people\/photo\/\d+$/.test(req.path);
+const pageItself = (req) => ['/pulse', '/alive', '/lock', '/push/attach', '/live/stream'].includes(req.path) || req.get('x-live') === '1' || (req.path === '/unlock' && req.method === 'GET') || /^\/people\/photo\/\d+$/.test(req.path);
 
 const app = express();
 app.set('view engine', 'ejs');
@@ -143,7 +143,7 @@ app.use((req, res, next) => {
   if (!s.locked) {
     // What the page does by itself (checking for new alerts, re-attaching this device's alerts) is not the person doing
     // something: it must not hold off the lock. A complaint page leaves no last-seen time either.
-    if (req.path !== '/pulse' && req.path !== '/push/attach' && !complaintPage(req)) s.seenAt = now;
+    if (req.path !== '/pulse' && req.path !== '/push/attach' && req.path !== '/live/stream' && req.get('x-live') !== '1' && !complaintPage(req)) s.seenAt = now;
     if (s.fresh && req.method === 'GET') { res.locals.fresh = true; delete s.fresh; }
     return next();
   }
@@ -172,6 +172,7 @@ app.use(require('./routes/newsletters'));
 app.use(require('./routes/community'));
 app.use(require('./routes/social'));
 app.use(require('./routes/company'));
+app.use(require('./routes/live'));
 app.use(require('./routes/forum'));
 app.use(require('./routes/reactions'));
 app.use(require('./routes/sales'));

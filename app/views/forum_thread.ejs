@@ -28,9 +28,9 @@
 </details>
 <% } %>
 
-<div class="posts">
+<div class="posts" data-live-thread="<%= t.id %>">
   <% posts.forEach(function (p) { %>
-  <article class="post <%= p.first ? 'first' : '' %> <%= p.isNew ? 'is-new' : '' %>" id="p<%= p.id %>">
+  <article class="post <%= p.first ? 'first' : '' %> <%= p.isNew ? 'is-new' : '' %>" id="p<%= p.id %>" data-rev="<%= (p.edited_at || '') + '|' + (p.removed_at || '') %>">
     <header class="post-head">
       <%- include('partials/avatar', { who: { id: p.user_id, display_name: p.author, photo_path: p.author_photo } }) %>
       <span class="post-who"><% if (p.author_gone) { %><strong><%= p.author %></strong><% } else { %><a href="/people/<%= p.user_id %>"><strong><%= p.author %></strong></a><% } %><% if (p.author_title) { %><span class="meta"><%= p.author_title %></span><% } %></span>
@@ -79,5 +79,6 @@
 </form>
 <% } %>
 <script src="/format.js?v=<%= assetV %>"></script>
+<script src="/live.js?v=<%= assetV %>" defer></script>
 <script src="/shrink.js?v=<%= assetV %>" defer></script>
 <%- include('partials/footer') %>
