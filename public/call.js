@@ -68,6 +68,27 @@
     local.getTracks().forEach(function (t) { pc.addTrack(t, local); });
   }
 
+  // What the caller hears while the other phone rings: the ordinary ringing tone, two seconds on and four off.
+  var ringCtx = null, ringTimer = null;
+  function ringback(on) {
+    clearInterval(ringTimer); ringTimer = null;
+    if (ringCtx) { try { ringCtx.close(); } catch (e) { /* closed */ } ringCtx = null; }
+    root.classList.toggle('ringing', Boolean(on));
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!on || !AC) return;
+    try {
+      ringCtx = new AC();
+      var burst = function () {
+        if (!ringCtx) return;
+        var t0 = ringCtx.currentTime, g = ringCtx.createGain();
+        g.gain.setValueAtTime(0.0001, t0); g.gain.linearRampToValueAtTime(0.07, t0 + 0.05); g.gain.setValueAtTime(0.07, t0 + 1.95); g.gain.linearRampToValueAtTime(0.0001, t0 + 2);
+        g.connect(ringCtx.destination);
+        [440, 480].forEach(function (f) { var o = ringCtx.createOscillator(); o.frequency.value = f; o.connect(g); o.start(t0); o.stop(t0 + 2.05); });
+      };
+      burst(); ringTimer = setInterval(burst, 6000);
+    } catch (e) { ringCtx = null; }
+  }
+
   function show(on) { panel.hidden = !on; active = on; window.__callActive = on; root.classList.toggle('in-call', on); if (!on && window.__liveRefresh) setTimeout(window.__liveRefresh, 600); }
 
   function releaseWake() { if (wake && wake.release) { try { wake.release(); } catch (e) { /* gone */ } } wake = null; }
@@ -76,7 +97,7 @@
   function cleanup() {
     clearInterval(beatTimer); beatTimer = null; clearInterval(watchTimer); watchTimer = null; releaseWake();
     closePc(); stopLocal(); if (localEl) localEl.srcObject = null;
-    queue = []; role = null; show(false);
+    ringback(false); queue = []; role = null; show(false);
   }
 
   function hangup(tell, message) {
@@ -111,7 +132,8 @@
       servers = ice.servers; makePc();
       return post(as === 'host' ? 'start' : 'join', { mode: mode });
     }).then(function () {
-      status(as === 'host' ? (person ? 'Ringing…' : 'Waiting for someone to join…') : 'Connecting…');
+      status(as === 'host' ? (person ? 'Calling ' + (root.getAttribute('data-call-name') || '') + '…' : 'Waiting for someone to join…') : 'Connecting…');
+      if (as === 'host' && person) ringback(true);
       beatTimer = setInterval(function () {
         post('beat').then(function (b) { if (!b.active) hangup(false, 'The call has ended.'); }).catch(function () {});
       }, 20000);
@@ -133,6 +155,7 @@
     if (!pc) { queue.push(m); return; }
     if (m.type === 'joined') {                                    // we started the call and someone arrived: we make the offer
       if (role !== 'host') return;
+      ringback(false);
       status((m.name || 'Someone') + ' joined. Connecting…');
       makePc();
       pc.createOffer().then(function (o) { return pc.setLocalDescription(o); }).then(function () { return sendDescription('offer'); }).catch(function () { status('Could not set up the call. End it and try again.'); });
@@ -215,6 +238,9 @@
   (function () {
     var want = null;
     try { want = JSON.parse(sessionStorage.getItem('pbCall') || 'null'); sessionStorage.removeItem('pbCall'); } catch (e) { want = null; }
+    // Answer on the phone's own alert leads here too: the site only marks the page this way for the person being rung.
+    var auto = root.getAttribute('data-call-auto');
+    if (auto && supported) want = { base: base, as: 'guest', mode: auto, at: Date.now() };
     if (!want || !supported || want.base !== base || !(Date.now() - want.at < 20000)) return;
     var tries = 0;
     var wait = setInterval(function () {

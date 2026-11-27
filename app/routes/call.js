@@ -13,6 +13,7 @@ const { requirePerm } = require('../auth');
 const router = express.Router();
 const MAX_SIGNAL = 20000;                       // characters in one setup message (a description of a phone's video, a few thousand)
 const KINDS = new Set(['offer', 'answer', 'candidate']);
+const RING_AGAIN_MS = 6000;
 
 const fail = (res, code, error) => res.status(code).json({ error });
 const nameOf = (c) => (c ? c.name : '');
@@ -60,8 +61,14 @@ function mount(base, perm, place) {
       const what = r.call.mode === 'audio' ? 'voice' : 'video';
       dm.add(p.dm.id, req.user.id, r.call.mode === 'audio' ? 'Voice call' : 'Video call', 'call');     // a line in the conversation, so a missed call is seen
       live.publish([p.key, `inbox:${p.dm.user_a}`, `inbox:${p.dm.user_b}`]);
-      live.sendTo(p.dm.other.id, `inbox:${p.dm.other.id}`, 'ring', { key: p.key, id: p.dm.id, from: req.user.display_name, fromId: req.user.id, mode: r.call.mode });
-      push.notify([p.dm.other.id], 'call', { title: `${req.user.display_name} is calling you`, body: `Tap to answer the ${what} call.`, url: `/messages/c/${p.dm.id}` });
+      const ring = r.call.ring;
+      live.sendTo(p.dm.other.id, `inbox:${p.dm.other.id}`, 'ring', { key: p.key, id: p.dm.id, from: req.user.display_name, fromId: req.user.id, mode: r.call.mode, token: ring.token });
+      // The phone rings the way a phone does: the alert comes again every few seconds until it is answered, declined or given up on.
+      const alert = () => push.notify([p.dm.other.id], 'call', { title: `${req.user.display_name} is calling`, body: `Incoming ${what} call`, url: `/messages/c/${p.dm.id}?answer=${ring.token}`,
+        extra: { call: p.dm.id, token: ring.token, mode: r.call.mode } });
+      alert();
+      const again = setInterval(() => { const c = calls.get(p.key); if (c && c.ring && c.ring.token === ring.token) alert(); else clearInterval(again); }, RING_AGAIN_MS);
+      again.unref();
     }
     res.json({ ok: true, role: 'host', waiting: !r.call.guest, mode: r.call.mode });
   });
@@ -110,6 +117,22 @@ function mount(base, perm, place) {
 
 mount('/call/t/:id', 'forum.use', thread);
 mount('/call/dm/:id', 'messages.use', conversation);
+
+// When the ringing stops, the phones that were ringing are told: the alert goes away, and an unanswered call leaves a note behind.
+calls.onRingEnd((key, c, ring, reason) => {
+  const id = Number(String(key).slice(3));
+  const missed = reason === 'noanswer' || reason === 'cancelled';
+  push.notify([ring.userId], 'call', { title: missed ? `Missed ${c.mode === 'audio' ? 'voice' : 'video'} call from ${c.host.name}` : 'Call ended', body: missed ? 'Tap to open the conversation.' : '',
+    url: `/messages/c/${id}`, extra: { call: id, ended: reason, quiet: true, ring: false } });
+});
+
+// Declining from the phone's own alert, where there is no page to send a form from. The address carries the ring's own
+// unguessable token, which only the person being rung is ever sent.
+router.get('/call/ring/:token/decline', requirePerm('messages.use'), (req, res) => {
+  const mine = calls.ringingFor(req.user.id).find((c) => c.token === req.params.token);
+  if (mine) calls.decline(mine.key, req.user.id);
+  res.json({ ok: Boolean(mine) });
+});
 
 // "Not now" on a ringing call.
 router.post('/call/dm/:id/decline', requirePerm('messages.use'), (req, res) => {

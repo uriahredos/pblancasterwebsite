@@ -109,34 +109,47 @@
 
   // ---- Someone is calling ----------------------------------------------------------------------------------------
   var ring = document.getElementById('ring'), ringing = null, tone = null, toneTimer = null;
+  // A ringtone: a rising run of notes, then a pause, over and over until the call is dealt with.
   function startTone() {
     var AC = window.AudioContext || window.webkitAudioContext;
     if (!AC || tone) return;
     try {
       tone = new AC();
-      var beep = function () {
+      var phrase = function () {
         if (!tone) return;
-        [0, 0.45].forEach(function (at) {
-          var o = tone.createOscillator(), g = tone.createGain();
-          o.frequency.value = 480; g.gain.value = 0.0001; o.connect(g); g.connect(tone.destination);
-          var t0 = tone.currentTime + at; g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.15, t0 + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.35);
-          o.start(t0); o.stop(t0 + 0.4);
+        var base = tone.currentTime;
+        [0, 1.1].forEach(function (rep) {
+          [[659, 0], [784, 0.16], [988, 0.32], [784, 0.48], [988, 0.64]].forEach(function (n) {
+            var o = tone.createOscillator(), g = tone.createGain(), t0 = base + rep + n[1];
+            o.type = 'triangle'; o.frequency.value = n[0]; o.connect(g); g.connect(tone.destination);
+            g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.28, t0 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.2);
+            o.start(t0); o.stop(t0 + 0.22);
+          });
         });
+        if (navigator.vibrate) { try { navigator.vibrate([500, 250, 500, 250, 500]); } catch (e) { /* not allowed */ } }
       };
-      beep(); toneTimer = setInterval(beep, 2500);
+      phrase(); toneTimer = setInterval(phrase, 3500);
     } catch (e) { tone = null; }
   }
   function stopTone() { clearInterval(toneTimer); toneTimer = null; if (tone) { try { tone.close(); } catch (e) { /* closed */ } tone = null; } }
-  function hideRing() { if (!ring) return; ringing = null; ring.hidden = true; stopTone(); }
+  var realTitle = null, titleTimer = null;
+  function flashTitle(text) {
+    clearInterval(titleTimer); titleTimer = null;
+    if (realTitle !== null) { document.title = realTitle; realTitle = null; }
+    if (!text) return;
+    realTitle = document.title; var on = false;
+    titleTimer = setInterval(function () { on = !on; document.title = on ? text : realTitle; }, 900);
+  }
+  function hideRing() { if (!ring) return; ringing = null; ring.hidden = true; stopTone(); flashTitle(''); if (navigator.vibrate) { try { navigator.vibrate(0); } catch (e) { /* not allowed */ } } }
   function showRing(c) {
     if (!ring || !c || !c.id) return;
     // Already looking at that conversation: its own Answer button is right there.
     if (document.querySelector('[data-call-base="/call/dm/' + c.id + '"]')) { if (window.__liveRefresh) window.__liveRefresh(); return; }
     ringing = c;
-    document.getElementById('ring-what').textContent = c.mode === 'audio' ? 'Voice call' : 'Video call';
-    document.getElementById('ring-who').textContent = (c.from || 'Someone') + ' is calling you';
-    ring.hidden = false; startTone();
-    if (navigator.vibrate) { try { navigator.vibrate([300, 200, 300]); } catch (e) { /* not allowed */ } }
+    document.getElementById('ring-what').textContent = c.mode === 'audio' ? 'Incoming voice call' : 'Incoming video call';
+    document.getElementById('ring-who').textContent = c.from || 'Someone';
+    var face = document.getElementById('ring-face'); if (face) face.textContent = String(c.from || '?').split(/\s+/).map(function (w) { return w.charAt(0); }).join('').slice(0, 2).toUpperCase();
+    ring.hidden = false; startTone(); flashTitle('📞 ' + (c.from || 'Someone') + ' is calling');
   }
   if (ring) {
     document.getElementById('ring-yes').addEventListener('click', function () {

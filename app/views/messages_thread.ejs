@@ -2,7 +2,7 @@
 <p class="back"><a class="back-link" href="/messages">Messages</a></p>
 <div class="dm-head"><%- include('partials/avatar', { who: t.other }) %><div class="grow"><h1><a href="/people/<%= t.other.id %>" data-no-card><%= t.other.display_name %></a></h1><p class="meta">Private: only you and <%= t.other.display_name %> can read this.<% if (t.other.job_title) { %> · <%= t.other.job_title %><% } %></p></div></div>
 <% if (canSend) { %>
-<section class="call dm-call" data-call-root data-call-direct data-call-base="/call/dm/<%= t.id %>" aria-label="Call">
+<section class="call dm-call" data-call-root data-call-direct data-call-base="/call/dm/<%= t.id %>" data-call-name="<%= t.other.display_name %>"<% if (autoAnswer) { %> data-call-auto="<%= call.mode %>"<% } %> aria-label="Call">
   <div class="call-banner" data-call-banner>
     <% if (!call) { %>
     <button class="btn small" type="button" data-call-start data-mode="audio"><%- icons.phone %> Voice call</button>

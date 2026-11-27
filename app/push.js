@@ -94,17 +94,17 @@ function liveDevices(userId) {
  * Send an alert of this kind to these people, on every device they switched on and are still signed in on,
  * unless they turned that kind off. Never throws and never holds up the page.
  */
-function notify(userIds, kind, { title, body, url }) {
+function notify(userIds, kind, { title, body, url, extra }) {
   const ids = [...new Set([].concat(userIds || []).filter(Boolean))];
   // The ones that make a noise are also sent as urgent, so a locked or sleeping phone is woken for them straight away
   // instead of getting them whenever it next checks. A call that is not delivered within a minute is not delivered at all.
   const loud = kind === 'test' || Boolean((KINDS.find((k) => k.key === kind) || {}).sound);   // a test alert makes the noise, so it proves the noise works
-  const payload = JSON.stringify({ title: String(title).slice(0, 120), body: String(body || '').slice(0, 300), url: url || '/', tag: kind, quiet: !loud, ring: kind === 'call' });
+  const payload = JSON.stringify({ title: String(title).slice(0, 120), body: String(body || '').slice(0, 300), url: url || '/', tag: kind, quiet: !loud, ring: kind === 'call', ...(extra || {}) });
   const jobs = [];
   for (const id of ids) {
     if (!wants(id, kind)) continue;
     for (const sub of liveDevices(id)) {
-      jobs.push(Promise.resolve().then(() => sender(sub, payload, { urgent: loud, ttl: kind === 'call' ? 60 : 0 })).catch((err) => {
+      jobs.push(Promise.resolve().then(() => sender(sub, payload, { urgent: loud, ttl: kind === 'call' ? 30 : 0 })).catch((err) => {
         // The phone or browser has dropped this subscription: forget it.
         if (err && (err.statusCode === 404 || err.statusCode === 410)) db.prepare('DELETE FROM push_subscriptions WHERE id = ?').run(sub.id);
         else console.error('[push] could not send:', err && (err.statusCode || err.message));

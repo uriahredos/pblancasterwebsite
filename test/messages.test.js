@@ -243,7 +243,13 @@ test('calls to a person: it rings them, they answer or say not now, and only the
   assert.equal(started.json.mode, 'audio');
   assert.ok(await until(() => /event: ring/.test(bobInbox.text())), 'the other person\'s screens ring');
   assert.match(bobInbox.text(), /"from":"Ann Tech"/);
-  assert.ok(alerts.some((x) => x.kind === 'call' && x.ids.includes(idOf('bob')) && /Ann Tech is calling you/.test(x.title)), 'and their phone is alerted');
+  assert.ok(alerts.some((x) => x.kind === 'call' && x.ids.includes(idOf('bob')) && /Ann Tech is calling/.test(x.title) && x.extra.token && new RegExp(`/messages/c/${convo}\\?answer=`).test(x.url)), 'and their phone is alerted');
+  const token = (await b.get('/call/ringing')).json.calls[0].token;
+  assert.doesNotMatch(annDm.text(), new RegExp(token), 'the caller is never sent the token');
+  // Answer on the phone's alert leads to the conversation with this ring's token: only then does the page join by itself.
+  assert.match((await b.get(`/messages/c/${convo}?answer=${token}`)).text, /data-call-auto="audio"/);
+  assert.doesNotMatch((await b.get(`/messages/c/${convo}?answer=nope`)).text, /data-call-auto/);
+  assert.doesNotMatch((await a.get(`/messages/c/${convo}?answer=${token}`)).text, /data-call-auto/);
   assert.equal((await b.get('/call/ringing')).json.calls[0].id, convo);
   assert.match((await b.get(`/messages/c/${convo}`)).text, /Ann Tech<\/strong> is calling you \(voice\)[^]*data-call-join data-mode="audio"[^]*Ann Tech called you/);
   // Not now: the call is over and the caller is told.
@@ -251,6 +257,7 @@ test('calls to a person: it rings them, they answer or say not now, and only the
   assert.ok(await until(() => /"type":"declined"/.test(annDm.text())));
   assert.equal(calls.get(`dm:${convo}`), null);
   assert.deepEqual((await b.get('/call/ringing')).json.calls, []);
+  assert.ok(alerts.some((x) => x.kind === 'call' && x.extra.ended === 'declined'), 'the ringing phones are told it stopped');
   // Again, answered this time: the ringing stops everywhere and the caller is told to connect.
   await a.post(`/call/dm/${convo}/start`, { mode: 'video' }, '/messages', fetchJson);
   const joined = await b.post(`/call/dm/${convo}/join`, {}, '/messages', fetchJson);
@@ -264,6 +271,12 @@ test('calls to a person: it rings them, they answer or say not now, and only the
   calls._calls.get(`dm:${convo}`).ring.until = Date.now() - 1;
   assert.equal(calls.get(`dm:${convo}`), null);
   assert.ok(await until(() => /"type":"noanswer"/.test(annDm.text())));
+  assert.ok(alerts.some((x) => x.extra && x.extra.ended === 'noanswer' && /Missed voice call from Ann Tech/.test(x.title)), 'an unanswered call leaves a missed-call alert');
+  // Declining from the phone's alert uses the ring's token, and nobody else's token works.
+  await a.post(`/call/dm/${convo}/start`, { mode: 'audio' }, '/messages', fetchJson);
+  const t2 = (await b.get('/call/ringing')).json.calls[0].token;
+  assert.equal((await c.get(`/call/ring/${t2}/decline`)).json.ok, false); assert.notEqual(calls.get(`dm:${convo}`), null);
+  assert.equal((await b.get(`/call/ring/${t2}/decline`)).json.ok, true); assert.equal(calls.get(`dm:${convo}`), null);
   // Someone who cannot get messages cannot be rung.
   assert.equal((await a.post(`/messages/open/${idOf('nomsg')}`, {}, '/messages', fetchJson)).status, 404);
   [bobInbox, annDm].forEach((s) => s.close());

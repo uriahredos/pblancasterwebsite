@@ -96,7 +96,10 @@ router.get('/messages/c/:id', use, (req, res) => {
   dm.markRead(t.id, req.user.id);
   // Reading it clears it from the count shown around this very page.
   if (rows.some((m) => m.user_id !== req.user.id && !m.removed_at && m.id > read)) res.locals.badges.messages = Math.max(0, res.locals.badges.messages - 1);
-  res.render('messages_thread', { title: t.other.display_name, t, rows, read, me: req.user.id, errors: [], canSend: dm.reachable(t.other.id), call: require('../calls').viewFor(`dm:${t.id}`, req.user) });
+  const call = require('../calls').viewFor(`dm:${t.id}`, req.user);
+  // Arriving from Answer on the phone's alert: the address carries this ring's token, and only then does the call join by itself.
+  const autoAnswer = Boolean(call && call.ringToken && req.query.answer && String(req.query.answer) === call.ringToken);
+  res.render('messages_thread', { title: t.other.display_name, t, rows, read, me: req.user.id, errors: [], canSend: dm.reachable(t.other.id), call, autoAnswer });
 });
 
 function deliver(req, t, otherId, body) {

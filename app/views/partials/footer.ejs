@@ -23,8 +23,8 @@
   </section>
 </div>
 <div class="ring no-print" id="ring" hidden role="alertdialog" aria-label="Incoming call">
-  <div class="ring-box"><p class="ring-what" id="ring-what"></p><p class="ring-who" id="ring-who"></p>
-    <div class="ring-acts"><button type="button" class="btn danger" id="ring-no">Not now</button><button type="button" class="btn primary" id="ring-yes">Answer</button></div></div>
+  <div class="ring-box"><p class="ring-what" id="ring-what"></p><span class="ring-face" id="ring-face" aria-hidden="true"></span><p class="ring-who" id="ring-who"></p>
+    <div class="ring-acts"><button type="button" class="ring-round no" id="ring-no"><span class="ring-ico"><%- icons.phone %></span>Decline</button><button type="button" class="ring-round yes" id="ring-yes"><span class="ring-ico"><%- icons.phone %></span>Answer</button></div></div>
 </div>
 <% } %>
 <% if (user && !user.must_change_password && !(typeof locked !== 'undefined' && locked)) { %><div class="pcard no-print" id="pcard" hidden role="dialog" aria-label="Person"></div><script src="/dock.js?v=<%= assetV %>" defer></script><% } %>

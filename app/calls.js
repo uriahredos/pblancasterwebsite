@@ -3,6 +3,7 @@
 // conversation ("dm:" and its number). One call per place, two people (the one who started it and one who joined). A call
 // in a private conversation also rings the other person, and is voice-only or video. Held in memory, like the live hub: a call is a moment, not a record. Nothing about a call is
 // stored, and the video never passes through here at all.
+const crypto = require('crypto');
 const live = require('./live');
 const { allow } = require('./allowance');
 
@@ -16,14 +17,18 @@ const keyOf = (k) => (typeof k === 'string' && /^dm:\d+$/.test(k) ? k : Number(k
 const topic = (k) => (typeof k === 'string' && k.indexOf('dm:') === 0 ? k : `thread:${k}`);
 
 /** Stop the ringing on the other person's screens (answered, given up, declined or timed out). */
-function stopRing(key, c) {
+function stopRing(key, c, reason) {
   if (!c || !c.ring) return;
-  const to = c.ring.userId; c.ring = null;
-  live.sendTo(to, `inbox:${to}`, 'ringend', { key: String(key) });
+  const ring = c.ring; c.ring = null;
+  live.sendTo(ring.userId, `inbox:${ring.userId}`, 'ringend', { key: String(key) });
+  for (const fn of ringEnded) { try { fn(key, c, ring, reason || 'cancelled'); } catch (e) { /* telling a phone is never worth failing a call over */ } }
 }
+// Who else wants to know a ring stopped, and why ('answered', 'declined', 'noanswer', 'cancelled'): the phone alerts do.
+const ringEnded = [];
+function onRingEnd(fn) { ringEnded.push(fn); }
 
 /** Take a call away and tell whoever needs to know. */
-function drop(key, c) { stopRing(key, c); calls.delete(key); }
+function drop(key, c, reason) { stopRing(key, c, reason); calls.delete(key); }
 const changed = (threadId) => live.publish([topic(threadId)]);
 
 /** Drop people who have gone quiet, and calls that have run their course. Returns true if anything changed. */
@@ -31,7 +36,7 @@ function prune(threadId, now = Date.now()) {
   const c = calls.get(threadId);
   if (!c) return false;
   if (c.ring && now > c.ring.until) {                       // nobody answered: the call ends and the caller is told
-    drop(threadId, c);
+    drop(threadId, c, 'noanswer');
     live.sendTo(c.host.id, topic(threadId), 'signal', { type: 'noanswer' });
     return true;
   }
@@ -62,7 +67,7 @@ function start(threadId, user, opts = {}) {
   const fresh = !c;
   calls.set(threadId, { host: { id: user.id, name: user.display_name, seen: now }, guest: c ? c.guest : null, startedAt: c ? c.startedAt : now,
     mode: c ? c.mode : opts.mode === 'audio' ? 'audio' : 'video', answered: c ? c.answered : false,
-    ring: c ? c.ring : opts.ring ? { userId: opts.ring, until: now + RING_MS } : null });
+    ring: c ? c.ring : opts.ring ? { userId: opts.ring, until: now + RING_MS, token: crypto.randomBytes(18).toString('base64url') } : null });
   changed(threadId);
   return { call: calls.get(threadId), fresh };
 }
@@ -74,7 +79,7 @@ function join(threadId, user) {
   if (c.host.id === user.id) return { error: 'own' };
   if (c.guest && c.guest.id !== user.id) return { error: 'full' };
   c.guest = { id: user.id, name: user.display_name, seen: Date.now() };
-  c.answered = true; stopRing(threadId, c);
+  c.answered = true; stopRing(threadId, c, 'answered');
   changed(threadId);
   return { call: c };
 }
@@ -118,7 +123,7 @@ function decline(key, userId) {
   key = keyOf(key);
   const c = get(key);
   if (!c || !c.ring || c.ring.userId !== userId) return false;
-  drop(key, c);
+  drop(key, c, 'declined');
   live.sendTo(c.host.id, topic(key), 'signal', { type: 'declined' });
   changed(key);
   return true;
@@ -127,7 +132,7 @@ function decline(key, userId) {
 /** Calls ringing for this person right now. */
 function ringingFor(userId) {
   const out = [];
-  for (const key of [...calls.keys()]) { const c = get(key); if (c && c.ring && c.ring.userId === userId) out.push({ key: String(key), from: c.host.name, fromId: c.host.id, mode: c.mode }); }
+  for (const key of [...calls.keys()]) { const c = get(key); if (c && c.ring && c.ring.userId === userId) out.push({ key: String(key), from: c.host.name, fromId: c.host.id, mode: c.mode, token: c.ring.token }); }
   return out;
 }
 
@@ -136,7 +141,7 @@ function viewFor(threadId, user) {
   const c = get(threadId);
   if (!c) return null;
   const mineHost = c.host.id === user.id, mineGuest = Boolean(c.guest && c.guest.id === user.id);
-  return { hostName: c.host.name, mineHost, mineGuest, full: Boolean(c.guest) && !mineGuest && !mineHost, mode: c.mode, ringing: Boolean(c.ring && c.ring.userId === user.id) };
+  return { ringToken: c.ring && c.ring.userId === user.id ? c.ring.token : null, hostName: c.host.name, mineHost, mineGuest, full: Boolean(c.guest) && !mineGuest && !mineHost, mode: c.mode, ringing: Boolean(c.ring && c.ring.userId === user.id) };
 }
 
-module.exports = { get, start, join, peerOf, beat, leave, decline, ringingFor, allow, viewFor, prune, topic, _calls: calls, _STALE_MS: STALE_MS };
+module.exports = { onRingEnd, _RING_MS: RING_MS, get, start, join, peerOf, beat, leave, decline, ringingFor, allow, viewFor, prune, topic, _calls: calls, _STALE_MS: STALE_MS };
