@@ -24,6 +24,7 @@
     if (window.__liveStop === stop) window.__liveStop = null;
   }
   window.__liveStop = stop;
+  window.__liveOpen = function () { return opened && !stopped; };   // the call script needs the live line to be up
 
   // Still the page this was started for? (A soft page change swaps <main> without stopping us.)
   function here() {
@@ -92,6 +93,9 @@
     // The heading's tags and reply count (pinned, solved, locked, number of replies).
     var tags = document.querySelector('.thread-tags'), newTags = doc.querySelector('.thread-tags');
     if (tags && newTags && tags.innerHTML !== newTags.innerHTML) tags.innerHTML = newTags.innerHTML;
+    // The video call banner (who is on a call, the Join button), unless this person is in a call right now.
+    var banner = document.querySelector('[data-call-banner]'), newBanner = doc.querySelector('[data-call-banner]');
+    if (banner && newBanner && !window.__callActive && banner.innerHTML !== newBanner.innerHTML) banner.innerHTML = newBanner.innerHTML;
     var title = document.querySelector('.thread-title'), newTitle = doc.querySelector('.thread-title');
     if (title && newTitle && title.textContent !== newTitle.textContent) { title.textContent = newTitle.textContent; document.title = doc.title || document.title; }
     // Locked or unlocked since this page was drawn: the reply box appears or goes. With nothing typed, redraw the whole page.
@@ -144,6 +148,8 @@
       everOpened = true;
     };
     es.addEventListener('update', schedule);
+    // Messages meant for this person alone (setting up a video call) are handed to the call script.
+    es.addEventListener('signal', function (e) { try { window.dispatchEvent(new CustomEvent('portal-signal', { detail: JSON.parse(e.data) })); } catch (x) { /* ignore a garbled one */ } });
     es.addEventListener('ping', function () { if (!here()) stop(); });
     es.addEventListener('bye', function () { stop(); location.reload(); });   // locked, signed out or switched off: the page sorts out where to go
     es.onerror = function () {

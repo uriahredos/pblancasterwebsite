@@ -28,6 +28,41 @@
 </details>
 <% } %>
 
+<% if (t.kind === 'support') { %>
+<section class="call" data-call-root data-thread="<%= t.id %>" aria-label="Video call">
+  <div class="call-banner" data-call-banner>
+    <% if (!call) { %>
+    <button class="btn small" type="button" data-call-start>Start a video call</button>
+    <span class="meta">Show the problem live to someone who can help. Nothing is recorded.</span>
+    <% } else if (call.mineHost) { %>
+    <span class="call-dot" aria-hidden="true"></span><strong>Your video call is open</strong>
+    <button class="btn small" type="button" data-call-start>Resume</button>
+    <% } else if (call.mineGuest) { %>
+    <span class="call-dot" aria-hidden="true"></span><strong>You are in <%= call.hostName %>'s call</strong>
+    <button class="btn small" type="button" data-call-join>Rejoin</button>
+    <% } else if (call.full) { %>
+    <span class="call-dot" aria-hidden="true"></span><span><strong><%= call.hostName %></strong> is on a video call with someone. It is full.</span>
+    <% } else { %>
+    <span class="call-dot" aria-hidden="true"></span><span><strong><%= call.hostName %></strong> is on a live video call.</span>
+    <button class="btn primary small" type="button" data-call-join>Join</button>
+    <% } %>
+  </div>
+  <p class="call-note meta" data-call-note role="status" hidden></p>
+  <div class="call-panel" data-call-panel hidden>
+    <div class="call-stage">
+      <video class="call-remote" data-call-remote autoplay playsinline></video>
+      <video class="call-local" data-call-local autoplay playsinline muted></video>
+    </div>
+    <p class="call-status" data-call-status role="status"></p>
+    <div class="call-controls">
+      <button class="btn small" type="button" data-call-mute aria-pressed="false">Mute</button>
+      <button class="btn small" type="button" data-call-camera aria-pressed="false">Camera off</button>
+      <button class="btn small" type="button" data-call-flip>Flip camera</button>
+      <button class="btn small danger" type="button" data-call-end>End call</button>
+    </div>
+  </div>
+</section>
+<% } %>
 <div class="posts" data-live-thread="<%= t.id %>">
   <% posts.forEach(function (p) { %>
   <article class="post <%= p.first ? 'first' : '' %> <%= p.isNew ? 'is-new' : '' %>" id="p<%= p.id %>" data-rev="<%= (p.edited_at || '') + '|' + (p.removed_at || '') %>">
@@ -80,5 +115,6 @@
 <% } %>
 <script src="/format.js?v=<%= assetV %>"></script>
 <script src="/live.js?v=<%= assetV %>" defer></script>
+<% if (t.kind === 'support') { %><script src="/call.js?v=<%= assetV %>" defer></script><% } %>
 <script src="/shrink.js?v=<%= assetV %>" defer></script>
 <%- include('partials/footer') %>

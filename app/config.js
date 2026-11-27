@@ -23,6 +23,9 @@ module.exports = {
   timezone: env.APP_TIMEZONE || 'America/New_York',
   bcryptRounds: Number(env.BCRYPT_ROUNDS) || 12,
   loginRateLimit: Number(env.LOGIN_RATE_LIMIT) || 10,
+  // Cloudflare TURN key for video calls that cannot connect directly (both from the Cloudflare dashboard, under Realtime).
+  // Without them calls still work on friendly networks, using free STUN only.
+  turn: { keyId: (env.TURN_KEY_ID || '').trim(), token: (env.TURN_KEY_API_TOKEN || '').trim() },
   smtp: {
     host: env.SMTP_HOST || '',
     port: Number(env.SMTP_PORT) || 587,

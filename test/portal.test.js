@@ -4785,7 +4785,7 @@ test('security: hostile input cannot crash a page, and the security check page i
   assert.equal(broken.status, 400);
   assert.equal((await t1.get('/social?page=99999999999999999999')).status, 200);
   // Every response says which device features the site may use.
-  assert.match((await t1.get('/')).headers.get('permissions-policy'), /camera=\(self\), microphone=\(\)/);
+  assert.match((await t1.get('/')).headers.get('permissions-policy'), /camera=\(self\), microphone=\(self\), geolocation=\(\)/);
   // An account with no office sees no office's records (never everyone's).
   const lost = makeUser('sec.lost', 'Lee Lostoffice'); db.prepare('UPDATE users SET branch_id = NULL, profile_id = ? WHERE id = ?').run(profileId('Admin (no complaints)') || profileId('Admin'), lost);
   db.prepare("DELETE FROM profile_permissions WHERE permission = 'branches.all' AND profile_id = (SELECT profile_id FROM users WHERE id = ?)").run(lost);

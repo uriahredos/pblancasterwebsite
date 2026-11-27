@@ -43,6 +43,13 @@ function publish(topics) {
   }
 }
 
+/** Send one person (on every screen of theirs listening to this topic) a message meant only for them: a call's setup details. */
+function sendTo(userId, topic, event, data) {
+  let n = 0;
+  for (const entry of [...streams]) if (entry.userId === userId && entry.topics.has(topic) && send(entry, event, data)) n += 1;
+  return n;
+}
+
 /** Is this person still signed in, unlocked and active? Asked again on every beat, because a stream can outlive all three. */
 function stillIn(entry, done) {
   entry.store.get(entry.sid, (err, sess) => {
@@ -82,4 +89,4 @@ function attach(req, res, topics) {
   return true;
 }
 
-module.exports = { publish, attach, parseTopics, count: () => streams.size, _beat: beat };
+module.exports = { publish, sendTo, attach, parseTopics, count: () => streams.size, _beat: beat };

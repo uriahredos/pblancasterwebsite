@@ -1731,3 +1731,16 @@ table.closed-place tfoot td { border-top: 2px solid var(--line); border-bottom: 
 /* "New replies" button on a live thread, shown when the reader has scrolled up. */
 .live-new { position: fixed; left: 50%; bottom: calc(1.2rem + env(safe-area-inset-bottom, 0px)); z-index: 60; transform: translateX(-50%); padding: .6rem 1.1rem; border-radius: 999px; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink); font: inherit; font-weight: 700; cursor: pointer; box-shadow: 0 10px 28px rgba(0, 0, 0, .35); }
 @media (max-width: 899px) { .has-tabbar .live-new { bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + .8rem); } }
+
+/* Video call in a tech-support thread. */
+.call { margin: 0 0 1rem; }
+.call-banner { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; padding: .6rem .8rem; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.call-dot { width: .7rem; height: .7rem; border-radius: 50%; background: var(--green); flex: none; }
+.call-note { margin: .5rem 0 0; }
+.call-panel { margin-top: .6rem; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: .6rem; }
+.call-stage { position: relative; background: #000; border-radius: 10px; overflow: hidden; aspect-ratio: 4 / 3; max-height: 70vh; }
+.call-remote { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
+.call-local { position: absolute; right: .5rem; bottom: .5rem; width: 28%; max-width: 9rem; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 8px; border: 2px solid rgba(255, 255, 255, .7); background: #222; }
+.call-status { margin: .5rem 0 0; color: var(--muted); font-size: .92rem; min-height: 1.3em; }
+.call-controls { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; }
+.call-controls .btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }

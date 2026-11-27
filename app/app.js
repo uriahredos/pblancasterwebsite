@@ -56,8 +56,8 @@ app.use(helmet({
   frameguard: { action: 'deny' },
 }));
 
-// Device features the site may use: the camera, for scanning part barcodes. Nothing else, and nothing for embedded pages.
-app.use((req, res, next) => { res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(), payment=(), usb=(), bluetooth=(), serial=(), midi=()'); next(); });
+// Device features the site may use: the camera (scanning part barcodes, video calls) and the microphone (video calls). Nothing else, and nothing for embedded pages.
+app.use((req, res, next) => { res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(), payment=(), usb=(), bluetooth=(), serial=(), midi=()'); next(); });
 
 // Barcode scanning library, served from the installed package so nothing is loaded from other sites.
 app.get('/vendor/html5-qrcode.min.js', (req, res) => {
@@ -173,6 +173,7 @@ app.use(require('./routes/community'));
 app.use(require('./routes/social'));
 app.use(require('./routes/company'));
 app.use(require('./routes/live'));
+app.use(require('./routes/call'));
 app.use(require('./routes/forum'));
 app.use(require('./routes/reactions'));
 app.use(require('./routes/sales'));
