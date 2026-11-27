@@ -98,7 +98,7 @@ function notify(userIds, kind, { title, body, url }) {
   const ids = [...new Set([].concat(userIds || []).filter(Boolean))];
   // The ones that make a noise are also sent as urgent, so a locked or sleeping phone is woken for them straight away
   // instead of getting them whenever it next checks. A call that is not delivered within a minute is not delivered at all.
-  const loud = Boolean((KINDS.find((k) => k.key === kind) || {}).sound);
+  const loud = kind === 'test' || Boolean((KINDS.find((k) => k.key === kind) || {}).sound);   // a test alert makes the noise, so it proves the noise works
   const payload = JSON.stringify({ title: String(title).slice(0, 120), body: String(body || '').slice(0, 300), url: url || '/', tag: kind, quiet: !loud, ring: kind === 'call' });
   const jobs = [];
   for (const id of ids) {

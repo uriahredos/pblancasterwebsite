@@ -153,6 +153,37 @@
       .then(function (j) { if (j && j.calls && j.calls[0]) showRing(j.calls[0]); else if (j) hideRing(); }).catch(function () {});
   }
 
+  // ---- An alert that arrives while the site is open: said here, on the page, instead of as a phone notification -------
+  function chime() {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    try {
+      var ctx = new AC(), t0 = ctx.currentTime;
+      [[880, 0], [1175, 0.16]].forEach(function (n) {
+        var o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = 'sine'; o.frequency.value = n[0]; o.connect(g); g.connect(ctx.destination);
+        g.gain.setValueAtTime(0.0001, t0 + n[1]); g.gain.exponentialRampToValueAtTime(0.2, t0 + n[1] + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + n[1] + 0.3);
+        o.start(t0 + n[1]); o.stop(t0 + n[1] + 0.32);
+      });
+      setTimeout(function () { try { ctx.close(); } catch (e) { /* closed */ } }, 900);
+    } catch (e) { /* no sound on this device */ }
+  }
+  var toast = null, toastTimer = null;
+  function inApp(d) {
+    if (d.ring) return;                                            // a call has its own ringing screen
+    var here = location.pathname + location.search, there = d.url || '/';
+    if (!d.quiet) { chime(); if (navigator.vibrate) { try { navigator.vibrate([150, 80, 150]); } catch (e) { /* not allowed */ } } }
+    if (there === here || there === location.pathname) return;     // already looking at it: the page shows the news itself
+    if (toast) toast.remove();
+    toast = document.createElement('a'); toast.className = 'in-toast'; toast.href = there; toast.setAttribute('role', 'status'); toast.setAttribute('data-no-card', '');
+    var strong = document.createElement('strong'); strong.textContent = d.title || 'PB Portal'; toast.appendChild(strong);
+    if (d.body) { var span = document.createElement('span'); span.textContent = d.body; toast.appendChild(span); }
+    toast.addEventListener('click', function () { if (toast) { var t = toast; toast = null; setTimeout(function () { t.remove(); }, 0); } });
+    document.body.appendChild(toast);
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { if (toast) { toast.remove(); toast = null; } }, 7000);
+  }
+  if (navigator.serviceWorker) navigator.serviceWorker.addEventListener('message', function (e) { if (e.data && e.data.type === 'pb-push') inApp(e.data); });
+
   // ---- One quiet line to the site for this person's own news: a new message, a call ringing, a call given up -------
   var es = null, retry = null;
   function listen() {

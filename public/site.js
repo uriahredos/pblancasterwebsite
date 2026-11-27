@@ -1,7 +1,11 @@
 // Runs on every page: home-screen app support and its "Get the app" bar, saved drafts, and a few small helpers.
 (function () {
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(function () {});
+    // Ask for the newest copy each time the site is opened or comes back to the screen, so a change to how alerts behave reaches a phone at once.
+    navigator.serviceWorker.register('/sw.js').then(function (reg) {
+      var check = function () { if (reg.update) reg.update().catch(function () {}); };
+      check(); document.addEventListener('visibilitychange', function () { if (!document.hidden) check(); });
+    }).catch(function () {});
   }
 
   // "Get the app" bar. Only on a phone or tablet, only in the browser: inside the installed
