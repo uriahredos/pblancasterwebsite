@@ -1,7 +1,7 @@
 // Service worker: lets the site be installed on a phone's home screen and shows a
 // friendly page when there is no signal. Pages themselves are never stored, so
 // nothing private is kept on the phone by this file.
-var CACHE = 'portal-static-v128';
+var CACHE = 'portal-static-v129';
 var ASSETS = ['/offline.html', '/offline.js', '/styles.css', '/site.js', '/alerts-prompt.js', '/passkey.js', '/theme.js', '/logo.png', '/logo-p.png', '/logo-b.png', '/logo-flame.png', '/parts-form.js', '/scan.js', '/inspection-form.js', '/icons/icon-192.png', '/icons/badge-pb-96.png'];
 
 self.addEventListener('install', function (event) {
@@ -20,9 +20,11 @@ self.addEventListener('push', function (event) {
   try { data = event.data ? event.data.json() : {}; } catch (e) { data = { title: 'PB Portal', body: event.data ? event.data.text() : '' }; }
   event.waitUntil(self.registration.showNotification(data.title || 'PB Portal', {
     // Every alert carries the same PB logo: the picture beside the text, and its outline as the small mark in the status bar.
-    body: data.body || '', icon: '/icons/icon-192.png', badge: '/icons/badge-pb-96.png', tag: data.tag || undefined,
-    // The ones that need someone now make the phone's alert sound and buzz; the rest arrive without a noise.
-    silent: Boolean(data.quiet), renotify: Boolean(data.tag) && !data.quiet, vibrate: data.quiet ? undefined : (data.ring ? [400, 200, 400, 200, 400] : [200, 100, 200]),
+    body: data.body || '', icon: '/icons/icon-192.png', badge: '/icons/badge-pb-96.png',
+    // The ones that need someone now make the phone's alert sound and buzz; the rest arrive without a noise. A quiet one
+    // takes the place of the last of its kind. A loud one is always its own new alert: an iPhone swaps a replacement in
+    // without a sound, so a second message while the first was still on the screen made no noise at all.
+    tag: data.quiet && data.tag ? data.tag : undefined, silent: Boolean(data.quiet), vibrate: data.quiet ? undefined : (data.ring ? [400, 200, 400, 200, 400] : [200, 100, 200]),
     requireInteraction: Boolean(data.ring),
     data: { url: data.url || '/' }
   }));

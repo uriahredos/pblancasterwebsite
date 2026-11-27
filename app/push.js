@@ -65,11 +65,11 @@ function vapid() {
 }
 
 // Tests swap this for a recorder.
-let sender = (sub, payload) => {
+let sender = (sub, payload, opts = {}) => {
   const k = vapid();
   const contact = /^https:\/\//.test(config.baseUrl) ? config.baseUrl : 'mailto:portal@localhost.invalid';
   return webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, payload,
-    { vapidDetails: { subject: contact, publicKey: k.publicKey, privateKey: k.privateKey }, TTL: 24 * 60 * 60 });
+    { vapidDetails: { subject: contact, publicKey: k.publicKey, privateKey: k.privateKey }, TTL: opts.ttl || 24 * 60 * 60, urgency: opts.urgent ? 'high' : 'normal' });
 };
 function setSender(fn) { sender = fn; }
 
@@ -96,13 +96,15 @@ function liveDevices(userId) {
  */
 function notify(userIds, kind, { title, body, url }) {
   const ids = [...new Set([].concat(userIds || []).filter(Boolean))];
+  // The ones that make a noise are also sent as urgent, so a locked or sleeping phone is woken for them straight away
+  // instead of getting them whenever it next checks. A call that is not delivered within a minute is not delivered at all.
   const loud = Boolean((KINDS.find((k) => k.key === kind) || {}).sound);
   const payload = JSON.stringify({ title: String(title).slice(0, 120), body: String(body || '').slice(0, 300), url: url || '/', tag: kind, quiet: !loud, ring: kind === 'call' });
   const jobs = [];
   for (const id of ids) {
     if (!wants(id, kind)) continue;
     for (const sub of liveDevices(id)) {
-      jobs.push(Promise.resolve().then(() => sender(sub, payload)).catch((err) => {
+      jobs.push(Promise.resolve().then(() => sender(sub, payload, { urgent: loud, ttl: kind === 'call' ? 60 : 0 })).catch((err) => {
         // The phone or browser has dropped this subscription: forget it.
         if (err && (err.statusCode === 404 || err.statusCode === 410)) db.prepare('DELETE FROM push_subscriptions WHERE id = ?').run(sub.id);
         else console.error('[push] could not send:', err && (err.statusCode || err.message));
