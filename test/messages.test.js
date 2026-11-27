@@ -152,7 +152,8 @@ test('reports: the only way anyone else sees a conversation, only the one report
   assert.equal((await b.post(`/messages/m/${fromAnn}/report`, { note: 'Rude' }, '/messages')).status, 302);
   assert.equal(db.prepare('SELECT COUNT(*) n FROM dm_reports').get().n, 1);
   await b.post(`/messages/m/${fromAnn}/report`, { note: 'again' }, '/messages');
-  assert.equal(db.prepare('SELECT COUNT(*) n FROM dm_reports').get().n, 1, 'one open report at a time per person');
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM dm_reports').get().n, 1, 'one open report per message');
+  assert.match((await rev.get('/')).text, /reported message to look at/, 'the reviewer is told one is waiting');
 
   const list = (await rev.get('/admin/message-reports')).text;
   assert.match(list, /Bob Tech[\s\S]*Ann Tech and Bob Tech|Ann Tech and Bob Tech/); assert.match(list, /Rude/);
@@ -166,8 +167,20 @@ test('reports: the only way anyone else sees a conversation, only the one report
   assert.equal(logged.user_id, idOf('rev')); assert.match(logged.detail, /Report \d+: Ann Tech and Bob Tech/);
   // The conversation itself is still not theirs: it is only reachable through the report.
   assert.equal((await rev.get(`/messages/c/${convo}`)).status, 404);
+  // Written after the report: not the reviewer's to read. Removed after the report: still there for the reviewer, gone for the two people.
+  const a2 = await new Client().login('ann');
+  await a2.post(`/messages/c/${convo}/send`, { body: 'Said after the report' }, '/messages');
+  await a2.post(`/messages/m/${fromAnn}/delete`, {}, '/messages');
+  const fromAnnText = db.prepare('SELECT body FROM dm_messages WHERE id = ?').get(fromAnn).body;
+  const again = (await rev.get(`/admin/message-reports/${rid}`)).text;
+  assert.doesNotMatch(again, /Said after the report/); assert.ok(again.includes(fromAnnText)); assert.match(again, /The sender removed this message/);
+  const bobSees = (await b.get(`/messages/c/${convo}`)).text;
+  assert.ok(!bobSees.includes(`<p>${fromAnnText}`) && /Removed by the sender/.test(bobSees));
+  assert.match(bobSees, new RegExp(`/messages/m/${fromAnn}/report`), 'a removed message can still be reported');
   assert.equal((await rev.post(`/admin/message-reports/${rid}/close`, { outcome: 'Spoke to Ann' }, `/admin/message-reports/${rid}`)).status, 302);
   assert.equal(db.prepare('SELECT outcome FROM dm_reports WHERE id = ?').get(rid).outcome, 'Spoke to Ann');
+  const closed = (await rev.get(`/admin/message-reports/${rid}`)).text;
+  assert.match(closed, /can no longer be read here/); assert.doesNotMatch(closed, /On my way/, 'a closed report no longer opens the conversation');
 });
 
 test('reports: someone who reviews reports only for their own people cannot open another office\'s', async () => {
@@ -185,7 +198,32 @@ test('messages: someone who has left cannot get new messages, and the page says 
   const a = await new Client().login('ann');
   db.prepare('UPDATE users SET active = 0 WHERE username = ?').run('bob');
   const page = (await a.get(`/messages/c/${convo}`)).text;
-  assert.match(page, /is no longer here, so they cannot get messages/); assert.doesNotMatch(page, /data-dm-send/);
+  assert.match(page, /cannot get messages any more/); assert.doesNotMatch(page, /data-dm-send/);
   assert.equal((await a.post(`/messages/c/${convo}/send`, { body: 'hi' }, '/messages', { 'x-requested-with': 'fetch' })).status, 409);
   db.prepare('UPDATE users SET active = 1 WHERE username = ?').run('bob');
+});
+
+test('reports: nobody reviews a report about their own conversation', async () => {
+  const r = await new Client().login('rev'); const c = await new Client().login('cat');
+  await c.post(`/messages/with/${idOf('rev')}`, { body: 'Reviewer, a word' }, `/messages/with/${idOf('rev')}`);
+  await r.post(`/messages/with/${idOf('cat')}`, { body: 'Something unkind' }, '/messages');
+  const bad = db.prepare('SELECT id FROM dm_messages WHERE body = ?').get('Something unkind').id;
+  assert.equal((await c.post(`/messages/m/${bad}/report`, {}, '/messages')).status, 302);
+  const rid = db.prepare('SELECT id FROM dm_reports WHERE message_id = ?').get(bad).id;
+  assert.equal((await r.get(`/admin/message-reports/${rid}`)).status, 404);
+  assert.doesNotMatch((await r.get('/admin/message-reports')).text, /Cat Tech and Rae Reviewer|Rae Reviewer and Cat Tech/);
+});
+
+test('people: someone without private messages cannot be written to, and two accounts folded into one keep their conversations', async () => {
+  const a = await new Client().login('ann');
+  assert.doesNotMatch((await a.get('/messages?q=Nora')).text, /messages\/with\//);
+  assert.equal((await a.get(`/messages/with/${idOf('nomsg')}`)).status, 409);
+  assert.equal((await a.post(`/messages/with/${idOf('nomsg')}`, { body: 'hello?' }, '/messages')).status, 409);
+  const extra = auth.createUser({ username: 'ann2', displayName: 'Ann Tech', password: 'correct horse battery', profile: 'Technician' });
+  db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?').run(extra);
+  const e = await new Client().login('ann2');
+  await e.post(`/messages/with/${idOf('bob')}`, { body: 'From my second account' }, '/messages');
+  assert.equal(require('../app/duplicates').merge(idOf('ann'), extra), true);
+  assert.match((await a.get(`/messages/c/${convo}`)).text, /From my second account/);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM dm_threads WHERE user_a = ? OR user_b = ?').get(extra, extra).n, 0);
 });

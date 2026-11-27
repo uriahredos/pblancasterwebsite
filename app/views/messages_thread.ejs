@@ -6,15 +6,15 @@
   <% rows.forEach(function (m) { var mine = m.user_id === me; %>
   <article class="dm-msg <%= mine ? 'mine' : 'theirs' %> <%= !mine && m.id > read && !m.removed_at ? 'is-new' : '' %>" id="m<%= m.id %>" data-rev="<%= m.removed_at || '' %>">
     <div class="dm-bubble">
-      <% if (m.removed_at) { %><p class="meta removed-msg"><%= m.body %></p><% } else { %><div class="msg-body"><%- fmt(m.body) %></div><% } %>
+      <% if (m.removed_at) { %><p class="meta removed-msg">Removed by the sender.</p><% } else { %><div class="msg-body"><%- fmt(m.body) %></div><% } %>
       <p class="meta dm-time"><%= fmtDateTime(m.created_at) %></p>
-      <% if (!m.removed_at) { %>
+      <% if (!m.removed_at || !mine) { %>
       <details class="msg-more dm-more"><summary aria-label="Options for this message" title="Options">⋯</summary><div class="msg-tools">
         <% if (mine) { %>
         <form method="post" action="/messages/m/<%= m.id %>/delete" data-confirm="Remove this message? It goes for both of you."><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Remove</button></form>
         <% } else { %>
         <details class="msg-edit"><summary class="link">Report</summary>
-          <form method="post" action="/messages/m/<%= m.id %>/report" class="stack" data-no-live data-confirm="Report this? The people who review reports will be able to read this whole conversation."><input type="hidden" name="_csrf" value="<%= csrf %>">
+          <form method="post" action="/messages/m/<%= m.id %>/report" class="stack" data-no-live data-confirm="Report this? The people who review reports will be able to read this conversation up to now."><input type="hidden" name="_csrf" value="<%= csrf %>">
             <label>What is wrong? <span class="hint">Optional.</span><textarea name="note" rows="2" maxlength="500"></textarea></label>
             <button class="btn small danger" type="submit">Report this message</button></form></details>
         <% } %>
@@ -32,7 +32,7 @@
   <button class="btn primary" type="submit">Send</button>
 </form>
 <p class="flash err dm-error" data-dm-error role="alert" hidden></p>
-<% } else { %><p class="flash warn"><%= t.other.display_name %> is no longer here, so they cannot get messages.</p><% } %>
+<% } else { %><p class="flash warn"><%= t.other.display_name %> cannot get messages any more.</p><% } %>
 <script src="/live.js?v=<%= assetV %>" defer></script>
 <script src="/messages.js?v=<%= assetV %>" defer></script>
 <%- include('partials/footer') %>

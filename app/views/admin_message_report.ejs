@@ -1,12 +1,12 @@
 <%- include('partials/header') %>
 <p class="back"><a class="back-link" href="/admin/message-reports">Reported messages</a></p>
 <h1>Reported conversation</h1>
-<p class="lede"><%= r.name_a %> and <%= r.name_b %>. Reported by <strong><%= r.reporter %></strong> on <%= fmtDateTime(r.created_at) %>.<% if (r.note) { %> They wrote: <em><%= r.note %></em><% } %> Opening this was recorded.</p>
+<p class="lede"><%= r.name_a %> and <%= r.name_b %>. Reported by <strong><%= r.reporter %></strong> on <%= fmtDateTime(r.created_at) %>.<% if (r.note) { %> They wrote: <em><%= r.note %></em><% } %> <%= r.closed_at ? 'This report is closed, so the conversation can no longer be read here.' : 'You are shown the conversation as it stood when it was reported, and nothing written since. Opening this was recorded.' %></p>
 <div class="dm dm-review">
   <% rows.forEach(function (m) { %>
   <article class="dm-msg <%= m.user_id === r.reported_by ? 'mine' : 'theirs' %> <%= m.id === r.message_id ? 'is-new' : '' %>" id="m<%= m.id %>">
     <div class="dm-bubble"><p class="meta"><strong><%= m.author %></strong><%= m.id === r.message_id ? ' · reported message' : '' %></p>
-      <% if (m.removed_at) { %><p class="meta removed-msg"><%= m.body %></p><% } else { %><div class="msg-body"><%- fmt(m.body) %></div><% } %>
+      <div class="msg-body"><%- fmt(m.body) %></div><% if (m.removed_at) { %><p class="meta removed-msg">The sender removed this message on <%= fmtDateTime(m.removed_at) %>.</p><% } %>
       <p class="meta dm-time"><%= fmtDateTime(m.created_at) %></p></div>
   </article>
   <% }) %>

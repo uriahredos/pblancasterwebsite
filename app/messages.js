@@ -2,6 +2,7 @@
 // Private messages between two people. One conversation per pair; only the two of them can read it. The one exception is a
 // report (see routes/messages.js): that opens the one conversation to the people who review reports, and says so.
 const db = require('./db');
+const access = require('./permissions');
 
 const pair = (a, b) => (a < b ? [a, b] : [b, a]);
 
@@ -73,12 +74,50 @@ function add(threadId, userId, body) {
   })();
 }
 
-/** People to start a conversation with: active, not this person, matched on name. */
+/** Can this person get private messages? Only someone who is still here and whose profile includes them: otherwise a message would sit where nobody can read it. */
+function reachable(userId) {
+  const u = db.prepare('SELECT active, is_master, profile_id FROM users WHERE id = ?').get(userId);
+  return Boolean(u && u.active && (u.is_master || (u.profile_id && access.permsOf(u.profile_id).has('messages.use'))));
+}
+
+/** People to start a conversation with: active, able to get messages, not this person, matched on name. */
 function people(me, q) {
   const like = `%${String(q || '').replace(/[\\%_]/g, '\\$&')}%`;
   return db.prepare(
     `SELECT u.id, u.display_name, u.photo_path, u.job_title, b.name AS branch FROM users u LEFT JOIN branches b ON b.id = u.branch_id
-     WHERE u.active = 1 AND u.id <> ? AND u.display_name LIKE ? ESCAPE '\\' ORDER BY u.display_name COLLATE NOCASE LIMIT 25`).all(me, like);
+     WHERE u.active = 1 AND u.id <> ? AND u.display_name LIKE ? ESCAPE '\\' ORDER BY u.display_name COLLATE NOCASE LIMIT 100`).all(me, like)
+    .filter((u) => reachable(u.id)).slice(0, 25);
 }
 
-module.exports = { find, forUser, create, listFor, unreadCount, messages, markRead, lastRead, add, people };
+/** Reports nobody has opened yet, among those this person may handle (see routes/messages.js for the rule). */
+function waitingReports(user) {
+  return db.prepare(`SELECT r.reported_by, t.user_a, t.user_b FROM dm_reports r JOIN dm_threads t ON t.id = r.thread_id WHERE r.closed_at IS NULL AND r.opened_at IS NULL LIMIT 200`).all()
+    .filter((r) => r.user_a !== user.id && r.user_b !== user.id && access.canSee(user, r.reported_by)).length;
+}
+
+/** What a reviewer may read for a report: the conversation as it stood when it was reported, and nothing written since. */
+function asReported(threadId, reportedAt, limit = 500) {
+  return db.prepare(
+    `SELECT * FROM (SELECT m.*, u.display_name AS author FROM dm_messages m JOIN users u ON u.id = m.user_id
+       WHERE m.thread_id = ? AND m.created_at <= ? ORDER BY m.id DESC LIMIT ?) ORDER BY id`).all(threadId, reportedAt, limit);
+}
+
+/**
+ * Two accounts for one person are being folded into one: the conversations of the account that goes move to the one kept.
+ * Where both had a conversation with the same person, the messages join the kept account's. Call inside the merge's transaction.
+ */
+function moveUser(fromId, toId) {
+  for (const t of db.prepare('SELECT * FROM dm_threads WHERE user_a = ? OR user_b = ?').all(fromId, fromId)) {
+    const other = t.user_a === fromId ? t.user_b : t.user_a;
+    if (other !== toId) {
+      const into = create(toId, other);
+      db.prepare('UPDATE dm_messages SET thread_id = ? WHERE thread_id = ?').run(into.id, t.id);
+      db.prepare('UPDATE dm_reports SET thread_id = ? WHERE thread_id = ?').run(into.id, t.id);
+      db.prepare('UPDATE OR IGNORE dm_reads SET thread_id = ? WHERE thread_id = ?').run(into.id, t.id);
+      db.prepare('UPDATE dm_threads SET last_at = MAX(last_at, ?) WHERE id = ?').run(t.last_at, into.id);
+    }
+    db.prepare('DELETE FROM dm_threads WHERE id = ?').run(t.id);   // a conversation between the two accounts themselves goes with the extra one
+  }
+}
+
+module.exports = { find, forUser, create, listFor, unreadCount, messages, markRead, lastRead, add, people, reachable, asReported, moveUser, waitingReports };

@@ -33,6 +33,7 @@ router.get('/messages/with/:id', use, (req, res) => {
   if (!other || !other.active || other.id === req.user.id) return notFound(res);
   const t = dm.find(req.user.id, other.id);
   if (t && db.prepare('SELECT 1 FROM dm_messages WHERE thread_id = ?').get(t.id)) return res.redirect(`/messages/c/${t.id}`);
+  if (!dm.reachable(other.id)) return res.status(409).render('error', { title: 'Cannot message', message: `${other.display_name} does not have private messages, so a message would not reach them.` });
   res.render('messages_new', { title: `Message ${other.display_name}`, other, errors: [], values: {} });
 });
 
@@ -40,7 +41,9 @@ router.get('/messages/with/:id', use, (req, res) => {
 router.post('/messages/with/:id', use, (req, res) => {
   const other = isId(req.params.id) ? db.prepare('SELECT id, display_name, photo_path, job_title, active FROM users WHERE id = ?').get(req.params.id) : null;
   if (!other || !other.active || other.id === req.user.id) return notFound(res);
+  if (!dm.reachable(other.id)) return res.status(409).render('error', { title: 'Cannot message', message: `${other.display_name} does not have private messages, so a message would not reach them.` });
   const body = clean(req.body.body, 4000);
+  if (!allow(req.user.id, 'dm', 60, 60 * 1000)) return res.status(429).render('messages_new', { title: `Message ${other.display_name}`, other, errors: ['That is a lot of messages at once. Wait a moment.'], values: {} });
   if (!body) return res.status(400).render('messages_new', { title: `Message ${other.display_name}`, other, errors: ['Write your message.'], values: {} });
   const t = dm.create(req.user.id, other.id);
   deliver(req, t, other.id, body);
@@ -57,7 +60,7 @@ router.get('/messages/c/:id', use, (req, res) => {
   dm.markRead(t.id, req.user.id);
   // Reading it clears it from the count shown around this very page.
   if (rows.some((m) => m.user_id !== req.user.id && !m.removed_at && m.id > read)) res.locals.badges.messages = Math.max(0, res.locals.badges.messages - 1);
-  res.render('messages_thread', { title: t.other.display_name, t, rows, read, me: req.user.id, errors: [], canSend: t.other.active });
+  res.render('messages_thread', { title: t.other.display_name, t, rows, read, me: req.user.id, errors: [], canSend: dm.reachable(t.other.id) });
 });
 
 function deliver(req, t, otherId, body) {
@@ -76,7 +79,7 @@ router.post('/messages/c/:id/send', use, (req, res) => {
   if (!t) return notFound(res);
   const fail = (code, message) => (asksForJson(req) ? res.status(code).json({ error: message }) : (flash(req, 'err', message), res.redirect(`/messages/c/${t.id}`)));
   const body = clean(req.body.body, 4000);
-  if (!t.other.active) return fail(409, `${t.other.display_name} is no longer here, so they cannot get messages.`);
+  if (!dm.reachable(t.other.id)) return fail(409, `${t.other.display_name} cannot get messages any more.`);
   if (!body) return fail(400, 'Write your message.');
   if (!allow(req.user.id, 'dm', 60, 60 * 1000)) return fail(429, 'That is a lot of messages at once. Wait a moment.');
   deliver(req, t, t.other.id, body);
@@ -84,12 +87,13 @@ router.post('/messages/c/:id/send', use, (req, res) => {
   res.redirect(`/messages/c/${t.id}#end`);
 });
 
-// Remove one of your own messages: its words go, the place it held stays.
+// Remove one of your own messages: neither person sees its words again, and the place it held stays. The words are kept
+// out of sight so that removing something cannot undo a report: only someone reviewing a report of this conversation sees them.
 router.post('/messages/m/:id/delete', use, (req, res) => {
   const m = isId(req.params.id) ? db.prepare('SELECT * FROM dm_messages WHERE id = ?').get(req.params.id) : null;
   const t = m && dm.forUser(m.thread_id, req.user.id);
   if (!m || !t || m.user_id !== req.user.id) return notFound(res);
-  if (!m.removed_at) db.prepare("UPDATE dm_messages SET body = 'Removed by the sender.', removed_at = ? WHERE id = ?").run(new Date().toISOString(), m.id);
+  if (!m.removed_at) db.prepare('UPDATE dm_messages SET removed_at = ? WHERE id = ?').run(new Date().toISOString(), m.id);
   live.publish(topics(t));
   flash(req, 'ok', 'Message removed.');
   res.redirect(`/messages/c/${t.id}`);
@@ -101,7 +105,8 @@ router.post('/messages/m/:id/report', use, (req, res) => {
   const t = m && dm.forUser(m.thread_id, req.user.id);
   if (!m || !t || m.user_id === req.user.id) return notFound(res);
   if (!allow(req.user.id, 'dm-report', 10, 60 * 60 * 1000)) { flash(req, 'err', 'Too many reports. Wait a little.'); return res.redirect(`/messages/c/${t.id}`); }
-  const open = db.prepare('SELECT 1 FROM dm_reports WHERE thread_id = ? AND reported_by = ? AND closed_at IS NULL').get(t.id, req.user.id);
+  // One open report per message. Reporting a later message is a new report, because a reviewer reads only up to the moment of each one.
+  const open = db.prepare('SELECT 1 FROM dm_reports WHERE thread_id = ? AND reported_by = ? AND message_id = ? AND closed_at IS NULL').get(t.id, req.user.id, m.id);
   if (!open) db.prepare('INSERT INTO dm_reports (thread_id, message_id, reported_by, note, created_at) VALUES (?, ?, ?, ?, ?)').run(t.id, m.id, req.user.id, clean(req.body.note, 500) || null, new Date().toISOString());
   flash(req, 'ok', 'Reported. The people who review reports can now read this conversation, and nobody else.');
   res.redirect(`/messages/c/${t.id}`);
@@ -109,12 +114,15 @@ router.post('/messages/m/:id/report', use, (req, res) => {
 
 // ---- Reviewing reports --------------------------------------------------------------------------------
 
-/** Reports this person may handle: every office's for someone who sees them all, otherwise those from the people they look after. */
+/**
+ * Reports this person may handle: every office's for someone who sees them all, otherwise those from the people they look
+ * after. Never one about a conversation they are in themselves: nobody reviews a report they made or one made about them.
+ */
 const visibleReports = (user, where = '') => db.prepare(
   `SELECT r.*, u.display_name AS reporter, t.user_a, t.user_b, ua.display_name AS name_a, ub.display_name AS name_b
    FROM dm_reports r JOIN users u ON u.id = r.reported_by JOIN dm_threads t ON t.id = r.thread_id
    JOIN users ua ON ua.id = t.user_a JOIN users ub ON ub.id = t.user_b ${where} ORDER BY (r.closed_at IS NOT NULL), r.created_at DESC LIMIT 200`).all()
-  .filter((r) => access.canSee(user, r.reported_by));
+  .filter((r) => r.user_a !== user.id && r.user_b !== user.id && access.canSee(user, r.reported_by));
 
 router.get('/admin/message-reports', review, (req, res) => {
   res.render('admin_message_reports', { title: 'Reported messages', rows: visibleReports(req.user) });
@@ -123,10 +131,12 @@ router.get('/admin/message-reports', review, (req, res) => {
 router.get('/admin/message-reports/:id', review, (req, res) => {
   const r = isId(req.params.id) ? visibleReports(req.user, `WHERE r.id = ${Number(req.params.id)}`)[0] : null;
   if (!r) return notFound(res);
+  // A closed report no longer opens the conversation: what is left is the record of who reported, who closed it and what was done.
+  if (r.closed_at) return res.render('admin_message_report', { title: 'Reported conversation', r, rows: [] });
   // Opening it is recorded, here and in the activity log, so nobody reads a conversation without it being known.
-  if (!r.closed_at) db.prepare('UPDATE dm_reports SET opened_by = ?, opened_at = ? WHERE id = ?').run(req.user.id, new Date().toISOString(), r.id);
+  db.prepare('UPDATE dm_reports SET opened_by = ?, opened_at = ? WHERE id = ?').run(req.user.id, new Date().toISOString(), r.id);
   activity.log(req.user, 'Opened a reported private conversation', `Report ${r.id}: ${r.name_a} and ${r.name_b}`);
-  res.render('admin_message_report', { title: 'Reported conversation', r, rows: dm.messages(r.thread_id, 500) });
+  res.render('admin_message_report', { title: 'Reported conversation', r, rows: dm.asReported(r.thread_id, r.created_at) });
 });
 
 router.post('/admin/message-reports/:id/close', review, (req, res) => {
