@@ -156,7 +156,8 @@
         ['tasks.assign', '/admin/tasks', 'Manage tasks', is('/admin/tasks')],
         ['announcements.post', '/admin/announcements', 'Post announcements', is('/admin/announcements')],
         ['newsletters.manage', '/admin/newsletters', 'Newsletters', is('/admin/newsletters')],
-        ['complaints.review', '/admin/complaints', 'Complaints', is('/admin/complaints')]
+        ['complaints.review', '/admin/complaints', 'Complaints', is('/admin/complaints')],
+        ['messages.review', '/admin/message-reports', 'Reported messages', is('/admin/message-reports')]
       ] },
       { name: 'Setup', items: [
         ['users.manage', '/poster', 'QR code sign', is('/poster')],
@@ -185,6 +186,7 @@
       <a href="/" <%- path === '/' ? 'aria-current="page"' : '' %>>Home</a>
       <a href="/tasks" <%- path === '/tasks' ? 'aria-current="page"' : '' %>>Tasks<% if (badges.tasks) { %> <span class="badge" title="Tasks to do"><%= badges.tasks %></span><% } %></a>
       <a href="/social" <%- path === '/social' || path.indexOf('/social/') === 0 ? 'aria-current="page"' : '' %>>Social</a>
+      <% if (can('messages.use')) { %><a href="/messages" <%- path === '/messages' || path.indexOf('/messages/') === 0 ? 'aria-current="page"' : '' %>>Messages<% if (badges.messages) { %> <span class="badge" title="Conversations with a new message"><%= badges.messages %></span><% } %></a><% } %>
       <span class="nav-sep" aria-hidden="true"></span>
       <% groups.forEach(function (g) { %>
       <% if (g.links.length === 1) { var only = g.links[0]; %>

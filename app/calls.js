@@ -3,6 +3,7 @@
 // it and one who joined). Held in memory, like the live hub: a call is a moment, not a record. Nothing about a call is
 // stored, and the video never passes through here at all.
 const live = require('./live');
+const { allow } = require('./allowance');
 
 const STALE_MS = 60 * 1000;            // a person who has not said "still here" for this long has left
 const MAX_MS = 2 * 60 * 60 * 1000;     // no call outlasts the credentials it was set up with
@@ -86,17 +87,6 @@ function leave(threadId, userId) {
     live.sendTo(c.host.id, topic(threadId), 'signal', { type: 'bye' });
   } else return false;
   changed(threadId);
-  return true;
-}
-
-// A simple per-person allowance, so a stuck page cannot hammer the relay provider or flood the stream.
-const used = new Map();
-function allow(userId, kind, max, windowMs, now = Date.now()) {
-  const key = `${kind}:${userId}`;
-  const hits = (used.get(key) || []).filter((t) => now - t < windowMs);
-  if (hits.length >= max) { used.set(key, hits); return false; }
-  hits.push(now); used.set(key, hits);
-  if (used.size > 5000) for (const [k, v] of used) if (!v.some((t) => now - t < windowMs)) used.delete(k);
   return true;
 }
 

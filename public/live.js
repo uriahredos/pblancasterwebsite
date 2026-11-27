@@ -8,10 +8,13 @@
   if (!window.EventSource || !window.fetch || !window.DOMParser) return;
   var root = document.querySelector('main');
   if (!root || !document.documentElement.hasAttribute('data-in')) return;
-  var thread = root.querySelector('[data-live-thread]');
+  // What this page keeps current: a discussion thread, a private conversation, the inbox, or a list of threads.
+  var thread = root.querySelector('[data-live-thread]'), dmBox = root.querySelector('[data-live-dm]'), inbox = root.querySelector('[data-live-inbox]');
   var threadId = thread ? thread.getAttribute('data-live-thread') : null;
-  if (!threadId && !root.querySelector('[data-live-list]')) return;
-  var topics = threadId ? 'thread:' + threadId : 'forum';
+  var dmId = dmBox ? dmBox.getAttribute('data-live-dm') : null;
+  var inboxId = inbox ? inbox.getAttribute('data-live-inbox') : null;
+  if (!threadId && !dmId && !inboxId && !root.querySelector('[data-live-list]')) return;
+  var topics = threadId ? 'thread:' + threadId : dmId ? 'dm:' + dmId : inboxId ? 'inbox:' + inboxId : 'forum';
 
   var es = null, stopped = false, busy = false, again = false, dirty = false;
   var opened = false, everOpened = false, timer = null, poll = null, watchdog = null, pill = null;
@@ -29,10 +32,13 @@
   // Still the page this was started for? (A soft page change swaps <main> without stopping us.)
   function here() {
     var m = document.querySelector('main');
-    return !stopped && m && (threadId ? m.querySelector('[data-live-thread="' + threadId + '"]') : m.querySelector('[data-live-list]'));
+    return !stopped && m && (threadId ? m.querySelector('[data-live-thread="' + threadId + '"]') : dmId ? m.querySelector('[data-live-dm="' + dmId + '"]')
+      : inboxId ? m.querySelector('[data-live-inbox]') : m.querySelector('[data-live-list]'));
   }
 
   function schedule() { clearTimeout(timer); timer = setTimeout(refresh, 300); }
+
+  window.__liveRefresh = function () { clearTimeout(timer); refresh(); };   // a page that has just changed something itself asks for the news now
 
   function gone() {
     stop();
@@ -40,7 +46,7 @@
     if (!m || m.querySelector('.live-gone')) return;
     var p = document.createElement('p');
     p.className = 'flash warn live-gone';
-    p.textContent = 'This discussion was removed.';
+    p.textContent = dmId ? 'This conversation is no longer available.' : 'This discussion was removed.';
     m.insertBefore(p, m.firstChild);
   }
 
@@ -63,7 +69,7 @@
         if (!html || !here()) return;
         var doc = new DOMParser().parseFromString(html, 'text/html');
         if (!doc.documentElement.hasAttribute('data-in')) { stop(); location.reload(); return; }
-        if (threadId) mergeThread(doc); else mergeLists(doc);
+        if (threadId) mergeThread(doc); else if (dmId) mergeDm(doc); else if (inboxId) mergeInbox(doc); else mergeLists(doc);
         if (window.portalSync) window.portalSync(html);
       })
       .catch(function () { /* offline for a moment: the next change or poll tries again */ })
@@ -75,11 +81,9 @@
     return el.contains(document.activeElement) && /^(TEXTAREA|INPUT|SELECT)$/.test(document.activeElement.tagName) || Boolean(el.querySelector('details.msg-edit[open]'));
   }
 
-  function mergeThread(doc) {
-    var box = document.querySelector('[data-live-thread="' + threadId + '"]');
-    var next = doc.querySelector('[data-live-thread]');
-    if (!box || !next) return;
-    var nearEnd = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 300;
+  // New articles are added at the end, ones whose revision changed are replaced, ones that are gone are dropped. An article
+  // with something being typed into or opened for editing is left alone. Returns the articles added.
+  function mergeArticles(box, next) {
     var have = {}, seen = {}, added = [];
     Array.prototype.forEach.call(box.children, function (a) { if (a.id) have[a.id] = a; });
     Array.prototype.forEach.call(next.children, function (a) {
@@ -90,6 +94,32 @@
       else if (old.getAttribute('data-rev') !== a.getAttribute('data-rev') && !inUse(old)) box.replaceChild(document.importNode(a, true), old);
     });
     Object.keys(have).forEach(function (id) { if (!seen[id] && !inUse(have[id])) box.removeChild(have[id]); });
+    return added;
+  }
+
+  // A private conversation: new messages arrive at the bottom.
+  function mergeDm(doc) {
+    var box = document.querySelector('[data-live-dm="' + dmId + '"]'), next = doc.querySelector('[data-live-dm]');
+    if (!box || !next) return;
+    var nearEnd = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 300;
+    var added = mergeArticles(box, next);
+    var send = document.querySelector('[data-dm-send]'), canSend = doc.querySelector('[data-dm-send]');
+    if (Boolean(send) !== Boolean(canSend) && (!send || !send.querySelector('textarea').value)) { stop(); location.reload(); return; }
+    if (added.length) announce(added, nearEnd, 'message');
+  }
+
+  // The inbox: the list of conversations, redrawn when it changes.
+  function mergeInbox(doc) {
+    var now = root.querySelector('[data-live-inbox]'), next = doc.querySelector('[data-live-inbox]');
+    if (now && next && now.innerHTML !== next.innerHTML) now.innerHTML = next.innerHTML;
+  }
+
+  function mergeThread(doc) {
+    var box = document.querySelector('[data-live-thread="' + threadId + '"]');
+    var next = doc.querySelector('[data-live-thread]');
+    if (!box || !next) return;
+    var nearEnd = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 300;
+    var added = mergeArticles(box, next);
     // The heading's tags and reply count (pinned, solved, locked, number of replies).
     var tags = document.querySelector('.thread-tags'), newTags = doc.querySelector('.thread-tags');
     if (tags && newTags && tags.innerHTML !== newTags.innerHTML) tags.innerHTML = newTags.innerHTML;
@@ -105,7 +135,8 @@
   }
 
   // New replies: follow them if the reader is at the bottom, otherwise offer a button, so reading is never yanked away.
-  function announce(added, follow) {
+  function announce(added, follow, noun) {
+    noun = noun || 'reply';
     if (follow) { added[added.length - 1].scrollIntoView({ block: 'nearest', behavior: 'smooth' }); return; }
     if (!pill) {
       pill = document.createElement('button');
@@ -116,7 +147,7 @@
     }
     pill.count = (pill.count || 0) + added.length;
     if (!pill.getAttribute('data-first')) pill.setAttribute('data-first', added[0].id);
-    pill.textContent = pill.count + (pill.count === 1 ? ' new reply ↓' : ' new replies ↓');
+    pill.textContent = pill.count + (noun === 'message' ? (pill.count === 1 ? ' new message ↓' : ' new messages ↓') : (pill.count === 1 ? ' new reply ↓' : ' new replies ↓'));
   }
   function check() {
     if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 120) clear();

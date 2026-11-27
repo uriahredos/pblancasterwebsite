@@ -1,0 +1,38 @@
+<%- include('partials/header') %>
+<p class="back"><a class="back-link" href="/messages">Messages</a></p>
+<div class="dm-head"><%- include('partials/avatar', { who: t.other }) %><div><h1><a href="/people/<%= t.other.id %>"><%= t.other.display_name %></a></h1><p class="meta">Private: only you and <%= t.other.display_name %> can read this.<% if (t.other.job_title) { %> · <%= t.other.job_title %><% } %></p></div></div>
+<%- include('partials/errors') %>
+<div class="dm" data-live-dm="<%= t.id %>">
+  <% rows.forEach(function (m) { var mine = m.user_id === me; %>
+  <article class="dm-msg <%= mine ? 'mine' : 'theirs' %> <%= !mine && m.id > read && !m.removed_at ? 'is-new' : '' %>" id="m<%= m.id %>" data-rev="<%= m.removed_at || '' %>">
+    <div class="dm-bubble">
+      <% if (m.removed_at) { %><p class="meta removed-msg"><%= m.body %></p><% } else { %><div class="msg-body"><%- fmt(m.body) %></div><% } %>
+      <p class="meta dm-time"><%= fmtDateTime(m.created_at) %></p>
+      <% if (!m.removed_at) { %>
+      <details class="msg-more dm-more"><summary aria-label="Options for this message" title="Options">⋯</summary><div class="msg-tools">
+        <% if (mine) { %>
+        <form method="post" action="/messages/m/<%= m.id %>/delete" data-confirm="Remove this message? It goes for both of you."><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link danger" type="submit">Remove</button></form>
+        <% } else { %>
+        <details class="msg-edit"><summary class="link">Report</summary>
+          <form method="post" action="/messages/m/<%= m.id %>/report" class="stack" data-no-live data-confirm="Report this? The people who review reports will be able to read this whole conversation."><input type="hidden" name="_csrf" value="<%= csrf %>">
+            <label>What is wrong? <span class="hint">Optional.</span><textarea name="note" rows="2" maxlength="500"></textarea></label>
+            <button class="btn small danger" type="submit">Report this message</button></form></details>
+        <% } %>
+      </div></details>
+      <% } %>
+    </div>
+  </article>
+  <% }) %>
+</div>
+<span id="end"></span>
+<% if (canSend) { %>
+<form method="post" action="/messages/c/<%= t.id %>/send" class="dm-compose" data-dm-send data-no-live>
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label class="grow"><span class="sr">Your message</span><textarea name="body" rows="2" maxlength="4000" required placeholder="Write a message"></textarea></label>
+  <button class="btn primary" type="submit">Send</button>
+</form>
+<p class="flash err dm-error" data-dm-error role="alert" hidden></p>
+<% } else { %><p class="flash warn"><%= t.other.display_name %> is no longer here, so they cannot get messages.</p><% } %>
+<script src="/live.js?v=<%= assetV %>" defer></script>
+<script src="/messages.js?v=<%= assetV %>" defer></script>
+<%- include('partials/footer') %>

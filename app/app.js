@@ -174,6 +174,7 @@ app.use(require('./routes/social'));
 app.use(require('./routes/company'));
 app.use(require('./routes/live'));
 app.use(require('./routes/call'));
+app.use(require('./routes/messages'));
 app.use(require('./routes/forum'));
 app.use(require('./routes/reactions'));
 app.use(require('./routes/sales'));

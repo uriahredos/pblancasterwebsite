@@ -669,6 +669,53 @@ CREATE TABLE IF NOT EXISTS passkeys (
 CREATE INDEX IF NOT EXISTS passkeys_user ON passkeys(user_id);
 `);
 
+// ---- Private messages ----
+// One conversation per pair of people (user_a is always the lower id), the messages in it, how far each person has read, and
+// reports. A report is the only way anyone but the two people can see a conversation: it opens that one conversation to
+// the people who review reports, and is recorded when they open it.
+db.exec(`
+CREATE TABLE IF NOT EXISTS dm_threads (
+  id INTEGER PRIMARY KEY,
+  user_a INTEGER NOT NULL REFERENCES users(id),
+  user_b INTEGER NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  last_at TEXT NOT NULL,
+  UNIQUE (user_a, user_b),
+  CHECK (user_a < user_b)
+);
+CREATE INDEX IF NOT EXISTS dm_threads_a ON dm_threads(user_a, last_at);
+CREATE INDEX IF NOT EXISTS dm_threads_b ON dm_threads(user_b, last_at);
+CREATE TABLE IF NOT EXISTS dm_messages (
+  id INTEGER PRIMARY KEY,
+  thread_id INTEGER NOT NULL REFERENCES dm_threads(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  removed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS dm_messages_thread ON dm_messages(thread_id, id);
+CREATE TABLE IF NOT EXISTS dm_reads (
+  thread_id INTEGER NOT NULL REFERENCES dm_threads(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  last_read_id INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (thread_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS dm_reports (
+  id INTEGER PRIMARY KEY,
+  thread_id INTEGER NOT NULL REFERENCES dm_threads(id) ON DELETE CASCADE,
+  message_id INTEGER,
+  reported_by INTEGER NOT NULL REFERENCES users(id),
+  note TEXT,
+  created_at TEXT NOT NULL,
+  opened_by INTEGER REFERENCES users(id),
+  opened_at TEXT,
+  closed_by INTEGER REFERENCES users(id),
+  closed_at TEXT,
+  outcome TEXT
+);
+CREATE INDEX IF NOT EXISTS dm_reports_open ON dm_reports(closed_at, created_at);
+`);
+
 // The contact sheet misspells the company's email address in places; an address sent there would not arrive.
 db.prepare("UPDATE company_contacts SET email = replace(email, '@pyebarkefs.com', '@pyebarkerfs.com') WHERE email LIKE '%@pyebarkefs.com%'").run();
 

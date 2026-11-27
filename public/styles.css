@@ -1744,3 +1744,35 @@ table.closed-place tfoot td { border-top: 2px solid var(--line); border-bottom: 
 .call-status { margin: .5rem 0 0; color: var(--muted); font-size: .92rem; min-height: 1.3em; }
 .call-controls { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; }
 .call-controls .btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+
+/* Private messages. */
+.dm-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+.dm-list li { border: 1px solid var(--line); border-left: 5px solid var(--field-line); border-radius: 10px; background: var(--surface); }
+.dm-list li.unread { border-left-color: var(--green); }
+.dm-list a { display: flex; align-items: center; gap: .75rem; padding: .65rem .85rem; color: var(--ink); text-decoration: none; }
+.dm-list a:hover { background: var(--accent-soft); border-radius: 0 9px 9px 0; }
+.dm-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.dm-top { display: flex; align-items: baseline; gap: .5rem; }
+.dm-when { margin-left: auto; white-space: nowrap; }
+.dm-snip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dm-list li:not(.unread) .dm-top strong { font-weight: 600; }
+.dm-head { display: flex; align-items: center; gap: .8rem; margin-bottom: 1rem; }
+.dm-head h1 { margin: 0; font-size: 1.4rem; }
+.dm-head h1 a { color: inherit; text-decoration: none; }
+.dm-head p { margin: .1rem 0 0; }
+.dm { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 1rem; }
+.dm-msg { display: flex; }
+.dm-msg.mine { justify-content: flex-end; }
+.dm-bubble { position: relative; max-width: min(34rem, 88%); padding: .55rem .8rem; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); overflow-wrap: anywhere; }
+.dm-msg.mine .dm-bubble { background: var(--accent-soft); border-color: var(--accent); }
+.dm-msg.is-new .dm-bubble { border-color: var(--green); }
+.dm-bubble .msg-body > :first-child { margin-top: 0; }
+.dm-bubble .msg-body > :last-child { margin-bottom: 0; }
+.dm-time { margin: .25rem 0 0; font-size: .78rem; }
+.dm-more { position: absolute; top: .15rem; right: .3rem; }
+.dm-more > summary { list-style: none; cursor: pointer; padding: 0 .3rem; color: var(--muted); }
+.dm-more[open] { z-index: 5; }
+.dm-more .msg-tools { position: absolute; right: 0; top: 1.4rem; min-width: 14rem; padding: .6rem; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 28px rgba(0, 0, 0, .28); }
+.dm-compose { position: sticky; bottom: 0; display: flex; gap: .5rem; align-items: flex-end; padding: .6rem 0; background: var(--bg); border-top: 1px solid var(--line); }
+.dm-compose textarea { width: 100%; resize: vertical; max-height: 10rem; }
+@media (max-width: 899px) { .dm-compose { bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px)); } }
