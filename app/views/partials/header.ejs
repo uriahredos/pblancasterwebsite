@@ -106,7 +106,7 @@
         ['', '/contacts', 'Who to contact', is('/contacts')],
         'divider',
         ['', '/feed', 'Activity feed', is('/feed')],
-        ['forum.use', '/discussions', 'Discussions', is('/discussions'), badges.forum],
+        ['messages.use', '/messages', 'Messages', is('/messages'), badges.messages],
         ['', '/people', 'People', is('/people') || path === '/profile'],
         ['', '/shoutouts', 'Shout-outs', is('/shoutouts')],
         ['', '/events', 'Events', is('/events')],
@@ -186,7 +186,7 @@
       <a href="/" <%- path === '/' ? 'aria-current="page"' : '' %>>Home</a>
       <a href="/tasks" <%- path === '/tasks' ? 'aria-current="page"' : '' %>>Tasks<% if (badges.tasks) { %> <span class="badge" title="Tasks to do"><%= badges.tasks %></span><% } %></a>
       <a href="/social" <%- path === '/social' || path.indexOf('/social/') === 0 ? 'aria-current="page"' : '' %>>Social</a>
-      <% if (can('messages.use')) { %><a href="/messages" <%- path === '/messages' || path.indexOf('/messages/') === 0 ? 'aria-current="page"' : '' %>>Messages<% if (badges.messages) { %> <span class="badge" title="Conversations with a new message"><%= badges.messages %></span><% } %></a><% } %>
+      <% if (can('forum.use')) { %><a href="/discussions" <%- is('/discussions') ? 'aria-current="page"' : '' %>>Discussions<% if (badges.forum) { %> <span class="badge" title="New discussions"><%= badges.forum %></span><% } %></a><% } %>
       <span class="nav-sep" aria-hidden="true"></span>
       <% groups.forEach(function (g) { %>
       <% if (g.links.length === 1) { var only = g.links[0]; %>

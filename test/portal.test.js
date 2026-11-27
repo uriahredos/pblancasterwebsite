@@ -1745,7 +1745,7 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
 
   const owner = (await (await loggedIn('owner')).get('/admin/users')).text;
   assert.deepEqual(groupsOf(owner), ['Community', 'Parts', 'Fleet', 'Training', 'Team', 'Setup', 'Corporate']);
-  assert.deepEqual(barLinks(owner), ['/', '/tasks', '/social', '/messages', '/oncall', '/sales']);   // the master account also sees the sales side
+  assert.deepEqual(barLinks(owner), ['/', '/tasks', '/social', '/discussions', '/oncall', '/sales']);   // the master account also sees the sales side
   // What used to be one long Admin list is two: Team (people and what goes out to them) and Setup (the site itself).
   const team = /<summary[^>]*>Team[\s\S]*?<\/details>/.exec(owner)[0];
   const setup = /<summary[^>]*>Setup[\s\S]*?<\/details>/.exec(owner)[0];
@@ -1769,7 +1769,7 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
   assert.deepEqual(groupsOf(tech), ['Community', 'Fleet', 'Training']);
   assert.deepEqual([...(/<summary[^>]*>Fleet[\s\S]*?<\/details>/.exec(tech)[0]).matchAll(/<a href="([^"]+)"/g)].map((m) => m[1]), ['/fleet', '/fleet/signout', '/inspection']);
   assert.match(tech, /<a href="\/parts" >Parts<\/a>/);                    // for a technician Parts is one plain link: the form
-  assert.deepEqual(barLinks(tech), ['/', '/tasks', '/social', '/messages', '/parts', '/oncall', '/complaint']); // one-item groups show as plain links
+  assert.deepEqual(barLinks(tech), ['/', '/tasks', '/social', '/discussions', '/parts', '/oncall', '/complaint']); // one-item groups show as plain links
   assert.doesNotMatch(tech, /href="\/admin\//);
   assert.match(tech, /<a href="\/inspection"[^>]*>Truck inspection<\/a>/);
   assert.doesNotMatch(/<summary[^>]*>Community[\s\S]*?<\/details>/.exec(tech)[0], /<hr>\s*<hr>|<div class="menu-list">\s*<hr>|<hr>\s*<\/div>/); // no stray divider
@@ -1777,7 +1777,7 @@ test('menu: everyday links in the bar, the rest in drop-downs that only hold wha
   // A manager's Team group holds only what their profile allows, and they have no Setup group.
   const mgr = (await (await loggedIn('mgr1')).get('/')).text;
   assert.deepEqual(groupsOf(mgr), ['Community', 'Parts', 'Fleet', 'Training', 'Team']);           // Manage tasks and Post announcements
-  assert.deepEqual(barLinks(mgr), ['/', '/tasks', '/social', '/messages', '/oncall']);
+  assert.deepEqual(barLinks(mgr), ['/', '/tasks', '/social', '/discussions', '/oncall']);
   assert.doesNotMatch(mgr, /admin\/(users|profiles|complaints|backups|activity)"/);
 
   // Styles and scripts carry a version so a new release is not shown with old files.
@@ -8401,12 +8401,12 @@ test('on call: each branch keeps its own on-call rates on the On call page; whoe
   await owner.post('/branch/view', { branch: 'all' }, { page: '/' });
 });
 
-test('Social: it sits in the bar where Discussions was, Discussions moves under Community, and the old photo wall\'s pictures arrive as posts with their likes', async () => {
+test('Social: Social and Discussions sit in the bar, and the old photo wall\'s pictures arrive as posts with their likes', async () => {
   const t = await loggedIn('tech1'); const home = (await t.get('/')).text;
   const bar = /<nav class="nav"[\s\S]*?<span class="nav-sep"/.exec(home)[0];
-  assert.match(bar, /<a href="\/social"[^>]*>Social<\/a>/); assert.doesNotMatch(bar, /href="\/discussions"/);
+  assert.match(bar, /<a href="\/social"[^>]*>Social<\/a>/); assert.match(bar, /href="\/discussions"/);
   const community = /<summary[^>]*>Community[\s\S]*?<\/details>/.exec(home)[0];
-  assert.match(community, /<a href="\/discussions"[^>]*>Discussions/); assert.doesNotMatch(community, /href="\/photos"/);
+  assert.doesNotMatch(community, /href="\/discussions"/); assert.doesNotMatch(community, /href="\/photos"/);
   assert.match((await t.get('/settings/notifications')).text, /Someone comments on my post in Social/);
   // A comment tells the post's owner on their phone (never the person who wrote it).
   const push = require('../app/push'); const told = []; push.setSender(async (sub, payload) => { told.push({ to: sub.user_id, ...JSON.parse(payload) }); });
