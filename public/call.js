@@ -15,7 +15,7 @@
   var supported = Boolean(window.RTCPeerConnection && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
 
   var pc = null, local = null, role = null, facing = 'user', servers = null, queue = [], pendingIce = [];
-  var beatTimer = null, wake = null, active = false, remoteSet = false, ended = false;
+  var beatTimer = null, watchTimer = null, wake = null, active = false, remoteSet = false, ended = false;
 
   function say(text) { if (!note) return; note.textContent = text || ''; note.hidden = !text; }
   function status(text) { if (statusEl) statusEl.textContent = text || ''; }
@@ -71,7 +71,7 @@
   function holdWake() { if (navigator.wakeLock && navigator.wakeLock.request) navigator.wakeLock.request('screen').then(function (w) { wake = w; }, function () {}); }
 
   function cleanup() {
-    clearInterval(beatTimer); beatTimer = null; releaseWake();
+    clearInterval(beatTimer); beatTimer = null; clearInterval(watchTimer); watchTimer = null; releaseWake();
     closePc(); stopLocal(); if (localEl) localEl.srcObject = null;
     queue = []; role = null; show(false);
   }
@@ -94,6 +94,13 @@
       if (localEl) { localEl.srcObject = stream; var lp = localEl.play(); if (lp && lp.catch) lp.catch(function () {}); }
       show(true); status(as === 'host' ? 'Starting…' : 'Joining…');
       holdWake();
+      // The site swaps pages without reloading, so leaving the thread (a menu link, the back button) does not close this
+      // page. If the thread's page is gone from the screen, the call ends: the camera and microphone switch off and the other person is told.
+      watchTimer = setInterval(function () {
+        if (document.body.contains(root)) return;
+        hangup(true);
+        if (window.__callStop) window.__callStop();
+      }, 500);
       return post('ice');
     }).then(function (ice) {
       servers = ice.servers; makePc();
