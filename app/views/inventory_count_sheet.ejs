@@ -6,7 +6,8 @@
 <%- include('partials/errors') %>
 <form method="post" action="/admin/inventory/count/<%= audit.id %>/<%= place.id %>" class="stack" data-no-live id="count-form">
   <input type="hidden" name="_csrf" value="<%= csrf %>">
-  <p><button type="button" class="btn small" id="scan-btn" hidden>Scan barcode</button></p>
+  <p><button type="button" class="btn primary" id="scan-btn" hidden>Count with the scanner</button></p>
+  <% if (waiting) { %><p class="hint" id="waiting-note"><%= waiting %> <%= waiting === 1 ? 'item here is' : 'items here are' %> waiting to be identified from <%= waiting === 1 ? 'its photo' : 'their photos' %>.</p><% } %>
   <fieldset>
     <legend>Something here that is not on the list below?</legend>
     <label>Part <span class="hint">Pick from the catalog or type your own</span> <input name="add_part" id="add-part" value="<%= added %>" maxlength="100" autocomplete="off" data-catalog placeholder="Number or name"></label>
@@ -35,12 +36,29 @@
 </form>
 <div class="scan-overlay" id="scan-overlay" hidden>
   <div class="scan-box card">
-    <p><strong>Point the camera at the barcode</strong></p>
+    <p id="scan-title"><strong>Point the camera at the barcode</strong></p>
     <div id="scan-view"></div>
-    <p class="hint" id="scan-msg">Starting the camera…</p>
-    <button type="button" class="btn" id="scan-close">Close</button>
+    <p class="hint" id="scan-msg" role="status">Starting the camera…</p>
+    <div id="scan-result" class="scan-result" hidden>
+      <p id="scan-what"></p>
+      <label id="scan-part-row">Which part is it? <span class="hint">Pick from the catalog or type its part number. The barcode is remembered from now on.</span>
+        <input id="scan-part" maxlength="100" autocomplete="off" data-catalog placeholder="Number or name"></label>
+      <label>How many <input id="scan-qty" inputmode="numeric" maxlength="6" autocomplete="off"></label>
+      <p class="flash err" id="scan-error" hidden></p>
+      <p class="filter-actions"><button type="button" class="btn primary" id="scan-save">Save and scan next</button><button type="button" class="btn" id="scan-skip">Skip</button></p>
+      <p><button type="button" class="link" id="scan-wrong" hidden>Not this part</button></p>
+      <details id="scan-photo-row" class="mod-tools">
+        <summary>Not sure what it is? Take a photo</summary>
+        <div class="thread-tools stack">
+          <label>Photo of the part or its label <input type="file" id="scan-photo" accept="image/jpeg,image/png,image/webp" capture="environment" data-shrink="1600"></label>
+          <button type="button" class="btn" id="scan-photo-save">Save the photo and scan next</button>
+        </div>
+      </details>
+    </div>
+    <button type="button" class="btn" id="scan-close">Done scanning</button>
   </div>
 </div>
+<script src="/shrink.js?v=<%= assetV %>" defer></script>
 <script src="/count.js?v=<%= assetV %>" defer></script>
 <script src="/scan.js?v=<%= assetV %>" defer></script>
 <%- include('partials/footer') %>

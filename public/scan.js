@@ -23,18 +23,35 @@
     return loading;
   }
 
+  var held = false;      // a scan is being dealt with on the camera screen: further reads wait
+  var last = { code: '', at: 0 };
+
   function close() {
     overlay.hidden = true;
+    held = false;
     var s = scanner;
     scanner = null;
-    if (s) s.stop().then(function () { s.clear(); }).catch(function () {});
+    if (s) { try { if (s.getState && s.getState() === 3) s.resume(); } catch (e) {} s.stop().then(function () { s.clear(); }).catch(function () {}); }
+    if (window.partsForm && window.partsForm.onClose) window.partsForm.onClose();
   }
 
   function found(text) {
     var value = String(text || '').trim();
-    if (!value) return;
+    var page = window.partsForm || {};
+    if (!value || held) return;
+    // The count sheet deals with a scan on the camera screen itself, then asks for the next one.
+    if (page.onScan) {
+      if (value === last.code && Date.now() - last.at < 2500) return;   // the one just saved, still in view
+      held = true;
+      try { if (scanner) scanner.pause(true); } catch (e) {}
+      page.onScan(value, { next: function () { last = { code: value, at: Date.now() }; held = false; try { if (scanner) scanner.resume(); } catch (e) {} } });
+      return;
+    }
     close();
-    if (window.partsForm) window.partsForm.addPart(value);
+    if (!page.addPart) return;
+    // A barcode someone has matched to a part before goes in as that part's number.
+    fetch('/parts/lookup?code=' + encodeURIComponent(value), { credentials: 'same-origin' }).then(function (r) { return r.json(); })
+      .then(function (d) { page.addPart(d && d.found ? d.part_number : value); }, function () { page.addPart(value); });
   }
   // Lets the result handler be exercised without a camera.
   window.partsScan = { found: found };

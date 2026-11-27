@@ -9924,3 +9924,88 @@ test('sign-in details by email: sent to a new person when they are added, and to
   await owner.post('/branch/view', { branch: String(homeId), back: '/' }, { page: '/' });
   db.prepare("UPDATE users SET active = 0, in_directory = 0 WHERE username LIKE 'inv.%'").run();
 });
+
+test('counting with the scanner: a barcode is matched to a part once and remembered, parts are counted one after another, and what nobody can name is photographed for later', async () => {
+  const inv = require('../app/inventory'); const counts = require('../app/invcount'); const uploads = require('../app/uploads'); const fs = require('fs'); const path = require('path');
+  const now = new Date().toISOString(); const owner = await loggedIn('owner');
+  const mk = (name) => { const id = db.prepare('INSERT INTO branches (name, state, created_at) VALUES (?, ?, ?)').run(name, 'PA', now).lastInsertRowid; require('../app/branches').setUp(id); return id; };
+  const a = mk('Scan Alpha'); const b = mk('Scan Beta');
+  const put = (username, name, office, profile) => { const id = auth.createUser({ username, displayName: name, password: 'correct horse battery', profile: profileId(profile), branchId: office }); db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?').run(id); return id; };
+  put('scan.ta', 'Tia Tech', a, 'Technician'); put('scan.wb', 'Walt Elsewhere', b, 'Warehouse');
+  const ta = await loggedIn('scan.ta'); const wb = await loggedIn('scan.wb');
+  await owner.post('/branch/view', { branch: String(a), back: '/' }, { page: '/' });
+  const wh = inv.warehouseOf(a).id;
+  await owner.post('/admin/inventory/moves', { from: 'delivery', to: String(wh), part_number: 'SCN-1', quantity: '10' }, { page: '/admin/inventory' });
+  await owner.post('/admin/inventory/count', { month: '2031-03' }, { page: '/admin/inventory/count' });
+  const audit = counts.open(a); const sheet = `/admin/inventory/count/${audit.id}/${wh}`;
+  const idOf = (pn) => (db.prepare('SELECT id FROM parts_catalog WHERE part_number = ?').get(pn) || {}).id;
+  const look = async (client, code) => { const r = await client.get(`${sheet}/lookup?code=${encodeURIComponent(code)}`); return { status: r.status, ...JSON.parse(r.text) }; };
+  const scan = async (client, fields) => { const r = await client.post(`${sheet}/scan`, fields, { page: client === owner ? sheet : '/parts' }); return { status: r.status, ...JSON.parse(r.text) }; };
+  const counted = (pn) => counts.countedSoFar(audit, inv.location(wh), idOf(pn));
+
+  // The sheet offers the scanner, with the panel that deals with each scan on the camera screen.
+  const html = (await owner.get(sheet)).text;
+  assert.match(html, /id="scan-btn" hidden>Count with the scanner<\/button>/); assert.match(html, /id="scan-save">Save and scan next<\/button>/); assert.match(html, /Not sure what it is\? Take a photo/);
+  // A part number is known as it is. A box's barcode is not, until someone says which part it is.
+  assert.deepEqual(await look(owner, 'scn-1'), { status: 200, found: true, part_number: 'SCN-1', description: '', counted: null });
+  assert.deepEqual(await look(owner, '0123456789012'), { status: 200, found: false });
+  assert.deepEqual(await scan(owner, { code: '0123456789012', qty: '4' }), { status: 400, error: 'Pick the part, or type its part number.' });
+  assert.deepEqual(await scan(owner, { code: '0123456789012', part_number: 'SCN-1', qty: 'four' }), { status: 400, error: 'Enter how many, as a whole number.' });
+  let r = await scan(owner, { code: '0123456789012', part_number: 'SCN-1', qty: '4' });
+  assert.deepEqual([r.status, r.ok, r.part_number, r.counted, r.learned], [200, true, 'SCN-1', 4, true]); assert.equal(counted('SCN-1'), 4);
+  assert.ok(db.prepare("SELECT 1 FROM activity_log WHERE action = 'Barcode matched to a part' AND detail = '0123456789012 is SCN-1'").get());
+  // From then on the barcode alone is enough, for anyone, and says how many were counted so far.
+  assert.deepEqual(await look(owner, '0123456789012'), { status: 200, found: true, part_number: 'SCN-1', description: '', counted: 4 });
+  r = await scan(owner, { code: '0123456789012', qty: '6' });
+  assert.deepEqual([r.ok, r.counted, r.learned], [true, 6, false]); assert.equal(counted('SCN-1'), 6);
+  assert.deepEqual(JSON.parse((await ta.get('/parts/lookup?code=0123456789012')).text), { found: true, part_number: 'SCN-1' });      // the parts form's scanner knows it too
+  assert.deepEqual(JSON.parse((await ta.get('/parts/lookup?code=nothing-like-it')).text), { found: false });
+  // A part the catalog does not have joins it there and then, so the count is not held up.
+  r = await scan(owner, { code: '999000111', part_number: 'SCN-NEW', qty: '2' });
+  assert.deepEqual([r.ok, r.part_number, r.counted, r.learned], [true, 'SCN-NEW', 2, true]); assert.ok(idOf('SCN-NEW')); assert.equal(counted('SCN-NEW'), 2);
+  // A code that is itself a part number is never pointed at another part.
+  r = await scan(owner, { code: 'SCN-1', part_number: 'SCN-NEW', qty: '2' });
+  assert.equal(r.learned, false); assert.equal((await look(owner, 'SCN-1')).part_number, 'SCN-1');
+  // Only people who may count this place: not a technician for the warehouse, not another branch.
+  assert.equal((await scan(ta, { code: '0123456789012', qty: '99' })).status, 403); assert.equal((await look(wb, 'SCN-1')).status, 403); assert.equal(counted('SCN-1'), 6);
+  // What was counted this way is on the sheet when it is opened again.
+  assert.match((await owner.get(sheet)).text.replace(/\s+/g, ' '), new RegExp(`name="qty_${idOf('SCN-1')}" value="6"`));
+
+  // Something nobody can name: a photo and how many. It needs both.
+  const unknown = async (fields) => { const res = await owner.post(`${sheet}/unknown`, fields, { page: sheet, multipart: true }); return { status: res.status, ...JSON.parse(res.text) }; };
+  const pic = () => new File([PNG], 'label.png', { type: 'image/png' });
+  assert.deepEqual(await unknown([['qty', '3'], ['code', 'UNK-777']]), { status: 400, error: 'Take a photo of it first.' });
+  assert.deepEqual(await unknown([['qty', ''], ['code', 'UNK-777'], ['photo', pic()]]), { status: 400, error: 'Enter how many, as a whole number.' });
+  assert.deepEqual(await unknown([['qty', '3'], ['code', 'UNK-777'], ['photo', pic()]]), { status: 200, ok: true, waiting: 1 });
+  assert.deepEqual(await unknown([['qty', '1'], ['code', ''], ['photo', pic()]]), { status: 200, ok: true, waiting: 2 });
+  const [first, second] = counts.unknowns(audit.id);
+  assert.match((await owner.get(sheet)).text, /2 items here are waiting to be identified from their photos\./);
+  const over = (await owner.get(`/admin/inventory/count/${audit.id}`)).text.replace(/\s+/g, ' ');
+  assert.match(over, new RegExp(`<h2 id="identify">To identify</h2>[\\s\\S]*?<img src="/admin/inventory/unknowns/${first.id}/photo"[\\s\\S]*?<strong>3</strong> in <strong>Main warehouse</strong> <span class="hint">barcode UNK-777</span>`));
+  assert.equal((await owner.get(`/admin/inventory/unknowns/${first.id}/photo`)).status, 200);
+  assert.equal((await wb.get(`/admin/inventory/unknowns/${first.id}/photo`)).status, 403); assert.equal((await ta.get(`/admin/inventory/unknowns/${first.id}/photo`)).status, 403);
+  // The count cannot be closed while anything is waiting.
+  await owner.post('/account/confirm', { password: 'correct horse battery', next: `/admin/inventory/count/${audit.id}` }, { page: `/admin/inventory/count/${audit.id}` });
+  await owner.post(`/admin/inventory/count/${audit.id}/close`, {}, { page: `/admin/inventory/count/${audit.id}` });
+  assert.equal(counts.get(audit.id).status, 'open');
+  assert.match((await owner.get(`/admin/inventory/count/${audit.id}`)).text, /2 items are still to be identified\. Match or remove them first\./);
+  // Saying which part it is adds its quantity to what was counted there, and remembers its barcode. Not for a technician.
+  assert.equal((await ta.post(`/admin/inventory/unknowns/${first.id}/identify`, { part_number: 'SCN-1' }, { page: '/parts' })).status, 403);
+  await owner.post(`/admin/inventory/unknowns/${first.id}/identify`, { part_number: 'SCN-1' }, { page: `/admin/inventory/count/${audit.id}` });
+  assert.match((await owner.get(`/admin/inventory/count/${audit.id}`)).text, /3 × SCN-1 added to the count for Main warehouse: 9 counted there now\. Its barcode is remembered\./);
+  assert.equal(counted('SCN-1'), 9); assert.equal((await look(owner, 'UNK-777')).part_number, 'SCN-1');
+  // Or it is taken off the count, and its photo goes with it.
+  const file = path.join(uploads.uploadDir, second.photo_path); assert.ok(fs.existsSync(file));
+  await owner.post(`/admin/inventory/unknowns/${second.id}/discard`, {}, { page: `/admin/inventory/count/${audit.id}` });
+  await new Promise((r) => setTimeout(r, 60));                                                                                        // the file is taken away just after the page answers
+  assert.equal(counts.unknowns(audit.id).length, 0); assert.equal(fs.existsSync(file), false);
+  assert.doesNotMatch((await owner.get(`/admin/inventory/count/${audit.id}`)).text, /id="identify"/);
+  // With nothing waiting, the count closes, and the records say what was counted.
+  await owner.post(`/admin/inventory/count/${audit.id}/close`, {}, { page: `/admin/inventory/count/${audit.id}` });
+  assert.equal(counts.get(audit.id).status, 'closed'); assert.equal(inv.onHand(wh, idOf('SCN-1')), 9); assert.equal(inv.onHand(wh, idOf('SCN-NEW')), 2);
+  assert.equal((await scan(owner, { code: '0123456789012', qty: '1' })).status, 403);                                                 // a closed count takes no more
+
+  const homeId = db.prepare('SELECT branch_id FROM users WHERE id = ?').get(userId('owner')).branch_id;
+  await owner.post('/branch/view', { branch: String(homeId), back: '/' }, { page: '/' });
+  db.prepare("UPDATE users SET active = 0 WHERE username LIKE 'scan.%'").run();
+});

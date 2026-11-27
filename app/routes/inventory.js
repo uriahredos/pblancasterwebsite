@@ -5,7 +5,8 @@ const inv = require('../inventory');
 const counts = require('../invcount');
 const access = require('../permissions');
 const activity = require('../activity');
-const { requireLogin, requirePerm, forbidden, flash } = require('../auth');
+const { requireLogin, requirePerm, verifyCsrf, forbidden, flash } = require('../auth');
+const uploads = require('../uploads');
 const { clean } = require('../util');
 
 const router = express.Router();
@@ -268,7 +269,7 @@ router.get('/admin/inventory/count/:id', requireLogin, (req, res) => {
       closedBy: audit.closed_by ? db.prepare('SELECT display_name FROM users WHERE id = ?').get(audit.closed_by) : null });
   }
   res.render('admin_inventory_count_one', { title: `Count for ${counts.monthName(audit.month)}`, audit, ...counts.progress(audit), monthName: counts.monthName, dollars: inv.dollars, showCost,
-    mayApprove: mayApprove(req.user), mayCount: mayCountAll(req.user), proved: require('./auth').provedRecently(req) });
+    mayApprove: mayApprove(req.user), mayCount: mayCountAll(req.user), proved: require('./auth').provedRecently(req), unknowns: counts.unknowns(audit.id) });
 });
 
 // These two come before the count sheet's address, which would otherwise take "close" for a location.
@@ -277,6 +278,8 @@ router.post('/admin/inventory/count/:id/close', requirePerm('inventory.approve')
   if (!audit || audit.branch_id !== req.user.workBranch) return forbidden(res);
   if (audit.status !== 'open') return res.redirect(`/admin/inventory/count/${audit.id}`);
   if (!require('./auth').provedRecently(req)) { flash(req, 'err', 'Type your password to close the count.'); return res.redirect(`/admin/inventory/count/${audit.id}#close`); }
+  const waiting = counts.unknowns(audit.id).length;
+  if (waiting) { flash(req, 'err', `${waiting} ${waiting === 1 ? 'item is' : 'items are'} still to be identified. Match or remove ${waiting === 1 ? 'it' : 'them'} first.`); return res.redirect(`/admin/inventory/count/${audit.id}#identify`); }
   const done = counts.close(audit, req.user.id);
   activity.log(req.user, 'Inventory count closed', `${counts.monthName(audit.month)}: ${done.lines} counted, ${done.changed} corrected`);
   flash(req, 'ok', `${counts.monthName(audit.month)} is closed. ${done.changed} ${done.changed === 1 ? 'figure was' : 'figures were'} corrected to match the count.`);
@@ -305,7 +308,7 @@ function sheetPage(req, res, extra = {}) {
   if (audit.status !== 'open') { res.redirect(mayCountAll(req.user) ? `/admin/inventory/count/${audit.id}` : '/'); return null; }
   if (extra.justLoad) return { audit, place };
   res.status(extra.errors ? 400 : 200).render('inventory_count_sheet', { title: `Count: ${place.name}`, audit, place, rows: counts.sheet(audit, place), monthName: counts.monthName,
-    backToCount: mayCountAll(req.user) && audit.branch_id === req.user.workBranch, errors: [], added: '', finished: counts.finishedAt(audit, place), ...extra });
+    backToCount: mayCountAll(req.user) && audit.branch_id === req.user.workBranch, errors: [], added: '', finished: counts.finishedAt(audit, place), waiting: counts.unknowns(audit.id, place.id).length, ...extra });
   return null;
 }
 /** One inventory of a closed count, as it stood: for the people who see the count, and a technician for their own vehicle. */
@@ -322,6 +325,84 @@ router.get('/admin/inventory/count/:id/:loc', requireLogin, (req, res) => {
   const audit = auditOf(req);
   if (audit && audit.status === 'closed') return closedPlace(req, res, audit);
   sheetPage(req, res);
+});
+
+// ---- Counting with the scanner: scan, say how many, scan the next ----
+// These answer the count sheet's own script, so they answer in data, not pages. Who may count is the sheet's rule.
+const counting = (req, res) => {
+  const audit = auditOf(req); const place = audit ? inv.location(req.params.loc) : null;
+  if (!audit || !place || place.branch_id !== audit.branch_id || !mayCount(req.user, audit, place) || audit.status !== 'open') { res.status(403).json({ error: 'This count is not open to you.' }); return null; }
+  return { audit, place };
+};
+const wholeNumber = (v) => (/^\d{1,6}$/.test(String(v ?? '').trim()) ? Number(String(v).trim()) : null);
+
+// What a scanned code is, and how many of it have been counted here so far.
+router.get('/admin/inventory/count/:id/:loc/lookup', requireLogin, (req, res) => {
+  const at = counting(req, res); if (!at) return;
+  const part = counts.lookup(req.query.code);
+  res.json(part ? { found: true, part_number: part.part_number, description: part.description, counted: counts.countedSoFar(at.audit, at.place, part.id) } : { found: false });
+});
+
+// One part counted. A barcode that was not known is remembered as the part it was said to be.
+router.post('/admin/inventory/count/:id/:loc/scan', requireLogin, (req, res) => {
+  const at = counting(req, res); if (!at) return;
+  const code = clean(req.body.code, 100); const typed = clean(req.body.part_number, 100); const qty = wholeNumber(req.body.qty);
+  if (qty === null) return res.status(400).json({ error: 'Enter how many, as a whole number.' });
+  let part = typed ? db.prepare('SELECT id, part_number, description FROM parts_catalog WHERE part_number = ?').get(typed) : counts.lookup(code);
+  if (!part && typed) part = { ...customPart(typed, req.user), description: '' };   // not in the catalog: it joins it, so the count is not held up
+  if (!part) return res.status(400).json({ error: 'Pick the part, or type its part number.' });
+  const learned = code ? counts.learn(code, part.id, req.user.id) : false;
+  if (learned) activity.log(req.user, 'Barcode matched to a part', `${code} is ${part.part_number}`);
+  counts.count(at.audit, at.place, part.id, qty, req.user.id);
+  res.json({ ok: true, id: part.id, part_number: part.part_number, description: part.description || '', counted: qty, learned });
+});
+
+// Something nobody can name: a photo and how many, kept with the count for someone to identify.
+const unknownPhoto = uploads.receive({
+  name: (file) => require('crypto').randomBytes(16).toString('hex') + ({ 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' }[file.mimetype] || '.jpg'),
+  limits: { fileSize: require('../config').maxPhotoBytes, files: 1, fields: 20 },
+  fileFilter: (req, file, cb) => { if (['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) return cb(null, true); req.photoError = 'The photo must be a JPEG, PNG or WebP image.'; cb(null, false); },
+}).single('photo');
+router.post('/admin/inventory/count/:id/:loc/unknown', requireLogin, (req, res, next) => unknownPhoto(req, res, (err) => {
+  if (err) { req.photoError = err.code === 'LIMIT_FILE_SIZE' ? 'The photo is too large.' : 'The photo could not be uploaded.'; req.file = undefined; }
+  req.body = req.body || {}; next();
+}), verifyCsrf, (req, res) => {
+  const drop = () => { if (req.file) uploads.remove(req.file.filename); };
+  const at = counting(req, res); if (!at) return drop();
+  const qty = wholeNumber(req.body.qty);
+  const problem = req.photoError || (!req.file ? 'Take a photo of it first.' : !uploads.looksLikeImage(req.file.path) ? 'The photo must be a JPEG, PNG or WebP image.' : qty === null || qty < 1 ? 'Enter how many, as a whole number.' : '');
+  if (problem) { drop(); return res.status(400).json({ error: problem }); }
+  counts.addUnknown(at.audit, at.place, { barcode: clean(req.body.code, 100), note: clean(req.body.note, 200), quantity: qty, photo: req.file.filename, userId: req.user.id });
+  res.json({ ok: true, waiting: counts.unknowns(at.audit.id, at.place.id).length });
+});
+
+// The photo of something waiting to be identified: for the people who see the count, and whoever took it.
+const unknownOf = (req) => { const x = counts.unknown(req.params.uid); const audit = x ? counts.get(x.audit_id) : null; return x && audit && audit.branch_id === req.user.workBranch ? { x, audit } : null; };
+router.get('/admin/inventory/unknowns/:uid/photo', requireLogin, (req, res) => {
+  const x = counts.unknown(req.params.uid); const audit = x ? counts.get(x.audit_id) : null;
+  const staff = audit && audit.branch_id === req.user.workBranch && (maySee(req.user) || mayCountAll(req.user));
+  if (!x || !x.photo_path || !(staff || x.user_id === req.user.id)) return forbidden(res);
+  uploads.send(res, x.photo_path, { 'Cache-Control': 'private, no-store' });
+});
+// It is this part: its quantity joins the count in that place, and its barcode is remembered. Or it is thrown out.
+router.post('/admin/inventory/unknowns/:uid/:op', requireLogin, (req, res) => {
+  const found = unknownOf(req);
+  if (!found || !mayCountAll(req.user) || found.audit.status !== 'open' || found.x.resolved_at || !['identify', 'discard'].includes(req.params.op)) return forbidden(res);
+  const { x, audit } = found; const back = `/admin/inventory/count/${audit.id}#identify`;
+  if (req.params.op === 'discard') {
+    counts.dropUnknown(x); if (x.photo_path) uploads.remove(x.photo_path);
+    activity.log(req.user, 'Unidentified item removed from the count', `${x.quantity} in ${inv.location(x.location_id).name}`);
+    flash(req, 'ok', 'Removed from the count.');
+    return res.redirect(back);
+  }
+  const typed = clean(req.body.part_number, 100);
+  if (!typed) { flash(req, 'err', 'Pick the part, or type its part number.'); return res.redirect(back); }
+  let part = db.prepare('SELECT id, part_number FROM parts_catalog WHERE part_number = ?').get(typed);
+  if (!part) part = customPart(typed, req.user);
+  const total = counts.identify(x, part.id, req.user.id);
+  activity.log(req.user, 'Unidentified item matched to a part', `${x.quantity} × ${part.part_number} in ${inv.location(x.location_id).name}`);
+  flash(req, 'ok', `${x.quantity} × ${part.part_number} added to the count for ${inv.location(x.location_id).name}: ${total} counted there now.${x.barcode ? ' Its barcode is remembered.' : ''}`);
+  res.redirect(back);
 });
 
 router.post('/admin/inventory/count/:id/:loc', requireLogin, (req, res) => {
